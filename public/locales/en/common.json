@@ -1,0 +1,14 @@
+{
+  "greeting": "Hello",
+  "dashboard": "Dashboard",
+  "activeProjects": "Active Projects",
+  "totalRevenue": "Total Revenue",
+  "upcomingDeadlines": "Upcoming Deadlines",
+  "designConsulting": "Design Consulting",
+  "constructionSupervision": "Construction Supervision",
+  "civilProjects": "Civil Projects",
+  "industrialProjects": "Industrial Projects",
+  "warrantyTasks": "Warranty Tasks",
+  "customerManagement": "Customer Management",
+  "inventoryLevels": "Inventory Levels"
+}
