@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import supabase from '@/lib/supabase/client';
+import { cookies } from "next/headers";
 
 type ProjectMember = {
     employee_id: string;
@@ -38,7 +39,9 @@ export async function getProjectMembers(projectId: string) {
 }
 // Lấy danh sách employee toàn hệ thống (id, name, email)
 export async function getAllEmployees(): Promise<Employee[]> {
-    const supabase = await createSupabaseServerClient();
+    const cookieStore = await cookies(); // phải await
+    const token = cookieStore.get("sb-access-token")?.value || null;
+    const supabase = createSupabaseServerClient(token);
 
     const { data, error } = await supabase
         .from("employees")

@@ -1,13 +1,16 @@
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/server"
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, LineChart, PieChart, Plus, FileText } from "lucide-react"
-import { formatDate } from "@/lib/utils"
+import { formatDate } from "@/lib/utils/utils"
 
 export default async function ReportsPage() {
-  const supabase = createClient()
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+    const supabase = createSupabaseServerClient(token);
 
   const { data: reportTemplates } = await supabase.from("report_templates").select("*").order("name")
 

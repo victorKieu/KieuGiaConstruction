@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
@@ -13,7 +14,10 @@ export async function POST(req: Request) {
         }
 
         // Lấy Supabase user
-        const supabase = await createServerSupabaseClient();
+        const cookieStore = await cookies(); // phải await
+        const token = cookieStore.get("sb-access-token")?.value || null;
+        const supabase = createSupabaseServerClient(token);
+
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) {
             console.error("Supabase user error:", userError);

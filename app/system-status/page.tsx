@@ -1,8 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import SystemStatusClient from "./system-status-client"
+import { cookies } from "next/headers";
 
 export default async function SystemStatusPage() {
-  const supabase = createClient()
+    const cookieStore = await cookies(); // phải await
+    const token = cookieStore.get("sb-access-token")?.value || null;
+    const supabase = createSupabaseServerClient(token);
 
   // Kiểm tra kết nối Supabase
   let supabaseStatus = { status: "unknown", message: "Đang kiểm tra...", latency: null }

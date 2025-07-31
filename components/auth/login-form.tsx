@@ -1,3 +1,4 @@
+// components/auth/login-form.tsx
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { BiometricAuth } from "./biometric-auth";
-import { useIsMobile } from "@/lib/hooks/useIsMobile"; // Thêm import
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [email, setEmail] = useState("");
@@ -17,7 +18,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [rememberMe, setRememberMe] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
-    const { signIn } = useAuth();
+    const { signIn } = useAuth(); // Lấy signIn từ useAuth
     const router = useRouter();
 
     useEffect(() => {
@@ -31,19 +32,22 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        setErrorMessage("");
+        setErrorMessage(""); // Xóa thông báo lỗi cũ
 
         try {
-            await signIn(email, password);
+            await signIn(email, password); // Nếu hàm này ném lỗi, nó sẽ nhảy vào catch block
+
+            // Nếu không có lỗi được ném ra, nghĩa là đăng nhập thành công
             if (rememberMe) {
                 localStorage.setItem("biometric_auth_email", email);
             } else {
                 localStorage.removeItem("biometric_auth_email");
             }
-            router.push("/dashboard");
+            router.push("/dashboard"); // Chuyển hướng sau khi đăng nhập thành công
         } catch (error: any) {
-            console.error("Lỗi đăng nhập:", error);
-            setErrorMessage("Email hoặc mật khẩu không đúng. Vui lòng thử lại.");
+            // Lỗi từ AuthContext (hoặc lỗi khác) sẽ được bắt ở đây
+            console.error("Lỗi đăng nhập:", error.message); // Truy cập error.message
+            setErrorMessage(error.message || "Email hoặc mật khẩu không đúng. Vui lòng thử lại.");
         } finally {
             setIsLoading(false);
         }
@@ -93,6 +97,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={isLoading}
+                        autoComplete="current-password"
                     />
                 </div>
 
@@ -111,7 +116,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                 </Button>
             </form>
 
-            {/* Chỉ hiển thị BiometricAuth trên mobile */}
             {isMobile && (
                 <div>
                     <BiometricAuth email={email} onSuccess={handleBiometricSuccess} />

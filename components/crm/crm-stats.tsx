@@ -26,8 +26,9 @@ export function CrmStats() {
                     .select("*", { count: "exact", head: true });
 
                 if (customersError) {
-                    console.error("Lỗi khi lấy tổng số khách hàng:", customersError.message);
-                    throw new Error(customersError.message); // Ném lỗi để dừng quá trình
+                    const errorMessage = customersError.message || "Không thể lấy thông tin tổng số hợp đồng";
+                    console.error("Lỗi khi lấy tổng số hợp đồng:", customersError.message);
+                    throw new Error(errorMessage);
                 }
 
                 // Fetch active opportunities
@@ -37,18 +38,20 @@ export function CrmStats() {
                     .not("status", "eq", "closed");
 
                 if (opportunitiesError) {
+                    const errorMessage = opportunitiesError.message || "Không thể lấy thông tin cơ hội đang mở";
                     console.error("Lỗi khi lấy cơ hội đang mở:", opportunitiesError.message);
-                    throw new Error(opportunitiesError.message); // Ném lỗi để dừng quá trình
+                    throw new Error(errorMessage);
                 }
-
+                
                 // Fetch total contracts
                 const { count: contractsCount, error: contractsError } = await supabase
                     .from("contracts")
                     .select("*", { count: "exact", head: true });
 
                 if (contractsError) {
+                    const errorMessage = contractsError.message || "Không thể lấy thông tin tổng số hợp đồng";
                     console.error("Lỗi khi lấy tổng số hợp đồng:", contractsError.message);
-                    throw new Error(contractsError.message); // Ném lỗi để dừng quá trình
+                    throw new Error(errorMessage);
                 }
 
                 // Fetch upcoming activities (next 7 days)
@@ -57,15 +60,20 @@ export function CrmStats() {
 
                 const { count: activitiesCount, error: activitiesError } = await supabase
                     .from("customer_activities")
-                    .select("*", { count: "exact", head: true })
+                    .select(
+                        "id,activity_type,title,description,scheduled_at,customer_id,customers(name)", // <-- REMOVED 'status', changed 'type' to 'activity_type'
+                        { count: "exact", head: true }
+                    )
                     .gte("scheduled_at", new Date().toISOString())
-                    .lte("scheduled_at", nextWeek.toISOString());
+                    .lte("scheduled_at", nextWeek.toISOString())
+                    .order("scheduled_at", { ascending: true })
+                    .limit(5);
 
-                //if (activitiesError) {
-                    //const errorMessage = activitiesError.message || "Không thể lấy thông tin hoạt động sắp tới";
-                    //console.error("Lỗi khi lấy hoạt động sắp tới:", errorMessage);
-                    //throw new Error(errorMessage);
-                //}
+                if (activitiesError) {
+                    const errorMessage = activitiesError.message || "Không thể lấy thông tin hoạt động sắp tới";
+                    console.error("Lỗi khi lấy hoạt động sắp tới:", errorMessage);
+                    throw new Error(errorMessage);
+                }
 
                 setStats({
                     totalCustomers: customersCount || 0,

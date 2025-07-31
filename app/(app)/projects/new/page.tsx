@@ -1,8 +1,9 @@
-import { getCustomers, getProjectManagers } from "@/lib/actions";
+import { getProjectManagers } from "@/lib/action/hrmActions";
+import { getCustomerList } from "@/lib/action/crmActions";
 import CreateProjectForm from "@/components/projects/ProjectForm";
 
 export default async function NewProjectPage() {
-    const customers = await getCustomers();
+    const customers = await getCustomerList();
     const managers = await getProjectManagers();
 
     return (

@@ -19,7 +19,8 @@ const PROJECT_TYPES = [
 ];
 
 interface Customer { id: string; name: string; }
-interface Manager { id: string; name: string; }
+// Đổi user_id sang id cho nhất quán và dễ sử dụng làm key
+interface Manager { id: string; name: string; } // Đã sửa từ user_id sang id
 
 interface ProjectFormData {
     id?: string;
@@ -40,7 +41,7 @@ interface ProjectFormData {
 interface ProjectFormProps {
     initialData?: Partial<ProjectFormData>;
     customers: Customer[];
-    managers: Manager[];
+    managers: Manager[]; // Đảm bảo dữ liệu managers truyền vào cũng có thuộc tính 'id'
     onSuccess?: () => void;
 }
 
@@ -161,6 +162,7 @@ export default function ProjectForm({ initialData = {}, customers, managers, onS
                         >
                             <option value="">Chọn quản lý dự án</option>
                             {managers.map(m => (
+                                // Đã sửa key từ m.user_id sang m.id
                                 <option key={m.id} value={m.id}>
                                     {m.name}
                                 </option>
@@ -238,6 +240,7 @@ export default function ProjectForm({ initialData = {}, customers, managers, onS
                         >
                             <option value="">Chọn loại dự án</option>
                             {PROJECT_TYPES.map(type => (
+                                // Đã thêm key prop ở đây!
                                 <option key={type.value} value={type.value}>
                                     {type.label}
                                 </option>

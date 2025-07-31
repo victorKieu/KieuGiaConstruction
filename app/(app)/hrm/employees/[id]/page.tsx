@@ -1,5 +1,5 @@
 "use client"; // Đánh dấu đây là client component
-import { formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils/utils";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';

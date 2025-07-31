@@ -1,14 +1,15 @@
-import { Suspense } from "react"
-import { notFound } from "next/navigation"
-import Link from "next/link"
-import { getProject } from "@/lib/actions"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-//import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency } from "@/lib/utils"
-import { DeleteProjectButton } from "@/components/projects/DeleteProjectButton"
+import { Suspense } from "react";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// Đảm bảo getProject được import từ actions của bạn
+import { getProject } from "@/lib/action/projectActions";
+import { Button } from "@/components/ui/button";
+//import { Card, CardContent } from "@/components/ui/card"; // Bỏ CardHeader, CardTitle nếu không dùng trực tiếp ở đây
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatCurrency } from "@/lib/utils/utils";
+import { DeleteProjectButton } from "@/components/projects/DeleteProjectButton";
 import ProjectTabs from "@/components/projects/ProjectTabs";
 import {
     ArrowLeft,
@@ -17,175 +18,222 @@ import {
     DollarSign,
     ListTodo,
     ShieldAlert,
-} from "lucide-react"
+} from "lucide-react";
 
+// Component chính của trang động /projects/[id]
+// Đây là Server Component, và nó là async để nhận params
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
     return (
         <div className="container mx-auto p-4">
+            {/* Suspense bao quanh ProjectDetail để hiển thị trạng thái loading (skeleton) */}
             <Suspense fallback={<ProjectDetailSkeleton />}>
+                {/* Truyền id từ params xuống ProjectDetail. params.id đã sẵn sàng ở đây. */}
                 <ProjectDetail id={params.id} />
             </Suspense>
         </div>
-    )
+    );
 }
 
+// Component ProjectDetail (cũng là Server Component)
+// Phải là async vì nó gọi await getProject(id)
 async function ProjectDetail({ id }: { id: string }) {
-    if (!id) notFound()
-    try {
-        const project = await getProject(id)
-        if (project && "isSpecialRoute" in project && project.isSpecialRoute) {
-            if (project.type === "warranty") {
-                return <WarrantyPage />
-            }
-            notFound()
+    // Nếu ID không tồn tại hoặc rỗng, trả về trang 404
+    if (!id) {
+        notFound();
+    }
+
+    // Gọi hàm getProject để lấy dữ liệu dự án.
+    // getProject giờ đây trả về một đối tượng có data hoặc error.
+    const result = await getProject(id);
+
+    // Xử lý trường hợp "special route" (ví dụ: trang bảo hành)
+    if (result.isSpecialRoute && result.type === "warranty") {
+        return <WarrantyPage />;
+    }
+
+    // Xử lý trường hợp có lỗi khi fetch dữ liệu (error là một object)
+    if (result.error) {
+        return <ProjectError error={result.error.message} code={result.error.code} id={id} />;
+    }
+
+    // Lấy dữ liệu dự án sau khi đã xác nhận không có lỗi
+    const project = result.data;
+
+    // Trường hợp cuối cùng: không có lỗi nhưng cũng không có dữ liệu (rất hiếm nếu logic trên đúng)
+    if (!project) {
+        console.error("[ProjectDetail] getProject trả về: null/undefined sau khi kiểm tra lỗi.");
+        notFound();
+    }
+
+    // --- Các hàm tiện ích để format dữ liệu và trạng thái ---
+    const formatDate = (dateString: string | null) => {
+        if (!dateString) return "N/A";
+        // Đảm bảo định dạng ngày phù hợp với Việt Nam
+        return new Date(dateString).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+    };
+
+    const getStatusBadge = (status: string | null) => {
+        switch (status) {
+            case "planning":
+                return <Badge className="bg-blue-500">Kế hoạch</Badge>;
+            case "in_progress":
+                return <Badge className="bg-green-500">Đang làm</Badge>;
+            case "paused":
+                return <Badge className="bg-yellow-500">Tạm dừng</Badge>;
+            case "completed":
+                return <Badge className="bg-purple-500">Hoàn thành</Badge>;
+            default:
+                return <Badge className="bg-gray-500">Không xác định</Badge>;
         }
+    };
 
-        if (project && "error" in project) {
-            return <ProjectError error={project.error} code={project.code} id={id} />
+    const getRiskBadge = (risk: string | null) => {
+        switch (risk) {
+            case "normal":
+                return <Badge className="bg-green-500">Bình thường</Badge>;
+            case "accelerated":
+                return <Badge className="bg-blue-500">Tăng tốc</Badge>;
+            case "delayed":
+                return <Badge className="bg-yellow-500">Lùi ý</Badge>;
+            case "at_risk":
+                return <Badge className="bg-red-500">Rủi ro</Badge>;
+            case "behind":
+                return <Badge className="bg-purple-500">Chậm trễ</Badge>;
+            default:
+                return <Badge className="bg-gray-500">Không xác định</Badge>;
         }
+    };
 
-        if (!project) {
-            console.error("[ProjectDetail] getProject trả về:", project)
-            notFound()
-        }
+    // Lấy dữ liệu cần thiết từ đối tượng project
+    const customerName = project.customers?.name || "Chưa có thông tin"; // Lấy tên khách hàng từ quan hệ
+    const projectManagerName = project.manager?.name || "Chưa phân công"; // Lấy tên quản lý từ quan hệ
+    const address = project.address || "Chưa có thông tin";
 
-        // Format dates
-        const formatDate = (dateString: string | null) => {
-            if (!dateString) return "N/A"
-            return new Date(dateString).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })
-        }
-
-        // Xác định trạng thái
-        const getStatusBadge = (status: string | null) => {
-            switch (status) {
-                case "planning":
-                    return <Badge className="bg-blue-500">Kế hoạch</Badge>
-                case "in_progress":
-                    return <Badge className="bg-green-500">Đang làm</Badge>
-                case "paused":
-                    return <Badge className="bg-yellow-500">Tạm dừng</Badge>
-                case "completed":
-                    return <Badge className="bg-purple-500">Hoàn thành</Badge>
-                default:
-                    return <Badge className="bg-gray-500">Không xác định</Badge>
-            }
-        }
-
-        const getRiskBadge = (risk: string | null) => {
-            switch (risk) {
-                case "normal":
-                    return <Badge className="bg-green-500">Bình thường</Badge>
-                case "accelerated":
-                    return <Badge className="bg-blue-500">Tăng tốc</Badge>
-                case "delayed":
-                    return <Badge className="bg-yellow-500">Lùi ý</Badge>
-                case "at_risk":
-                    return <Badge className="bg-red-500">Rủi ro</Badge>
-                case "behind":
-                    return <Badge className="bg-purple-500">Chậm trễ</Badge>
-                default:
-                    return <Badge className="bg-gray-500">Không xác định</Badge>
-            }
-        }
-
-        const planProgress = project.progress || 0
-        const actualProgress = (project.progress || 0) * 0.8 // Giả định tiến độ thực tế
-
-        // Lấy đúng tên khách hàng, quản lý, địa chỉ
-        const customerName = project.customers?.name || "Chưa có thông tin"
-        const projectManagerName = project.manager?.name || "Chưa phân công"
-        const address = project.address || "Chưa có thông tin"
-
-        return (
-            <>
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center">
-                        <Button variant="outline" size="icon" asChild className="mr-4">
-                            <Link href="/projects">
-                                <ArrowLeft className="h-4 w-4" />
-                            </Link>
-                        </Button>
-                        <div>
-                            <h1 className="text-2xl font-bold">{project.name}</h1>
-                            <div className="flex items-center mt-1 text-sm text-gray-500">
-                                <span>Mã dự án: {project.code}</span>
-                                <span className="mx-2">•</span>
-                                <span>Trạng thái: {getStatusBadge(project.status)}</span>
-                            </div>
+    return (
+        <>
+            {/* Header của trang chi tiết dự án */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                    <Button variant="outline" size="icon" asChild className="mr-4">
+                        <Link href="/projects">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Link>
+                    </Button>
+                    <div>
+                        <h1 className="text-2xl font-bold">{project.name}</h1>
+                        <div className="flex items-center mt-1 text-sm text-gray-500">
+                            <span>Mã dự án: {project.code}</span>
+                            <span className="mx-2">•</span>
+                            <span>Trạng thái: {getStatusBadge(project.status)}</span>
                         </div>
                     </div>
-                    <div className="flex space-x-2">
-                        <Button asChild variant="outline">
-                            <Link href={`/projects/${id}/tasks`}>
-                                <ListTodo className="h-4 w-4 mr-2" />
-                                Công việc
-                            </Link>
-                        </Button>
-                        <Button asChild variant="outline">
-                            <Link href={`/projects/${id}/edit`}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                Chỉnh sửa
-                            </Link>
-                        </Button>
-                        <DeleteProjectButton projectId={id} projectName={project.name} />
-                    </div>
                 </div>
-
-                <ProjectTabs projectId={id} />
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <Card>
-                        <CardContent className="p-4 flex items-center">
-                            <div className="mr-4 p-2 bg-blue-100 rounded-full">
-                                <Clock className="h-6 w-6 text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Thời gian</p>
-                                <p className="font-medium">
-                                    {formatDate(project.start_date)} - {formatDate(project.end_date)}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-4 flex items-center">
-                            <div className="mr-4 p-2 bg-amber-100 rounded-full">
-                                <DollarSign className="h-6 w-6 text-amber-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Ngân sách</p>
-                                <p className="font-medium">{formatCurrency(project.budget || 0)}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardContent className="p-4">
-                            <p className="text-sm text-gray-500 mb-1">Tiến độ</p>
-                            <div className="flex items-center">
-                                <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
-                                    <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${project.progress || 0}%` }}></div>
-                                </div>
-                                <span className="text-sm font-medium">{project.progress || 0}%</span>
-                            </div>
-                        </CardContent>
-                    </Card>
+                <div className="flex space-x-2">
+                    <Button asChild variant="outline">
+                        <Link href={`/projects/${id}/tasks`}>
+                            <ListTodo className="h-4 w-4 mr-2" />
+                            Công việc
+                        </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                        <Link href={`/projects/${id}/edit`}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Chỉnh sửa
+                        </Link>
+                    </Button>
+                    {/* Nút xóa dự án */}
+                    <DeleteProjectButton projectId={id} projectName={project.name} />
                 </div>
+            </div>
 
-            </>
-        )
-    } catch (err: unknown) { // Thay đổi ở đây
-        if (err instanceof Error) {
-            console.error("Đã xảy ra lỗi:", err.message);
-        } else {
-            console.error("Đã xảy ra lỗi không xác định:", err);
-        }
-        //return <ProjectError error={error?.message || JSON.stringify(error) || "Đã xảy ra lỗi"} code="unknown_error" id={id} />
-    }
+            {/* Các Tabs liên quan đến dự án (ví dụ: Tổng quan, Nhật ký, Chi phí) */}
+            <ProjectTabs projectId={id} />
+
+            {/* Thông tin tổng quan dự án (Thời gian, Ngân sách, Tiến độ) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <Card>
+                    <CardContent className="p-4 flex items-center">
+                        <div className="mr-4 p-2 bg-blue-100 rounded-full">
+                            <Clock className="h-6 w-6 text-blue-600" />
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500">Thời gian</p>
+                            <p className="font-medium">
+                                {formatDate(project.start_date)} - {formatDate(project.end_date)}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardContent className="p-4 flex items-center">
+                        <div className="mr-4 p-2 bg-amber-100 rounded-full">
+                            <DollarSign className="h-6 w-6 text-amber-600" />
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500">Ngân sách</p>
+                            <p className="font-medium">{formatCurrency(project.budget || 0)}</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardContent className="p-4">
+                        <p className="text-sm text-gray-500 mb-1">Tiến độ</p>
+                        <div className="flex items-center">
+                            <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
+                                <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${project.progress || 0}%` }}></div>
+                            </div>
+                            <span className="text-sm font-medium">{project.progress || 0}%</span>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Thêm các phần khác của chi tiết dự án tại đây nếu cần */}
+            {/* Ví dụ: chi tiết khách hàng, quản lý, mô tả, v.v. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <Card>
+                    <CardContent className="p-4">
+                        <h3 className="text-lg font-semibold mb-2">Thông tin chung</h3>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Mô tả:** {project.description || "N/A"}
+                        </p>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Loại dự án:** {project.project_type || "N/A"}
+                        </p>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Loại công trình:** {project.construction_type || "N/A"}
+                        </p>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Mức độ rủi ro:** {getRiskBadge(project.risk_level)}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardContent className="p-4">
+                        <h3 className="text-lg font-semibold mb-2">Liên hệ & Địa điểm</h3>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Khách hàng:** {customerName}
+                        </p>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Quản lý dự án:** {projectManagerName}
+                        </p>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Địa chỉ:** {address}
+                        </p>
+                        <p className="text-sm text-gray-700 mb-1">
+                            **Vị trí:** {project.location || "N/A"}
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+        </>
+    );
 }
 
-// Component skeleton loading
+// Component skeleton loading (giữ nguyên)
 function ProjectDetailSkeleton() {
     return (
         <>
@@ -213,10 +261,10 @@ function ProjectDetailSkeleton() {
             <Skeleton className="h-64 w-full mb-6" />
             <Skeleton className="h-64 w-full" />
         </>
-    )
+    );
 }
 
-// Component hiển thị lỗi
+// Component hiển thị lỗi (giữ nguyên)
 function ProjectError({ error, code, id }: { error: string; code: string; id: string }) {
     return (
         <div className="flex flex-col items-center justify-center py-10">
@@ -244,16 +292,16 @@ function ProjectError({ error, code, id }: { error: string; code: string; id: st
             {code === "invalid_uuid" && (
                 <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-md max-w-lg">
                     <p className="text-amber-800 text-sm">
-                        <strong>Lưu ý:</strong> ID dự án "{id}" không đúng định dạng UUID. ID dự án phải là một chuỗi có định dạng
+                        **Lưu ý:** ID dự án "{id}" không đúng định dạng UUID. ID dự án phải là một chuỗi có định dạng
                         như "123e4567-e89b-12d3-a456-426614174000".
                     </p>
                 </div>
             )}
         </div>
-    )
+    );
 }
 
-// Component trang bảo hành
+// Component trang bảo hành (giữ nguyên)
 function WarrantyPage() {
     return (
         <div className="space-y-6">
@@ -284,5 +332,5 @@ function WarrantyPage() {
                 </CardContent>
             </Card>
         </div>
-    )
+    );
 }

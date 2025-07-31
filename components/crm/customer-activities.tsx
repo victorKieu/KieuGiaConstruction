@@ -59,7 +59,7 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                 const { data, error } = await supabase
                     .from("customer_activities")
                     .select(
-                        `id, type, title, description, status, scheduled_at, created_at, customer_id, customers(name)`
+                        `id, activity_type, title, description, status, scheduled_at, created_at, customer_id, customers(name)`
                     )
                     .eq("customer_id", customerId)
                     .order("created_at", { ascending: false });

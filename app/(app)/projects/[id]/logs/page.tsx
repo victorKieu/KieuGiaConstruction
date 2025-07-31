@@ -1,6 +1,6 @@
 // app/(app)/projects/[id]/logs/page.tsx
 import ProjectLogsPageClient from "@/components/project-logs/ProjectLogsPageClient";
-import { getLogs } from "@/lib/actions";
+import { getLogs } from "@/lib/action/logActions";
 
 
 async function ProjectLogsPageInner({ params }: { params: { id: string } }) {

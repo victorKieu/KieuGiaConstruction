@@ -24,7 +24,7 @@ export function DeleteProjectButton({ projectId, projectName, onSuccess }: Delet
         setIsDeleting(true)
 
         try {
-            const response = await fetch("/api/projects/force-delete", {
+            const response = await fetch("/api/projects/delete", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ projectId }),

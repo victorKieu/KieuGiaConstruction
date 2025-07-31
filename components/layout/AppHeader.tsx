@@ -5,11 +5,15 @@ import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search, Sun, Moon } from "lucide-react";
 import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
-import { getUserProfile } from '@/lib/supabase/getUserProfile';
-import { useTheme } from "next-themes";
+// XÓA DÒNG NÀY: import { getUserProfile } from '@/lib/supabase/getUserProfile';
+import { useTheme } from "next-themes"; // <--- Sửa lỗi ở đây
 import { useTranslation } from 'next-i18next';
-import Link from 'next/link';
+//import Link from 'next/link';
 import i18next from '@/app/src/config/i18n';
+
+// IMPORT UserProfile interface
+import { UserProfile } from '@/lib/supabase/getUserProfile'; // Đảm bảo đường dẫn này đúng
+
 // Map đường dẫn -> tiêu đề trang
 const pageTitles: Record<string, string> = {
     "/dashboard": "Tổng quan",
@@ -23,17 +27,24 @@ const pageTitles: Record<string, string> = {
     "/admin": "Admin",
     "/settings": "Cài đặt",
     "/system-status": "Trạng thái hệ thống",
+    "/profile": "Thông tin cá nhân",
 };
 
-export default function AppHeader() {
+// Định nghĩa props cho AppHeader
+interface AppHeaderProps {
+    userProfile: UserProfile | null; // AppHeader sẽ nhận userProfile qua props
+}
+
+// Thay đổi export default function AppHeader() thành AppHeader({ userProfile }: AppHeaderProps)
+export default function AppHeader({ userProfile }: AppHeaderProps) {
     const [searchOpen, setSearchOpen] = useState(false);
-    const [user, setUser] = useState<{ name?: string, email?: string, avatar_url?: string } | null>(null);
+    // Bỏ state 'user' nếu bạn chỉ dùng userProfile từ props
+    // const [user, setUser] = useState<{ name?: string, email?: string, avatar_url?: string } | null>(null);
     const pathname = usePathname();
     const router = useRouter();
-    const { theme, setTheme } = useTheme(); // Sử dụng useTheme
+    const { theme, setTheme } = useTheme();
     const { t } = useTranslation();
     const [mounted, setMounted] = useState(false);
-
 
     // Lấy tiêu đề động theo route
     const pageTitle =
@@ -43,7 +54,7 @@ export default function AppHeader() {
 
     useEffect(() => {
         setMounted(true);
-        getUserProfile().then(profile => setUser(profile));
+        // XÓA DÒNG NÀY: getUserProfile().then(profile => setUser(profile));
     }, []);
 
     // Đổi theme - Sử dụng setTheme từ useTheme
@@ -51,19 +62,24 @@ export default function AppHeader() {
         setTheme(theme === "dark" ? "light" : "dark");
     };
 
-    // Lấy user profile từ Supabase (avatar, email, name)
-
+    // Lấy tên hiển thị từ userProfile (đã được truyền từ Server Component)
+    const displayName = userProfile?.profile_name || userProfile?.email || 'Người dùng';
+    const displayAvatarUrl = userProfile?.profile_avatar_url || "/placeholder.svg";
+    const displayEmail = userProfile?.email || '';
 
     // Action logout gọi API và reload lại trang
     const handleLogout = async () => {
         await fetch("/api/auth/logout", { method: "POST" });
-        // Có thể cân nhắc sử dụng router.refresh() hoặc router.push('/')
         router.push('/login');
     };
 
     const changeLanguage = (locale: string) => {
         i18next.changeLanguage(locale);
     };
+
+    if (!mounted) {
+        return null; // Hoặc một skeleton loading placeholder
+    }
 
     return (
         <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900">
@@ -103,15 +119,19 @@ export default function AppHeader() {
                 {/* Nút đổi theme */}
                 <button
                     className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800"
-                    onClick={toggleDarkMode} // Sử dụng toggleDarkMode đã sửa
+                    onClick={toggleDarkMode}
                     aria-label="Chuyển theme"
                 >
-                    {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />} {/* Sử dụng theme từ useTheme */}
+                    {mounted && (theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />)}
                 </button>
 
                 {/* Menu user */}
                 <UserDropdownMenu
-                    user={user || { name: "Chưa đăng nhập", avatar_url: "", email: "" }}
+                    user={{
+                        name: displayName, // Sử dụng tên từ userProfile
+                        avatar_url: displayAvatarUrl, // Sử dụng avatar_url từ userProfile
+                        email: displayEmail // Sử dụng email từ userProfile
+                    }}
                     onProfile={() => router.push("/profile")}
                     onSettings={() => router.push("/settings")}
                     onLogout={handleLogout}

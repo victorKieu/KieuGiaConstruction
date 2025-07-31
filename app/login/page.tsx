@@ -14,7 +14,7 @@ function isMobileUserAgent(userAgent: string | undefined) {
 
 export default async function LoginPage() {
     // Lấy user-agent từ headers phía server
-    const userAgent = headers().get("user-agent") || ""; // Không cần await ở đây
+    const userAgent = (await headers()).get("user-agent") || "";
     const isMobile = isMobileUserAgent(userAgent);
 
     return (

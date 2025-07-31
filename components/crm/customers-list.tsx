@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCustomerList } from "@/lib/actions";
+import { getCustomerList } from "@/lib/action/crmActions";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Pagination } from "@/components/ui/pagination";

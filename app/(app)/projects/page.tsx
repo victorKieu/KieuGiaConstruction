@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { cookies } from "next/headers";
 import { Suspense } from "react";
-import { getCurrentUser } from "@/lib/actions"; // Nhập hàm getCurrentUser
+import { getCurrentUser } from "@/lib/action/authActions"; // Nhập hàm getCurrentUser
 import ProjectList from "@/components/projects/project-list";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 

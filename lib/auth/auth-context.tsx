@@ -1,3 +1,4 @@
+// lib/auth/auth-context.tsx
 "use client"; // Đảm bảo rằng đây là client component
 
 import React, { createContext, useContext, useState, useEffect } from "react";
@@ -11,7 +12,7 @@ interface AuthContextProps {
     user: User | null;
     signOut: () => Promise<void>;
     supabase: SupabaseClient<Database>;
-    signIn: (email: string, password: string) => Promise<any>;
+    signIn: (email: string, password: string) => Promise<void>; // Đã đổi kiểu trả về thành Promise<void>
     isLoading: boolean;
     error: any;
     checkPermission: (permission: string) => Promise<boolean>;
@@ -84,20 +85,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             Cookies.remove("sb-access-token");
         } catch (e) {
             setError(e);
+            throw e; // Ném lỗi để bên ngoài có thể bắt
         } finally {
             setIsLoading(false);
         }
     };
 
-    const signIn = async (email: string, password: string) => {
+    const signIn = async (email: string, password: string): Promise<void> => { // Đã thay đổi kiểu trả về thành Promise<void>
         setIsLoading(true);
-        setError(null);
+        setError(null); // Reset lỗi trước khi thử đăng nhập
         try {
             const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+
             if (authError) {
-                setError(authError);
-                return null;
+                // RẤT QUAN TRỌNG: Ném lỗi để `LoginForm` có thể bắt và hiển thị
+                console.error("Lỗi đăng nhập từ Supabase Auth:", authError.message);
+                setError(authError); // Set lỗi vào state của context
+                throw new Error(authError.message || "Đăng nhập thất bại."); // Ném lỗi cụ thể
             }
+
+            // Nếu không có lỗi, session và user sẽ được cập nhật bởi onAuthStateChange listener
+            // và cookies sẽ được set.
             if (data.session?.access_token) {
                 Cookies.set("sb-access-token", data.session.access_token, {
                     path: "/",
@@ -106,10 +114,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     expires: 7,
                 });
             }
-            return data;
-        } catch (e) {
+
+            console.log("Đăng nhập thành công trong AuthProvider. Session data:", data); // Debugging
+            // Không cần return gì ở đây vì kiểu trả về là Promise<void>
+        } catch (e: any) { // Bắt các lỗi không phải từ Supabase Auth (ví dụ: lỗi mạng)
+            console.error("Lỗi không mong muốn trong signIn (AuthContext):", e.message);
             setError(e);
-            return null;
+            throw new Error(e.message || "Đã xảy ra lỗi không mong muốn.");
         } finally {
             setIsLoading(false);
         }

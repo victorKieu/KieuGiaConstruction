@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import supabase from '@/lib/supabase/client';
 import { formatDistanceToNow } from "date-fns"
 import { vi } from "date-fns/locale"
-import { getRecentCustomers } from "@/lib/actions"; // Đường dẫn đến hàm getRecentCustomers
+import { getRecentCustomers } from "@/lib/action/crmActions"; // Đường dẫn đến hàm getRecentCustomers
 
 
 interface Customer {

@@ -46,8 +46,3 @@ export function getStatusColor(status: string): string {
       return "bg-gray-100 text-gray-800"
   }
 }
-
-export function isValidUUID(uuid: string) {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(uuid);
-}

@@ -1,12 +1,12 @@
-"use client"
+// components/layout/AppHeader.tsx
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react"
-import { useAuth } from "@/lib/auth/auth-context"
-import { useTheme } from "next-themes"
-import { Button } from "@/components/ui/button"
-import { logout } from '@/app/actions/logout';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context"; // Vẫn giữ để sử dụng user?.email và signOut
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -14,50 +14,65 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { useCurrentEmployee } from "@/lib/auth/use-current-employee"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+// Bỏ import useCurrentEmployee vì chúng ta sẽ truyền data qua props
+// import { useCurrentEmployee } from "@/lib/auth/use-current-employee";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+
+// Import UserProfile interface để sử dụng trong props
+import { UserProfile } from '@/lib/supabase/getUserProfile'; // Đảm bảo đường dẫn này đúng
+
+// Định nghĩa props cho AppHeader
+interface AppHeaderProps {
+    userProfile: UserProfile | null; // AppHeader sẽ nhận userProfile qua props
+}
 
 // Logo fallback khi không thể tải logo từ server
 const LogoFallback = () => (
     <div className="w-8 h-8 bg-gold flex items-center justify-center rounded-md text-white font-bold text-sm">KG</div>
-)
+);
 
-export default function Header() {
-    const { user, signOut } = useAuth()
-    const router = useRouter()
-    const { theme, setTheme } = useTheme()
-    const [mounted, setMounted] = useState(false)
-    const isMobile = useIsMobile()
-    //const [logoError, setLogoError] = useState(false)
-    const { employee } = useCurrentEmployee();
+// Thay đổi export default function Header() thành AppHeader({ userProfile }: AppHeaderProps)
+export default function AppHeader({ userProfile }: AppHeaderProps) {
+    const { user, signOut } = useAuth(); // Lấy user từ AuthContext (cung cấp email và chức năng đăng xuất)
+    const router = useRouter();
+    const { theme, setTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+    const isMobile = useIsMobile();
 
     useEffect(() => {
-        setMounted(true)
-    }, [])
+        setMounted(true);
+    }, []);
 
+    // Hiển thị null hoặc một skeleton loading nếu chưa mount hoặc userProfile chưa sẵn sàng
     if (!mounted) {
-        return null
+        return null; // Hoặc một skeleton loading placeholder
     }
 
     const handleSignOut = async () => {
         try {
-            await signOut()
+            await signOut();
         } catch (error) {
-            console.error("Lỗi đăng xuất:", error)
+            console.error("Lỗi đăng xuất:", error);
         }
-    }
+    };
 
-    const getInitials = (name: string) => {
+    // Hàm lấy chữ cái đầu tiên từ tên
+    const getInitials = (name: string | null | undefined) => {
+        if (!name) return "U"; // Mặc định "U" nếu tên là null/undefined
         return name
             .split(" ")
             .map((n) => n[0])
             .join("")
             .toUpperCase()
-            .substring(0, 2)
-    }
+            .substring(0, 2);
+    };
+
+    // Lấy tên hiển thị ưu tiên profile_name, rồi đến email, cuối cùng là "Người dùng"
+    const displayName = userProfile?.profile_name || userProfile?.email || 'Người dùng';
+    const displayAvatarUrl = userProfile?.profile_avatar_url || "/placeholder.svg";
 
     return (
         <header className="h-16 border-b bg-background text-foreground border-border flex items-center justify-between px-4 md:px-6">
@@ -106,15 +121,18 @@ export default function Header() {
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                             <Avatar className="h-8 w-8">
-                                <AvatarImage src={employee?.avatar_url || "/placeholder.svg"} alt={user?.name || "User"} />
-                                <AvatarFallback>{user?.name ? getInitials(user.name) : "U"}</AvatarFallback>
+                                {/* Sử dụng avatar_url và tên từ userProfile */}
+                                <AvatarImage src={displayAvatarUrl} alt={displayName} />
+                                <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
                             </Avatar>
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-56 bg-popover text-popover-foreground border border-border" align="end" forceMount>
                         <DropdownMenuLabel className="font-normal">
                             <div className="flex flex-col space-y-1">
-                                <p className="text-sm font-medium leading-none">{user?.name}</p>
+                                {/* Hiển thị tên từ userProfile */}
+                                <p className="text-sm font-medium leading-none">{displayName}</p>
+                                {/* Email vẫn lấy từ useAuth context vì nó chứa thông tin user Auth của Supabase */}
                                 <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
                             </div>
                         </DropdownMenuLabel>
@@ -136,5 +154,5 @@ export default function Header() {
                 </DropdownMenu>
             </div>
         </header>
-    )
+    );
 }
