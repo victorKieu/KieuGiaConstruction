@@ -1,4 +1,3 @@
-// components/auth/login-form.tsx
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -18,7 +17,8 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [rememberMe, setRememberMe] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
-    const { signIn } = useAuth(); // Lấy signIn từ useAuth
+
+    const { signIn } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
@@ -29,25 +29,45 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
         }
     }, []);
 
+    const validateEmail = (email: string) => {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        setErrorMessage(""); // Xóa thông báo lỗi cũ
+        setErrorMessage("");
+
+        // Kiểm tra client-side trước khi gọi API
+        if (!validateEmail(email)) {
+            setErrorMessage("Email không hợp lệ.");
+            setIsLoading(false);
+            return;
+        }
+
+        if (password.length < 6) {
+            setErrorMessage("Mật khẩu phải từ 6 ký tự trở lên.");
+            setIsLoading(false);
+            return;
+        }
 
         try {
-            await signIn(email, password); // Nếu hàm này ném lỗi, nó sẽ nhảy vào catch block
+            await signIn(email, password);
 
-            // Nếu không có lỗi được ném ra, nghĩa là đăng nhập thành công
+            // Lưu email nếu chọn rememberMe
             if (rememberMe) {
                 localStorage.setItem("biometric_auth_email", email);
             } else {
                 localStorage.removeItem("biometric_auth_email");
             }
-            router.push("/dashboard"); // Chuyển hướng sau khi đăng nhập thành công
+
+            // Đợi cookie được sync rồi redirect
+            setTimeout(() => {
+                router.push("/dashboard");
+            }, 500);
         } catch (error: any) {
-            // Lỗi từ AuthContext (hoặc lỗi khác) sẽ được bắt ở đây
-            console.error("Lỗi đăng nhập:", error.message); // Truy cập error.message
-            setErrorMessage(error.message || "Email hoặc mật khẩu không đúng. Vui lòng thử lại.");
+            console.error("Lỗi đăng nhập:", error.message);
+            setErrorMessage(error.message || "Đăng nhập không thành công.");
         } finally {
             setIsLoading(false);
         }
@@ -82,10 +102,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <Label htmlFor="password">Mật khẩu</Label>
-                        <Link
-                            href="/forgot-password"
-                            className="text-sm text-blue-600 hover:underline"
-                        >
+                        <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline">
                             Quên mật khẩu?
                         </Link>
                     </div>

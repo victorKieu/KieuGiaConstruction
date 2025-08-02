@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(session);
                 setUser(session?.user ?? null);
                 if (session?.access_token) {
-                    Cookies.set("sb-access-token", session.access_token, {
+                    Cookies.set("sb-oshquiqzokyyawgoemql-auth-token", session.access_token, {
                         path: "/",
                         secure: true,
                         sameSite: "lax",
@@ -57,14 +57,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(session);
                 setUser(session?.user ?? null);
                 if (session?.access_token) {
-                    Cookies.set("sb-access-token", session.access_token, {
+                    Cookies.set("sb-oshquiqzokyyawgoemql-auth-token", session.access_token, {
                         path: "/",
                         secure: true,
                         sameSite: "lax",
                         expires: 7,
                     });
                 } else {
-                    Cookies.remove("sb-access-token");
+                    Cookies.remove("sb-oshquiqzokyyawgoemql-auth-token");
                 }
             }
         });
@@ -82,7 +82,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             await supabase.auth.signOut();
             setSession(null);
             setUser(null);
-            Cookies.remove("sb-access-token");
+            Cookies.remove("sb-oshquiqzokyyawgoemql-auth-token");
         } catch (e) {
             setError(e);
             throw e; // Ném lỗi để bên ngoài có thể bắt
@@ -107,7 +107,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             // Nếu không có lỗi, session và user sẽ được cập nhật bởi onAuthStateChange listener
             // và cookies sẽ được set.
             if (data.session?.access_token) {
-                Cookies.set("sb-access-token", data.session.access_token, {
+                Cookies.set("sb-oshquiqzokyyawgoemql-auth-token", data.session.access_token, {
                     path: "/",
                     secure: true,
                     sameSite: "lax",
