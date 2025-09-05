@@ -117,5 +117,20 @@ export async function getRecentCustomers(): Promise<Customer[]> {
 
 // Thêm các actions liên quan đến CRM khác tại đây, ví dụ:
 // - getCustomerById
+export async function getCustomerById(id: string): Promise<Customer | null> {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+    const supabase = createSupabaseServerClient(token);
+    const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle(); // Không lỗi nếu không tìm thấy
+    if (error) {
+        console.error("Lỗi lấy thông tin khách hàng:", error.message);
+        return null;
+    }
+    return data;
+}
 // - createCustomerActivity
 // - getCustomerActivities

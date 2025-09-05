@@ -44,7 +44,7 @@ export default async function CustomerPage({
 
     // --- Lấy thông tin khách hàng từ Supabase ---
     console.log("Đang lấy thông tin khách hàng với ID:", id);
-    const { data: customer, error } = await supabase.from("customers").select("*").eq("id", id).single();
+    const { data: customer, error } = await supabase.from("customers").select("*").eq("id", id).maybeSingle();
 
     // Xử lý trường hợp không tìm thấy khách hàng hoặc có lỗi từ Supabase
     if (error) {

@@ -49,6 +49,8 @@ function ProjectLogsPageClient({ logs, projectId }: ProjectLogsPageClientProps) 
     };
 
     const handleCreateLog = async () => {
+        setIsCreatingLog(true);
+
         const newLog = {
             content: newLogContent,
             section: newLogSection,
@@ -58,35 +60,46 @@ function ProjectLogsPageClient({ logs, projectId }: ProjectLogsPageClientProps) 
             participants: newLogParticipants,
             directive: newLogDirective,
             project_id: projectId,
-            log_date: new Date().toISOString(), // Lưu cả ngày và giờ
+            log_date: new Date().toISOString(),
         };
 
-        const response = await fetch('/api/project-logs', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(newLog),
-        });
+        try {
+            const response = await fetch('/api/project-logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newLog),
+            });
 
-        if (response.ok) {
-            console.log("Log created successfully");
-            // Cập nhật lại danh sách logs nếu cần
-            // Có thể gọi lại API để lấy danh sách logs mới
-        } else {
-            const errorData = await response.json(); // Lấy thông tin lỗi từ phản hồi
-            console.error("Failed to create log:", errorData); // Log thông tin lỗi
+            const text = await response.text();
+            let data: any = {};
+
+            try {
+                data = JSON.parse(text);
+            } catch {
+                console.warn('Phản hồi không phải JSON:', text);
+            }
+
+            if (!response.ok) {
+                console.error('Tạo nhật ký thất bại:', data?.error || 'Lỗi không xác định');
+                alert(data?.error || 'Không thể tạo nhật ký');
+                return;
+            }
+
+            console.log('Tạo nhật ký thành công:', data);
+            alert('Đã tạo nhật ký thành công!');
+        } catch (err: any) {
+            console.error('Lỗi khi gọi API:', err.message);
+            alert('Đã xảy ra lỗi khi tạo nhật ký.');
+        } finally {
+            setNewLogContent('');
+            setNewLogSection('');
+            setNewLogWeather('');
+            setNewLogTemperature('');
+            setNewLogImages([]);
+            setNewLogParticipants('');
+            setNewLogDirective('');
+            setIsCreatingLog(false);
         }
-
-        // Reset form
-        setNewLogContent("");
-        setNewLogSection("");
-        setNewLogWeather("");
-        setNewLogTemperature
-        setNewLogImages([]);
-        setNewLogParticipants("");
-        setNewLogDirective("");
-        setIsCreatingLog(false); // Đóng form sau khi tạo nhật ký
     };
 
     const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {

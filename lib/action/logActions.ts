@@ -64,7 +64,7 @@ export async function getLogs(projectId: string): Promise<Log[]> {
             projectname:project_id (
                 name
             ),
-            creator:user_id (
+            creator:user_profiles (
                 avatar_url,
                 name
             )

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import supabase from '@/lib/supabase/client';
+import supabase from "@/lib/supabase/client";
 import type { Session, User, SupabaseClient } from "@supabase/supabase-js";
 import { Database } from "@/types/supabase";
 import Cookies from "js-cookie";

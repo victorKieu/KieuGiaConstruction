@@ -1,81 +1,59 @@
-// pages/api/customers.ts
-import { NextApiRequest, NextApiResponse } from 'next';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+   // pages/api/project-logs.ts
+        import type { NextApiRequest, NextApiResponse } from 'next';
+        import { createSupabaseServerClient } from '@/lib/supabase/server';
+        import { cookies } from 'next/headers';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+        export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+            const cookieStore = await cookies();
+            const token = cookieStore.get("sb-access-token")?.value || null;
+            const supabase = createSupabaseServerClient(token);
+            try {
+                if (req.method === 'POST') {
+                    const {
+                        content,
+                        section,
+                        weather,
+                        temperature,
+                        images,
+                        participants,
+                        directive,
+                        project_id,
+                        log_date,
+                    } = req.body;
 
-    if (req.method === 'POST') {
-        // Thêm mới khách hàng
-        const { name, type, contact_person, email, phone, address, tax_code, birthday, gender, status, tag_id, owner_id, note, source, website, facebook, zalo, avatar_url } = req.body;
+                    if (!content || !section || !project_id || !log_date) {
+                        return res.status(400).json({ error: 'Thiếu dữ liệu bắt buộc' });
+                    }
 
-        const { data, error } = await supabase
-            .from('customers')
-            .insert([
-                {
-                    name,
-                    type,
-                    contact_person,
-                    email,
-                    phone,
-                    address,
-                    tax_code,
-                    birthday,
-                    gender,
-                    status,
-                    tag_id,
-                    owner_id,
-                    note,
-                    source,
-                    website,
-                    facebook,
-                    zalo,
-                    avatar_url
-                },
-            ]);
+                    const { data, error } = await supabase
+                        .from('project_logs')
+                        .insert([
+                            {
+                                content,
+                                section,
+                                weather,
+                                temperature,
+                                images,
+                                participants,
+                                directive,
+                                project_id,
+                                log_date,
+                            },
+                        ])
+                        .select()
+                        .single();
 
-        if (error) {
-            console.error("Error creating customer:", error);
-            return res.status(500).json({ error: error.message });
+                    if (error) {
+                        console.error('[Supabase] Insert error:', error.message);
+                        return res.status(500).json({ error: error.message || 'Không thể tạo nhật ký' });
+                    }
+
+                    return res.status(201).json({ log: data });
+                }
+
+                return res.status(405).json({ error: 'Phương thức không được hỗ trợ' });
+            } catch (err: any) {
+                console.error('[API] Lỗi không xác định:', err.message);
+                return res.status(500).json({ error: err.message || 'Lỗi server nội bộ' });
+            }
         }
-
-        return res.status(201).json(data);
-    } else if (req.method === 'PUT') {
-        // Cập nhật khách hàng
-        const { id, ...updateData } = req.body;
-
-        const { error } = await supabase
-            .from('customers')
-            .update(updateData)
-            .eq('id', id);
-
-        if (error) {
-            console.error("Error updating customer:", error);
-            return res.status(500).json({ error: error.message });
-        }
-
-        return res.status(200).json({ message: "Customer updated successfully" });
-    } else if (req.method === 'DELETE') {
-        // Xóa khách hàng
-        const { id } = req.body;
-
-        const { error } = await supabase
-            .from('customers')
-            .delete()
-            .eq('id', id);
-
-        if (error) {
-            console.error("Error deleting customer:", error);
-            return res.status(500).json({ error: error.message });
-        }
-
-        return res.status(200).json({ message: "Customer deleted successfully" });
-    } else {
-        // Chỉ cho phép các phương thức POST, PUT, DELETE
-        res.setHeader('Allow', ['POST', 'PUT', 'DELETE']);
-        return res.status(405).end(`Method ${req.method} Not Allowed`);
-    }
-}
