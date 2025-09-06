@@ -7,6 +7,11 @@ import { RecentCustomers } from "@/components/crm/recent-customers"
 import { SalesPipeline } from "@/components/crm/sales-pipeline"
 import { UpcomingActivities } from "@/components/crm/upcoming-activities"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SourcePieChart } from "@/components/crm/charts/sourcepiechart"
+import { SalesByLevelChart } from "@/components/crm/charts/salesbylevelchart"
+import { WeeklyInteractionChart } from "@/components/crm/charts/weeklyinteractionchart"
+import { AlertTable } from "@/components/crm/charts/alerttable"
+import { ReferralTable } from "@/components/crm/charts/referraltable"
 
 export const metadata: Metadata = {
   title: "CRM Dashboard | Kieu Gia Construction",
@@ -72,28 +77,59 @@ export default function CrmDashboardPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="analytics" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Phân tích</CardTitle>
-                <CardDescription>Phân tích chi tiết về hiệu suất bán hàng và khách hàng</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px] flex items-center justify-center">
-                <p className="text-muted-foreground">Tính năng phân tích đang được phát triển</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="reports" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Báo cáo</CardTitle>
-                <CardDescription>Báo cáo chi tiết về hoạt động CRM</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px] flex items-center justify-center">
-                <p className="text-muted-foreground">Tính năng báo cáo đang được phát triển</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                  <TabsContent value="analytics" className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          <Card>
+                              <CardHeader>
+                                  <CardTitle>Phân bổ khách hàng theo nguồn</CardTitle>
+                                  <CardDescription>Tỷ lệ khách hàng đến từ các kênh khác nhau</CardDescription>
+                              </CardHeader>
+                              <CardContent className="h-[300px]">
+                                  <SourcePieChart />
+                              </CardContent>
+                          </Card>
+
+                          <Card>
+                              <CardHeader>
+                                  <CardTitle>Doanh số theo cấp độ</CardTitle>
+                                  <CardDescription>Phân tích tổng doanh số theo nhóm khách hàng</CardDescription>
+                              </CardHeader>
+                              <CardContent className="h-[300px]">
+                                  <SalesByLevelChart />
+                              </CardContent>
+                          </Card>
+
+                          <Card>
+                              <CardHeader>
+                                  <CardTitle>Tương tác theo tuần</CardTitle>
+                                  <CardDescription>Số lượt gọi, gặp, gửi báo giá mỗi tuần</CardDescription>
+                              </CardHeader>
+                              <CardContent className="h-[300px]">
+                                  <WeeklyInteractionChart />
+                              </CardContent>
+                          </Card>
+                      </div>
+
+                      <Card>
+                          <CardHeader>
+                              <CardTitle>Cảnh báo chăm sóc</CardTitle>
+                              <CardDescription>Danh sách khách hàng chưa được chăm sóc đúng hạn</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                              <AlertTable />
+                          </CardContent>
+                      </Card>
+
+                      <Card>
+                          <CardHeader>
+                              <CardTitle>Hiệu suất giới thiệu</CardTitle>
+                              <CardDescription>Khách hàng và cộng tác viên giới thiệu thành công</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                              <ReferralTable />
+                          </CardContent>
+                      </Card>
+                  </TabsContent>
         </Tabs>
       </div>
     </div>
