@@ -1,6 +1,4 @@
 // app/(app)/crm/customers/[id]/edit/page.tsx
-
-// Đây là một Server Component, không cần "use client";
 import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -49,20 +47,16 @@ function cleanCustomerDataForClient<T extends RawCustomerDataFromDB>(data: T | n
             address: "",
             tax_code: "",
             birthday: "",
-            gender: null, // hoặc "male" nếu đó là mặc định của bạn
-            status: null, // hoặc "active" nếu đó là mặc định của bạn
+            gender: null,
+            status: null,
             tag_id: null,
             owner_id: null,
             notes: "",
             source: "",
-            website: "",
-            facebook: "",
-            zalo: "",
             avatar_url: "",
             created_at: "",
             updated_at: "",
-            // ... thêm tất cả các thuộc tính khác của RawCustomerDataFromDB và gán giá trị mặc định
-        } as RawCustomerDataFromDB;
+        } as unknown as RawCustomerDataFromDB;
     }
 
     const cleanedData: RawCustomerDataFromDB = { ...data };
@@ -187,9 +181,9 @@ export default async function CustomerEditPage({ params }: { params: { id: strin
                 owner_id: formData.ownerId === "none" ? null : formData.ownerId,
                 notes: formData.notes || null,
                 source: formData.source || null,
-                website: formData.website || null,
-                facebook: formData.facebook || null,
-                zalo: formData.zalo || null,
+                //website: formData.website || null,
+                //facebook: formData.facebook || null,
+                //zalo: formData.zalo || null,
                 avatar_url: formData.avatarUrl || null,
             };
 

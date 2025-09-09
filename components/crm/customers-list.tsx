@@ -11,13 +11,16 @@ import { vi } from "date-fns/locale";
 import { Pagination } from "@/components/ui/pagination";
 
 interface Customer {
-    id: string;
-    name: string;
+    id: string; // UUID từ auth.users
     email: string;
-    phone: string;
-    address: string;
+    name: string;
+    code: string | null;
+    phone: string | null;
+    address: string | null;
+    status: string | null;
+    tag_id: string | null;
     created_at: string;
-    status: string;
+    updated_at: string;
 }
 
 type StatusType = "all" | "active" | "inactive" | "lead";

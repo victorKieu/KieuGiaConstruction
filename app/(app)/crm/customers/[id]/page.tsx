@@ -19,6 +19,7 @@ import { CustomerActivities } from "@/components/crm/customer-activities";
 import { CustomerContracts } from "@/components/crm/customer-contracts";
 import { CustomerNotes } from "@/components/crm/customer-notes";
 import { CustomerOpportunities } from "@/components/crm/customer-opportunities";
+import { CustomerContactList } from "@/components/crm/CustomerContactList";
 import { DeleteCustomerButton } from "../../../../../components/crm/DeleteCustomerButton"; // Kiểm tra đường dẫn này nếu có lỗi
 
 // Client Supabase
@@ -188,10 +189,11 @@ export default async function CustomerPage({
                         </CardHeader>
                         <CardContent>
                             <Tabs defaultValue="activities" className="space-y-4">
-                                <TabsList className="grid grid-cols-4 gap-4">
+                                <TabsList className="grid grid-cols-5 gap-4">
                                     <TabsTrigger value="activities">Hoạt động</TabsTrigger>
                                     <TabsTrigger value="opportunities">Cơ hội</TabsTrigger>
                                     <TabsTrigger value="contracts">Hợp đồng</TabsTrigger>
+                                    <TabsTrigger value="contacts">Liên hệ</TabsTrigger>
                                     <TabsTrigger value="notes">Ghi chú</TabsTrigger>
                                 </TabsList>
                                 <TabsContent value="activities" className="space-y-4">
@@ -208,6 +210,11 @@ export default async function CustomerPage({
                                 <TabsContent value="contracts" className="space-y-4">
                                     <Suspense fallback={<ContractsLoading />}>
                                         <CustomerContracts customerId={id} />
+                                    </Suspense>
+                                </TabsContent>
+                                <TabsContent value="contacts" className="space-y-4">
+                                    <Suspense fallback={<ContactsLoading />}>
+                                        <CustomerContactList customerId={id} />
                                     </Suspense>
                                 </TabsContent>
                                 <TabsContent value="notes" className="space-y-4">
@@ -274,6 +281,21 @@ function ContractsLoading() {
     );
 }
 
+function ContactsLoading() {
+    return (
+        <div className="space-y-4">
+            {Array(5)
+                .fill(0)
+                .map((_, i: number) => (
+                    <Card key={i} className="animate-pulse">
+                        <CardHeader className="h-12 bg-muted/20"></CardHeader>
+                        <CardContent className="h-20 bg-muted/10"></CardContent>
+                        <CardFooter className="h-8 bg-muted/20"></CardFooter>
+                    </Card>
+                ))}
+        </div>
+    );
+}
 function NotesLoading() {
     return (
         <div className="space-y-4">

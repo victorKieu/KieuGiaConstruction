@@ -1,8 +1,8 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 import {
     Card,
     CardContent,
@@ -10,97 +10,108 @@ import {
     CardHeader,
     CardTitle,
     CardDescription,
-} from "@/components/ui/card";
-import supabase from "@/lib/supabase/client";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
-import { Calendar, Check, Clock, Phone, Users } from "lucide-react";
+} from "@/components/ui/card"
+import supabase from "@/lib/supabase/client"
+import { format } from "date-fns"
+import { vi } from "date-fns/locale"
+import { Calendar, Check, Clock, Phone, Users } from "lucide-react"
 
 interface Customer {
-    name: string;
+    name: string
 }
 
 interface Activity {
-    id: string;
-    type: string;
-    title: string;
-    description: string;
-    scheduled_at: string;
-    status: string;
-    created_at: string;
-    customer_id: string;
-    customers?: Customer[];  // customers là mảng các Customer
+    id: string
+    activity_type: string
+    title: string
+    description: string
+    scheduled_at: string
+    status: string
+    created_at: string
+    customer_id: string
+    customer?: Customer
 }
 
 interface CustomerActivitiesProps {
-    customerId: string;
+    customerId: string
 }
 
 const activityIcons: Record<string, any> = {
     call: Phone,
     meeting: Users,
     task: Calendar,
-};
+}
 
 const activityStatusColors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-800",
     completed: "bg-green-100 text-green-800",
     cancelled: "bg-red-100 text-red-800",
-};
+}
+
+const activityTypeLabels: Record<string, string> = {
+    call: "Cuộc gọi",
+    meeting: "Cuộc họp",
+    task: "Nhiệm vụ",
+    email: "Email",
+    other: "Khác",
+}
 
 export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [activities, setActivities] = useState<Activity[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         async function fetchActivities() {
             try {
                 const { data, error } = await supabase
                     .from("customer_activities")
-                    .select(
-                        `id, activity_type, title, description, status, scheduled_at, created_at, customer_id, customers(name)`
-                    )
+                    .select(`
+            id, activity_type, title, description, status, scheduled_at, created_at, customer_id,
+            customer:customers!customer_activities_customer_id_fkey(name)
+          `)
                     .eq("customer_id", customerId)
-                    .order("created_at", { ascending: false });
+                    .order("created_at", { ascending: false })
 
-                if (error) {
-                    console.error("Supabase error:", error);
-                    throw error;
-                }
-                if (!data) {
-                    throw new Error("No activities found or data is null.");
-                }
-                setActivities(data);
+                if (error) throw error
+                if (!data) throw new Error("Không có dữ liệu hoạt động.")
+
+                // ✅ Chuẩn hóa customer nếu là mảng
+                const normalized = data.map((a: any) => ({
+                    ...a,
+                    customer: Array.isArray(a.customer) ? a.customer[0] : a.customer,
+                }))
+
+                setActivities(normalized)
             } catch (error) {
-                console.error("Error fetching customer activities:", error);
-                setError("Không thể tải hoạt động khách hàng.");
+                console.error("Lỗi khi lấy dữ liệu hoạt động:", error)
+                setError("Không thể tải hoạt động khách hàng.")
             } finally {
-                setIsLoading(false);
+                setIsLoading(false)
             }
         }
 
-        setIsLoading(true);
-        setError(null);
-        fetchActivities();
-    }, [customerId]);
+        setIsLoading(true)
+        setError(null)
+        fetchActivities()
+    }, [customerId])
 
     async function markAsCompleted(activityId: string) {
         try {
             const { error } = await supabase
                 .from("customer_activities")
                 .update({ status: "completed" })
-                .eq("id", activityId);
+                .eq("id", activityId)
 
-            if (error) throw error;
+            if (error) throw error
 
             setActivities((prev) =>
                 prev.map((a) =>
                     a.id === activityId ? { ...a, status: "completed" } : a
                 )
-            );
+            )
         } catch (error) {
-            console.error("Lỗi cập nhật trạng thái:", error);
+            console.error("Lỗi cập nhật trạng thái:", error)
         }
     }
 
@@ -111,7 +122,7 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                     <p className="text-muted-foreground mb-4">Đang tải hoạt động...</p>
                 </CardContent>
             </Card>
-        );
+        )
     }
 
     if (error) {
@@ -122,7 +133,7 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                     <Button onClick={() => window.location.reload()}>Thử lại</Button>
                 </CardContent>
             </Card>
-        );
+        )
     }
 
     if (activities.length === 0) {
@@ -139,16 +150,16 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                     </Button>
                 </CardContent>
             </Card>
-        );
+        )
     }
 
     return (
         <div className="space-y-4">
             {activities.map((activity) => {
-                const ActivityIcon = activityIcons[activity.type] || Calendar;
+                const ActivityIcon = activityIcons[activity.activity_type] || Calendar
                 const statusClass =
-                    activityStatusColors[activity.status] || "bg-gray-100 text-gray-800";
-                const isPast = new Date(activity.scheduled_at) < new Date();
+                    activityStatusColors[activity.status] || "bg-gray-100 text-gray-800"
+                const isPast = new Date(activity.scheduled_at) < new Date()
 
                 return (
                     <Card key={activity.id}>
@@ -197,7 +208,7 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                             )}
                         </CardFooter>
                     </Card>
-                );
+                )
             })}
             <div className="flex justify-center">
                 <Button asChild>
@@ -207,5 +218,5 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                 </Button>
             </div>
         </div>
-    );
+    )
 }

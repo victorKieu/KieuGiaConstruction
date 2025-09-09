@@ -7,11 +7,11 @@ import { RecentCustomers } from "@/components/crm/recent-customers"
 import { SalesPipeline } from "@/components/crm/sales-pipeline"
 import { UpcomingActivities } from "@/components/crm/upcoming-activities"
 import { Skeleton } from "@/components/ui/skeleton"
-import { SourcePieChart } from "@/components/crm/charts/sourcepiechart"
-import { SalesByLevelChart } from "@/components/crm/charts/salesbylevelchart"
-import { WeeklyInteractionChart } from "@/components/crm/charts/weeklyinteractionchart"
-import { AlertTable } from "@/components/crm/charts/alerttable"
-import { ReferralTable } from "@/components/crm/charts/referraltable"
+import { SourcePieChart } from "@/components/crm/charts/SourcePieChart"
+import { SalesByLevelChart } from "@/components/crm/charts/SalesByLevelChart"
+import { WeeklyInteractionChart } from "@/components/crm/charts/WeeklyInteractionChart"
+import { AlertTable } from "@/components/crm/charts/AlertTable"
+import { ReferralTable } from "@/components/crm/charts/ReferralTable"
 
 export const metadata: Metadata = {
   title: "CRM Dashboard | Kieu Gia Construction",

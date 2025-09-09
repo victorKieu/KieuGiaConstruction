@@ -2,19 +2,64 @@
 /**
  * Component: SalesByLevelChart
  * Mô tả: Biểu đồ cột hiển thị tổng doanh số theo cấp độ khách hàng
- * Refactor: Dùng ChartContainer + ChartTooltip để tránh lỗi RSC
+ * Refactor: Kết nối Supabase + ChartContainer + ChartTooltip + chuyển ngữ cấp độ
  */
 
+import { useEffect, useState } from "react"
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import supabase from "@/lib/supabase/client"
 
-const levelData = [
-    { level: "Thân thiết", total_sales: 500 },
-    { level: "VIP", total_sales: 1200 },
-    { level: "Super VIP", total_sales: 2200 },
-]
+interface LevelPoint {
+    level: string
+    total_sales: number
+}
+
+const levelLabels: Record<string, string> = {
+    new: "Mới",
+    regular: "Thường",
+    loyal: "Thân thiết",
+    vip: "VIP",
+    super_vip: "Super VIP",
+}
 
 export function SalesByLevelChart() {
+    const [data, setData] = useState<LevelPoint[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+
+    useEffect(() => {
+        async function fetchSales() {
+            try {
+                const { data, error } = await supabase
+                    .from("customer_sales_summary")
+                    .select("level, total_sales")
+
+                if (error) throw error
+
+                const chartData = data?.map((d) => ({
+                    level: levelLabels[d.level] || d.level,
+                    total_sales: d.total_sales,
+                })) || []
+
+                setData(chartData)
+            } catch (error) {
+                console.error("Lỗi khi lấy dữ liệu doanh số:", error)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        fetchSales()
+    }, [])
+
+    if (isLoading) {
+        return <div className="h-[250px] flex items-center justify-center text-muted-foreground">Đang tải dữ liệu...</div>
+    }
+
+    if (data.length === 0) {
+        return <div className="h-[250px] flex items-center justify-center text-muted-foreground">Chưa có dữ liệu doanh số</div>
+    }
+
     return (
         <ChartContainer
             config={{
@@ -26,7 +71,7 @@ export function SalesByLevelChart() {
             className="h-[250px]"
         >
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={levelData}>
+                <BarChart data={data}>
                     <XAxis dataKey="level" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                     <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                     <ChartTooltip content={<ChartTooltipContent />} />

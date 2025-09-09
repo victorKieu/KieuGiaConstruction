@@ -48,14 +48,16 @@ export const customerFormSchema = z.object({
     taxCode: zOptionalString,
     birthday: zOptionalString,
     notes: zOptionalString,
-    source: zOptionalString,
-    website: zOptionalUrl,
-    facebook: zOptionalUrl,
-    zalo: zOptionalString,
+    source: z.enum(["other", "referral", "website", "event"], {
+        required_error: "Vui lòng chọn nguồn khách hàng.",
+    }),
+    //website: zOptionalUrl,
+    //facebook: zOptionalUrl,
+    //zalo: zOptionalString,
     avatarUrl: zOptionalUrl,
 
     // Gender và Status có .default(), nghĩa là chúng sẽ KHÔNG BAO GIỜ là undefined hoặc null trong CustomerFormData.
-    gender: z.enum(["male", "female", "other", "unknown"]).default("unknown"),
+    gender: z.enum(["male", "female", "other"]).default("other"),
     status: z.enum(["active", "inactive", "lead"]).default("active"),
 
     tag: z.string().optional(), // tag là optional, sẽ map sang null nếu "all" khi lưu DB
@@ -91,15 +93,15 @@ export interface RawCustomerDataFromDB {
     notes?: string | null;
     avatar_url?: string | null;
     birthday?: string | null;
-    facebook?: string | null;
-    zalo?: string | null;
-    gender?: "male" | "female" | "other" | "unknown" | null;
+    //facebook?: string | null;
+    //zalo?: string | null;
+    gender?: "other" | "male" | "female" | null;
     owner_id?: string | null;
-    source?: string | undefined;
+    source?: "referral" | "website" | "event" | "other" | null;
     status?: "active" | "inactive" | "lead" | null;
     type?: "individual" | "company" | "agency" | null;
     tag_id?: string | null;
-    website?: string | null;
+    //website?: string | null;
     created_at?: string;
     updated_at?: string;
 }
@@ -134,15 +136,15 @@ const mapRawDataToFormData = (rawData: RawCustomerDataFromDB): CustomerFormData 
         address: rawData.address ?? "",
         taxCode: rawData.tax_code ?? "",
         birthday: rawData.birthday ?? "",
-        gender: rawData.gender ?? "unknown", // Đảm bảo gender luôn là một giá trị enum hợp lệ
+        gender: rawData.gender ?? "other", // Đảm bảo gender luôn là một giá trị enum hợp lệ
         status: rawData.status ?? "active", // Đảm bảo status luôn là một giá trị enum hợp lệ
         tag: rawData.tag_id ?? "", // Giả sử "" là mặc định/dự phòng cho tags nếu không có tag_id
         ownerId: rawData.owner_id ?? "", // Giả sử "" là mặc định/dự phòng cho owner nếu không có owner_id
         notes: rawData.notes ?? "",
-        source: rawData.source ?? "",
-        website: rawData.website ?? "",
-        facebook: rawData.facebook ?? "",
-        zalo: rawData.zalo ?? "",
+        source: rawData.source ?? "referral",
+        //website: rawData.website ?? "",
+        //facebook: rawData.facebook ?? "",
+        //zalo: rawData.zalo ?? "",
         avatarUrl: rawData.avatar_url ?? "",
     };
 };
@@ -159,21 +161,21 @@ const defaultEmptyFormData: CustomerFormData = {
     address: "",
     taxCode: "",
     birthday: "",
-    gender: "unknown", // Giá trị mặc định từ schema
+    gender: "other", // Giá trị mặc định từ schema
     status: "active", // Giá trị mặc định từ schema
     tag: "", // Giá trị mặc định cho trường optional string
     ownerId: "", // Giá trị mặc định cho trường optional string
     notes: "",
-    source: "",
-    website: "",
-    facebook: "",
-    zalo: "",
+    source: "other",
+    //website: "",
+    //facebook: "",
+    //zalo: "",
     avatarUrl: "",
 };
 
 
 export function CustomerForm({ onSubmitAction, initialData, tags, users, isCustomerProfileEdit }: CustomerFormProps) {
-    const { register, handleSubmit, control, watch, setValue, formState: { errors }, setError, clearErrors, reset } = useForm<CustomerFormData>({
+    const { register, handleSubmit, watch, setValue, formState: { errors }, setError, reset } = useForm<CustomerFormData>({
         // Dòng này đã được sửa lỗi chính tả và thêm type assertion
         resolver: zodResolver(customerFormSchema) as Resolver<CustomerFormData>,
         defaultValues: initialData ? mapRawDataToFormData(initialData) : defaultEmptyFormData,
@@ -196,6 +198,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     const watchedStatus = watch("status");
     const watchedTag = watch("tag");
     const watchedOwnerId = watch("ownerId");
+    const watchedSource = watch("source");
 
     // Khi initialData thay đổi, reset form
     useEffect(() => {
@@ -266,7 +269,6 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 <SelectValue placeholder="Chọn loại" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">Không có</SelectItem>
                                 <SelectItem value="individual">Cá nhân</SelectItem>
                                 <SelectItem value="company">Doanh nghiệp</SelectItem>
                                 <SelectItem value="agency">Cơ quan</SelectItem>
@@ -319,7 +321,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                     {errors.birthday?.message && <p className="text-red-500 text-sm">{errors.birthday.message}</p>}
                 </div>
                 {/* Giới Tính */}
-                {!isCustomerProfileEdit && (watchedType === "individual") && (
+                {!isCustomerProfileEdit && (watchedType === "individual" || watchedType === "company" || watchedType === "agency") && (
                     <div>
                         <Label htmlFor="gender">Giới Tính</Label>
                         <Select value={watchedGender} onValueChange={(value: CustomerFormData["gender"]) => setValue("gender", value)}>
@@ -327,10 +329,9 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 <SelectValue placeholder="Chọn giới tính" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">Không chọn</SelectItem>
+                                <SelectItem value="other">Không xác định</SelectItem>
                                 <SelectItem value="male">Nam</SelectItem>
                                 <SelectItem value="female">Nữ</SelectItem>
-                                <SelectItem value="other">Khác</SelectItem>
                             </SelectContent>
                         </Select>
                         {errors.gender?.message && <p className="text-red-500 text-sm">{errors.gender.message}</p>}
@@ -347,7 +348,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 <SelectValue placeholder="Chọn trạng thái" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">Không có</SelectItem>
+                                <SelectItem value="none">Không xác định</SelectItem>
                                 <SelectItem value="active">Đang hoạt động</SelectItem>
                                 <SelectItem value="inactive">Không hoạt động</SelectItem>
                                 <SelectItem value="lead">Tiềm năng</SelectItem>
@@ -367,7 +368,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 <SelectValue placeholder="Chọn nhãn" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">Không có</SelectItem> {/* Thay đổi "all" thành "" cho trường hợp không chọn */}
+                                <SelectItem value="none">Không xác định</SelectItem> {/* Thay đổi "all" thành "" cho trường hợp không chọn */}
                                 {tags.map((tag: CustomerTag) => (
                                     <SelectItem key={tag.id} value={tag.id}>
                                         {tag.name}
@@ -389,7 +390,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 <SelectValue placeholder="Chọn nhân viên" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">Không có</SelectItem> {/* Thay đổi "none" thành "" cho trường hợp không chọn */}
+                                <SelectItem value="none">Không xác định</SelectItem> {/* Thay đổi "none" thành "" cho trường hợp không chọn */}
                                 {users.map((user: User) => (
                                     <SelectItem key={user.id} value={user.id}>
                                         {user.name || user.email}
@@ -406,28 +407,24 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                 {!isCustomerProfileEdit && (
                     <div>
                         <Label htmlFor="source">Nguồn Khách Hàng</Label>
-                        <Input id="source" {...register("source")} />
-                        {errors.source?.message && <p className="text-red-500 text-sm">{errors.source.message}</p>}
+                        <Select value={watchedSource} onValueChange={(value: CustomerFormData["source"]) => setValue("source", value)}>
+                            <SelectTrigger id="source">
+                                <SelectValue placeholder="Chọn nguồn khách hàng" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="other">Khác</SelectItem>
+                                <SelectItem value="referral">Giới thiệu</SelectItem>
+                                <SelectItem value="website">Website</SelectItem>
+                                <SelectItem value="event">Event</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {errors.status?.message && <p className="text-red-500 text-sm">{errors.status.message}</p>}
                     </div>
                 )}
                 {isCustomerProfileEdit && <input type="hidden" {...register("source")} />}
 
                 {/* Website, Facebook, Zalo, AvatarUrl */}
-                <div>
-                    <Label htmlFor="website">Website</Label>
-                    <Input id="website" {...register("website")} />
-                    {errors.website?.message && <p className="text-red-500 text-sm">{errors.website.message}</p>}
-                </div>
-                <div>
-                    <Label htmlFor="facebook">Facebook</Label>
-                    <Input id="facebook" {...register("facebook")} />
-                    {errors.facebook?.message && <p className="text-red-500 text-sm">{errors.facebook.message}</p>}
-                </div>
-                <div>
-                    <Label htmlFor="zalo">Zalo</Label>
-                    <Input id="zalo" {...register("zalo")} />
-                    {errors.zalo?.message && <p className="text-red-500 text-sm">{errors.zalo.message}</p>}
-                </div>
+                
                 <div>
                     <Label htmlFor="avatarUrl">Ảnh Đại Diện (URL)</Label>
                     <Input id="avatarUrl" {...register("avatarUrl")} />
