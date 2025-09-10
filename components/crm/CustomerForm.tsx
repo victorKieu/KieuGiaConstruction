@@ -14,6 +14,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import type { Resolver } from "react-hook-form"; // Import Resolver type
+import { startTransition } from "react"
+
 
 // --- START: SCHEMA AND INTERFACE DEFINITIONS ---
 
@@ -59,7 +61,6 @@ export const customerFormSchema = z.object({
     // Gender và Status có .default(), nghĩa là chúng sẽ KHÔNG BAO GIỜ là undefined hoặc null trong CustomerFormData.
     gender: z.enum(["male", "female", "other"]).default("other"),
     status: z.enum(["active", "inactive", "lead"]).default("active"),
-
     tag: z.string().optional(), // tag là optional, sẽ map sang null nếu "all" khi lưu DB
     ownerId: z.string().optional(), // ownerId là optional, sẽ map sang null nếu "none" khi lưu DB
 });
@@ -108,10 +109,11 @@ export interface RawCustomerDataFromDB {
 
 // Định nghĩa kiểu state cho useActionState
 interface ActionState {
-    error?: string; // error có thể là string hoặc undefined
+    error?: string
+    success?: boolean
 }
 
-interface CustomerFormProps {
+    interface CustomerFormProps {
     initialData?: RawCustomerDataFromDB | null;
     // Đảm bảo onSubmitAction LUÔN trả về một object có kiểu ActionState
     onSubmitAction: (formData: CustomerFormData) => Promise<ActionState>;
@@ -172,8 +174,6 @@ const defaultEmptyFormData: CustomerFormData = {
     //zalo: "",
     avatarUrl: "",
 };
-
-
 export function CustomerForm({ onSubmitAction, initialData, tags, users, isCustomerProfileEdit }: CustomerFormProps) {
     const { register, handleSubmit, watch, setValue, formState: { errors }, setError, reset } = useForm<CustomerFormData>({
         // Dòng này đã được sửa lỗi chính tả và thêm type assertion
@@ -187,6 +187,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     const [state, dispatch, pendingAction] = useActionState<ActionState, CustomerFormData>(
         async (prevState: ActionState | void, data: CustomerFormData) => {
             const result = await onSubmitAction(data);
+            console.log("Kết quả từ Server Action:", result)
             return result;
         },
         { error: undefined } as ActionState // Khởi tạo state với kiểu ActionState rõ ràng
@@ -223,16 +224,35 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
         }
     }, [state?.error, setError]);
 
+    useEffect(() => {
+        if (state?.success) {
+            const target = initialData?.id
+                ? `/crm/customers/${initialData.id}`
+                : "/crm/customers"
+
+            router.push(target)
+        }
+    }, [state?.success, initialData?.id])
+
     const handleCancel = () => {
         if (isCustomerProfileEdit) {
             router.push('/');
         } else {
-            router.push('/crm/customers');
+            if (initialData?.id) {
+                router.push(`/crm/customers/${initialData.id}`)
+            } else {
+                router.push("/crm/customers")
+            }
         }
     };
+    const onSubmit = (data: CustomerFormData) => {
+        startTransition(() => {
+            dispatch(data)
+        })
+    }
 
     return (
-        <form onSubmit={handleSubmit(dispatch)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {initialData?.id && <input type="hidden" {...register("id")} />}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -438,7 +458,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                     {errors.notes?.message && <p className="text-red-500 text-sm">{errors.notes.message}</p>}
                 </div>
             </div>
-
+            
             {/* Hiển thị lỗi chung từ Server Action */}
             {state?.error && state.error !== "NEXT_REDIRECT" && !errors.code && !errors.root && (
                 <div className="text-red-500 text-sm text-center mt-4">{state.error}</div>
