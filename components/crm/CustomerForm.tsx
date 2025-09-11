@@ -109,8 +109,9 @@ export interface RawCustomerDataFromDB {
 
 // Định nghĩa kiểu state cho useActionState
 interface ActionState {
+    success: boolean
     error?: string
-    success?: boolean
+    id?: string // ✅ thêm dòng này
 }
 
     interface CustomerFormProps {
@@ -184,15 +185,14 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     const router = useRouter();
 
     // Sửa lỗi: Chỉ định rõ ràng generic types cho useActionState
+    
     const [state, dispatch, pendingAction] = useActionState<ActionState, CustomerFormData>(
-        async (prevState: ActionState | void, data: CustomerFormData) => {
-            const result = await onSubmitAction(data);
-            console.log("Kết quả từ Server Action:", result)
-            return result;
+        async (_, data) => {
+            const result = await onSubmitAction(data)
+            return result
         },
-        { error: undefined } as ActionState // Khởi tạo state với kiểu ActionState rõ ràng
+        { success: false, error: undefined, id: undefined } // ✅ giờ không lỗi nữa
     );
-
     // Watch giá trị của các select để hiển thị
     const watchedType = watch("type");
     const watchedGender = watch("gender");
@@ -226,13 +226,17 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
 
     useEffect(() => {
         if (state?.success) {
-            const target = initialData?.id
-                ? `/crm/customers/${initialData.id}`
-                : "/crm/customers"
+            const target = state.id
+                ? `/crm/customers/${state.id}`
+                : initialData?.id
+                    ? `/crm/customers/${initialData.id}`
+                    : "/crm/customers"
 
             router.push(target)
+            router.refresh() // ✅ ép reload lại trang
         }
-    }, [state?.success, initialData?.id])
+    }, [state?.success, state?.id, initialData?.id])
+
 
     const handleCancel = () => {
         if (isCustomerProfileEdit) {
@@ -476,6 +480,27 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                     {initialData ? "Cập Nhật" : "Tạo Mới"}
                 </Button>
             </div>
+            {state?.success && (
+                <p className="mt-4 text-green-600 text-center font-medium">
+                    {initialData?.id
+                        ? "Cập nhật khách hàng thành công!"
+                        : "Tạo khách hàng mới thành công!"}
+                </p>
+            )}
+
+            {state?.error && (
+                <p className="mt-4 text-red-600 text-center font-medium">
+                    {state.error}
+                </p>
+            )}
+
+            {state?.success && initialData?.id && (
+                <div className="mt-4 flex justify-center">
+                    <Button onClick={() => router.push("/crm/customers")}>
+                        Quay về danh sách khách hàng
+                    </Button>
+                </div>
+            )}
         </form>
     );
 }

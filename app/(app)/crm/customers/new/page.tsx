@@ -177,26 +177,29 @@ export default async function CustomerUpsertPage({ params }: { params?: { id?: s
 
         const newCode = `${prefix}-${String(nextSequence).padStart(3, "0")}`
 
-        const { error: insertError } = await supabase.from("customers").insert([
-            {
-                name: formData.name,
-                code: newCode,
-                type: formData.type,
-                contact_person: formData.contactPerson,
-                email: formData.email,
-                phone: formData.phone,
-                address: formData.address,
-                tax_code: formData.taxCode,
-                birthday: formData.birthday || null,
-                gender: formData.gender,
-                status: formData.status,
-                tag_id: formData.tag === "all" ? null : formData.tag,
-                owner_id: formData.ownerId === "none" ? null : formData.ownerId,
-                note: formData.notes,
-                source: formData.source,
-                avatar_url: formData.avatarUrl,
-            },
-        ])
+        const { data: insertedData, error: insertError } = await supabase
+            .from("customers")
+            .insert([
+                {
+                    name: formData.name,
+                    code: newCode,
+                    type: formData.type,
+                    contact_person: formData.contactPerson,
+                    email: formData.email,
+                    phone: formData.phone,
+                    address: formData.address,
+                    tax_code: formData.taxCode,
+                    birthday: formData.birthday || null,
+                    gender: formData.gender,
+                    status: formData.status,
+                    tag_id: formData.tag === "all" ? null : formData.tag,
+                    owner_id: formData.ownerId === "none" ? null : formData.ownerId,
+                    note: formData.notes,
+                    source: formData.source,
+                    avatar_url: formData.avatarUrl,
+                },
+            ])
+            .select("id") // ✅ Thêm dòng này để lấy lại ID
 
         if (insertError) {
             if (insertError.code === "23505" && insertError.message.includes("code")) {
@@ -205,8 +208,15 @@ export default async function CustomerUpsertPage({ params }: { params?: { id?: s
             return { error: insertError.message || "Có lỗi xảy ra khi lưu khách hàng.", success: false }
         }
 
+        const newId = insertedData?.[0]?.id
+
         revalidatePath("/crm/customers")
-        return { success: true }
+
+        return {
+            success: true,
+            error: undefined,
+            id: newId, // ✅ Trả về ID để redirect phía client
+        }
     }
 
     if (error) {
