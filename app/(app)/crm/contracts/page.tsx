@@ -71,12 +71,11 @@ async function ContractsList({ status }: { status?: string }) {
       id, 
       title, 
       description, 
-      contract_value, 
+      contract_number, 
       start_date, 
       end_date, 
       status, 
       created_at,
-      file_url,
       customer_id,
       customers (name)
     `)
@@ -88,7 +87,11 @@ async function ContractsList({ status }: { status?: string }) {
   const { data: contracts, error } = await query.order("created_at", { ascending: false })
 
   if (error) {
-    console.error("Error fetching contracts:", error)
+    console.error("[Contracts] Supabase error:", {
+  message: error?.message,
+  details: error?.details,
+  hint: error?.hint,
+})
     return <div>Đã xảy ra lỗi khi tải dữ liệu</div>
   }
 
@@ -154,7 +157,7 @@ async function ContractsList({ status }: { status?: string }) {
                       style: "currency",
                       currency: "VND",
                       maximumFractionDigits: 0,
-                    }).format(contract.contract_value)}
+                    }).format(contract.contract_number)}
                   </p>
                 </div>
                 <div>
@@ -170,11 +173,6 @@ async function ContractsList({ status }: { status?: string }) {
               <span>Tạo lúc: {format(new Date(contract.created_at), "PPp", { locale: vi })}</span>
             </CardContent>
             <CardContent className="pt-0 pb-4 flex justify-between">
-              {contract.file_url && (
-                <Button variant="outline" size="sm" className="gap-1">
-                  <Download className="h-3 w-3" /> Tải xuống
-                </Button>
-              )}
               <Button variant="outline" size="sm" className="gap-1" asChild>
                 <Link href={`/crm/contracts/${contract.id}`}>
                   Chi tiết <ArrowRight className="h-3 w-3" />

@@ -214,8 +214,8 @@ export default async function CustomerUpsertPage({ params }: { params?: { id?: s
 
         return {
             success: true,
-            error: undefined,
             id: newId, // ✅ Trả về ID để redirect phía client
+            error: undefined,
         }
     }
 

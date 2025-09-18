@@ -225,6 +225,8 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     }, [state?.error, setError]);
 
     useEffect(() => {
+        console.log("📦 State sau submit:", state)
+
         if (state?.success) {
             const target = state.id
                 ? `/crm/customers/${state.id}`
@@ -256,7 +258,7 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)}>
             {initialData?.id && <input type="hidden" {...register("id")} />}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

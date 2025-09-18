@@ -69,7 +69,7 @@ async function ActivitiesList({ filter }: { filter?: string }) {
 
     let query = supabase.from("customer_activities").select(`
       id, 
-      type, 
+      activity_type, 
       title, 
       description, 
       scheduled_at, 
@@ -160,7 +160,7 @@ async function ActivitiesList({ filter }: { filter?: string }) {
                     <h3 className="text-lg font-medium">{date}</h3>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {dateActivities.map((activity) => {
-                            const ActivityIcon = activityIcons[activity.type] || Calendar
+                            const ActivityIcon = activityIcons[activity.activity_type] || Calendar
                             const statusColor = statusColors[activity.status] || "bg-gray-100 text-gray-800"
                             const statusLabel = statusLabels[activity.status] || activity.status
                             const isPast = new Date(activity.scheduled_at) < new Date()
