@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js"; // Sử dụng createClient từ supabase-js
-import { Database } from "@/types/supabase"; // Nếu có types
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!); // Tạo client Supabase
 

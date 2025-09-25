@@ -6,19 +6,8 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/sup
 import { cookies } from "next/headers";
 import { get_user_role } from '@/lib/supabase/functions';
 import { z } from 'zod';
-
-// --- XÓA CÁC ĐỊNH NGHĨA INTERFACE Ở ĐÂY VÀ THAY BẰNG IMPORT SAU ---
-// interface Employee { ... }
-// interface ActionResponse { ... }
-// interface GetEmployeesParams { ... }
-// interface GetEmployeesResult { ... }
-
-// --- IMPORT CÁC INTERFACE TỪ FILE types/hrm.d.ts ---
 import { Employee, GetEmployeesParams, GetEmployeesResult, ActionResponse, InsertEmployee, UpdateEmployee } from '@/types/hrm';
 
-// --- Zod Schema cho việc tạo nhân viên ---
-// CHÚ Ý: Các key trong Zod schema phải khớp với TÊN BẠN NHẬN TỪ FORM,
-// sau đó bạn sẽ map chúng sang TÊN CỘT TRONG DATABASE khi insert/update.
 const CreateEmployeeSchema = z.object({
     email: z.string().email("Email không hợp lệ."),
     password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự."),
@@ -101,20 +90,18 @@ export async function createFullEmployeeAccount(formData: FormData): Promise<Act
         const employeeInsertData: InsertEmployee = {
             id: newUserId,
             email: email,
-            name: fullName, // `fullName` từ form -> cột `name` trong DB
+            name: fullName, 
             position: position,
             phone: phone,
             address: address,
             department: department,
             hire_date: hireDate,
-            birth_date: birthDate, // `birthDate` từ form -> cột `birth_date` trong DB
+            birth_date: birthDate, 
             status: 'active',
-            // role_id: employeeRoleId, // Theo Database.ts bạn cung cấp, `role_id` không có trong bảng `employees`.
-            // Nếu bạn đã thêm nó vào DB, hãy bỏ comment dòng này.
             code: 'EMP_' + newUserId.substring(0, 8).toUpperCase(),
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            avatar_url: null, // Mặc định là null hoặc bạn có thể thêm logic upload avatar
+            avatar_url: null,
         };
 
         const { error: employeeProfileError } = await supabaseAdmin
@@ -209,10 +196,22 @@ export async function getEmployees({
  * Server Action: Lấy danh sách nhân viên có vai trò quản lý dự án.
  * Quyền hạn được kiểm soát bởi RLS.
  */
-export async function getProjectManagers(): Promise<{ id: string; name: string; code: string | null; position: string }[]> {
+interface ProjectManager {
+    id: string;
+    name: string;
+    code: string | null;
+    position: string;
+}
+
+export async function getProjectManagers(): Promise<ProjectManager[]> {
     const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
     const supabase = createSupabaseServerClient(token);
+
+    if (!supabase) {
+        console.error("Supabase client là null trong getProjectManagers");
+        return [];
+    }
 
     const MANAGER_RANKS = [
         "Trưởng phòng",
@@ -226,7 +225,7 @@ export async function getProjectManagers(): Promise<{ id: string; name: string; 
 
     const { data, error } = await supabase
         .from("employees")
-        .select("id, name, code, position") // Chọn các trường bạn cần
+        .select("id, name, code, position")
         .in("position", MANAGER_RANKS);
 
     if (error) {
@@ -234,8 +233,13 @@ export async function getProjectManagers(): Promise<{ id: string; name: string; 
         return [];
     }
 
-    // Ép kiểu dữ liệu trả về để khớp với Promise type
-    return data as { id: string; name: string; code: string | null; position: string }[];
+    if (!data || !Array.isArray(data)) {
+        console.warn("Dữ liệu quản lý dự án không hợp lệ:", data);
+        return [];
+    }
+
+    // Lọc bỏ phần tử thiếu id hoặc name
+    return data.filter((m): m is ProjectManager => !!m?.id && !!m?.name);
 }
 
 /**
@@ -259,11 +263,11 @@ export async function getEmployeeById(id: string): Promise<Employee | null> {
             address,
             department,
             hire_date,
-            birth_date,    // <--- THÊM DẤU PHẨY Ở ĐÂY!
+            birth_date,
             status,
-            avatar_url,    // <--- THÊM DẤU PHẨY Ở ĐÂY!
+            avatar_url,
             created_at,
-            updated_at     // Cột cuối cùng không cần dấu phẩy
+            updated_at
         `)
         .eq('id', id)
         .maybeSingle();

@@ -51,6 +51,7 @@ export interface UserProfile {
     bank_name?: string | null;
 }
 
+
 export async function getUserProfile(): Promise<UserProfile | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
@@ -93,21 +94,21 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
     // --- Bước 1: Lấy loại người dùng từ public.user_roles ---
     const { data: userRoleData, error: userRoleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
+        .from("user_profiles")
+        .select("user_types(code)")
+        .eq("id", user.id) // sửa lại đúng cột khóa chính
         .single();
-
-    if (userRoleError && userRoleError.code !== 'PGRST116') {
-        console.error("Lỗi khi lấy user_role:", userRoleError.message);
+            
+    if (userRoleError && userRoleError.code !== "PGRST116") {
+        console.error("Lỗi khi lấy user_type:", userRoleError.message);
         return userProfile;
     }
-
-    if (userRoleData) {
-        userProfile.user_type = userRoleData.role as 'employee' | 'customer' | 'supplier';
-        console.log(`Loại người dùng được xác định từ user_roles: ${userProfile.user_type}`);
+        
+    if (userRoleData?.user_types?.code) {
+        userProfile.user_type = userRoleData.user_types.code as "employee" | "customer" | "supplier";
+        console.log(`Loại người dùng được xác định từ user_types: ${userProfile.user_type}`);
     } else {
-        console.log(`Không tìm thấy loại người dùng trong public.user_roles cho user ID: ${user.id}. Trả về profile cơ bản.`);
+        console.log(`Không tìm thấy loại người dùng trong user_types cho user ID: ${user.id}. Trả về profile cơ bản.`);
         return userProfile;
     }
 

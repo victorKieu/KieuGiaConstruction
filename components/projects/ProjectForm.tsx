@@ -18,9 +18,14 @@ const PROJECT_TYPES = [
     { value: "other", label: "Khác" },
 ];
 
-interface Customer { id: string; name: string; }
-// Đổi user_id sang id cho nhất quán và dễ sử dụng làm key
-interface Manager { id: string; name: string; } // Đã sửa từ user_id sang id
+const CONSTRUCTION_TYPES = [
+    { value: "new", label: "Xây mới" },
+    { value: "repair", label: "Sửa chữa" },
+    { value: "renovation", label: "Cải tiến" },
+    { value: "expansion", label: "Mở rộng" },
+];
+//interface Customer { id: string; name: string; }
+//interface Manager { id: string; name: string; }
 
 interface ProjectFormData {
     id?: string;
@@ -39,15 +44,14 @@ interface ProjectFormData {
 }
 
 interface ProjectFormProps {
-    initialData?: Partial<ProjectFormData>;
-    customers: Customer[];
-    managers: Manager[]; // Đảm bảo dữ liệu managers truyền vào cũng có thuộc tính 'id'
-    onSuccess?: () => void;
+    initialData?: any;
+    customers: { id: string; name: string }[];
+    managers: { id: string; name: string }[];
+    onSuccess: () => void;
 }
+export default function ProjectForm({ initialData, customers, managers, onSuccess }: ProjectFormProps) {
 
-export default function ProjectForm({ initialData = {}, customers, managers, onSuccess }: ProjectFormProps) {
     const router = useRouter();
-
     const [form, setForm] = useState<ProjectFormData>({
         name: "",
         code: "",
@@ -179,16 +183,30 @@ export default function ProjectForm({ initialData = {}, customers, managers, onS
                             id="budget"
                             name="budget"
                             type="text"
-                            value={form.budget}
+                            value={Number(form.budget).toLocaleString("vi-VN")}
                             onChange={e => {
-                                setForm(f => ({ ...f, budget: e.target.value.replace(/[^0-9]/g, "") }));
+                                const raw = e.target.value.replace(/\D/g, "");
+                                setForm(f => ({ ...f, budget: raw }));
                             }}
-                            placeholder="Nhập số"
                         />
                     </div>
                     <div>
                         <Label htmlFor="construction_type">Loại hình xây dựng</Label>
-                        <Input id="construction_type" name="construction_type" value={form.construction_type} onChange={handleChange} />
+                        <select
+                            id="construction_type"
+                            name="construction_type"
+                            value={form.construction_type}
+                            onChange={handleChange}
+                            className="border rounded w-full p-2"
+                        >
+                            <option value="">Chọn loại hình xây dựng</option>
+                            {CONSTRUCTION_TYPES.map(type => (
+                                // Đã thêm key prop ở đây!
+                                <option key={type.value} value={type.value}>
+                                    {type.label}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 

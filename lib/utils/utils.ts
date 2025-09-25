@@ -17,7 +17,8 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
 }
 
 export function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString("vi-VN", {
+    if (!date) return "Không xác định";
+    return new Date(date).toLocaleDateString("vi-VN", {
     year: "numeric",
     month: "long",
     day: "numeric",

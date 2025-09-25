@@ -115,22 +115,37 @@ export async function getRecentCustomers(): Promise<Customer[]> {
     return data as Customer[];
 }
 
-// Thêm các actions liên quan đến CRM khác tại đây, ví dụ:
-// - getCustomerById
-export async function getCustomerById(id: string): Promise<Customer | null> {
+/**
+ * Lấy thông tin chi tiết của một khách hàng theo ID.
+ * Trả về cả dữ liệu và lỗi để dễ xử lý trong UI hoặc API.
+ */
+export async function getCustomerById(id: string): Promise<{ data: Customer | null; error: string | null }> {
     const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
     const supabase = createSupabaseServerClient(token);
+
+    if (!supabase) {
+        console.error("Supabase client là null trong getCustomerById");
+        return { data: null, error: "Không thể kết nối đến Supabase" };
+    }
+
     const { data, error } = await supabase
         .from("customers")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle(); // Không lỗi nếu không tìm thấy
+        .select("*, customer_tags(name)") // nếu bạn có bảng tags liên kết
+        .eq("tag_id", id)
+        .maybeSingle();
+
     if (error) {
-        console.error("Lỗi lấy thông tin khách hàng:", error.message);
-        return null;
+        console.error("Lỗi khi lấy thông tin khách hàng:", error.message);
+        return { data: null, error: error.message };
     }
-    return data;
+
+    if (!data) {
+        return { data: null, error: "Không tìm thấy khách hàng với ID đã cung cấp" };
+    }
+
+    return { data, error: null };
 }
+
 // - createCustomerActivity
 // - getCustomerActivities

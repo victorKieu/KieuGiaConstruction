@@ -15,7 +15,7 @@ interface ProjectData {
     description: string | null;
     address: string | null;
     location: string | null;
-    status: string | null;
+    status: string;
     project_type: string | null;
     construction_type: string | null;
     risk_level: string | null;
@@ -23,12 +23,15 @@ interface ProjectData {
     customer_id: string | null;
     progress: number | null;
     budget: number | null;
-    start_date: string | null;
-    end_date: string | null;
+    start_date: string;
+    end_date: string;
     created_at: string;
     updated_at: string;
     customers?: { name: string } | null;
     manager?: { name: string } | null;
+    created_by: string;
+    created?: { name: string } | null;
+    progress_percent: number;
 }
 
 interface GetProjectResult {
@@ -47,38 +50,106 @@ interface ActionResponse {
 
 // --- Project Actions ---
 
+export async function getProjectMembers(projectId: string) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+    const supabase = createSupabaseServerClient(token);
+
+    if (!token) {
+        return { data: null, error: "Phiên đăng nhập đã hết hạn." };
+    }
+    const { data, error } = await supabase
+        .from("project_members")
+        .select(`
+      project_id,
+      role,
+      joined_at,
+      employees (
+        name,
+        email,
+        position,
+        avatar_url
+      )
+    `)
+        .eq("project_id", projectId);
+
+    if (error) {
+        console.error("Lỗi Supabase trong getProjectMembers:", error.message);
+        return { data: null, error: error.message };
+    }
+
+    return { data, error: null };
+}
+
 /**
  * Lấy một dự án cụ thể theo ID.
  */
 export async function getProject(id: string): Promise<GetProjectResult> {
     if (!isValidUUID(id)) {
-        return { data: null, error: { message: "ID dự án không đúng định dạng.", code: "invalid_uuid" } };
+        return {
+            data: null,
+            error: {
+                message: "ID dự án không đúng định dạng.",
+                code: "invalid_uuid",
+            },
+        };
     }
 
     const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
+
+    if (!token) {
+        return {
+            data: null,
+            error: {
+                message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+                code: "jwt_expired",
+            },
+        };
+    }
+
     const supabase = createSupabaseServerClient(token);
 
     const { data: project, error } = await supabase
         .from("projects")
         .select(`
-            *,
-            customers(name),
-            manager:employees(name)
-        `)
+      *,
+      customers(name),
+      projects_project_manager_fkey(name),
+      projects_created_by_fkey(name)
+    `)
         .eq("id", id)
         .single();
 
     if (error) {
         console.error("Lỗi Supabase trong getProject:", error.message);
-        return { data: null, error: { message: `Lỗi Supabase: ${error.message}`, code: error.code || "supabase_fetch_error" } };
+        return {
+            data: null,
+            error: {
+                message: `Lỗi Supabase: ${error.message}`,
+                code: error.code || "supabase_fetch_error",
+            },
+        };
     }
 
     if (!project) {
-        return { data: null, error: { message: "Không tìm thấy dự án với ID đã cung cấp.", code: "project_not_found" } };
+        return {
+            data: null,
+            error: {
+                message: "Không tìm thấy dự án với ID đã cung cấp.",
+                code: "project_not_found",
+            },
+        };
     }
 
-    return { data: project as ProjectData, error: null };
+    return {
+        data: {
+            ...project,
+            manager: project.projects_project_manager_fkey,
+            created: project.projects_created_by_fkey,
+        } as ProjectData,
+        error: null,
+    };
 }
 
 /**
@@ -112,8 +183,8 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
         customer_id: (formData.get("customer_id") as string) || null,
         progress: Number.parseInt(formData.get("progress") as string) || 0,
         budget: Number.parseFloat(formData.get("budget") as string) || 0,
-        start_date: (formData.get("start_date") as string) || null,
-        end_date: (formData.get("end_date") as string) || null,
+        start_date: (formData.get("start_date") as string),
+        end_date: (formData.get("end_date") as string),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
     };
@@ -167,8 +238,8 @@ export async function updateProject(id: string, formData: FormData): Promise<Act
         customer_id: (formData.get("customer_id") as string) || null,
         progress: Number.parseInt(formData.get("progress") as string) || 0,
         budget: Number.parseFloat(formData.get("budget") as string) || 0,
-        start_date: (formData.get("start_date") as string) || null,
-        end_date: (formData.get("end_date") as string) || null,
+        start_date: (formData.get("start_date") as string),
+        end_date: (formData.get("end_date") as string),
         updated_at: new Date().toISOString(),
     };
 
@@ -218,4 +289,140 @@ export async function deleteProject(id: string): Promise<ActionResponse> {
 
     revalidatePath("/projects");
     return { success: true, message: "Dự án đã được xóa thành công!" };
+}
+
+export async function getProjectDocuments(projectId: string) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+
+    if (!token) {
+        return { data: null, error: "Phiên đăng nhập đã hết hạn." };
+    }
+
+    const supabase = createSupabaseServerClient(token);
+
+    const { data, error } = await supabase
+        .from("project_documents")
+        .select(`
+      id,
+      name,
+      type,
+      url,
+      uploaded_at,
+      uploaded_by ( name )
+    `)
+        .eq("project_id", projectId);
+
+    if (error) {
+        console.error("Lỗi Supabase trong getProjectDocuments:", error.message);
+        return { data: null, error: error.message };
+    }
+
+    return { data, error: null };
+}
+
+export async function getProjectFinance(projectId: string) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+
+    if (!token) {
+        return { data: null, error: "Phiên đăng nhập đã hết hạn." };
+    }
+
+    const supabase = createSupabaseServerClient(token);
+
+    const { data, error } = await supabase
+        .from("project_finance")
+        .select(`
+      budget,
+      spent,
+      remaining,
+      allocation:finance_allocation (
+        materials,
+        labor,
+        equipment,
+        others
+      )
+    `)
+        .eq("project_id", projectId)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Lỗi Supabase trong getProjectFinance:", error.message);
+        return { data: null, error: error.message };
+    }
+
+    return {
+        data: {
+            budget: data?.budget,
+            spent: data?.spent,
+            remaining: data?.remaining,
+            allocation: data?.allocation,
+        },
+        error: null,
+    };
+}
+
+export async function getProjectMilestones(projectId: string) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+
+    if (!token) {
+        return { data: null, error: "Phiên đăng nhập đã hết hạn." };
+    }
+
+    const supabase = createSupabaseServerClient(token);
+
+    const { data, error } = await supabase
+        .from("project_milestones")
+        .select(`
+      id,
+      milestone,
+      description,
+      planned_start_date,
+      actual_start_date,
+      status
+    `)
+        .eq("project_id", projectId)
+        .order("planned_start_date", { ascending: true });
+
+    if (error) {
+        console.error("Lỗi Supabase trong getProjectMilestones:", error.message);
+        return { data: null, error: error.message };
+    }
+
+    return { data, error: null };
+}
+
+export async function getProjectTasks(projectId: string) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+
+    if (!token) {
+        return { data: null, error: "Phiên đăng nhập đã hết hạn." };
+    }
+
+    const supabase = createSupabaseServerClient(token);
+
+    const { data, error } = await supabase
+        .from("project_tasks")
+        .select(`
+      id,
+      name,
+      description,
+      assigned_to ( name ),
+      start_date,
+      end_date,
+      status,
+      progress_percent
+    `)
+        .eq("project_id", projectId)
+        .order("start_date", { ascending: true });
+
+    if (error) {
+        console.error("Lỗi Supabase trong getProjectTasks:", error.message);
+        return { data: null, error: error.message };
+    }
+
+    return { data, error: null };
 }

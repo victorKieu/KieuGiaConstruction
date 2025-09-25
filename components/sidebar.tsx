@@ -1,44 +1,17 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-    LayoutDashboard,
-    Users,
-    Settings,
-    Building2,
-    Package,
-    BarChart3,
-    ShieldAlert,
-    ChevronDown,
-    ChevronRight,
-    Activity,
-    DollarSign,
-    Truck,
-    Handshake,
-    Menu,
-    X,
-} from "lucide-react"
+    LayoutDashboard,Users,Settings,Building2,Package,BarChart3,ShieldAlert,ChevronDown,ChevronRight,
+    DollarSign,Truck,Handshake,Menu,X,} from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 import Image from "next/image"
 import { useIsMobile } from "@/hooks/use-mobile"
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarMenuSub,
-    SidebarMenuSubButton,
-    SidebarMenuSubItem,
-    SidebarProvider,
-    useSidebar,
-    SidebarRail,
-} from "@/components/ui/sidebar"
+import {Sidebar,SidebarContent,SidebarHeader,SidebarMenu,SidebarMenuButton,SidebarMenuItem,SidebarMenuSub,SidebarMenuSubButton,
+    SidebarMenuSubItem,SidebarProvider,useSidebar,SidebarRail,} from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
@@ -200,16 +173,28 @@ const navItems = [
         roles: ["admin"],
     },
     {
-        title: "Trạng thái hệ thống",
-        href: "/system-status",
-        icon: Activity,
-        permission: null,
-    },
-    {
-        title: "Cài đặt",
-        href: "/settings",
+        title: "Cài đặt hệ thống",
+        href: "/admin/settings",
         icon: Settings,
-        permission: null,
+        roles: ["admin"],
+        children: [
+            {
+                title: "Quản lý danh mục",
+                href: "/admin/dictionary",
+            },
+            {
+                title: "Quản lý trạng thái dự án",
+                href: "/admin/project-status",
+            },
+            {
+                title: "Quản lý vai trò",
+                href: "/admin/roles",
+            },
+            {
+                title: "Quản lý thông báo",
+                href: "/admin/notifications",
+            },
+        ],
     },
 ]
 

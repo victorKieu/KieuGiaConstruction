@@ -29,7 +29,7 @@ type ProjectMembersClientProps = {
 export default function ProjectMembersClient({
     projectId,
     initialMembers,
-    users,
+    members,
     currentUserId,
     isManager
 }: ProjectMembersClientProps) {
@@ -88,7 +88,7 @@ export default function ProjectMembersClient({
             />
             {showAdd && (
                 <AddMemberDialog
-                    users={users.filter((u) => !memberList.find((m) => m.employee_id === u.id))}
+                    members={members.filter((u) => !memberList.find((m) => m.employee_id === u.id))}
                     onAdd={handleAdd}
                     onClose={() => setShowAdd(false)}
                 />

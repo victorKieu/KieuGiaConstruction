@@ -31,14 +31,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<any>(null);
 
-    // ❌ KHÔNG tạo supabase client ở đây nữa
-    // const supabase = createSupabaseClient(); // XÓA DÒNG NÀY!
 
     useEffect(() => {
         let mounted = true;
-        //const supabase = createSupabaseClient(); // Tạo client Supabase
-        // Lấy session ban đầu
-        const getSession = async () => {
+         const getSession = async () => {
 
             const { data: { session } } = await supabase.auth.getSession();
             if (mounted) {

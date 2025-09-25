@@ -32,11 +32,11 @@ export default async function DashboardPage() {
         )
     }
 
-    // 2. Lấy role/phân quyền user (ví dụ từ bảng user_roles)
+    // 2. Lấy role/phân quyền user (ví dụ từ bảng user_profiles)
     const { data: userRole, error: roleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
+        .from('user_profiles')
+        .select('type_id')
+        .eq('id', user.id)
         .maybeSingle();
 
     if (roleError) {
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
         inventoryLevels: unknown[] = [];
 
     try {
-        if (userRole?.role === 'admin') {
+        if (userRole?.type_id === 'admin') {
             overviewStats = (await supabase.from('overview_statistics').select('*').single()).data;
             designConsulting = (await supabase.from('design_consulting').select('task, status, deadline').order('deadline', { ascending: true }).limit(5)).data ?? [];
             constructionSupervision = (await supabase.from('construction_supervision_status').select('*')).data ?? [];
@@ -118,7 +118,7 @@ export default async function DashboardPage() {
             customerManagement={customerManagement}
             inventoryLevels={inventoryLevels}
             user={user}
-            userRole={userRole?.role}
+            userRole={userRole?.type_id}
         />
     )
 }

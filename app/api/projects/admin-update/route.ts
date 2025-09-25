@@ -33,7 +33,7 @@ export async function POST(req: Request) {
             .select("role")
             .eq("project_id", projectId)
             .eq("employee_id", user.id)
-            .eq("role", "Admin")
+            .eq("role", "admin")
             .maybeSingle();
 
         if (memberError) {
