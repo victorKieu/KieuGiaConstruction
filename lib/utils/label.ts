@@ -1,4 +1,5 @@
-﻿export function getStatusLabel(status: string): string {
+﻿// app/components/ui/label.ts
+export function getStatusLabel(status: string): string {
     switch (status) {
         case "planning":
             return "Đang lập kế hoạch";
@@ -36,6 +37,20 @@ export function getConstructionTypeLabel(type: string): string {
             return "Tổng thầu";
         case "turnkey":
             return "Chìa khóa trao tay";
+        default:
+            return "Không xác định";
+    }
+}
+export default function getRoleLabel(role: string): string {
+    switch (role) {
+        case "manager":
+            return "Quản lý dự án";
+        case "supervisor":
+            return "Giám sát";
+        case "worker":
+            return "Nhân viên";
+        case "admin":
+            return "Quản trị";
         default:
             return "Không xác định";
     }

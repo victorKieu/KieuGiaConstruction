@@ -49,6 +49,7 @@ interface ProjectFormProps {
     managers: { id: string; name: string }[];
     onSuccess: () => void;
 }
+
 export default function ProjectForm({ initialData, customers, managers, onSuccess }: ProjectFormProps) {
 
     const router = useRouter();

@@ -1,43 +1,78 @@
+﻿// types/project.ts
+
+// --- COMMON TYPES ---
+export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "on_hold" | "done" | "todo";
+export type PriorityLevel = "low" | "medium" | "high" | "critical";
+
+// --- PROJECT DATA ---
+// ✅ Cập nhật toàn bộ ProjectData theo định nghĩa chi tiết mới nhất của bạn
 export interface ProjectData {
     id: string;
-    name: string;
+    name: string; // Đổi từ project_name
     code: string;
+    description: string | null;
+    address: string | null;
+    location: string | null;
+    status: string; // Tạm giữ string, cần định nghĩa lại union type nếu có
+    project_type: string;
+    construction_type: string;
+    risk_level: string | null;
+    project_manager: string | null;
+    customer_id: string | null;
+    progress: number | null;
     budget: number;
+    // ✅ Bỏ tùy chọn '?' vì định nghĩa mới của bạn yêu cầu nó
+    actual_cost: number;
     start_date: string;
     end_date: string;
-    status: string;
+    created_at: string;
+    updated_at: string;
+    customers: { name: string } | null;
+    manager?: { name: string } | null;
+    created_by: string;
+    created?: { name: string } | null;
     progress_percent: number;
-    address?: string;
-    description?: string;
-    project_type?: string;
-    construction_type?: string;
-    manager?: {
-        name: string;
-    };
-    customers?: {
-        name: string;
-    };
+    member_count: number;
+    document_count: number;
 }
 
+// --- MILESTONE DATA ---
+// ✅ Cập nhật MilestoneData theo định nghĩa mới của bạn
 export interface MilestoneData {
     id: string;
-    name: string;
-    due_date: string;
-    status: string;
+    // name: string; // ✅ Đã loại bỏ name/milestone_name để dùng description theo yêu cầu mới
+    milestone: string;
+    description: string;
+    planned_start_date: string;
+    planned_end_date: string;
+    actual_start_date: string;
+    actual_end_date: string;
+    status: string; // Tạm giữ string
+    created_at: string;
+    updated_at: string;
+    completion_percentage: number;
+    // ✅ CÁC TRƯỜNG THIẾU TỪ BẢN GỐC (nếu cần)
+    project_id?: string;
 }
 
+// --- MEMBER DATA ---
+// ✅ Cập nhật MemberData theo định nghĩa mới của bạn
 export interface MemberData {
-    id: string;
+    project_id: string;
     role: string;
     joined_at: string;
     employee: {
+        id: string;
         name: string;
         email: string;
+        phone?: string;
         position: string;
         avatar_url?: string;
     };
 }
 
+// --- DOCUMENT DATA ---
+// ✅ Cập nhật DocumentData theo định nghĩa mới của bạn
 export interface DocumentData {
     id: string;
     name: string;
@@ -49,23 +84,29 @@ export interface DocumentData {
     };
 }
 
+// --- FINANCE DATA ---
+// ✅ Cập nhật FinanceData theo định nghĩa mới của bạn
 export interface FinanceData {
+    id: string;
     budget: number;
     spent: number;
     remaining: number;
-    allocation: {
-        materials: number;
-        labor: number;
-        equipment: number;
-        others: number;
-    };
+    allocation: string;
+    updated_at: string; 
 }
+
+// --- TASK DATA ---
+// ✅ Cập nhật TaskData theo định nghĩa mới của bạn
 export interface TaskData {
     id: string;
     project_id: string;
     name: string;
     description?: string;
-    status: "todo" | "in_progress" | "done";
+    status: TaskStatus; // Dùng TaskStatus type đã định nghĩa
+    priority?: PriorityLevel; // Dùng PriorityLevel type đã định nghĩa
+    progress?: number;
+    start_date?: string;
+    completed_at?: string;
     assigned_to?: {
         id: string;
         name: string;
@@ -73,44 +114,32 @@ export interface TaskData {
     };
     due_date?: string;
     created_at: string;
+    updated_at: string;
 }
+
+// --- COMMENT DATA ---
+// ✅ Giữ lại CommentData đã thống nhất cho chức năng bình luận
 export interface CommentData {
     id: string;
     project_id: string;
     task_id?: string;
     content: string;
     created_at: string;
+    update_at: string;
+    parent_comment_id?: string; // <-- ID của bình luận cha
     created_by: {
         id: string;
         name: string;
         avatar_url?: string;
     };
+    replies?: CommentData[]; // <-- Mảng các bình luận trả lời (cho Tree View)
 }
 
-export interface TaskData {
+// --- TASK FEED ITEM (Dành cho Activity Log) ---
+export interface TaskFeedItem {
     id: string;
-    project_id: string;
-    name: string;
-    description?: string;
-    status: "todo" | "in_progress" | "done";
-    assigned_to?: {
-        id: string;
-        name: string;
-        avatar_url?: string;
-    };
-    due_date?: string;
-    created_at: string;
-}
-
-export interface CommentData {
-    id: string;
-    project_id: string;
-    task_id?: string;
-    content: string;
-    created_at: string;
-    created_by: {
-        id: string;
-        name: string;
-        avatar_url?: string;
-    };
+    type: 'task_status_change' | 'comment' | 'milestone_update';
+    timestamp: string;
+    user_name: string;
+    details: string;
 }

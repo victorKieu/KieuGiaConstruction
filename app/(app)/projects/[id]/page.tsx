@@ -1,69 +1,112 @@
-// ❌ KHÔNG dùng "use client"
-import {
-    getProject,
-    getProjectMembers,
-    getProjectDocuments,
-    getProjectMilestones,
-    getProjectFinance,
-} from "@/lib/action/projectActions";
+// app/projects/[id]/page.tsx
+// PHẢI LÀ SERVER COMPONENT
+
+import { getProject, getProjectMembers, getProjectDocuments, getProjectMilestones, getProjectFinance } from "@/lib/action/projectActions";
+import { getProjectTasks } from "@/lib/action/projectActions";
 import ProjectTabs from "@/components/projects/ProjectTabs";
+import ProjectHeaderWrapper from "@/components/projects/ProjectHeaderWrapper";
+import StatCard from "@/components/projects/StatCard";
+import ProgressBar from "@/components/ui/ProgressBar";
+import { Clock, Banknote, TrendingUp } from 'lucide-react';
+import { formatDate, formatCurrency } from "@/lib/utils/utils";
+import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper'; // ✅ IMPORT SERVER WRAPPER MỚI
+// Import các types cần thiết (Giả định đã được khai báo ở nơi khác)
+// import { TaskData, MemberData } from "@/types/project"; 
 
 export default async function ProjectPage({ params }: { params: { id: string } }) {
-    const id = params.id;
-    const { data: project } = await getProject(id);
-    const { data: members } = await getProjectMembers(id);
-    const { data: documents } = await getProjectDocuments(id);
-    const { data: finance } = await getProjectFinance(id);
-    const { data: milestones } = await getProjectMilestones(id);
+    const { id } = await params;
 
-    if (!project) return <div>Không tìm thấy dự án.</div>;
+    // Bước 1: Lấy dữ liệu song song
+    const [
+        projectResult,
+        membersResult,
+        documentsResult,
+        financeResult,
+        milestonesResult,
+        tasksResult
+    ] = await Promise.all([
+        getProject(id),
+        getProjectMembers(id),
+        getProjectDocuments(id),
+        getProjectFinance(id),
+        getProjectMilestones(id),
+        getProjectTasks(id)
+    ]);
+
+    const project = projectResult.data;
+
+    // KHẮC PHỤC LỖI TS2322: Xử lý giá trị null
+    const members = membersResult.data || [];
+    const documents = documentsResult.data || [];
+    const finance = financeResult.data;
+    const milestones = milestonesResult.data || [];
+    const tasks = tasksResult.data || [];
+
+    // ✅ BƯỚC 2: TẠO TASK FEED ĐÃ ĐƯỢC SERVER RENDER
+    // TaskItemServerWrapper sẽ gọi TaskCommentWrapper (Server) để lấy user ID, sau đó render TaskCommentSection (Client)
+    const taskFeedOutput = tasks.map((task: any) => ( // Cast 'any' tạm thời nếu types/project chưa được import
+        <TaskItemServerWrapper
+            key={task.id}
+            task={task}
+            members={members}
+            projectId={id}
+        />
+    ));
+
+    if (!project) {
+        return <div className="p-10 text-center text-xl text-red-600">
+            Không tìm thấy dự án hoặc đã xảy ra lỗi: {projectResult.error?.message}
+        </div>;
+    }
 
     return (
-        <div className="container mx-auto px-6 py-8 space-y-6">
-            {/* Tiêu đề + trạng thái + thời gian + ngân sách */}
-            <div className="bg-white p-6 rounded-lg shadow flex flex-col md:flex-row justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold mb-2">{project.name}</h1>
-                    <p className="text-sm text-gray-500 mb-1">Trạng thái: <span className="font-medium">{project.status}</span></p>
-                    <p className="text-sm text-gray-500 mb-1">Thời gian: {project.start_date} → {project.end_date}</p>
-                    <p className="text-sm text-gray-500">Ngân sách: {project.budget.toLocaleString()} ₫</p>
-                </div>
-                <div className="flex gap-2 items-start md:items-center">
-                    <button className="bg-blue-600 text-white px-4 py-2 rounded">Công việc</button>
-                    <button className="bg-white border px-4 py-2 rounded">Chỉnh sửa</button>
-                    <button className="bg-red-600 text-white px-4 py-2 rounded">Xóa dự án</button>
-                </div>
+        <div className="container mx-auto px-4 md:px-6 py-8 space-y-6 bg-gray-50 min-h-screen">
+            {/* Header */}
+            <ProjectHeaderWrapper project={project} />
+
+            {/* Stat Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <StatCard
+                    icon={<Clock size={20} />}
+                    title="Thời gian"
+                    value={`${formatDate(project.start_date)} - ${formatDate(project.end_date)}`}
+                />
+                <StatCard
+                    icon={<Banknote size={20} />}
+                    title="Ngân sách"
+                    value={`${formatCurrency(project.budget)} ₫`}
+                />
+                <StatCard
+                    icon={<TrendingUp size={20} />}
+                    title="Tiến độ"
+                    value={
+                        <div className="w-full">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-base font-semibold text-gray-800">{project.progress_percent || 0}%</span>
+                            </div>
+                            <ProgressBar value={project.progress_percent || 0} />
+                        </div>
+                    }
+                />
             </div>
 
-            {/* Địa điểm + quản lý */}
-            <div className="bg-white p-6 rounded-lg shadow grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                    <p><strong>Địa điểm:</strong> {project.location || "Chưa có thông tin"}</p>
-                    <p><strong>Địa chỉ:</strong> {project.address || "Chưa có thông tin"}</p>
-                </div>
-                <div>
-                    <p><strong>Người giám sát:</strong> {project.supervisor || "—"}</p>
-                    <p><strong>Người phụ trách:</strong> {project.manager?.name || "—"}</p>
-                    <p><strong>Đơn vị thi công:</strong> {project.contractor || "—"}</p>
-                </div>
-            </div>
+            {/* Tabs - Phần nội dung chi tiết sẽ nằm trong này */}
+            <div className="bg-white p-6 rounded-lg shadow">
+                <ProjectTabs
+                    project={project}
+                    members={members}
+                    documents={documents}
+                    finance={finance}
+                    milestones={milestones}
+                    tasks={tasks}
 
-            {/* Thông tin nhanh */}
-            <div className="bg-white p-6 rounded-lg shadow grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div><p className="font-semibold">Loại dự án</p><p>{project.project_type || "—"}</p></div>
-                <div><p className="font-semibold">Hạng mục</p><p>{project.category || "—"}</p></div>
-                <div><p className="font-semibold">Tiến độ</p><p>{project.progress_percent}%</p></div>
-                <div><p className="font-semibold">Trễ hạn</p><p>{milestones?.[0]?.delay_percent || "0"}%</p></div>
-            </div>
+                    // ✅ TRUYỀN TASK FEED ĐÃ CÓ BÌNH LUẬN VÀO ĐÂY
+                    taskFeed={taskFeedOutput}
 
-            {/* Tabs */}
-            <ProjectTabs
-                project={project}
-                members={members}
-                documents={documents}
-                finance={finance}
-                milestones={milestones}
-            />
+                    membersCount={members.length}
+                    documentsCount={documents.length}
+                />
+            </div>
         </div>
     );
 }

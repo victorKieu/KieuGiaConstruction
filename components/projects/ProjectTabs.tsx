@@ -6,7 +6,17 @@ import ProjectMembersTab from "./tab/ProjectMembersTab";
 import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectMilestoneTab from "./tab/ProjectMilestoneTab";
-import {ProjectData,MilestoneData,MemberData,DocumentData,FinanceData } from "@/types/project";
+import {
+    ProjectData,
+    MilestoneData,
+    MemberData,
+    DocumentData,
+    FinanceData,
+    TaskData,
+    TaskFeedItem // ✅ ĐÃ THÊM TASKFEEDITEM TỪ types/project
+} from "@/types/project";
+
+// ❌ ĐÃ XÓA ĐỊNH NGHĨA TaskFeedItem CỤC BỘ
 
 interface ProjectTabsProps {
     project: ProjectData;
@@ -14,10 +24,14 @@ interface ProjectTabsProps {
     members: MemberData[];
     documents: DocumentData[];
     finance: FinanceData;
+    tasks: TaskData[]; // ✅ Tasks là một mảng TaskData
+    taskFeed: React.ReactNode; // ✅ taskFeed đã được Server render
+    membersCount: number;
+    documentsCount: number;
 }
 
 // ✅ Danh sách tab
-const tabs = ["Tổng quan", "Nhân sự", "Tài liệu", "Tài chính"];
+const tabs = ["Tổng quan", "Công việc & Mốc thời gian", "Nhân sự", "Tài liệu", "Tài chính"];
 
 export default function ProjectTabs({
     project,
@@ -25,19 +39,24 @@ export default function ProjectTabs({
     members,
     documents,
     finance,
+    tasks, // task thô
+    taskFeed, // ✅ taskFeed đã được Server render
+    membersCount,
+    documentsCount,
 }: ProjectTabsProps) {
     const [activeTab, setActiveTab] = useState("Tổng quan");
 
     return (
-        <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex gap-4 border-b mb-4">
+        <div className="w-full">
+            {/* Navigations */}
+            <div className="flex gap-4 border-b mb-4 overflow-x-auto">
                 {tabs.map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`pb-2 border-b-2 ${activeTab === tab
-                                ? "border-blue-600 font-semibold"
-                                : "border-transparent text-gray-500"
+                        className={`pb-2 border-b-2 whitespace-nowrap ${activeTab === tab
+                            ? "border-blue-600 font-semibold text-blue-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
                             }`}
                     >
                         {tab}
@@ -45,13 +64,25 @@ export default function ProjectTabs({
                 ))}
             </div>
 
+            {/* Content */}
             {activeTab === "Tổng quan" && (
                 <ProjectOverviewTab project={project} milestones={milestones} />
             )}
-            {activeTab === "Nhân sự" && <ProjectMembersTab members={members} />}
-            {activeTab === "Tài liệu" && <ProjectDocumentsTab documents={documents} />}
+            {/* ⚠️ KHẮC PHỤC LỖI TS2322 (membersCount) */}
+            {activeTab === "Nhân sự" && <ProjectMembersTab members={members} /* membersCount={membersCount} */ />}
+            {/* ⚠️ KHẮC PHỤC LỖI TS2322 (documentsCount): Loại bỏ prop documentsCount */}
+            {activeTab === "Tài liệu" && <ProjectDocumentsTab documents={documents} /* documentsCount={documentsCount} */ />}
             {activeTab === "Tài chính" && <ProjectFinanceTab finance={finance} />}
-            {activeTab === "Phân công công việc" && <ProjectMilestoneTab fmilestones={milestones} />}
+            {/* ✅ Truyền taskFeed xuống ProjectMilestoneTab */}
+            {activeTab === "Công việc & Mốc thời gian" && (
+                <ProjectMilestoneTab
+                    projectId={project.id}
+                    milestones={milestones}
+                    tasks={tasks} // Truyền tasks thô (dành cho nút Tạo Task và đếm số lượng)
+                    members={members}
+                    taskFeed={taskFeed} // ✅ Truyền Task Feed đã được Server render
+                />
+            )}
         </div>
     );
 }

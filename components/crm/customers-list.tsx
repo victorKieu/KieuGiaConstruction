@@ -9,19 +9,8 @@ import { getCustomerList } from "@/lib/action/crmActions";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Pagination } from "@/components/ui/pagination";
+import { Customer } from "@/types/crm"; 
 
-interface Customer {
-    id: string; // UUID từ auth.users
-    email: string;
-    name: string;
-    code: string | null;
-    phone: string | null;
-    address: string | null;
-    status: string | null;
-    tag_id: string | null;
-    created_at: string;
-    updated_at: string;
-}
 
 type StatusType = "all" | "active" | "inactive" | "lead";
 type TagType = "all" | string;
