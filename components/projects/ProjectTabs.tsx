@@ -13,11 +13,7 @@ import {
     DocumentData,
     FinanceData,
     TaskData,
-    TaskFeedItem // ✅ ĐÃ THÊM TASKFEEDITEM TỪ types/project
 } from "@/types/project";
-
-// ❌ ĐÃ XÓA ĐỊNH NGHĨA TaskFeedItem CỤC BỘ
-
 interface ProjectTabsProps {
     project: ProjectData;
     milestones: MilestoneData[];
@@ -68,19 +64,16 @@ export default function ProjectTabs({
             {activeTab === "Tổng quan" && (
                 <ProjectOverviewTab project={project} milestones={milestones} />
             )}
-            {/* ⚠️ KHẮC PHỤC LỖI TS2322 (membersCount) */}
-            {activeTab === "Nhân sự" && <ProjectMembersTab members={members} /* membersCount={membersCount} */ />}
-            {/* ⚠️ KHẮC PHỤC LỖI TS2322 (documentsCount): Loại bỏ prop documentsCount */}
-            {activeTab === "Tài liệu" && <ProjectDocumentsTab documents={documents} /* documentsCount={documentsCount} */ />}
+            {activeTab === "Nhân sự" && <ProjectMembersTab members={members} />}
+            {activeTab === "Tài liệu" && <ProjectDocumentsTab documents={documents} />}
             {activeTab === "Tài chính" && <ProjectFinanceTab finance={finance} />}
-            {/* ✅ Truyền taskFeed xuống ProjectMilestoneTab */}
             {activeTab === "Công việc & Mốc thời gian" && (
                 <ProjectMilestoneTab
                     projectId={project.id}
                     milestones={milestones}
-                    tasks={tasks} // Truyền tasks thô (dành cho nút Tạo Task và đếm số lượng)
+                    tasks={tasks}
                     members={members}
-                    taskFeed={taskFeed} // ✅ Truyền Task Feed đã được Server render
+                    taskFeed={taskFeed}
                 />
             )}
         </div>

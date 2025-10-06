@@ -1,6 +1,4 @@
 ﻿// types/project.ts
-
-// --- COMMON TYPES ---
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "on_hold" | "done" | "todo";
 export type PriorityLevel = "low" | "medium" | "high" | "critical";
 
@@ -40,7 +38,7 @@ export interface ProjectData {
 // ✅ Cập nhật MilestoneData theo định nghĩa mới của bạn
 export interface MilestoneData {
     id: string;
-    // name: string; // ✅ Đã loại bỏ name/milestone_name để dùng description theo yêu cầu mới
+    // name: string;
     milestone: string;
     description: string;
     planned_start_date: string;
@@ -51,12 +49,10 @@ export interface MilestoneData {
     created_at: string;
     updated_at: string;
     completion_percentage: number;
-    // ✅ CÁC TRƯỜNG THIẾU TỪ BẢN GỐC (nếu cần)
     project_id?: string;
 }
 
 // --- MEMBER DATA ---
-// ✅ Cập nhật MemberData theo định nghĩa mới của bạn
 export interface MemberData {
     project_id: string;
     role: string;
@@ -72,7 +68,6 @@ export interface MemberData {
 }
 
 // --- DOCUMENT DATA ---
-// ✅ Cập nhật DocumentData theo định nghĩa mới của bạn
 export interface DocumentData {
     id: string;
     name: string;
@@ -85,18 +80,16 @@ export interface DocumentData {
 }
 
 // --- FINANCE DATA ---
-// ✅ Cập nhật FinanceData theo định nghĩa mới của bạn
 export interface FinanceData {
     id: string;
     budget: number;
     spent: number;
     remaining: number;
     allocation: string;
-    updated_at: string; 
+    updated_at: string;
 }
 
 // --- TASK DATA ---
-// ✅ Cập nhật TaskData theo định nghĩa mới của bạn
 export interface TaskData {
     id: string;
     project_id: string;
@@ -118,7 +111,6 @@ export interface TaskData {
 }
 
 // --- COMMENT DATA ---
-// ✅ Giữ lại CommentData đã thống nhất cho chức năng bình luận
 export interface CommentData {
     id: string;
     project_id: string;

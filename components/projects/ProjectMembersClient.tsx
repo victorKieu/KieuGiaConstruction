@@ -3,25 +3,15 @@ import { useState } from "react";
 import ProjectMembers from "./ProjectMembers";
 import AddMemberDialog from "./AddMemberDialog";
 import supabase from '@/lib/supabase/client';
+import { MemberData } from "@/types/project";
+import { Employee } from "@/types/hrm";
 
-type ProjectMember = {
-    employee_id: string;
-    name: string;
-    email: string;
-    role: string;
-};
-
-type Employee = {
-    id: string;
-    name: string;
-    email: string;
-};
 
 type ProjectMembersClientProps = {
-    members?: ProjectMember[]; // Có thể bỏ nếu không dùng
+    members?: MemberData[];
     projectId: string;
-    initialMembers: ProjectMember[];
-    employees: Employee[];      // Đổi từ users => employees
+    initialMembers: MemberData[];
+    employees: Employee[];
     currentUserId: string;
     isManager: boolean;
 };
@@ -33,7 +23,7 @@ export default function ProjectMembersClient({
     currentUserId,
     isManager
 }: ProjectMembersClientProps) {
-    const [memberList, setMemberList] = useState<ProjectMember[]>(initialMembers);
+    const [memberList, setMemberList] = useState<MemberData[]>(initialMembers);
     const [showAdd, setShowAdd] = useState(false);
 
     // Lấy lại danh sách thành viên

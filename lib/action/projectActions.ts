@@ -138,8 +138,6 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
         return null;
     }).filter((item): item is MemberData => item !== null); // Loại bỏ các mục null
 
-    console.log("Dữ liệu membersData sau khi sửa FIX:", membersData);
-
     return { data: membersData, error: null };
 }
 
@@ -797,7 +795,6 @@ export async function createComment(
  */
 export async function updateComment(
     commentId: string,
-    // ✅ THAY ĐỔI: Thêm tham số state (tên là prevState để không sử dụng)
     prevState: ActionFormState,
     formData: FormData
 ): Promise<ActionFormState> {
@@ -811,7 +808,6 @@ export async function updateComment(
 
     const content = formData.get("content") as string;
     const projectId = formData.get("project_id") as string; // Cần Project ID để revalidate
-
     if (!content || content.trim().length === 0) {
         return { success: false, error: "Nội dung bình luận không được để trống." };
     }
@@ -824,7 +820,7 @@ export async function updateComment(
         .from("project_comments")
         .update({ content: content.trim(), updated_at: new Date().toISOString() })
         .eq("id", commentId)
-        .eq("created_by_id", currentUser.id); // Đảm bảo chỉ chủ sở hữu mới có thể sửa
+        .eq("created_by", currentUser.id); // Đảm bảo chỉ chủ sở hữu mới có thể sửa
 
     if (error) {
         console.error("Lỗi khi cập nhật bình luận:", error.message);
@@ -833,7 +829,6 @@ export async function updateComment(
 
     // Revalidate Task Detail page
     revalidatePath(`/projects/${projectId}/tasks`); // Revalidate path chung
-
     return { success: true, message: "Bình luận đã được cập nhật thành công." };
 }
 
@@ -865,7 +860,7 @@ export async function deleteComment(
         .from("project_comments")
         .delete()
         .eq("id", commentId)
-        .eq("created_by_id", currentUser.id); // 
+        .eq("created_by", currentUser.id); // 
 
     if (error) {
         console.error("Lỗi khi xóa bình luận:", error.message);

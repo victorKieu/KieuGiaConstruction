@@ -3,18 +3,12 @@
 import React, { useState, useEffect, useCallback, useTransition } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import supabase from "@/lib/supabase/client";
+import supabase from "../../lib/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ChevronDown, ChevronRight, MessageSquare, X, Edit, Trash2, Reply, Save, MoreVertical } from "lucide-react";
-import { useFormState } from 'react-dom';
-import { createComment, deleteComment, updateComment } from '@/lib/action/projectActions'; // Cần các actions CRUD
+import { useActionState } from 'react';
+import { createComment, deleteComment, updateComment } from '../../lib/action/projectActions';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -25,7 +19,6 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
 
 // --- Định nghĩa Kiểu ---
 export interface CommentData {
@@ -91,7 +84,7 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
     // 2. ACTION STATE CHO CREATE COMMENT
     const createCommentBound = createComment.bind(null, taskId, projectId);
-    const [createState, createAction] = useFormState(createCommentBound, initialState);
+    const [createState, createAction] = useActionState(createCommentBound, initialState);
     const isSubmitting = createState.message === 'pending';
 
     // 3. LOGIC TẢI COMMENT
@@ -118,7 +111,7 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                 ...c,
                 created_by: {
                     id: c.created_by.id,
-                    name: c.created_by.full_name || "Người dùng ẩn danh",
+                    name: c.created_by.name || "Người dùng ẩn danh",
                     avatar_url: c.created_by.avatar_url,
                 },
                 task_id: c.task_id || undefined,
@@ -152,7 +145,6 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
         } catch (err: any) {
             setFetchError(err.message || "Không thể tải bình luận.");
-            console.error("Lỗi khi tải bình luận:", err);
             setComments([]);
         } finally {
             setIsLoading(false);
@@ -166,7 +158,6 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
     useEffect(() => {
         if (createState.success) {
-            console.log("Bình luận mới đã được tạo thành công.");
             setReplyingTo(null);
             const formElement = document.getElementById('comment-form') as HTMLFormElement;
             if (formElement) formElement.reset();
@@ -174,7 +165,6 @@ export default function TaskCommentSection({ taskId, projectId, members, current
             fetchComments();
         }
         if (createState.error) {
-            console.error("Lỗi khi tạo bình luận:", createState.error);
             alert(`Lỗi khi tạo bình luận: ${createState.error}`);
         }
     }, [createState, fetchComments]);
@@ -204,40 +194,50 @@ export default function TaskCommentSection({ taskId, projectId, members, current
     // --- 7. NESTED COMPONENT: COMMENT ITEM (HỢP NHẤT TỪ TaskCommentItem) ---
     const CommentItem = ({ comment, level = 0 }: { comment: CommentData, level?: number }) => {
 
-        const currentId = (activeUserId || '').trim().toLowerCase();
-        const creatorId = (comment.created_by.id || '').trim().toLowerCase();
-        const isOwner = currentId && creatorId && currentId === creatorId;
+        //const currentId = (currentUserId || '');
+        const creatorId = (comment.created_by.id || '');
+        const isOwner = currentUserId && creatorId && currentUserId === creatorId;
 
         const [isEditing, setIsEditing] = useState(false);
         const [isDeleting, setIsDeleting] = useState(false);
         const [isRepliesOpen, setIsRepliesOpen] = useState(false);
 
         // Bind comment ID cho Server Actions
-        const updateCommentBound = updateComment.bind(null, comment.id);
-        const [updateState, updateAction] = useFormState(updateCommentBound, initialState);
+        const updateCommentBound = async (prevState: ActionFormState, formData: FormData) => {
+            const commentId = formData.get("comment_id") as string;
+            console.log("UPDATE WRAPPER: commentId", commentId, "projectId", projectId);
+            return await updateComment(commentId, prevState, formData);
+        };
+        
+        const [updateState, updateAction] = useActionState(updateCommentBound, initialState);
         const isUpdating = updateState.message === 'pending';
 
         const [isPending, startTransition] = useTransition();
-
         useEffect(() => {
             if (updateState.success) {
-                setIsEditing(false); // Thoát khỏi chế độ chỉnh sửa
-                fetchComments(); // Tải lại danh sách
+                alert(updateState.message); // hoặc hiện toast
+                setIsEditing(false);
+                fetchComments();
             }
             if (updateState.error) {
-                console.error("Lỗi cập nhật bình luận:", updateState.error);
                 alert(`Lỗi khi cập nhật: ${updateState.error}`);
             }
-        }, [updateState, fetchComments]);
 
+        }, [updateState, fetchComments]);
+        console.log("DEBUG RENDER CommentItem:", { commentId: comment.id, ProjectID: comment.project_id, SC: updateState.success, isDeleting, isPending });
         const handleDelete = () => {
             startTransition(async () => {
-                const result = await deleteComment(comment.id);
+                const result = await deleteComment(
+                    comment.id,            // commentId
+                    projectId,             // projectId (lấy từ props hoặc context)
+                    taskId,                // taskId (lấy từ props hoặc context)
+                    initialState,          // prevState (hoặc state hiện tại)
+                    new FormData()         // formData (nếu không có form, có thể truyền new FormData())
+                );
                 if (result.success) {
                     fetchComments();
                     setIsDeleting(false);
                 } else {
-                    console.error("Lỗi xóa bình luận:", result.error);
                     alert(`Lỗi khi xóa: ${result.error}`);
                 }
             });
@@ -245,7 +245,6 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
         const marginStyle = level > 0 ? { marginLeft: `${Math.min(level, 4) * 1.5}rem` } : {};
         const bgColor = level % 2 === 0 ? 'bg-white' : 'bg-gray-50';
-
         return (
             <div
                 className={`p-3 rounded-lg border ${bgColor} shadow-sm transition-shadow duration-150`}
@@ -288,21 +287,24 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
                         {/* Dropdown Sửa/Xóa (chỉ hiện cho chủ sở hữu) */}
                         {isOwner && !isEditing && (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                                        <MoreVertical className="h-4 w-4 text-gray-500" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40">
-                                    <DropdownMenuItem onClick={() => setIsEditing(true)} className="cursor-pointer text-blue-600">
-                                        <Edit className="h-4 w-4 mr-2" /> Sửa
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setIsDeleting(true)} className="cursor-pointer text-red-600">
-                                        <Trash2 className="h-4 w-4 mr-2" /> Xóa
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-blue-600"
+                                    onClick={() => setIsEditing(true)}
+                                >
+                                    <Edit className="h-4 w-4 mr-2" /> Sửa
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-red-600"
+                                    onClick={() => setIsDeleting(true)}
+                                >
+                                    <Trash2 className="h-4 w-4 mr-2" /> Xóa
+                                </Button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -312,6 +314,7 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                     {isEditing ? (
                         // Form Chỉnh sửa
                         <form action={updateAction} className="space-y-2">
+                            <input type="hidden" name="comment_id" value={comment.id} />
                             <input type="hidden" name="project_id" value={comment.project_id} />
                             <Textarea
                                 name="content"

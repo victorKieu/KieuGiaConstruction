@@ -3,54 +3,7 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-
-// Đảm bảo interface UserProfile được định nghĩa hoặc import đúng cách
-// Nếu bạn muốn giữ nó ở đây:
-export interface UserProfile {
-    id: string;
-    email: string | null;
-    phone: string | null; // From auth.users
-    app_metadata: object;
-    user_metadata: object;
-    created_at: string;
-    updated_at: string;
-    last_sign_in_at: string | null;
-
-    user_type: 'employee' | 'customer' | 'supplier' | null;
-    permission_role_name: string | null;
-
-    profile_id: string | null;
-    profile_name: string | null;
-    profile_avatar_url: string | null;
-    contact_email: string | null;
-    contact_phone: string | null;
-    contact_address: string | null;
-    tax_code: string | null;
-    code: string | null;
-    status: string | null;
-
-    birth_date?: string | null;
-    gender?: string | null;
-    position?: string | null;
-    department?: string | null;
-    hire_date?: string | null;
-    rank?: string | null;
-
-    contact_person?: string | null;
-    notes?: string | null;
-    facebook?: string | null;
-    zalo?: string | null;
-    type?: string | null;
-    website?: string | null;
-    owner_id?: string | null;
-    source?: string | null;
-    tag_id?: string | null;
-
-    payment_terms?: string | null;
-    bank_account?: string | null;
-    bank_name?: string | null;
-}
-
+import { UserProfile } from "@/types/hrm"; 
 
 export async function getUserProfile(): Promise<UserProfile | null> {
     const cookieStore = await cookies();
@@ -92,10 +45,10 @@ export async function getUserProfile(): Promise<UserProfile | null> {
         status: null,
     };
 
-    // --- Bước 1: Lấy loại người dùng từ public.user_roles ---
+    // --- Bước 1: Lấy loại người dùng từ public.user_types ---
     const { data: userRoleData, error: userRoleError } = await supabase
         .from("user_profiles")
-        .select("user_types(code)")
+        .select("role_id(name), type_id(code)")
         .eq("id", user.id) // sửa lại đúng cột khóa chính
         .single();
             
@@ -104,8 +57,8 @@ export async function getUserProfile(): Promise<UserProfile | null> {
         return userProfile;
     }
         
-    if (userRoleData?.user_types?.code) {
-        userProfile.user_type = userRoleData.user_types.code as "employee" | "customer" | "supplier";
+    if (userRoleData?.type_id) {
+        userProfile.user_type = userRoleData.type_id.code;
         console.log(`Loại người dùng được xác định từ user_types: ${userProfile.user_type}`);
     } else {
         console.log(`Không tìm thấy loại người dùng trong user_types cho user ID: ${user.id}. Trả về profile cơ bản.`);
@@ -128,18 +81,16 @@ export async function getUserProfile(): Promise<UserProfile | null> {
             if (employeeProfile) {
                 userProfile.profile_id = employeeProfile.id || null;
                 userProfile.profile_name = employeeProfile.name || user.email || null;
-                userProfile.permission_role_name = Array.isArray(employeeProfile.roles)
-                    ? employeeProfile.roles[0]?.name || null
-                    : (employeeProfile.roles as { name: string | null })?.name || null; // Cập nhật kiểu cho roles.name
+                userProfile.permission_role_name = Array.isArray(employeeProfile.role_id)
+                    ? employeeProfile.role_id[0]?.name || null
+                    : (employeeProfile.role_id as { name: string | null })?.name || null; // Cập nhật kiểu cho roles.name
                 userProfile.profile_avatar_url = employeeProfile.avatar_url || '/images/default_avatar.png';
-
                 userProfile.contact_email = employeeProfile.email || null;
                 userProfile.contact_phone = employeeProfile.phone || null;
                 userProfile.contact_address = employeeProfile.address || null;
                 userProfile.tax_code = employeeProfile.tax_code || null;
                 userProfile.code = employeeProfile.code || null;
                 userProfile.status = employeeProfile.status || null;
-
                 userProfile.birth_date = employeeProfile.birth_date || null;
                 userProfile.gender = employeeProfile.gender || null;
                 userProfile.position = employeeProfile.position || null;

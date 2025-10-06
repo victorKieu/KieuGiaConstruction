@@ -10,11 +10,14 @@ import ProgressBar from "@/components/ui/ProgressBar";
 import { Clock, Banknote, TrendingUp } from 'lucide-react';
 import { formatDate, formatCurrency } from "@/lib/utils/utils";
 import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper'; // ✅ IMPORT SERVER WRAPPER MỚI
-// Import các types cần thiết (Giả định đã được khai báo ở nơi khác)
-// import { TaskData, MemberData } from "@/types/project"; 
+import { getCurrentUser } from "@/lib/action/authActions";
+import { ProjectData } from "@/types/project"; 
 
 export default async function ProjectPage({ params }: { params: { id: string } }) {
     const { id } = await params;
+
+    const currentUser = await getCurrentUser();
+    const currentUserId = currentUser?.id ?? "";
 
     // Bước 1: Lấy dữ liệu song song
     const [
@@ -33,7 +36,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
         getProjectTasks(id)
     ]);
 
-    const project = projectResult.data;
+    const project = projectResult.data as ProjectData;
 
     // KHẮC PHỤC LỖI TS2322: Xử lý giá trị null
     const members = membersResult.data || [];
@@ -50,6 +53,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
             task={task}
             members={members}
             projectId={id}
+            currentUserId={currentUserId}
         />
     ));
 

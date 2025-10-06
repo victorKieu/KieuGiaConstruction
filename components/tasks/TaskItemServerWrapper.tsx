@@ -1,14 +1,16 @@
-// components/tasks/TaskItemServerWrapper.tsx
 // PHẢI LÀ SERVER COMPONENT
 import TaskCommentWrapper from "./TaskCommentWrapper";
 import TaskEditModal from "@/components/tasks/TaskEditModal";
 import { TaskData, MemberData } from "@/types/project";
 import { formatDate } from "@/lib/utils/utils";
-import { Button } from "@/components/ui/button"; // Giả định bạn có Button component
+import { Button } from "@/components/ui/button";
+import { getCurrentUser } from "@/lib/action/authActions"; // ✅ Import hàm lấy user
 
 interface TaskItemServerWrapperProps {
     task: TaskData;
     members: MemberData[];
+    projectId: string;
+    currentUserId: string;
 }
 
 function getStatusLabel(status: string) {
@@ -22,11 +24,12 @@ function getStatusLabel(status: string) {
     }
 }
 
-
 export default async function TaskItemServerWrapper({ task, members }: TaskItemServerWrapperProps) {
-
-    // Đảm bảo lấy được project ID
     const projectId = task.project_id;
+
+    // ✅ Lấy user hiện tại từ server
+    const currentUser = await getCurrentUser();
+    const currentUserId = currentUser?.id ?? "";
 
     return (
         <div
@@ -69,11 +72,11 @@ export default async function TaskItemServerWrapper({ task, members }: TaskItemS
 
             {/* ✅ PHẦN BÌNH LUẬN: GỌI SERVER WRAPPER ĐỂ LẤY USER ID VÀ TASK ID ĐỘNG */}
             <section className="mt-2">
-                
                 <TaskCommentWrapper
                     taskId={task.id}
                     projectId={projectId}
                     members={members}
+                    currentUserId={currentUserId} // ✅ Truyền đúng user id!
                 />
             </section>
         </div>

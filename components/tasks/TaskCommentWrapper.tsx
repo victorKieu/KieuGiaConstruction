@@ -16,6 +16,7 @@ interface TaskCommentWrapperProps {
     taskId: string;
     projectId: string;
     members: MemberData[];
+    currentUserId: string;
 }
 
 export default async function TaskCommentWrapper({ taskId, projectId, members }: TaskCommentWrapperProps) {
@@ -51,7 +52,7 @@ export default async function TaskCommentWrapper({ taskId, projectId, members }:
         <TaskCommentSection
             taskId={taskId}
             projectId={projectId}
-            activeUserId={currentUserId}
+            currentUserId={currentUserId}
             members={membersForSection}
         />
     );

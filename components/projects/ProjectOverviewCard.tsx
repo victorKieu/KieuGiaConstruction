@@ -7,8 +7,8 @@ interface ProjectOverviewCardProps {
         name: string;
         code: string;
         address: string | null;
-        start_date: string | null;
-        end_date: string | null;
+        start_date: string;
+        end_date: string;
         budget: number | null;
         project_type: string | null;
         construction_type: string | null;
