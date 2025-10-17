@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             return false;
         }
     };
-
+    
     const value: AuthContextProps = {
         session,
         user,

@@ -12,6 +12,7 @@ import { formatDate, formatCurrency } from "@/lib/utils/utils";
 import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper'; // ✅ IMPORT SERVER WRAPPER MỚI
 import { getCurrentUser } from "@/lib/action/authActions";
 import { ProjectData } from "@/types/project"; 
+import { Textarea } from '@/components/ui/textarea'; // Thêm Textarea cho input bình luận dài
 
 export default async function ProjectPage({ params }: { params: { id: string } }) {
     const { id } = await params;

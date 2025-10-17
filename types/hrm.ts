@@ -1,9 +1,7 @@
 ﻿// types/hrm.d.ts
 
-// Đường dẫn này cần chính xác đến file Database.ts của bạn.
-// Ví dụ: '@/types/supabase' nếu Database.ts của bạn nằm ở root/types/supabase.ts
-// Hoặc '@/lib/supabase/Database' nếu nó ở root/lib/supabase/Database.ts
 import { Database } from '@/types/supabase'; // <--- HÃY KIỂM TRA LẠI ĐƯỜNG DẪN NÀY CHO CHÍNH XÁC!
+export type project = Database['public']['Tables']['employees']['Row'];
 
 // Định nghĩa kiểu Employee DỰA TRÊN bảng 'employees' từ database
 export type employee = Database['public']['Tables']['employees']['Row'];
@@ -16,6 +14,29 @@ export interface ActionResponse {
     message?: string;
     error?: string;
     userId?: string;
+}
+
+export interface EmployeeData {
+    address: string | null;
+    avatar_url: string | null;
+    birth_date: string | null;
+    code: string;
+    created_at: string;
+    department_id: { name: string } | null;
+    email: string;
+    gender: string | null;
+    hire_date: string;
+    id: string;
+    manager_id: string | null;
+    name: string;
+    phone: string | null;
+    position: string;
+    rank: string | null;
+    role_id: string | null;
+    salary: number | null;
+    status: string;
+    tax_code: string | null;
+    updated_at: string;
 }
 
 export interface GetEmployeesParams {
@@ -36,47 +57,4 @@ export interface Employee {
     name: string;
     email: string;
 }
-export interface UserProfile {
-    id: string;
-    email: string | null;
-    phone: string | null; // From auth.users
-    app_metadata: object;
-    user_metadata: object;
-    created_at: string;
-    updated_at: string;
-    last_sign_in_at: string | null;
 
-    user_type: 'employee' | 'customer' | 'supplier' | null;
-    permission_role_name: string | null;
-
-    profile_id: string | null;
-    profile_name: string | null;
-    profile_avatar_url: string | null;
-    contact_email: string | null;
-    contact_phone: string | null;
-    contact_address: string | null;
-    tax_code: string | null;
-    code: string | null;
-    status: string | null;
-
-    birth_date?: string | null;
-    gender?: string | null;
-    position?: string | null;
-    department?: string | null;
-    hire_date?: string | null;
-    rank?: string | null;
-
-    contact_person?: string | null;
-    notes?: string | null;
-    facebook?: string | null;
-    zalo?: string | null;
-    type?: string | null;
-    website?: string | null;
-    owner_id?: string | null;
-    source?: string | null;
-    tag_id?: string | null;
-
-    payment_terms?: string | null;
-    bank_account?: string | null;
-    bank_name?: string | null;
-}

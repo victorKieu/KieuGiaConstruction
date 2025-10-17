@@ -1,9 +1,10 @@
 ﻿// types/project.ts
+import { Database } from '@/types/supabase';
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "on_hold" | "done" | "todo";
 export type PriorityLevel = "low" | "medium" | "high" | "critical";
+export type project = Database['public']['Tables']['projects']['Row'];
 
-// --- PROJECT DATA ---
-// ✅ Cập nhật toàn bộ ProjectData theo định nghĩa chi tiết mới nhất của bạn
 export interface ProjectData {
     id: string;
     name: string; // Đổi từ project_name
@@ -11,7 +12,7 @@ export interface ProjectData {
     description: string | null;
     address: string | null;
     location: string | null;
-    status: string; // Tạm giữ string, cần định nghĩa lại union type nếu có
+    status: string;
     project_type: string;
     construction_type: string;
     risk_level: string | null;
@@ -19,7 +20,6 @@ export interface ProjectData {
     customer_id: string | null;
     progress: number | null;
     budget: number;
-    // ✅ Bỏ tùy chọn '?' vì định nghĩa mới của bạn yêu cầu nó
     actual_cost: number;
     start_date: string;
     end_date: string;
@@ -34,8 +34,22 @@ export interface ProjectData {
     document_count: number;
 }
 
-// --- MILESTONE DATA ---
-// ✅ Cập nhật MilestoneData theo định nghĩa mới của bạn
+export interface ProjectMember { 
+    id: string;
+    project_id: string;
+    user_id: string;
+    role: string;
+    joined_at: string;
+    employee: {
+        id: string;
+        name: string;
+        email: string;
+        phone?: string;
+        position: string;
+        avatar_url?: string;
+    };
+}   
+
 export interface MilestoneData {
     id: string;
     // name: string;

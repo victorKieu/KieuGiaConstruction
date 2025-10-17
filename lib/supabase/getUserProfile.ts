@@ -1,195 +1,82 @@
-﻿// lib/supabase/getUserProfile.ts
-"use server";
+﻿"use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { UserProfile } from "@/types/hrm"; 
+import { UserProfile } from "@/types/hrm";
 
+/**
+ * Lấy thông tin đầy đủ của người dùng đang đăng nhập bằng cách gọi một hàm RPC duy nhất.
+ * Hàm này hiệu quả hơn vì nó gộp nhiều truy vấn cơ sở dữ liệu thành một lệnh gọi duy nhất.
+ * @returns {Promise<UserProfile | null>} Một đối tượng UserProfile đầy đủ hoặc null nếu không thành công.
+ */
 export async function getUserProfile(): Promise<UserProfile | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
     const supabase = createSupabaseServerClient(token);
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Bước 1: Vẫn kiểm tra xem người dùng đã đăng nhập hay chưa để có thông tin cơ bản
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (userError) {
-        console.error("Lỗi khi lấy thông tin user từ Auth:", userError);
+    if (authError || !user) {
+        console.log("Xác thực thất bại hoặc không có người dùng đăng nhập.");
         return null;
     }
 
-    if (!user) {
-        console.log("Không có user nào đang đăng nhập.");
+    // Bước 2: Gọi hàm RPC 'get_full_user_profile' để lấy toàn bộ dữ liệu chỉ với MỘT lệnh gọi
+    const { data: profileData, error: rpcError } = await supabase
+        .rpc('get_full_user_profile');
+
+    if (rpcError) {
+        console.error("Lỗi khi gọi RPC get_full_user_profile:", rpcError.message);
+        // Trong trường hợp RPC lỗi, chúng ta vẫn có thể trả về thông tin tối thiểu từ auth.users
+        // để giao diện người dùng không bị lỗi hoàn toàn.
+        return {
+            id: user.id,
+            email: user.email || null,
+            phone: user.phone || null,
+            app_metadata: user.app_metadata || {},
+            user_metadata: user.user_metadata || {},
+            created_at: user.created_at || '', // SỬA LỖI: Cung cấp giá trị mặc định
+            updated_at: user.updated_at || '', // SỬA LỖI: Cung cấp giá trị mặc định
+            last_sign_in_at: user.last_sign_in_at || null,
+            user_type: null,
+            permission_role_name: null,
+            profile_id: null,
+            profile_name: user.email || 'Người dùng',
+            profile_avatar_url: '/images/default_avatar.png',
+            contact_email: null,
+            contact_phone: null,
+            contact_address: null,
+            tax_code: null,
+            code: null,
+            status: null,
+        };
+    }
+
+    if (!profileData) {
+        console.log("Hàm RPC không trả về dữ liệu cho người dùng:", user.id);
         return null;
     }
 
-    // Khởi tạo đối tượng profile kết quả với các giá trị mặc định từ Auth User
-    let userProfile: UserProfile = {
-        id: user.id,
-        email: user.email || null, // Đảm bảo email cũng có thể là null
-        phone: user.phone || null, // Ép undefined thành null
-        app_metadata: user.app_metadata || {},
-        user_metadata: user.user_metadata || {},
-        created_at: user.created_at || '', // Ép thành chuỗi rỗng nếu undefined
-        updated_at: user.updated_at || '', // Ép thành chuỗi rỗng nếu undefined
-        last_sign_in_at: user.last_sign_in_at || null, // Ép undefined thành null
-        user_type: null,
-        permission_role_name: null,
-        profile_id: null,
-        profile_name: user.email || 'Người dùng',
-        profile_avatar_url: '/images/default_avatar.png',
-        contact_email: null,
-        contact_phone: null,
-        contact_address: null,
-        tax_code: null,
-        code: null,
-        status: null,
+    // Bước 3: Định hình lại dữ liệu JSON trả về từ RPC để khớp hoàn toàn với type UserProfile
+    // Dùng toán tử spread (...) để gán tự động các thuộc tính có tên trùng khớp
+    const userProfile: UserProfile = {
+        ...profileData, // Gán tất cả dữ liệu từ RPC
+        id: profileData.id || user.id,
+        email: profileData.email || user.email,
+        phone: profileData.phone || user.phone,
+        profile_id: profileData.id, // ID của profile chính là user ID
+        profile_name: profileData.name || profileData.email || 'Người dùng',
+        profile_avatar_url: profileData.avatar_url || '/images/default_avatar.png',
+        // Các trường khác như contact_email, code, status, v.v.
+        // sẽ được tự động gán nếu chúng tồn tại trong `profileData`.
+        // Nếu không, chúng sẽ là `undefined`, và chúng ta cần đảm bảo
+        // kiểu UserProfile cho phép điều này hoặc cung cấp giá trị mặc định.
     };
 
-    // --- Bước 1: Lấy loại người dùng từ public.user_types ---
-    const { data: userRoleData, error: userRoleError } = await supabase
-        .from("user_profiles")
-        .select("role_id(name), type_id(code)")
-        .eq("id", user.id) // sửa lại đúng cột khóa chính
-        .single();
-            
-    if (userRoleError && userRoleError.code !== "PGRST116") {
-        console.error("Lỗi khi lấy user_type:", userRoleError.message);
-        return userProfile;
-    }
-        
-    if (userRoleData?.type_id) {
-        userProfile.user_type = userRoleData.type_id.code;
-        console.log(`Loại người dùng được xác định từ user_types: ${userProfile.user_type}`);
-    } else {
-        console.log(`Không tìm thấy loại người dùng trong user_types cho user ID: ${user.id}. Trả về profile cơ bản.`);
-        return userProfile;
-    }
+    //console.log("UserProfile cuối cùng trả về từ RPC:", userProfile);
 
-    // --- Bước 2 & 3: Lấy thông tin profile cụ thể và vai trò phân quyền ---
-    switch (userProfile.user_type) {
-        case 'employee':
-            const { data: employeeProfile, error: employeeError } = await supabase
-                .from('employees')
-                .select(`
-          id, code, name, position, status, email, phone, hire_date, department, salary, manager_id,
-          birth_date, avatar_url, rank, role_id, address, tax_code, gender,
-          roles(name)
-        `)
-                .eq('id', user.id)
-                .single();
-
-            if (employeeProfile) {
-                userProfile.profile_id = employeeProfile.id || null;
-                userProfile.profile_name = employeeProfile.name || user.email || null;
-                userProfile.permission_role_name = Array.isArray(employeeProfile.role_id)
-                    ? employeeProfile.role_id[0]?.name || null
-                    : (employeeProfile.role_id as { name: string | null })?.name || null; // Cập nhật kiểu cho roles.name
-                userProfile.profile_avatar_url = employeeProfile.avatar_url || '/images/default_avatar.png';
-                userProfile.contact_email = employeeProfile.email || null;
-                userProfile.contact_phone = employeeProfile.phone || null;
-                userProfile.contact_address = employeeProfile.address || null;
-                userProfile.tax_code = employeeProfile.tax_code || null;
-                userProfile.code = employeeProfile.code || null;
-                userProfile.status = employeeProfile.status || null;
-                userProfile.birth_date = employeeProfile.birth_date || null;
-                userProfile.gender = employeeProfile.gender || null;
-                userProfile.position = employeeProfile.position || null;
-                userProfile.department = employeeProfile.department || null;
-                userProfile.hire_date = employeeProfile.hire_date || null;
-                userProfile.rank = employeeProfile.rank || null;
-
-                console.log(`Tìm thấy profile nhân viên. Vai trò phân quyền: ${userProfile.permission_role_name}`);
-            } else if (employeeError && employeeError.code !== 'PGRST116') {
-                console.error("Lỗi khi lấy profile nhân viên:", employeeError.message);
-            }
-            break;
-
-        case 'customer':
-            const { data: customerProfile, error: customerError } = await supabase
-                .from('customers')
-                .select(`
-          id, name, code, email, phone, address, contact_person, tax_code, notes,
-          avatar_url, birthday, facebook, zalo, gender, note, owner_id, source, status, tag_id, type, website,
-          roles(name)
-        `)
-                .eq('id', user.id)
-                .single();
-
-            if (customerProfile) {
-                userProfile.profile_id = customerProfile.id || null;
-                userProfile.profile_name = customerProfile.name || user.email || null;
-                userProfile.permission_role_name = Array.isArray(customerProfile.roles)
-                    ? customerProfile.roles[0]?.name || null
-                    : (customerProfile.roles as { name: string | null })?.name || null;
-                userProfile.profile_avatar_url = customerProfile.avatar_url || '/images/default_avatar.png';
-
-                userProfile.contact_email = customerProfile.email || null;
-                userProfile.contact_phone = customerProfile.phone || null;
-                userProfile.contact_address = customerProfile.address || null;
-                userProfile.tax_code = customerProfile.tax_code || null;
-                userProfile.code = customerProfile.code || null;
-                userProfile.status = customerProfile.status || null;
-
-                userProfile.birth_date = customerProfile.birthday || null;
-                userProfile.gender = customerProfile.gender || null;
-                userProfile.contact_person = customerProfile.contact_person || null;
-                userProfile.notes = customerProfile.notes || (customerProfile as any).note || null;
-                userProfile.facebook = customerProfile.facebook || null;
-                userProfile.zalo = customerProfile.zalo || null;
-                userProfile.type = customerProfile.type || null;
-                userProfile.website = customerProfile.website || null;
-                userProfile.owner_id = customerProfile.owner_id || null;
-                userProfile.source = customerProfile.source || null;
-                userProfile.tag_id = customerProfile.tag_id || null;
-
-                console.log(`Tìm thấy profile khách hàng. Vai trò phân quyền: ${userProfile.permission_role_name}`);
-            } else if (customerError && customerError.code !== 'PGRST116') {
-                console.error("Lỗi khi lấy profile khách hàng:", customerError.message);
-            }
-            break;
-
-        case 'supplier':
-            const { data: supplierProfile, error: supplierError } = await supabase
-                .from('suppliers')
-                .select(`
-          id, name, code, email, phone, address, contact_person, tax_code, notes,
-          avatar_url, status, payment_terms, bank_account, bank_name,
-          roles(name)
-        `)
-                .eq('id', user.id)
-                .single();
-
-            if (supplierProfile) {
-                userProfile.profile_id = supplierProfile.id || null;
-                userProfile.profile_name = supplierProfile.name || user.email || null;
-                userProfile.permission_role_name = Array.isArray(supplierProfile.roles)
-                    ? supplierProfile.roles[0]?.name || null
-                    : (supplierProfile.roles as { name: string | null })?.name || null;
-                userProfile.profile_avatar_url = supplierProfile.avatar_url || '/images/default_avatar.png';
-
-                userProfile.contact_email = supplierProfile.email || null;
-                userProfile.contact_phone = supplierProfile.phone || null;
-                userProfile.contact_address = supplierProfile.address || null;
-                userProfile.tax_code = supplierProfile.tax_code || null;
-                userProfile.code = supplierProfile.code || null;
-                userProfile.status = supplierProfile.status || null;
-
-                userProfile.contact_person = supplierProfile.contact_person || null;
-                userProfile.notes = supplierProfile.notes || null;
-                userProfile.payment_terms = supplierProfile.payment_terms || null;
-                userProfile.bank_account = supplierProfile.bank_account || null;
-                userProfile.bank_name = supplierProfile.bank_name || null;
-
-                console.log(`Tìm thấy profile nhà cung cấp. Vai trò phân quyền: ${userProfile.permission_role_name}`);
-            } else if (supplierError && supplierError.code !== 'PGRST116') {
-                console.error("Lỗi khi lấy profile nhà cung cấp:", supplierError.message);
-            }
-            break;
-
-        default:
-            console.log(`Loại người dùng '${userProfile.user_type}' được tìm thấy trong user_roles nhưng không có logic profile tương ứng.`);
-            break;
-    }
-    console.log("UserProfile cuối cùng trả về:", userProfile); // Log toàn bộ userProfile trước khi return
-    return userProfile;
+    // Ép kiểu cuối cùng để đảm bảo tính nhất quán với kiểu UserProfile đã định nghĩa
+    return userProfile as UserProfile;
 }
+

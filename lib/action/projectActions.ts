@@ -5,13 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { isValidUUID } from "@/lib/utils/uuid";
 import { getCurrentUser } from "./authActions"; // Import từ authActions
-
-// --- Import Types từ "@/types/project" ---
-// Giả định đây là đường dẫn đúng cho các kiểu dữ liệu
 import { ProjectData, MemberData, DocumentData, FinanceData, MilestoneData, TaskData, CommentData } from "@/types/project";
-
-// --- Định nghĩa Kiểu Trả Về Thống Nhất ---
-
 interface ActionError {
     message: string;
     code: string;
@@ -119,7 +113,7 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
         if (Array.isArray(item.employee) && item.employee.length > 0) {
             employeeDetails = item.employee[0];
         }
-        // 2. Nếu item.employee là ĐỐI TƯỢNG (hoặc null): Giữ nguyên
+        // 2. Nếu item.employee là ĐỐI TƯỢỢNG (hoặc null): Giữ nguyên
         else if (item.employee && typeof item.employee === 'object') {
             employeeDetails = item.employee;
         }
@@ -794,7 +788,6 @@ export async function createComment(
  * Cập nhật nội dung bình luận. (Chữ ký được điều chỉnh cho useFormState)
  */
 export async function updateComment(
-    commentId: string,
     prevState: ActionFormState,
     formData: FormData
 ): Promise<ActionFormState> {
@@ -807,7 +800,10 @@ export async function updateComment(
     }
 
     const content = formData.get("content") as string;
-    const projectId = formData.get("project_id") as string; // Cần Project ID để revalidate
+    const commentId = formData.get("comment_id") as string;
+    const projectId = formData.get("project_id") as string;
+
+
     if (!content || content.trim().length === 0) {
         return { success: false, error: "Nội dung bình luận không được để trống." };
     }
@@ -816,32 +812,43 @@ export async function updateComment(
         return { success: false, error: "ID Bình luận hoặc ID Dự án không hợp lệ." };
     }
 
-    const { error } = await supabase!
+    // First, update the comment
+    const { error: updateError } = await supabase!
         .from("project_comments")
         .update({ content: content.trim(), updated_at: new Date().toISOString() })
         .eq("id", commentId)
-        .eq("created_by", currentUser.id); // Đảm bảo chỉ chủ sở hữu mới có thể sửa
+        .eq("created_by", currentUser.id); // Ensure only the owner can edit
 
-    if (error) {
-        console.error("Lỗi khi cập nhật bình luận:", error.message);
-        return { success: false, error: error.message };
+    if (updateError) {
+        console.error("Lỗi khi cập nhật bình luận:", updateError.message);
+        return { success: false, error: updateError.message };
     }
 
-    // Revalidate Task Detail page
-    revalidatePath(`/projects/${projectId}/tasks`); // Revalidate path chung
+    // After successful update, get the task_id for revalidation
+    const { data: commentData, error: fetchError } = await supabase
+        .from("project_comments")
+        .select("task_id")
+        .eq("id", commentId)
+        .single();
+
+    if (fetchError || !commentData?.task_id) {
+        console.error("Lỗi khi lấy task_id để revalidate:", fetchError?.message);
+        // Return success but with a warning that revalidation might have failed
+        return { success: true, message: "Bình luận đã được cập nhật, nhưng có lỗi khi làm mới trang." };
+    }
+
+    // Revalidate the specific task detail page
+    revalidatePath(`/projects/${projectId}/tasks/${commentData.task_id}`);
     return { success: true, message: "Bình luận đã được cập nhật thành công." };
 }
+
 
 /**
  * Xóa bình luận. (Chữ ký được điều chỉnh cho useActionState)
  */
 export async function deleteComment(
-    commentId: string,
-    projectId: string,
-    taskId: string,
-    // ✅ THAY ĐỔI: Thêm tham số state (tên là prevState để không sử dụng)
     prevState: ActionFormState,
-    formData: FormData // Dùng để duy trì chữ ký 
+    formData: FormData
 ): Promise<ActionFormState> {
     const { client: supabase, error: authError } = await getSupabaseClient();
     if (authError) return { success: false, error: authError.message };
@@ -851,41 +858,67 @@ export async function deleteComment(
         return { success: false, error: "Bạn cần đăng nhập để xóa bình luận." };
     }
 
-    if (!isValidUUID(commentId) || !isValidUUID(projectId) || !isValidUUID(taskId)) {
-        return { success: false, error: "ID Bình luận, ID Dự án hoặc ID Công việc không hợp lệ." };
+    const commentId = formData.get("comment_id") as string;
+    const projectId = formData.get("project_id") as string;
+
+    if (!isValidUUID(commentId) || !isValidUUID(projectId)) {
+        return { success: false, error: "ID Bình luận hoặc ID Dự án không hợp lệ." };
     }
 
-    // Xóa bình luận (và các reply con của nó nếu có trigger Cascade)
-    const { error } = await supabase!
+    // First, get the task_id for revalidation before deleting
+    const { data: commentData, error: fetchError } = await supabase
+        .from("project_comments")
+        .select("task_id")
+        .eq("id", commentId)
+        .single();
+
+    if (fetchError || !commentData?.task_id) {
+        console.error("Lỗi khi lấy task_id để revalidate:", fetchError?.message);
+        // Don't block deletion, but we won't be able to revalidate
+    }
+
+    // Now, delete the comment
+    const { error: deleteError } = await supabase!
         .from("project_comments")
         .delete()
         .eq("id", commentId)
-        .eq("created_by", currentUser.id); // 
+        .eq("created_by", currentUser.id); // Ensure only the owner can delete
 
-    if (error) {
-        console.error("Lỗi khi xóa bình luận:", error.message);
-        return { success: false, error: error.message };
+    if (deleteError) {
+        console.error("Lỗi khi xóa bình luận:", deleteError.message);
+        return { success: false, error: deleteError.message };
     }
 
-    // Revalidate Task Detail page
-    revalidatePath(`/projects/${projectId}/tasks/${taskId}`);
+    // Revalidate if we got the task_id
+    if (commentData?.task_id) {
+        revalidatePath(`/projects/${projectId}/tasks/${commentData.task_id}`);
+    }
 
     return { success: true, message: "Bình luận đã được xóa thành công." };
 }
+
 // Hàm trợ giúp tính toán lại likes_count
 async function recountLikes(supabase: any, targetTable: 'project_tasks' | 'project_comments', targetId: string, likeTable: 'task_likes' | 'comment_likes', idColumn: 'task_id' | 'comment_id'): Promise<number> {
-    const { count } = await supabase! // ✅ Thêm !
+    const { count, error: countError } = await supabase
         .from(likeTable)
         .select('*', { count: 'exact', head: true })
         .eq(idColumn, targetId);
 
+    if (countError) {
+        console.error(`Error counting likes for ${targetTable}:`, countError.message);
+        return 0;
+    }
+
     const newCount = count ?? 0;
 
-    // Cập nhật trường likes_count trên bảng đích
-    await supabase! // ✅ Thêm !
+    const { error: updateError } = await supabase
         .from(targetTable)
         .update({ likes_count: newCount })
         .eq("id", targetId);
+
+    if (updateError) {
+        console.error(`Error updating likes_count for ${targetTable}:`, updateError.message);
+    }
 
     return newCount;
 }
@@ -894,135 +927,73 @@ async function recountLikes(supabase: any, targetTable: 'project_tasks' | 'proje
 // BÌNH LUẬN & LIKES ACTIONS
 // ==========================================================
 
-/**
- * Bật/Tắt trạng thái Thích cho một Task.
- * Logic: Quản lý bảng task_likes và cập nhật likes_count trên project_tasks.
- */
 export async function toggleTaskLike(taskId: string, isLiking: boolean): Promise<ActionResponse> {
     const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    if (authError || !supabase) return { success: false, error: authError.message };
 
     const currentUser = await getCurrentUser();
-
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để thực hiện thao tác Thích." };
-    }
+    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
 
     const userId = currentUser.id;
 
     if (isLiking) {
-        // THÍCH: Thêm bản ghi vào bảng task_likes
-        const { error: insertError } = await supabase!
+        const { error } = await supabase
             .from("task_likes")
-            // Sử dụng upsert để tránh trùng lặp nếu người dùng nhấn quá nhanh
-            .upsert({ task_id: taskId, user_id: userId, created_at: new Date().toISOString() })
-            .select()
-            .single();
+            .insert({ task_id: taskId, user_id: userId, created_at: new Date().toISOString() });
 
-        if (insertError) {
-            console.error("Lỗi khi thêm Like vào task_likes:", insertError.message);
-            return { success: false, error: "Không thể Thích công việc. Vui lòng thử lại." };
+        if (error && error.code !== '23505') { // Bỏ qua lỗi trùng lặp key
+            console.error("Error liking task:", error.message);
+            return { success: false, error: "Không thể thích công việc." };
         }
     } else {
-        // BỎ THÍCH: Xóa bản ghi khỏi bảng task_likes
-        const { error: deleteError } = await supabase!
-            .from("task_likes")
-            .delete()
-            .eq("task_id", taskId)
-            .eq("user_id", userId);
-
-        if (deleteError) {
-            console.error("Lỗi khi xóa Like khỏi task_likes:", deleteError.message);
-            return { success: false, error: "Không thể Bỏ Thích công việc. Vui lòng thử lại." };
+        const { error } = await supabase.from("task_likes").delete().eq("task_id", taskId).eq("user_id", userId);
+        if (error) {
+            console.error("Error unliking task:", error.message);
+            return { success: false, error: "Không thể bỏ thích công việc." };
         }
     }
 
-    // 1. Cập nhật likes_count trong project_tasks (thông qua hàm trợ giúp)
-    const newCount = await recountLikes(supabase, 'project_tasks', taskId, 'task_likes', 'task_id');
-
-    // 2. Lấy project_id để revalidate
-    const { data: taskData, error: fetchError } = await supabase!
-        .from("project_tasks")
-        .select("project_id")
-        .eq("id", taskId)
-        .single();
-
-    if (fetchError || !taskData?.project_id) {
-        console.error("Lỗi khi lấy project_id để revalidate:", fetchError?.message);
-        // Vẫn trả về thành công nếu lỗi chỉ là ở bước revalidate
-    } else {
-        // 3. Revalidate path
+    await recountLikes(supabase, 'project_tasks', taskId, 'task_likes', 'task_id');
+    const { data: taskData } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
+    if (taskData?.project_id) {
         revalidatePath(`/projects/${taskData.project_id}`);
     }
 
-
-    return {
-        success: true,
-        message: `Task đã được ${isLiking ? 'Thích' : 'Bỏ Thích'}! (Likes: ${newCount})`
-    };
+    return { success: true };
 }
 
-/**
- * Bật/Tắt trạng thái Thích cho một Comment.
- * Logic: Quản lý bảng comment_likes và cập nhật likes_count trên project_comments.
- */
 export async function toggleCommentLike(commentId: string, isLiking: boolean): Promise<ActionResponse> {
     const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    if (authError || !supabase) return { success: false, error: authError.message };
 
     const currentUser = await getCurrentUser();
-
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để thực hiện thao tác Thích." };
-    }
+    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
 
     const userId = currentUser.id;
 
     if (isLiking) {
-        // THÍCH: Thêm bản ghi vào bảng comment_likes
-        const { error: insertError } = await supabase!
+        const { error } = await supabase
             .from("comment_likes")
-            .upsert({ comment_id: commentId, user_id: userId, created_at: new Date().toISOString() })
-            .select()
-            .single();
+            .insert({ comment_id: commentId, user_id: userId, created_at: new Date().toISOString() });
 
-        if (insertError) {
-            console.error("Lỗi khi thêm Like vào comment_likes:", insertError.message);
-            return { success: false, error: "Không thể Thích bình luận. Vui lòng thử lại." };
+        if (error && error.code !== '23505') { // Bỏ qua lỗi trùng lặp key
+            console.error("Error liking comment:", error.message);
+            return { success: false, error: "Không thể thích bình luận." };
         }
     } else {
-        // BỎ THÍCH: Xóa bản ghi khỏi bảng comment_likes
-        const { error: deleteError } = await supabase!
-            .from("comment_likes")
-            .delete()
-            .eq("comment_id", commentId)
-            .eq("user_id", userId);
-
-        if (deleteError) {
-            console.error("Lỗi khi xóa Like khỏi comment_likes:", deleteError.message);
-            return { success: false, error: "Không thể Bỏ Thích bình luận. Vui lòng thử lại." };
+        const { error } = await supabase.from("comment_likes").delete().eq("comment_id", commentId).eq("user_id", userId);
+        if (error) {
+            console.error("Error unliking comment:", error.message);
+            return { success: false, error: "Không thể bỏ thích bình luận." };
         }
     }
 
-    // 1. Cập nhật likes_count trong project_comments (thông qua hàm trợ giúp)
-    const newCount = await recountLikes(supabase, 'project_comments', commentId, 'comment_likes', 'comment_id');
-
-    // 2. Lấy project_id để revalidate (cần revalidate trang project để cập nhật giao diện)
-    const { data: commentData, error: fetchError } = await supabase!
-        .from("project_comments")
-        .select("project_id")
-        .eq("id", commentId)
-        .single();
-
-    if (fetchError || !commentData?.project_id) {
-        console.error("Lỗi khi lấy project_id để revalidate comment:", fetchError?.message);
-    } else {
-        // 3. Revalidate path của Project
-        revalidatePath(`/projects/${commentData.project_id}`);
+    await recountLikes(supabase, 'project_comments', commentId, 'comment_likes', 'comment_id');
+    const { data: commentData } = await supabase.from("project_comments").select("project_id, task_id").eq("id", commentId).single();
+    if (commentData?.project_id && commentData.task_id) {
+        revalidatePath(`/projects/${commentData.project_id}/tasks/${commentData.task_id}`);
     }
 
-    return {
-        success: true,
-        message: `Bình luận đã được ${isLiking ? 'Thích' : 'Bỏ Thích'}! (Likes: ${newCount})`
-    };
+    return { success: true };
 }
+

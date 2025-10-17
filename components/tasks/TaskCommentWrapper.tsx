@@ -22,8 +22,7 @@ interface TaskCommentWrapperProps {
 export default async function TaskCommentWrapper({ taskId, projectId, members }: TaskCommentWrapperProps) {
     // Lấy thông tin người dùng an toàn trên Server
     const currentUser = await getCurrentUser();
-    console.log("DEBUG: Kết quả UserProfile từ Server:", currentUser);
-
+    
     // Xử lý trường hợp không tìm thấy người dùng
     if (!currentUser || !currentUser.id) {
         // ✅ CẬP NHẬT: Hiển thị thông báo "Vui lòng đăng nhập để bình luận."

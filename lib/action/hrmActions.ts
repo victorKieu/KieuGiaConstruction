@@ -94,7 +94,7 @@ export async function createFullEmployeeAccount(formData: FormData): Promise<Act
             position: position,
             phone: phone,
             address: address,
-            department: department,
+            department_id: department,
             hire_date: hireDate,
             birth_date: birthDate, 
             status: 'active',
@@ -154,7 +154,7 @@ export async function getEmployees({
             position,
             phone,
             address,
-            department,
+            department_id,
             hire_date,
             birth_date,
             status,
@@ -261,7 +261,7 @@ export async function getEmployeeById(id: string): Promise<Employee | null> {
             position,
             phone,
             address,
-            department,
+            department_id,
             hire_date,
             birth_date,
             status,
@@ -320,7 +320,7 @@ export async function updateEmployeeProfile(id: string, formData: FormData): Pro
     if (position) updateData.position = position;
     if (phone !== null) updateData.phone = phone;
     if (address !== null) updateData.address = address;
-    if (department !== null) updateData.department = department;
+    if (department !== null) updateData.department_id = department;
     if (hire_date !== null) updateData.hire_date = hire_date;
     if (birth_date_from_form !== null) updateData.birth_date = birth_date_from_form;
     if (status !== null) updateData.status = status;

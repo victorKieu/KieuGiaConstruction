@@ -95,28 +95,9 @@ export default function ProjectMilestoneTab({ projectId, tasks, members, taskFee
                     </div>
                     <span className="text-sm font-semibold text-blue-600">Tiến độ: {task.progress || 0}%</span>
                 </div>
-
-                {/* FOOTER - Phần Tương tác và Bình luận (Chỉ giữ lại placeholder) */}
-                <div className="flex items-center space-x-4 text-gray-500 text-sm mb-3">
-                    <Button variant="ghost" className="flex items-center px-2 text-sm text-blue-600 hover:bg-blue-50">
-                        👍 Thích (0)
-                    </Button>
-                    <Button variant="ghost" className="flex items-center px-2 text-sm text-gray-600 hover:bg-gray-100">
-                        💬 Bình luận
-                    </Button>
-                </div>
-
-                {/* LƯU Ý: Phần Bình luận SẼ BỊ MẤT trong chế độ Fallback này */}
-                <section className="mt-6 pt-4 border-t">
-                    <p className="text-sm text-red-500">
-                        ⚠️ Không thể tải hệ thống bình luận (Lỗi truyền prop `taskFeed`).
-                    </p>
-                </section>
             </div>
         ));
     }
-    // --- KẾT THÚC LOGIC HIỂN THỊ TASK ---
-
 
     return (
         <div className="space-y-6">

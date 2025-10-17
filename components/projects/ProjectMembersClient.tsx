@@ -35,7 +35,7 @@ export default function ProjectMembersClient({
 
         setMemberList(
             (data || []).map((m: any) => ({
-                employee_id: m.employee_id,
+                id: m.m.employees.id,
                 name: m.employees?.name ?? "",
                 email: m.employees?.email ?? "",
                 role: m.role,
