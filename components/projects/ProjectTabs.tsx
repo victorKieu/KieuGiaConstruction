@@ -15,21 +15,22 @@ import {
     TaskData,
 } from "@/types/project";
 interface ProjectTabsProps {
+    projectId: string; // <-- THÊM projectId VÀO INTERFACE
     project: ProjectData;
     milestones: MilestoneData[];
     members: MemberData[];
     documents: DocumentData[];
     finance: FinanceData;
-    tasks: TaskData[]; // ✅ Tasks là một mảng TaskData
-    taskFeed: React.ReactNode; // ✅ taskFeed đã được Server render
+    tasks: TaskData[];
+    taskFeed: React.ReactNode;
     membersCount: number;
     documentsCount: number;
 }
 
 // ✅ Danh sách tab
 const tabs = ["Tổng quan", "Công việc & Mốc thời gian", "Nhân sự", "Tài liệu", "Tài chính"];
-
 export default function ProjectTabs({
+    projectId,
     project,
     milestones,
     members,
@@ -65,7 +66,7 @@ export default function ProjectTabs({
                 <ProjectOverviewTab project={project} milestones={milestones} />
             )}
             {activeTab === "Nhân sự" && <ProjectMembersTab members={members} />}
-            {activeTab === "Tài liệu" && <ProjectDocumentsTab documents={documents} />}
+            {activeTab === "Tài liệu" && <ProjectDocumentsTab projectId={projectId} documents={documents} />}
             {activeTab === "Tài chính" && <ProjectFinanceTab finance={finance} />}
             {activeTab === "Công việc & Mốc thời gian" && (
                 <ProjectMilestoneTab

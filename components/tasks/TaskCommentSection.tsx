@@ -96,12 +96,10 @@ export default function TaskCommentSection({ taskId, projectId, members, current
     const [isTaskLikePending, startTaskLikeTransition] = useTransition();
     const [totalCommentCount, setTotalCommentCount] = useState(0);
     const [currentUserProfile, setCurrentUserProfile] = useState<CurrentUserProfile | null>(null);
-
     const createCommentBound = createComment.bind(null, projectId, taskId);
     const [createState, createAction, isCreatePending] = useActionState(createCommentBound, initialState);
-
     const triggerRefresh = useCallback(() => setRefreshKey(prev => prev + 1), []);
-
+ 
     useEffect(() => {
         const fetchCurrentUserProfile = async () => {
             if (!currentUserId) return;
@@ -114,7 +112,7 @@ export default function TaskCommentSection({ taskId, projectId, members, current
             if (data) {
                 setCurrentUserProfile(data);
             } else {
-                console.error("Could not fetch current user profile:", error?.message);
+                console.error("không thể lấy user profile:", error?.message);
                 setCurrentUserProfile({ name: 'Bạn', avatar_url: undefined });
             }
         };

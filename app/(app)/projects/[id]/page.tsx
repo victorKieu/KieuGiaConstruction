@@ -98,16 +98,14 @@ export default async function ProjectPage({ params }: { params: { id: string } }
             {/* Tabs - Phần nội dung chi tiết sẽ nằm trong này */}
             <div className="bg-white p-6 rounded-lg shadow">
                 <ProjectTabs
+                    projectId={id}
                     project={project}
                     members={members}
                     documents={documents}
                     finance={finance}
                     milestones={milestones}
                     tasks={tasks}
-
-                    // ✅ TRUYỀN TASK FEED ĐÃ CÓ BÌNH LUẬN VÀO ĐÂY
                     taskFeed={taskFeedOutput}
-
                     membersCount={members.length}
                     documentsCount={documents.length}
                 />

@@ -5,33 +5,43 @@ export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" |
 export type PriorityLevel = "low" | "medium" | "high" | "critical";
 export type project = Database['public']['Tables']['projects']['Row'];
 
+type ProjectManager = {
+    name: string;
+} | null;
+
+type ProjectManagerFK = string | null;
 export interface ProjectData {
     id: string;
-    name: string; // Đổi từ project_name
+    name: string;
     code: string;
     description: string | null;
     address: string | null;
-    location: string | null;
     status: string;
     project_type: string;
-    construction_type: string;
+    construction_type: string | null;
     risk_level: string | null;
-    project_manager: string | null;
     customer_id: string | null;
     progress: number | null;
     budget: number;
-    actual_cost: number;
+    actual_cost: number | null;
     start_date: string;
     end_date: string;
-    created_at: string;
-    updated_at: string;
+    created_at: string; // Ensure this is not null if DB requires it
+    updated_at: string | null;
+    project_manager: ProjectManagerFK;
     customers: { name: string } | null;
-    manager?: { name: string } | null;
-    created_by: string;
-    created?: { name: string } | null;
-    progress_percent: number;
-    member_count: number;
-    document_count: number;
+    employees: ProjectManager;
+    created_by: string | null; // Sửa type cho khớp supabase.ts
+    created?: { name: string } | null; // Có thể bỏ nếu không dùng JOIN này
+    progress_percent?: number;
+    member_count?: number;
+    document_count?: number;
+    total_tasks?: number | null;
+    estimated_cost_total?: number | null;
+    quoted_amount_total?: number | null;
+    total_income?: number | null;
+    total_expenses?: number | null;
+    contract_value?: number | null;
 }
 
 export interface ProjectMember { 

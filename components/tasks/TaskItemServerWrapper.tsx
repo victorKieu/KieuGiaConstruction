@@ -3,9 +3,6 @@ import TaskCommentWrapper from "./TaskCommentWrapper";
 import TaskEditModal from "@/components/tasks/TaskEditModal";
 import { TaskData, MemberData } from "@/types/project";
 import { formatDate } from "@/lib/utils/utils";
-import { Button } from "@/components/ui/button";
-import { getCurrentUser } from "@/lib/action/authActions"; // ✅ Import hàm lấy user
-
 interface TaskItemServerWrapperProps {
     task: TaskData;
     members: MemberData[];
@@ -27,16 +24,12 @@ function getStatusLabel(status: string) {
 export default async function TaskItemServerWrapper({ task, members }: TaskItemServerWrapperProps) {
     const projectId = task.project_id;
 
-    // ✅ Lấy user hiện tại từ server
-    const currentUser = await getCurrentUser();
-    const currentUserId = currentUser?.id ?? "";
-
     return (
         <div
             key={task.id}
             className="p-5 border rounded-xl shadow-md bg-white grid gap-4 hover:shadow-lg transition duration-200"
         >
-            {/* HEADER CỦA TASK (Thông tin chính, nút chỉnh sửa/xóa) */}
+            {/* Header */}
             <header className="flex justify-between items-start mb-2">
                 <h2 className="text-xl font-bold text-gray-900">{task.name}</h2>
                 <TaskEditModal task={task} members={members} />
@@ -74,9 +67,9 @@ export default async function TaskItemServerWrapper({ task, members }: TaskItemS
             <section className="mt-2">
                 <TaskCommentWrapper
                     taskId={task.id}
-                    projectId={projectId}
+                    projectId={projectId} // Truyền projectId xuống
                     members={members}
-                    currentUserId={currentUserId} // ✅ Truyền đúng user id!
+                // Không cần truyền currentUserId nữa
                 />
             </section>
         </div>

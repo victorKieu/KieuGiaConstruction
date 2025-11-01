@@ -1,18 +1,19 @@
-// lib/auth/auth-context.tsx
-"use client"; // Đảm bảo rằng đây là client component
+// --- START OF FILE auth-context.tsx (PHIÊN BẢN CẦN THAY ĐỔI) ---
+
+"use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import supabase from '@/lib/supabase/client'; // Đảm bảo đường dẫn này đúng
+import supabase from '@/lib/supabase/client';
 import type { Session, User, SupabaseClient } from "@supabase/supabase-js";
-import { Database } from "@/types/supabase"; // Đảm bảo đường dẫn này đúng
-import Cookies from "js-cookie";
+import { Database } from "@/types/supabase";
+import Cookies from "js-cookie"; // <-- Thêm lại js-cookie
 
 interface AuthContextProps {
     session: Session | null;
     user: User | null;
     signOut: () => Promise<void>;
     supabase: SupabaseClient<Database>;
-    signIn: (email: string, password: string) => Promise<void>; // Đã đổi kiểu trả về thành Promise<void>
+    signIn: (email: string, password: string) => Promise<void>;
     isLoading: boolean;
     error: any;
     checkPermission: (permission: string) => Promise<boolean>;
@@ -29,98 +30,79 @@ export function useAuth() {
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<any>(null);
 
     useEffect(() => {
         let mounted = true;
 
-        const getSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+        const handleAuthState = (currentSession: Session | null) => {
             if (mounted) {
-                setSession(session);
-                setUser(session?.user ?? null);
-                if (session?.access_token) {
-                    Cookies.set("sb-oshquiqzokyyawgoemql-auth-token", session.access_token, {
+                setSession(currentSession);
+                setUser(currentSession?.user ?? null);
+                // Ghi access_token vào cookie cho Server Components/Actions/Middleware đọc
+                if (currentSession?.access_token) {
+                    Cookies.set("sb-access-token", currentSession.access_token, {
                         path: "/",
-                        secure: true,
+                        secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
                         sameSite: "lax",
-                        expires: 7,
-                    });
-                }
-            }
-        };
-        getSession();
-
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (mounted) {
-                setSession(session);
-                setUser(session?.user ?? null);
-                if (session?.access_token) {
-                    Cookies.set("sb-oshquiqzokyyawgoemql-auth-token", session.access_token, {
-                        path: "/",
-                        secure: true,
-                        sameSite: "lax",
-                        expires: 7,
+                        expires: 7, // Hoặc thời gian hết hạn của session Supabase
                     });
                 } else {
-                    Cookies.remove("sb-oshquiqzokyyawgoemql-auth-token");
+                    Cookies.remove("sb-access-token");
                 }
+                setIsLoading(false);
             }
+        };
+
+        const getSessionInitial = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            handleAuthState(session);
+        };
+        getSessionInitial();
+
+        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+            handleAuthState(session);
         });
 
         return () => {
             mounted = false;
             listener?.subscription.unsubscribe();
         };
-    }, [supabase]);
+        // Dependency supabase là cần thiết nếu supabase client có thể thay đổi, nhưng thường là không.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Chỉ chạy 1 lần khi component mount
 
     const signOut = async () => {
         setIsLoading(true);
         setError(null);
         try {
             await supabase.auth.signOut();
-            setSession(null);
-            setUser(null);
-            Cookies.remove("sb-oshquiqzokyyawgoemql-auth-token");
+            // handleAuthState sẽ tự cập nhật và xóa cookie
         } catch (e) {
             setError(e);
-            throw e; // Ném lỗi để bên ngoài có thể bắt
+            throw e;
         } finally {
             setIsLoading(false);
         }
     };
 
-    const signIn = async (email: string, password: string): Promise<void> => { // Đã thay đổi kiểu trả về thành Promise<void>
+    const signIn = async (email: string, password: string): Promise<void> => {
         setIsLoading(true);
-        setError(null); // Reset lỗi trước khi thử đăng nhập
+        setError(null);
         try {
-            const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+            const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
             if (authError) {
-                // RẤT QUAN TRỌNG: Ném lỗi để `LoginForm` có thể bắt và hiển thị
                 console.error("Lỗi đăng nhập từ Supabase Auth:", authError.message);
-                setError(authError); // Set lỗi vào state của context
-                throw new Error(authError.message || "Đăng nhập thất bại."); // Ném lỗi cụ thể
+                setError(authError);
+                throw new Error(authError.message || "Đăng nhập thất bại.");
             }
-
-            // Nếu không có lỗi, session và user sẽ được cập nhật bởi onAuthStateChange listener
-            // và cookies sẽ được set.
-            if (data.session?.access_token) {
-                Cookies.set("sb-oshquiqzokyyawgoemql-auth-token", data.session.access_token, {
-                    path: "/",
-                    secure: true,
-                    sameSite: "lax",
-                    expires: 7,
-                });
-            }
-
-            console.log("Đăng nhập thành công trong AuthProvider. Session data:", data); // Debugging
-            // Không cần return gì ở đây vì kiểu trả về là Promise<void>
-        } catch (e: any) { // Bắt các lỗi không phải từ Supabase Auth (ví dụ: lỗi mạng)
+            // handleAuthState sẽ tự cập nhật và ghi cookie
+        } catch (e: any) {
             console.error("Lỗi không mong muốn trong signIn (AuthContext):", e.message);
             setError(e);
-            throw new Error(e.message || "Đã xảy ra lỗi không mong muốn.");
+            throw e;
         } finally {
             setIsLoading(false);
         }
@@ -129,28 +111,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const checkPermission = async (permissionToCheck: string): Promise<boolean> => {
         if (!user) return false;
         try {
-            const { data: permissions, error } = await supabase
+            const { data, error } = await supabase
                 .from("user_permissions")
-                .select("permission_id")
+                .select(`
+                    permissions ( code )
+                `)
                 .eq("user_id", user.id);
+
             if (error) {
-                console.error("Lỗi khi lấy quyền của người dùng:", error);
+                console.error("Lỗi khi lấy quyền (đã tối ưu):", error);
                 return false;
             }
-            if (!permissions) return false;
-            const permissionIds = permissions.map((p) => p.permission_id);
-            if (permissionIds.length === 0) return false;
-            const { data: perms } = await supabase
-                .from("permissions")
-                .select("code")
-                .in("id", permissionIds);
-            return perms?.some((p) => p.code === permissionToCheck) || false;
+
+            if (!data) return false;
+
+            return data.some((item) =>
+                item.permissions.some(p => p.code === permissionToCheck)
+            );
+
         } catch (error) {
             console.error("Lỗi không xác định khi kiểm tra quyền:", error);
             return false;
         }
     };
-    
+
     const value: AuthContextProps = {
         session,
         user,
@@ -164,7 +148,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return (
         <AuthContext.Provider value={value}>
-            {children}
+            {!isLoading && children}
         </AuthContext.Provider>
     );
 };

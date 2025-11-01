@@ -3,36 +3,26 @@ import Dashboard from '@/components/dashboard/Dashboard'
 import { cookies } from "next/headers";
 
 export default async function DashboardPage() {
-    const cookieStore = await cookies(); // phải await
+
+    // --- PHẦN 1: Lấy User ---
+    const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
     const supabase = createSupabaseServerClient(token);
 
-    // 1. Lấy thông tin user đang đăng nhập
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    if (userError) {
+    if (userError || !user) {
         return (
             <div className="flex items-center justify-center h-screen">
                 <div className="text-center">
                     <h1 className="text-2xl font-bold mb-4">Lỗi xác thực</h1>
-                    <p className="text-muted-foreground mb-4">{userError.message}</p>
+                    <p className="text-muted-foreground mb-4">{userError?.message || "Bạn cần đăng nhập."}</p>
                 </div>
             </div>
         )
     }
 
-    if (!user) {
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold mb-4">Truy cập bị từ chối</h1>
-                    <p className="text-muted-foreground mb-4">Bạn cần đăng nhập để xem trang dashboard.</p>
-                </div>
-            </div>
-        )
-    }
-
-    // 2. Lấy role/phân quyền user (ví dụ từ bảng user_profiles)
+    // --- PHẦN 2: Lấy Role ---
     const { data: userRole, error: roleError } = await supabase
         .from('user_profiles')
         .select('type_id')
@@ -50,73 +40,36 @@ export default async function DashboardPage() {
         );
     }
 
-    // 3. Fetch dữ liệu dashboard tuỳ theo quyền
-    let overviewStats = null,
-        designConsulting: unknown[] = [],
-        constructionSupervision: unknown[] = [],
-        civilProjects: unknown[] = [],
-        industrialProjects: unknown[] = [],
-        warrantyTasks: unknown[] = [],
-        customerManagement = null,
-        inventoryLevels: unknown[] = [];
+    // --- PHẦN 3: Fetch dữ liệu (Chỉ 1 lần gọi RPC duy nhất) ---
+    const { data: dashboardData, error: rpcError } = await supabase
+        .rpc('get_dashboard_data_by_role', {
+            p_user_id: user.id,
+            p_user_role: userRole?.type_id ?? 'default' // 'default' là vai trò dự phòng
+        });
 
-    try {
-        if (userRole?.type_id === 'admin') {
-            overviewStats = (await supabase.from('overview_statistics').select('*').single()).data;
-            designConsulting = (await supabase.from('design_consulting').select('task, status, deadline').order('deadline', { ascending: true }).limit(5)).data ?? [];
-            constructionSupervision = (await supabase.from('construction_supervision_status').select('*')).data ?? [];
-            civilProjects = (await supabase.from('civil_construction_projects').select('*')).data ?? [];
-            industrialProjects = (await supabase.from('industrial_construction_projects').select('*')).data ?? [];
-            warrantyTasks = (await supabase.from('warranty_tasks').select('*')).data ?? [];
-            customerManagement = (await supabase
-                .from('customers')
-                .select(`
-                    total_customers: count(*),
-                    new_inquiries: count(id)
-                `)
-                .single()
-            ).data;
-            inventoryLevels = (await supabase.from('inventory').select('item_name, level')).data ?? [];
-        } else {
-            overviewStats = (await supabase.from('overview_statistics').select('*').eq('user_id', user.id).single()).data;
-            designConsulting = (await supabase.from('design_consulting').select('task, status, deadline').eq('user_id', user.id).order('deadline', { ascending: true }).limit(5)).data ?? [];
-            constructionSupervision = (await supabase.from('construction_supervision_status').select('*').eq('user_id', user.id)).data ?? [];
-            civilProjects = (await supabase.from('civil_construction_projects').select('*').eq('owner_id', user.id)).data ?? [];
-            industrialProjects = (await supabase.from('industrial_construction_projects').select('*').eq('owner_id', user.id)).data ?? [];
-            warrantyTasks = (await supabase.from('warranty_tasks').select('*').eq('user_id', user.id)).data ?? [];
-            customerManagement = (await supabase
-                .from('customers')
-                .select(`
-                    total_customers: count(*),
-                    new_inquiries: count(id)
-                `)
-                .eq('staff_id', user.id)
-                .single()
-            ).data;
-            inventoryLevels = (await supabase.from('inventory').select('item_name, level').eq('manager_id', user.id)).data ?? [];
-        }
-    } catch (error: any) {
+    if (rpcError) {
         return (
             <div className="flex items-center justify-center h-screen">
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold mb-4">Lỗi lấy dữ liệu dashboard</h1>
-                    <p className="text-muted-foreground mb-4">{error?.message || "Không xác định được lỗi."}</p>
+                    <h1 className="text-2xl font-bold mb-4">Lỗi lấy dữ liệu dashboard (RPC)</h1>
+                    <p className="text-muted-foreground mb-4">{rpcError.message}</p>
                 </div>
             </div>
         );
     }
 
-    // 4. Truyền dữ liệu đã được phân quyền xuống Dashboard client
+    // --- PHẦN 4: Truyền dữ liệu xuống Client Component ---
     return (
         <Dashboard
-            overviewStats={overviewStats}
-            designConsulting={designConsulting}
-            constructionSupervision={constructionSupervision}
-            civilProjects={civilProjects}
-            industrialProjects={industrialProjects}
-            warrantyTasks={warrantyTasks}
-            customerManagement={customerManagement}
-            inventoryLevels={inventoryLevels}
+            // Dữ liệu đã được RPC trả về đúng cấu trúc JSON
+            overviewStats={dashboardData.overviewStats}
+            designConsulting={dashboardData.designConsulting}
+            constructionSupervision={dashboardData.constructionSupervision}
+            civilProjects={dashboardData.civilProjects}
+            industrialProjects={dashboardData.industrialProjects}
+            warrantyTasks={dashboardData.warrantyTasks}
+            customerManagement={dashboardData.customerManagement}
+            inventoryLevels={dashboardData.inventoryLevels}
             user={user}
             userRole={userRole?.type_id}
         />
