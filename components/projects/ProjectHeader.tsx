@@ -2,11 +2,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from 'lucide-react';
 // 💡 Bổ sung: Import useRouter từ next/navigation
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 // Hàm giả định để lấy class badge và label
 function getStatusLabel(status: string): string {
-    // ... (logic cũ)
+    
     switch (status) {
         case "in_progress": return "Đang tiến hành";
         case "completed": return "Hoàn thành";
@@ -15,7 +15,7 @@ function getStatusLabel(status: string): string {
     }
 }
 function getBadgeClass(status: string): string {
-    // ... (logic cũ)
+   
     switch (status) {
         case "completed": return "bg-green-100 text-green-700";
         case "in_progress": return "bg-blue-100 text-blue-800";
@@ -31,30 +31,21 @@ interface ProjectHeaderProps {
         code: string;
         status: string;
     };
-    // 💡 Bổ sung: Các hàm handler cho các nút
     onEditClick: () => void;
     onDeleteClick: () => void;
     onTaskClick: () => void;
-    // onBack sẽ được xử lý nội bộ bằng useRouter
 }
 
 
 export default function ProjectHeader({ project, onEditClick, onDeleteClick, onTaskClick }: ProjectHeaderProps) {
-    // 💡 Bổ sung: Sử dụng useRouter
-    const router = useRouter();
-
-    // Hàm xử lý Quay lại (dùng cho cả nút ChevronLeft và nút Quay về)
-    const handleBack = () => {
-        router.back();
-    };
 
     return (
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className='w-full'>
                 {/* Nút Back - Dùng hàm router.back() */}
                 <div className="mb-2 -mt-4">
-                    <button
-                        onClick={handleBack} // 💡 Gán action
+                    <Link
+                        href="/projects" // <-- LUÔN trỏ về trang danh sách dự án
                         className="inline-flex items-center px-3 py-1.5 rounded-full text-sm tracking-wider
                                    text-indigo-700 bg-indigo-50 
                                    hover:bg-indigo-100 hover:shadow-sm
@@ -63,7 +54,7 @@ export default function ProjectHeader({ project, onEditClick, onDeleteClick, onT
                     >
                         <ChevronLeft className="h-4 w-4 mr-1" />
                         <span>Quay lại</span>
-                    </button>
+                    </Link>
                 </div>
 
                 {/* Tiêu đề chính */}

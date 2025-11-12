@@ -2,12 +2,13 @@
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { Sidebar } from "@/components/layout/Sidebar";
 import AppHeader from "@/components/layout/AppHeader"; // Đây là component Header của bạn
-import { getUserProfile, UserProfile } from '@/lib/supabase/getUserProfile'; // Import UserProfile interface
+import { getUserProfile } from '@/lib/supabase/getUserProfile';
+import type { UserProfile } from '@/types/userProfile';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
     // Fetch userProfile ở đây vì DashboardLayout là Server Component.
     const userProfile: UserProfile | null = await getUserProfile();
-
+    console.log("[Layout Server] Dữ liệu prop userProfile SẼ truyền xuống Header:", userProfile);
     return (
         <AuthProvider>
             <div className="flex h-screen">

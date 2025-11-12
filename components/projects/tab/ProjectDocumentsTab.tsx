@@ -1,25 +1,15 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils/utils";
-import { FileText, ImageIcon, FileIcon, Edit, Trash2 } from "lucide-react";
+import { FileText, ImageIcon, FileIcon } from "lucide-react";
 import DocumentUploadModal from "../document/DocumentUploadModal";
 import Link from 'next/link';
 import DocumentEditModal from "../document/DocumentEditModal";
-interface Document {
-    id: string;
-    name: string;
-    type: string;
-    url: string;
-    uploaded_at: string;
-    uploaded_by: {
-        name: string;
-    };
-    project_id: string;
-    description: string | null; // ✅ Thêm description
-    category: string | null;    // ✅ Thêm category
-}
+import DocumentDeleteButton from "../document/DocumentDeleteButton";
+import { DocumentData } from "@/types/project";
+
 interface ProjectDocumentsTabProps {
-    projectId: string; // <-- NHẬN projectId TỪ PROPS
-    documents: Document[];
+    projectId: string;
+    documents: DocumentData[]; // <-- DÙNG TYPE THẬT
 }
 export default function ProjectDocumentsTab({ projectId, documents }: ProjectDocumentsTabProps) {
 
@@ -48,16 +38,14 @@ export default function ProjectDocumentsTab({ projectId, documents }: ProjectDoc
                                         </div>
                                     </div>
                                 </div>
-                                {/* === PHẦN THÊM MỚI: NÚT SỬA/XÓA === */}
-                                {/* === PHẦN SỬA: KÍCH HOẠT NÚT SỬA/XÓA === */}
+                                
                                 <div className="flex items-center space-x-1 flex-shrink-0 ml-4">
                                     {/* Nút Sửa */}
                                     <DocumentEditModal document={doc} />
-
-                                    {/* Nút Xóa (Sẽ làm ở bước sau) */}
-                                    {/* <Button variant="ghost" size="icon" className="h-7 w-7">
-                                        <Trash2 className="h-4 w-4 text-red-600" />
-                                    </Button> */}
+                                    <DocumentDeleteButton
+                                        documentId={doc.id}
+                                        projectId={doc.project_id} // 'doc.project_id' giờ đã có giá trị
+                                    />
                                 </div>
                                 {/* === KẾT THÚC SỬA === */}
                             </li >
@@ -73,8 +61,13 @@ export default function ProjectDocumentsTab({ projectId, documents }: ProjectDoc
 function getIcon(type: string) {
     switch (type) {
         case "pdf": return <FileText className="w-5 h-5 text-red-500" />;
-        case "image": return <ImageIcon className="w-5 h-5 text-green-500" />;
-        case "doc, docx": return <FileIcon className="w-5 h-5 text-blue-500" />;
+        case "jpg":
+        case "jpeg":
+        case "png":
+            return <ImageIcon className="w-5 h-5 text-green-500" />;
+        case "doc":
+        case "docx":
+            return <FileIcon className="w-5 h-5 text-blue-500" />;
         default: return <FileIcon className="w-5 h-5 text-gray-400" />;
     }
 }

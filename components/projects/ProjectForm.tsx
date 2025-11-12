@@ -106,18 +106,39 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
         try {
             const isEdit = !!form.id;
             const url = isEdit ? "/api/projects/admin-update" : "/api/projects/create";
+
+            // --- PHẦN FIX ---
+            // 1. Tạo đối tượng projectData SẠCH.
+            // Chúng ta chỉ gửi các trường mà form này quản lý.
+            // Chúng ta cũng chuyển đổi các trường rỗng ("") sang NULL
+            // (vì CSDL chấp nhận NULL, nhưng không chấp nhận "" cho kiểu số/ngày).
+            const cleanProjectData = {
+                name: form.name,
+                code: form.code,
+                customer_id: form.customer_id || null, // Gửi null nếu rỗng
+                project_manager: form.project_manager || null, // Gửi null nếu rỗng
+                address: form.address || null,
+                geocode: form.geocode || null,
+                start_date: form.start_date || null,
+                end_date: form.end_date || null,
+                budget: form.budget === "" ? 0 : Number(parseNumber(form.budget)), // Xử lý budget (bắt buộc là số)
+                project_type: form.project_type, // Giả định trường này là bắt buộc (required)
+                construction_type: form.construction_type || null,
+                description: form.description || null,
+            };
+
+            // 2. Tạo body (Đã fix ở bước trước, giờ dùng cleanProjectData)
             const body = isEdit
                 ? {
                     projectId: form.id,
-                    projectData: {
-                        ...form,
-                        budget: form.budget === "" ? 0 : Number(parseNumber(form.budget)),
-                    },
+                    updateData: {
+                        projectData: cleanProjectData // Chỉ gửi dữ liệu sạch
+                    }
                 }
                 : {
-                    ...form,
-                    budget: form.budget === "" ? 0 : Number(parseNumber(form.budget)),
+                    ...cleanProjectData // Logic create cũng nên dùng dữ liệu sạch
                 };
+            // --- KẾT THÚC FIX ---
 
             const response = await fetch(url, {
                 method: "POST",

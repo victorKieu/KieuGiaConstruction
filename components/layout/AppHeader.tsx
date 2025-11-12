@@ -12,7 +12,8 @@ import { useTranslation } from 'next-i18next';
 import i18next from '@/app/src/config/i18n';
 
 // IMPORT UserProfile interface
-import { UserProfile } from '@/lib/supabase/getUserProfile'; // Đảm bảo đường dẫn này đúng
+
+import type { UserProfile } from '@/types/userProfile';
 
 // Map đường dẫn -> tiêu đề trang
 const pageTitles: Record<string, string> = {
@@ -63,8 +64,8 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
     };
 
     // Lấy tên hiển thị từ userProfile (đã được truyền từ Server Component)
-    const displayName = userProfile?.profile_name || userProfile?.email || 'Người dùng';
-    const displayAvatarUrl = userProfile?.profile_avatar_url || "/placeholder.svg";
+    const displayName = userProfile?.name || userProfile?.email || 'Người dùng';
+    const displayAvatarUrl = userProfile?.avatar_url || "/placeholder.svg";
     const displayEmail = userProfile?.email || '';
 
     // Action logout gọi API và reload lại trang

@@ -6,13 +6,13 @@ import { cookies } from "next/headers";
 import { isValidUUID } from "@/lib/utils/uuid";
 import { getCurrentUser } from "./authActions"; // Import từ authActions
 import { ProjectData, MemberData, DocumentData, FinanceData, MilestoneData, TaskData, CommentData } from "@/types/project";
-interface ActionError {
+export interface ActionError {
     message: string;
     code: string;
 }
 
 // Kiểu trả về chung cho các hàm query/fetch
-interface ActionFetchResult<T> {
+export interface ActionFetchResult<T> {
     data: T | null;
     error: ActionError | null;
 }
@@ -26,7 +26,7 @@ export interface ActionResponse {
 }
 
 // Định nghĩa kiểu cho tham số state đầu tiên của useFormState/useActionState
-interface ActionFormState {
+export interface ActionFormState {
     success: boolean;
     message?: string;
     error?: string;
@@ -119,7 +119,6 @@ export async function getProject(id: string): Promise<GetProjectResult> {
     const { client: supabase, error: authError } = await getSupabaseClient();
     if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
 
-    // --- FIX: SELECT tối ưu, dùng alias và count trực tiếp ---
     const { data: project, error } = await supabase
         .from("projects")
         .select(`
@@ -131,31 +130,32 @@ export async function getProject(id: string): Promise<GetProjectResult> {
             document_count:project_documents ( count )
         `)
         .eq("id", id)
-        .single(); // Lấy 1 bản ghi
+        // --- PHẦN FIX ---
+        .maybeSingle(); // <-- Sửa từ .single() thành .maybeSingle()
+    // --- KẾT THÚC FIX ---
 
     if (error) {
         console.error("Lỗi Supabase trong getProject:", error.message);
         return { data: null, error: { message: `Lỗi tải dự án: ${error.message}`, code: error.code || "db_error" } };
     }
 
-    if (!project) return { data: null, error: { message: "Không tìm thấy dự án.", code: "404" } };
+    // .maybeSingle() sẽ trả về null nếu không tìm thấy, logic này xử lý đúng
+    if (!project) {
+        return { data: null, error: { message: "Không tìm thấy dự án.", code: "404" } };
+    }
 
-    // --- FIX: Mapping đơn giản hơn với alias ---
-    // Supabase trả về count là array [{count: X}], cần trích xuất
+    // (Phần mapping dữ liệu giữ nguyên)
     const memberCount = (project.member_count as any)?.[0]?.count || 0;
     const documentCount = (project.document_count as any)?.[0]?.count || 0;
 
-    // Tạo object cuối cùng khớp với ProjectData type
     const finalProject: ProjectData = {
-        ...project, // Spread các trường gốc của project
-        customers: project.customers, // object { name: ... }
-        manager: project.manager,     // object { name: ... }
-        created: project.creator,     // object { name: ... }
+        ...project,
+        customers: project.customers,
+        manager: project.manager,
+        created: project.creator,
         member_count: memberCount,
         document_count: documentCount,
-        // Không cần các trường count/join thừa nữa
     };
-
 
     return { data: finalProject, error: null };
 }
@@ -301,7 +301,10 @@ export async function getProjectDocuments(projectId: string): Promise<GetDocumen
         .from("project_documents")
         .select(`
             id, name, type, url, uploaded_at,
-            uploaded_by:employees!project_documents_uploaded_by_fkey ( name ) 
+            project_id,
+            description,
+            category,
+            uploaded_by:employees!project_documents_uploaded_by_fkey ( name )
         `)
         .eq("project_id", projectId);
 
@@ -312,10 +315,9 @@ export async function getProjectDocuments(projectId: string): Promise<GetDocumen
 
     // --- FIX: Mapping đơn giản hơn ---
     const documentsData: DocumentData[] = (data || []).map((item: any) => {
-        // Explicitly take the first element if 'uploaded_by' is an array
-        const uploaderDetails = Array.isArray(item.uploaded_by) && item.uploaded_by.length > 0
+        const uploaderDetails = (Array.isArray(item.uploaded_by) && item.uploaded_by.length > 0)
             ? item.uploaded_by[0]
-            : item.uploaded_by; // Use directly if object or null
+            : item.uploaded_by;
 
         return {
             id: item.id,
@@ -323,9 +325,11 @@ export async function getProjectDocuments(projectId: string): Promise<GetDocumen
             type: item.type,
             url: item.url,
             uploaded_at: item.uploaded_at,
-            // Provide a fallback if uploaderDetails is null/undefined
             uploaded_by: uploaderDetails || { name: "N/A" },
-        } as DocumentData;
+            project_id: item.project_id,  // <-- FIX: Thêm vào
+            description: item.description,  // <-- FIX: Thêm vào
+            category: item.category,      // <-- FIX: Thêm vào
+        } as unknown as DocumentData; // Dùng 'as unknown as' để tạm bỏ qua lỗi type nếu DocumentData chưa cập nhật
     });
 
     return { data: documentsData, error: null };
@@ -341,9 +345,16 @@ export async function getProjectFinance(projectId: string): Promise<GetFinanceRe
     // Truy vấn này đơn giản, không cần JOIN
     const { data, error } = await supabase
         .from("project_finance")
-        .select(`id, budget, spent, remaining, allocation_id, updated_at`) // Thêm ID
+        .select(`
+            id, 
+            budget, 
+            spent, 
+            remaining, 
+            updated_at,
+            allocation:finance_allocation ( * ) 
+        `) // <-- SỬA LẠI THÀNH DÒNG NÀY
         .eq("project_id", projectId)
-        .maybeSingle(); // Dùng maybeSingle phòng trường hợp chưa có record tài chính
+        .maybeSingle();
 
     if (error) {
         console.error("Lỗi Supabase trong getProjectFinance:", error.message);
@@ -1031,4 +1042,70 @@ export async function updateDocument(
     revalidatePath(`/projects/${projectId}`);
 
     return { success: true, message: "Thông tin tài liệu đã được cập nhật!" };
+}
+
+export async function deleteDocument(
+    prevState: ActionResponse,
+    formData: FormData
+): Promise<ActionResponse> {
+    const { client: supabase, error: authError } = await getSupabaseClient();
+    if (authError || !supabase) return { success: false, error: authError.message };
+
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
+
+    const documentId = formData.get("documentId") as string | null;
+    const projectId = formData.get("projectId") as string | null;
+
+    if (!documentId || !isValidUUID(documentId)) return { success: false, error: "ID Tài liệu không hợp lệ." };
+    if (!projectId || !isValidUUID(projectId)) return { success: false, error: "ID Dự án bị thiếu." };
+
+    // 1. Kiểm tra quyền (Tương tự như update)
+    // (Thêm logic kiểm tra quyền ở đây, ví dụ: chỉ người tải lên hoặc PM mới được xóa)
+
+    // 2. Lấy URL file từ CSDL TRƯỚC KHI XÓA
+    const { data: docData, error: fetchError } = await supabase
+        .from("project_documents")
+        .select("url") // Chỉ cần lấy URL
+        .eq("id", documentId)
+        .single();
+
+    if (fetchError || !docData) {
+        console.error("Lỗi khi tìm tài liệu để xóa:", fetchError?.message);
+        return { success: false, error: "Không tìm thấy tài liệu để xóa." };
+    }
+
+    // 3. Xóa file khỏi Supabase Storage
+    // Tên bucket của chúng ta
+    const bucketName = 'project-documents';
+    // Lấy đường dẫn file từ URL (ví dụ: "projectId/category/fileName.pdf")
+    // URL có dạng: https://.../storage/v1/object/public/project-documents/projectId/category/fileName.pdf
+    const filePath = docData.url.substring(docData.url.indexOf(bucketName) + bucketName.length + 1);
+
+    const { error: storageError } = await supabase.storage
+        .from(bucketName)
+        .remove([filePath]);
+
+    if (storageError) {
+        // Vẫn tiếp tục xóa CSDL, nhưng báo lỗi cho admin
+        console.error(`Lỗi xóa file khỏi Storage: ${storageError.message}. Sẽ tiếp tục xóa khỏi CSDL.`);
+        // Tùy chọn: Bạn có thể return lỗi ở đây nếu muốn
+        // return { success: false, error: `Lỗi xóa file: ${storageError.message}` };
+    }
+
+    // 4. Xóa bản ghi khỏi CSDL (project_documents)
+    const { error: deleteError } = await supabase
+        .from("project_documents")
+        .delete()
+        .eq("id", documentId);
+
+    if (deleteError) {
+        console.error("Lỗi xóa khỏi project_documents:", deleteError.message);
+        return { success: false, error: `Lỗi xóa thông tin: ${deleteError.message}` };
+    }
+
+    // 5. Revalidate
+    revalidatePath(`/projects/${projectId}`);
+
+    return { success: true, message: "Tài liệu đã được xóa thành công!" };
 }

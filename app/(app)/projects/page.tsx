@@ -32,13 +32,6 @@ export default async function ProjectsPage() {
         return <div>Bạn chưa được tham gia dự án nào.</div>;
     }
 
-    // --- PHẦN FIX HIỆU NĂNG (N+1) ---
-    // 2. Lấy danh sách dự án VÀ JOIN thông tin liên quan (Khách hàng, Quản lý)
-
-    // Dựa trên file 'supabase.ts':
-    // - Cột 'customer_id' liên kết với bảng 'customers'
-    // - Cột 'project_manager' liên kết với bảng 'employees' (chứa tên Quản lý)
-
     const { data: projects, error } = await supabase
         .from("projects")
         .select(`
@@ -48,8 +41,7 @@ export default async function ProjectsPage() {
         `)
         .in("id", projectIds)
         .order("created_at", { ascending: false });
-    // --- KẾT THÚC FIX ---
-
+ 
     if (error) {
         return (
             <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-6">
@@ -58,18 +50,6 @@ export default async function ProjectsPage() {
             </div>
         );
     }
-
-    /*
-    * GHI CHÚ:
-    * Dữ liệu 'projects' trả về bây giờ sẽ có dạng:
-    * {
-    * id: "...",
-    * name: "Dự án A",
-    * customers: { name: "Tên Khách Hàng" },
-    * employees: { name: "Tên Người Quản Lý" }
-    * }
-    * Component <ProjectList> giờ chỉ cần render, không cần fetch data nữa.
-    */
 
     return (
         <div className="flex w-full h-full gap-6 p-4">

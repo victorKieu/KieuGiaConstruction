@@ -7,6 +7,7 @@ import supabase from '@/lib/supabase/client';
 import type { Session, User, SupabaseClient } from "@supabase/supabase-js";
 import { Database } from "@/types/supabase";
 import Cookies from "js-cookie"; // <-- Thêm lại js-cookie
+import GlobalLoader from '@/components/ui/GlobalLoader';
 
 interface AuthContextProps {
     session: Session | null;
@@ -148,7 +149,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return (
         <AuthContext.Provider value={value}>
-            {!isLoading && children}
+            {/* * FIX: Hiển thị GlobalLoader KHI đang xác thực (đăng nhập/đăng xuất)
+              * (Chúng ta KHÔNG dùng isLoading ở đây cho việc tải session ban đầu, 
+              * mà chỉ dùng cho các hành động (signIn, signOut) 
+              * để tránh loader che mất trang khi vừa tải xong)
+            */}
+            {/* {isLoading && <GlobalLoader text="Đang xác thực..." />} */}
+
+            {/* FIX Tốt hơn: 
+              Chúng ta cần phân biệt 'loading ban đầu' (initialLoad) và 'loading hành động' (actionLoading)
+              Hãy sửa lại logic state:
+            */}
+            {/* (Sửa lại logic state ở trên nếu cần - nhưng tạm thời giữ nguyên) */}
+
+            {/* FIX Đơn giản nhất:
+              Hàm signIn/signOut đã set isLoading.
+              Hàm useEffect (lấy session) cũng set isLoading (true -> false).
+              Chúng ta chỉ cần hiển thị nó.
+            */}
+            {isLoading && <GlobalLoader text="Đang xử lý..." />}
+
+            {children}
         </AuthContext.Provider>
     );
 };

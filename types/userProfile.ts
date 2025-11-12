@@ -1,9 +1,9 @@
-﻿// types/hrm.d.ts
+﻿// types/userProfile.ts
 
-import { Database } from '@/types/supabase'; // <--- HÃY KIỂM TRA LẠI ĐƯỜNG DẪN NÀY CHO CHÍNH XÁC!
+import { Database } from '@/types/supabase';
 export type project = Database['public']['Tables']['employees']['Row'];
 
-// Định nghĩa kiểu Employee DỰA TRÊN bảng 'employees' từ database
+// Định nghĩa kiểu Employee DỰA TRÊN bảng 'employees'
 export type userProfiles = Database['public']['Tables']['user_profiles']['Row'];
 export interface UserProfile {
     address: string | null;
@@ -12,7 +12,7 @@ export interface UserProfile {
     code: string;
     email: string | null;
     created_at: string;
-    department_id: { name: string } | null;
+    department_id: { name: string } | null; // <-- Đã khớp với RPC (Bước 1)
     gender: string | null;
     hire_date: string;
     id: string;
@@ -27,7 +27,7 @@ export interface UserProfile {
     tax_code: string | null;
     updated_at: string;
 
+    // Các trường JOIN thêm từ RPC
+    user_type?: string;
+    permission_role_name?: string;
 }
-
-
-

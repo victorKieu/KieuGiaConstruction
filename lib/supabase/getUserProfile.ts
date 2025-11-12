@@ -1,52 +1,72 @@
-﻿// --- START OF FILE getUserProfile.ts (sửa đổi) ---
+﻿"use server";
 
-"use server"; // <-- Đảm bảo có directive này
-
-import { createSupabaseServerClient } from "@/lib/supabase/server"; // Sử dụng hàm server-side của bạn
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { UserProfile } from "@/types/userProfile";
+import { UserProfile } from "@/types/userProfile"; // Import type
 
 /**
- * Lấy thông tin đầy đủ của người dùng (khớp với type UserProfile).
- * @returns {Promise<UserProfile | null>}
+ * Lấy user cơ bản (chỉ từ auth.users).
+ * Dùng nội bộ khi chỉ cần ID/Email.
  */
-export async function getUserProfile(): Promise<UserProfile | null> {
-    const cookieStore = cookies(); // <-- Lấy cookieStore
-    const token = cookieStore.get("sb-access-token")?.value || null; // <-- Đọc cookie thống nhất
+export async function getCurrentUser() {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
+    const supabase = createSupabaseServerClient(token);
+    const { data, error } = await supabase.auth.getUser();
 
-    if (!token) {
-        console.log("Không có token đăng nhập trong getUserProfile.");
+    if (error) {
+        console.error("[ Server ] Lỗi Supabase trong getCurrentUser:", error.message);
         return null;
     }
+    return data.user;
+}
 
-    // Tạo client Supabase với token lấy được từ cookie
+
+/**
+ * Lấy thông tin đầy đủ của người dùng (File ĐÚNG: lib/supabase/getUserProfile.ts).
+ * Hàm này gọi RPC 'get_full_user_profile' và trả về profile đầy đủ.
+ * Sẽ trả về NULL nếu RPC lỗi hoặc user không có profile.
+ */
+export async function getUserProfile(): Promise<UserProfile | null> {
+    console.log("[getUserProfile] Bắt đầu chạy (File: lib/supabase/getUserProfile.ts)..."); // <-- LOG MỚI
+
+    const cookieStore = await cookies();
+    const token = cookieStore.get("sb-access-token")?.value || null;
     const supabase = createSupabaseServerClient(token);
 
+    // Bước 1: Kiểm tra Auth (vẫn cần thiết)
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-        console.log("Xác thực thất bại hoặc không có người dùng đăng nhập trong getUserProfile.");
+        // --- LOG 1: Lỗi xác thực ---
+        console.log("[getUserProfile] Lỗi: Xác thực thất bại. Trả về null.");
+        console.error("[getUserProfile] Chi tiết lỗi Auth:", authError?.message);
         return null;
     }
 
+    console.log("[getUserProfile] Đã xác thực user ID:", user.id); // <-- LOG MỚI
+
+    // Bước 2: Gọi RPC (đã fix, chạy với quyền INVOKER)
     const { data: profileData, error: rpcError } = await supabase
         .rpc('get_full_user_profile');
 
+    // Bước 3: Xử lý kết quả
     if (rpcError) {
-        console.error("Lỗi khi gọi RPC get_full_user_profile:", rpcError.message);
-        return null;
+        // --- LOG 2: Lỗi RPC ---
+        // Nếu RPC lỗi (ví dụ: permission denied)
+        console.error("[getUserProfile] LỖI khi gọi RPC:", rpcError.message);
+        return null; // Trả về null
     }
 
     if (!profileData) {
-        console.log("Hàm RPC không trả về dữ liệu cho người dùng:", user.id);
-        return null;
+        // --- LOG 3: RPC Trả về Null ---
+        // Nếu RPC chạy thành công nhưng không tìm thấy dữ liệu (chưa INSERT data)
+        console.log("[getUserProfile] RPC trả về null (User chưa có profile chi tiết).");
+        return null; // Trả về null
     }
 
-    const userProfile: UserProfile = profileData as UserProfile;
-
-    if (!userProfile.avatar_url) {
-        userProfile.avatar_url = '/images/default_avatar.png';
-    }
-
-    return userProfile;
+    // Bước 4: RPC thành công và có dữ liệu.
+    // --- LOG 4: THÀNH CÔNG ---
+    console.log("[getUserProfile] THÀNH CÔNG. Đang trả về RPC profile.");
+    return profileData as UserProfile;
 }

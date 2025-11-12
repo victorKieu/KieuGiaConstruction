@@ -4,7 +4,7 @@ import { FinanceData } from "@/types/project";
 
 // Component hiển thị thông tin tài chính của dự án.
 // Chấp nhận prop 'finance' có thể là null nếu dự án chưa có dữ liệu tài chính.
-export default function ProjectFinanceTab({ finance }: { finance: FinanceData }) {
+export default function ProjectFinanceTab({ finance }: { finance: FinanceData | null }) {
     // 1. Xử lý trường hợp không có dữ liệu tài chính
     if (!finance) {
         return (

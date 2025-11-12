@@ -1,36 +1,92 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useTransition } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-    MoreVertical,
-    Calendar,
-    Briefcase,
-    DollarSign,
-    ArrowUpRight,
-    ArrowDownRight,
-    AlertTriangle,
-    Eye,
-    Edit,
-    Trash2,
-    ListMinus,
-    ScrollText,
-    ReceiptText,
-    Plus
-} from "lucide-react"
+import { useRouter } from "next/navigation"
+import { MoreVertical, Calendar, Briefcase, DollarSign, ArrowUpRight, ArrowDownRight, AlertTriangle, Eye,
+    Edit, Trash2, ListMinus, ScrollText, ReceiptText, Plus, Loader2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils/utils"
 import Link from "next/link"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator // Thêm Separator
+} from "@/components/ui/dropdown-menu"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { deleteProject } from "@/lib/action/projectActions"
 // Import Project type (Đã được cập nhật ở bước trước)
 import type { ProjectData as Project } from "@/types/project" // Sử dụng alias Project cho gọn
 
 interface ProjectListProps {
     projects: Project[]
 }
+function DeleteProjectMenuItem({ project }: { project: Project }) {
+    const router = useRouter();
+    const [isDeleting, startDeleteTransition] = useTransition();
+    const [isAlertOpen, setIsAlertOpen] = useState(false);
 
+    const handleDeleteConfirm = async () => {
+        startDeleteTransition(async () => {
+            const result = await deleteProject(project.id);
+            if (result.success) {
+                alert(result.message || "Xóa dự án thành công!");
+                setIsAlertOpen(false);
+                router.refresh(); // Tải lại danh sách dự án
+            } else {
+                alert(`Lỗi khi xóa: ${result.error}`);
+                setIsAlertOpen(false);
+            }
+        });
+    };
+
+    return (
+        <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+            <AlertDialogTrigger asChild>
+                {/* Đây là nút "Xóa dự án" trong menu */}
+                <DropdownMenuItem
+                    className="text-red-600"
+                    onSelect={(e) => e.preventDefault()} // Ngăn menu tự đóng khi bấm
+                >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Xóa dự án
+                </DropdownMenuItem>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Xác nhận Xóa Dự án?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Bạn có chắc chắn muốn xóa dự án "{project.name}"? Hành động này sẽ
+                        xóa vĩnh viễn dự án và tất cả dữ liệu liên quan (như thành viên, công việc, tài liệu).
+                        Không thể hoàn tác.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeleting}>Hủy</AlertDialogCancel>
+                    <AlertDialogAction
+                        onClick={handleDeleteConfirm}
+                        disabled={isDeleting}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                        {isDeleting ? (
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        ) : null}
+                        Xác nhận Xóa
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    );
+}
 export default function ProjectList({ projects }: ProjectListProps) {
     const [openNewDialog, setOpenNewDialog] = useState(false)
 
@@ -129,14 +185,55 @@ export default function ProjectList({ projects }: ProjectListProps) {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                         {/* (Tất cả DropdownMenuItem giữ nguyên cấu trúc gốc) */}
-                                        <DropdownMenuItem asChild><Link href={`/projects/${project.id}`}><Eye className="h-4 w-4 mr-2" />Xem chi tiết</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href={`/projects/${project.id}/edit`}><Edit className="h-4 w-4 mr-2" />Chỉnh sửa</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href={`/projects/${project.id}/survey`}><ListMinus className="h-4 w-4 mr-2" />Khảo sát công trình</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href={`/projects/${project.id}/qto`}><ListMinus className="h-4 w-4 mr-2" />Bóc tách khối lượng</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href={`/projects/${project.id}/estimation`}><ScrollText className="h-4 w-4 mr-2" />Dự toán</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild><Link href={`/projects/${project.id}/quotation`}><ReceiptText className="h-4 w-4 mr-2" />Báo giá</Link></DropdownMenuItem>
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/projects/${project.id}`}>
+                                                <Eye className="h-4 w-4 mr-2" />
+                                                Xem chi tiết
+                                            </Link>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/projects/${project.id}/edit`}>
+                                                <Edit className="h-4 w-4 mr-2" />
+                                                Chỉnh sửa
+                                            </Link>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/projects/${project.id}?tab=survey`}>
+                                                <ListMinus className="h-4 w-4 mr-2" />
+                                                Khảo sát công trình
+                                            </Link>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/projects/${project.id}?tab=qto`}>
+                                                <ListMinus className="h-4 w-4 mr-2" />
+                                                Bóc tách khối lượng
+                                            </Link>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/projects/${project.id}?tab=estimation`}>
+                                                <ScrollText className="h-4 w-4 mr-2" />
+                                                Dự toán
+                                            </Link>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem asChild>
+                                            <Link href={`/projects/${project.id}/quotation`}>
+                                                <ReceiptText className="h-4 w-4 mr-2" />
+                                                Báo giá
+                                            </Link>
+                                        </DropdownMenuItem>
+
+                                        {/* (Các mục khác giữ nguyên) */}                         
                                         <DropdownMenuItem asChild><Link href={`/projects/${project.id}/logs`}><ReceiptText className="h-4 w-4 mr-2" />Nhật ký công trình</Link></DropdownMenuItem>
-                                        <DropdownMenuItem asChild className="text-red-600"><Link href={`/projects/${project.id}`} /* Thêm onClick handler để kích hoạt xóa */><Trash2 className="h-4 w-4 mr-2" />Xóa dự án</Link></DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+
+                                        {/* (FIX: Thay thế <Link> bằng Component Nút Xóa) */}
+                                        <DeleteProjectMenuItem project={project} />
+                                        {/* --- KẾT THÚC FIX --- */}
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             </div>

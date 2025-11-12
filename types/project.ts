@@ -42,6 +42,7 @@ export interface ProjectData {
     total_income?: number | null;
     total_expenses?: number | null;
     contract_value?: number | null;
+    manager?: { name: string } | null;
 }
 
 export interface ProjectMember { 
@@ -98,9 +99,10 @@ export interface DocumentData {
     type: string;
     url: string;
     uploaded_at: string;
-    uploaded_by: {
-        name: string;
-    };
+    uploaded_by: { name: string; } | null;
+    project_id: string;
+    description: string | null;
+    category: string | null;
 }
 
 // --- FINANCE DATA ---
@@ -108,9 +110,14 @@ export interface FinanceData {
     id: string;
     budget: number;
     spent: number;
-    remaining: number;
-    allocation: string;
-    updated_at: string;
+    remaining: number | null;
+    allocation: {
+        materials: number;
+        labor: number;
+        equipment: number;
+        others: number;
+    } | null;
+    updated_at: string | null;
 }
 
 // --- TASK DATA ---
@@ -128,7 +135,7 @@ export interface TaskData {
         id: string;
         name: string;
         avatar_url?: string;
-    };
+    } | null; // Sửa: Cho phép null
     due_date?: string;
     created_at: string;
     updated_at: string;
@@ -158,4 +165,121 @@ export interface TaskFeedItem {
     timestamp: string;
     user_name: string;
     details: string;
+}
+
+// Định nghĩa Đợt Khảo sát (Lấy từ project_surveys + JOIN)
+export interface Survey {
+    id: string;
+    name: string;
+    survey_date: string;
+    status: string;
+    project_id: string;
+    created_at: string;
+    created_by: {
+        name: string,
+        avatar_url: string | null
+    } | null;
+}
+
+export interface SurveyTask {
+    id: string;
+    survey_id: string;
+    title: string;
+    status: string;
+    due_date: string | null;
+    result_data: JSON | null;
+    notes: string | null;
+    assigned_to: {
+        name: string,
+        avatar_url: string | null
+    } | null;
+}
+
+export interface SurveyTemplate {
+    id: string;
+    name: string;
+    description: string | null;
+}
+
+export interface SurveyTaskTemplate {
+    id: string;
+    title: string;
+    category: string | null;
+    description: string | null;
+}
+
+// Định nghĩa Mẫu Công việc Khảo sát (Lấy từ survey_task_templates)
+export interface SurveyTaskTemplate {
+    id: string;
+    title: string;
+    category: string | null;
+    description: string | null;
+    estimated_cost: number | null; // Đã fix (File 215, 216)
+}
+
+// --- PHẦN FIX: THÊM 2 TYPE MỚI VÀO CUỐI FILE ---
+
+/**
+ * Định nghĩa Mẫu Công tác (Lấy từ CSDL 'qto_templates' - File 215)
+ */
+export interface QtoTemplate {
+    id: string;
+    code: string;
+    name: string;
+    unit: string;
+    type: string | null;
+    estimated_price: number | null;
+    created_at: string | null;
+}
+
+/**
+ * Định nghĩa Công tác Bóc tách (Lấy từ CSDL 'qto_items' - File 190)
+ */
+export interface QtoItem {
+    id: string;
+    created_at: string | null;
+    is_active: boolean | null;
+    item_name: string;
+    item_type: Database["public"]["Enums"]["qto_item_type_enum"];
+    notes: string | null;
+    project_id: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    updated_at: string | null;
+
+    // Trường JOIN (từ qtoActions.ts - File 216)
+    template?: {
+        code: string;
+        name: string;
+        unit: string;
+        estimated_price: number;
+    } | null;
+}
+
+// Định nghĩa Mẫu Công việc Khảo sát
+export interface SurveyTaskTemplate {
+    id: string;
+    title: string;
+    category: string | null;
+    description: string | null;
+    estimated_cost: number | null;
+}
+
+// --- PHẦN FIX: THÊM TYPE MỚI VÀO CUỐI FILE ---
+
+/**
+ * Định nghĩa Dòng Dự toán Chi tiết (Lấy từ CSDL 'estimation_items' - File 229)
+ * Đây là kết quả sau khi "nổ" (explode) QTO qua Định mức (Norms).
+ */
+export interface EstimationItem {
+    id: string;
+    project_id: string;
+    qto_item_id: string | null; // (Liên kết với QTO)
+    material_code: string; // (Mã Vật tư/Nhân công/Máy)
+    material_name: string; // (Tên Vật tư/Nhân công/Máy)
+    unit: string; // (Đơn vị: kg, m3, công...)
+    quantity: number; // (Khối lượng đã phân tích)
+    unit_price: number; // (Đơn giá)
+    total_cost: number; // (Thành tiền: quantity * unit_price)
 }

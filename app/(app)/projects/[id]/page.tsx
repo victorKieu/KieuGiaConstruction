@@ -3,6 +3,8 @@
 
 import { getProject, getProjectMembers, getProjectDocuments, getProjectMilestones, getProjectFinance } from "@/lib/action/projectActions";
 import { getProjectTasks } from "@/lib/action/projectActions";
+import { getProjectSurveys, getSurveyTemplates, getSurveyTaskTemplates } from "@/lib/action/surveyActions";
+import { getQtoItems, getQtoTemplates } from "@/lib/action/qtoActions";
 import ProjectTabs from "@/components/projects/ProjectTabs";
 import ProjectHeaderWrapper from "@/components/projects/ProjectHeaderWrapper";
 import StatCard from "@/components/projects/StatCard";
@@ -13,6 +15,7 @@ import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper'; //
 import { getCurrentUser } from "@/lib/action/authActions";
 import { ProjectData } from "@/types/project"; 
 import { Textarea } from '@/components/ui/textarea'; // Thêm Textarea cho input bình luận dài
+
 
 export default async function ProjectPage({ params }: { params: { id: string } }) {
     const { id } = await params;
@@ -27,14 +30,24 @@ export default async function ProjectPage({ params }: { params: { id: string } }
         documentsResult,
         financeResult,
         milestonesResult,
-        tasksResult
+        tasksResult,
+        surveysResult,
+        surveyTemplatesResult,
+        surveyTaskTemplatesResult,
+        qtoItemsResult, // ✅ THÊM BIẾN NÀY
+        qtoTemplatesResult // ✅ THÊM BIẾN NÀY
     ] = await Promise.all([
         getProject(id),
         getProjectMembers(id),
         getProjectDocuments(id),
         getProjectFinance(id),
         getProjectMilestones(id),
-        getProjectTasks(id)
+        getProjectTasks(id),
+        getProjectSurveys(id),
+        getSurveyTemplates(),
+        getSurveyTaskTemplates(),
+        getQtoItems(id),
+        getQtoTemplates()
     ]);
 
     const project = projectResult.data as ProjectData;
@@ -45,6 +58,11 @@ export default async function ProjectPage({ params }: { params: { id: string } }
     const finance = financeResult.data;
     const milestones = milestonesResult.data || [];
     const tasks = tasksResult.data || [];
+    const surveys = surveysResult.data || [];
+    const surveyTemplates = surveyTemplatesResult.data || [];
+    const surveyTaskTemplates = surveyTaskTemplatesResult.data || [];
+    const qtoItems = qtoItemsResult.data || [];
+    const qtoTemplates = qtoTemplatesResult.data || [];
 
     // ✅ BƯỚC 2: TẠO TASK FEED ĐÃ ĐƯỢC SERVER RENDER
     // TaskItemServerWrapper sẽ gọi TaskCommentWrapper (Server) để lấy user ID, sau đó render TaskCommentSection (Client)
@@ -105,9 +123,15 @@ export default async function ProjectPage({ params }: { params: { id: string } }
                     finance={finance}
                     milestones={milestones}
                     tasks={tasks}
+                    surveys={surveys}
+                    surveyTemplates={surveyTemplates}
+                    surveyTaskTemplates={surveyTaskTemplates}
+                    qtoItems={qtoItems}
+                    qtoTemplates={qtoTemplates}
                     taskFeed={taskFeedOutput}
                     membersCount={members.length}
                     documentsCount={documents.length}
+                    
                 />
             </div>
         </div>

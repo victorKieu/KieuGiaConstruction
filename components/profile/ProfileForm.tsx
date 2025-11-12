@@ -1,9 +1,8 @@
 ﻿// components/profile/ProfileForm.tsx
 "use client";
 
-import { UserProfile } from '@/lib/supabase/getUserProfile'; // Đảm bảo đường dẫn này đúng
+import type { UserProfile } from '@/types/userProfile';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,8 +23,8 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
             .substring(0, 2);
     };
 
-    const displayName = initialData.profile_name || initialData.email || 'Người dùng';
-    const displayAvatarUrl = initialData.profile_avatar_url || "/placeholder.svg";
+    const displayName = initialData.name || initialData.email || 'Người dùng';
+    const displayAvatarUrl = initialData.avatar_url || "/placeholder.svg";
 
     return (
         <Card className="max-w-3xl mx-auto shadow-lg">
@@ -64,7 +63,7 @@ export default function ProfileForm({ initialData }: ProfileFormProps) {
                             </div>
                             <div>
                                 <Label htmlFor="department">Phòng ban</Label>
-                                <Input id="department" type="text" value={initialData.department || 'N/A'} readOnly className="mt-1" />
+                                <Input id="department" type="text" value={initialData.department_id || 'N/A'} readOnly className="mt-1" />
                             </div>
                             <div>
                                 <Label htmlFor="hire_date">Ngày tuyển dụng</Label>

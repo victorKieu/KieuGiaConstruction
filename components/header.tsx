@@ -16,13 +16,11 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-// Bỏ import useCurrentEmployee vì chúng ta sẽ truyền data qua props
-// import { useCurrentEmployee } from "@/lib/auth/use-current-employee";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 // Import UserProfile interface để sử dụng trong props
-import { UserProfile } from '@/lib/supabase/getUserProfile'; // Đảm bảo đường dẫn này đúng
+import type { UserProfile } from '@/types/userProfile';
 
 // Định nghĩa props cho AppHeader
 interface AppHeaderProps {
@@ -36,6 +34,7 @@ const LogoFallback = () => (
 
 // Thay đổi export default function Header() thành AppHeader({ userProfile }: AppHeaderProps)
 export default function AppHeader({ userProfile }: AppHeaderProps) {
+    console.log("[AppHeader Client] Prop userProfile NHẬN ĐƯỢC:", userProfile);
     const { user, signOut } = useAuth(); // Lấy user từ AuthContext (cung cấp email và chức năng đăng xuất)
     const router = useRouter();
     const { theme, setTheme } = useTheme();
@@ -50,7 +49,6 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
     if (!mounted) {
         return null; // Hoặc một skeleton loading placeholder
     }
-
     const handleSignOut = async () => {
         try {
             await signOut();
@@ -71,8 +69,10 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
     };
 
     // Lấy tên hiển thị ưu tiên profile_name, rồi đến email, cuối cùng là "Người dùng"
-    const displayName = userProfile?.profile_name || userProfile?.email || 'Người dùng';
-    const displayAvatarUrl = userProfile?.profile_avatar_url || "/placeholder.svg";
+    // Lấy tên hiển thị (trường đúng là 'name', theo log của bạn)
+    const displayName = userProfile?.name || userProfile?.email || 'Người dùng';
+    // Lấy avatar (trường đúng là 'avatar_url', theo log của bạn)
+    const displayAvatarUrl = userProfile?.avatar_url || "/placeholder.svg";
 
     return (
         <header className="h-16 border-b bg-background text-foreground border-border flex items-center justify-between px-4 md:px-6">
