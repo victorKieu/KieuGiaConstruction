@@ -43,6 +43,7 @@ export interface ProjectData {
     total_expenses?: number | null;
     contract_value?: number | null;
     manager?: { name: string } | null;
+    geocode?: string | null;
 }
 
 export interface ProjectMember { 

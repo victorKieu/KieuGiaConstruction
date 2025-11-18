@@ -60,7 +60,7 @@ export async function getQtoTemplates(): Promise<ActionFetchResult<QtoTemplate[]
  * Tạo một công tác QTO mới. (Hỗ trợ Tự động/Thủ công)
  */
 export async function createQtoItem(
-    prevState: ActionResponse,
+    //prevState: ActionResponse,
     formData: FormData
 ): Promise<ActionResponse> {
     const { client: supabase, error: authError } = await getSupabaseClient();

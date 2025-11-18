@@ -10,15 +10,16 @@ import React from 'react';
 
 // === HELPER FUNCTIONS (LOCAL FOR RUNNABILITY) ===
 // Giả định các hàm này được định nghĩa ở lib/utils/label.ts
-function getStatusLabel(status: string) {
+function getStatusLabel(status: string | null) {
     switch (status) {
         case "in_progress": return "Đang tiến hành";
         case "completed": return "Hoàn thành";
         case "on_hold": return "Tạm dừng";
+        case "planning": return "Kế hoạch";
         default: return "Khởi tạo";
     }
 }
-function getBadgeClass(status: string) {
+function getBadgeClass(status: string | null) {
     switch (status) {
         case "completed": return "bg-green-100 text-green-700 border-green-300 hover:bg-green-200";
         case "in_progress": return "bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200";
@@ -26,18 +27,26 @@ function getBadgeClass(status: string) {
         default: return "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200";
     }
 }
-function getProjectTypeLabel(type: string) {
+function getProjectTypeLabel(type: string | null) {
+    // (Lấy từ Enum project_type của File 271)
     switch (type) {
         case "residential": return "Dân dụng";
         case "commercial": return "Thương mại";
+        case "infrastructure": return "Hạ tầng";
+        case "industrial": return "Công nghiệp";
+        case "building": return "Tòa nhà";
         default: return "Khác";
     }
 }
-function getConstructionTypeLabel(type: string | null | undefined) { // Đã sửa để chấp nhận null/undefined
+function getConstructionTypeLabel(type: string | null | undefined) {
+    // (Lấy từ Enum construction_type của File 271)
     switch (type) {
-        case "high_rise": return "Nhà cao tầng";
-        case "infrastructure": return "Hạ tầng";
-        default: return "Nhà ở";
+        case "new": return "Xây mới";
+        case "repair": return "Sửa chữa";
+        case "renovation": "Cải tạo";
+        case "expansion": return "Mở rộng";
+        case "shophouse": return "Nhà phố TM";
+        default: return "Không xác định";
     }
 }
 
@@ -87,6 +96,9 @@ export default function ProjectOverviewTab({ project, milestones }: Props) {
     const kpiDeadlineStatus = kpiDeadline < 0 ? "Tiết kiệm chi phí" : "Vượt ngân sách";
     const kpiDeadlineColor = kpiDeadline < 0 ? "text-green-600" : "text-red-600";
 
+    const gmapsQuery = project.geocode || (project.address ? encodeURIComponent(project.address) : null);
+    const googleMapsUrl = gmapsQuery ? `https://www.google.com/maps?q=${gmapsQuery}` : null;
+   
     // ✅ LẤY DỮ LIỆU TỪ PROJECT OBJECT
     const membersCount = project.member_count;
     const documentsCount = project.document_count;
@@ -109,7 +121,25 @@ export default function ProjectOverviewTab({ project, milestones }: Props) {
                         </div>
                         {/* ✅ CHỈNH SỬA: Cột 2 - Rộng hơn (2/4) */}
                         <div className="space-y-2 lg:col-span-2">
-                            <InfoRow label="Địa chỉ" value={project.address || "Chưa có thông tin"} Icon={MapPin} />
+                            <InfoRow label="Địa chỉ" Icon={MapPin}>
+                                {/* Nếu có link (googleMapsUrl), hiển thị thẻ <a>.
+                                    Nếu không, hiển thị "Chưa có thông tin".
+                                */}
+                                {googleMapsUrl ? (
+                                    <a
+                                        href={googleMapsUrl}
+                                        target="_blank" // Mở tab mới
+                                        rel="noopener noreferrer" // Bảo mật cho link ngoài
+                                        title="Nhấp để mở Google Maps"
+                                        className="font-semibold text-blue-600 hover:underline text-sm text-right"
+                                    >
+                                        {/* Hiển thị địa chỉ (nếu có) hoặc geocode */}
+                                        {project.address || project.geocode}
+                                    </a>
+                                ) : (
+                                    <span className="font-semibold text-gray-800 text-sm text-right">Chưa có thông tin</span>
+                                )}
+                            </InfoRow>
                             <InfoRow label="Loại dự án" value={getProjectTypeLabel(project.project_type || 'N/A')} Icon={Tag} />
                             <InfoRow label="Ngày bắt đầu" value={formatDate(project.start_date)} Icon={CalendarDays} />
                         </div>

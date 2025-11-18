@@ -4,12 +4,16 @@ import { useState, useCallback, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+// ✅ Đảm bảo import Loader2 (File 201)
 import { CheckSquare, Square, ChevronsUpDown, ChevronsDownUp, Loader2 } from "lucide-react";
-import QtoCreateModal from "../qto/QtoCreateModal"; // Import Modal
+import QtoCreateModal from "../qto/QtoCreateModal"; // Import Modal Tạo
+
+// Import Modal Sửa/Xóa (File 226, 227)
 import QtoEditModal from "../qto/QtoEditModal";
 import QtoDeleteButton from "../qto/QtoDeleteButton";
-// Import các type và actions
-import type { QtoItem, QtoTemplate } from "@/types/project";    
+
+// Import các type và actions (File 230, 231)
+import type { QtoItem, QtoTemplate } from "@/types/project";
 import { getQtoItems } from "@/lib/action/qtoActions";
 import { formatCurrency } from "@/lib/utils/utils";
 
@@ -21,7 +25,6 @@ interface ProjectQtoTabProps {
 
 export default function ProjectQtoTab({ projectId, qtoItems: initialQtoItems, qtoTemplates }: ProjectQtoTabProps) {
 
-    // State để quản lý danh sách QTO (cho Cập nhật/Tách/Gộp)
     const [qtoItems, setQtoItems] = useState(initialQtoItems);
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(false);
@@ -51,23 +54,11 @@ export default function ProjectQtoTab({ projectId, qtoItems: initialQtoItems, qt
         });
     };
 
-    // TODO: Implement Tách/Gộp
+    // TODO: Implement Tách/Gộp (File 228)
     const handleMerge = () => {
-        if (selectedItems.size < 2) {
-            alert("Vui lòng chọn ít nhất 2 công tác để gộp.");
-            return;
-        }
-        // await mergeQtoItems(projectId, Array.from(selectedItems));
-        // triggerRefresh();
         alert("Chức năng GỘP đang được phát triển.");
     };
-
     const handleSplit = () => {
-        if (selectedItems.size !== 1) {
-            alert("Vui lòng chọn 1 công tác để tách.");
-            return;
-        }
-        // TODO: Mở Modal Tách (chia quantity)
         alert("Chức năng TÁCH đang được phát triển.");
     };
 
@@ -111,14 +102,14 @@ export default function ProjectQtoTab({ projectId, qtoItems: initialQtoItems, qt
                     <TableBody>
                         {isLoading && (
                             <TableRow>
-                                <TableCell colSpan={7} className="text-center">
-                                    <Loader2 className="h-6 w-6 animate-spin inline-block" />
+                                <TableCell colSpan={7} className="text-center h-24">
+                                    <Loader2 className="h-6 w-6 animate-spin inline-block text-gray-400" />
                                 </TableCell>
                             </TableRow>
                         )}
                         {!isLoading && qtoItems.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={7} className="text-center text-gray-500">
+                                <TableCell colSpan={7} className="text-center text-gray-500 h-24">
                                     Chưa có công tác nào. Hãy thêm công tác đầu tiên.
                                 </TableCell>
                             </TableRow>
@@ -136,22 +127,22 @@ export default function ProjectQtoTab({ projectId, qtoItems: initialQtoItems, qt
                                 <TableCell>{item.unit}</TableCell>
                                 <TableCell className="text-right">{item.quantity.toLocaleString('vi-VN')}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
-                                <TableCell className="text-right font-semibold">{formatCurrency(item.quantity * item.unit_price)}</TableCell>
-                                <TableCell className="text-center">
-                                    <TableCell className="text-center p-2"> {/* Giảm padding p-2 */}
-                                        {/* Đặt các nút Sửa/Xóa trực tiếp */}
-                                        <QtoEditModal
-                                            item={item}
-                                            projectId={projectId}
-                                            onSuccess={triggerRefresh}
-                                        />
-                                        <QtoDeleteButton
-                                            itemId={item.id}
-                                            projectId={projectId}
-                                            onSuccess={triggerRefresh}
-                                        />
-                                    </TableCell>
+                                <TableCell className="text-right font-semibold">{formatCurrency(item.quantity * (item.unit_price || 0))}</TableCell>
+
+                                {/* --- PHẦN FIX: Sửa lại cấu trúc (Không lồng <div>) --- */}
+                                <TableCell className="text-center p-2">
+                                    <QtoEditModal
+                                        item={item}
+                                        projectId={projectId}
+                                        onSuccess={triggerRefresh}
+                                    />
+                                    <QtoDeleteButton
+                                        itemId={item.id}
+                                        projectId={projectId}
+                                        onSuccess={triggerRefresh}
+                                    />
                                 </TableCell>
+                                {/* --- KẾT THÚC FIX --- */}
                             </TableRow>
                         ))}
                     </TableBody>
