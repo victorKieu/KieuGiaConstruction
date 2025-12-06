@@ -47,7 +47,7 @@ interface ProjectFormProps {
     initialData?: any;
     customers: { id: string; name: string }[];
     managers: { id: string; name: string }[];
-    onSuccess: () => void;
+    onSuccess?: () => void;
 }
 
 export default function ProjectForm({ initialData, customers, managers, onSuccess }: ProjectFormProps) {

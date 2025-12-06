@@ -2,12 +2,12 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import SurveyCreateModal from "../survey/SurveyCreateModal";
-import SurveyDetailModal from "../survey/SurveyDetailModal"; // ✅ THÊM IMPORT NÀY
+import SurveyDetailModal from "../survey/SurveyDetailModal";
 import SurveyDeleteButton from "../survey/SurveyDeleteButton";
-import { MemberData } from "@/types/project"; // ✅ THÊM IMPORT NÀY
+import { MemberData } from "@/types/project";
 import type { Survey, SurveyTemplate, SurveyTaskTemplate } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
-import SurveyEditModal from "../survey/SurveyEditModal";
+import SurveyEditModal from "../survey/SurveyEditModal"; // Import Modal Sửa Đợt Khảo sát
 
 interface ProjectSurveyTabProps {
     projectId: string;
@@ -19,8 +19,10 @@ interface ProjectSurveyTabProps {
 
 export default function ProjectSurveyTab({ projectId, surveys, members, surveyTemplates, surveyTaskTemplates }: ProjectSurveyTabProps) {
     return (
+        // --- KHỐI CARD CHÍNH (ĐÚNG) ---
         <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                {/* Tiêu đề sẽ chỉ hiển thị 1 lần */}
                 <CardTitle className="text-lg font-semibold">Các đợt Khảo sát ({surveys.length})</CardTitle>
                 <SurveyCreateModal projectId={projectId} surveyTemplates={surveyTemplates} />
             </CardHeader>
@@ -30,10 +32,10 @@ export default function ProjectSurveyTab({ projectId, surveys, members, surveyTe
                 ) : (
                     <ul className="space-y-1 mt-4">
                         {surveys.map((survey) => (
-                            // --- PHẦN FIX: Thay thế <li> bằng Modal ---
+                            // Mỗi <li> là một Đợt Khảo sát
                             <li key={survey.id} className="flex items-center justify-between border-b last:border-b-0 hover:bg-gray-50 rounded-md px-3 py-2">
 
-                                {/* 1. Phần Clickable (Modal Trigger) (đã sửa ở Bước 1) */}
+                                {/* 1. Phần Modal Chi tiết (Clickable) */}
                                 <div className="flex-grow">
                                     <SurveyDetailModal
                                         survey={survey}
@@ -43,18 +45,19 @@ export default function ProjectSurveyTab({ projectId, surveys, members, surveyTe
                                     />
                                 </div>
 
-                                {/* 2. Phần Status và Nút Xóa (Tách biệt) */}
+                                {/* 2. Phần Status và Nút Sửa/Xóa (Tách biệt) */}
                                 <div className="flex flex-shrink-0 items-center space-x-1 ml-4">
                                     <Badge className="text-xs" variant="outline">
                                         {survey.status}
                                     </Badge>
 
-                                    {/* ✅ THÊM NÚT SỬA */}
+                                    {/* Nút SỬA */}
                                     <SurveyEditModal
                                         survey={survey}
                                         projectId={projectId}
                                     />
 
+                                    {/* Nút XÓA */}
                                     <SurveyDeleteButton
                                         surveyId={survey.id}
                                         projectId={projectId}
@@ -66,5 +69,6 @@ export default function ProjectSurveyTab({ projectId, surveys, members, surveyTe
                 )}
             </CardContent>
         </Card>
+        // --- KẾT THÚC KHỐI CARD CHÍNH ---
     );
 }

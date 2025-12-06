@@ -57,144 +57,124 @@ export async function getQtoTemplates(): Promise<ActionFetchResult<QtoTemplate[]
 // --- CRUD & LOGIC ACTIONS ---
 
 /**
- * Tạo một công tác QTO mới. (Hỗ trợ Tự động/Thủ công)
+ * Server Action: Tạo công tác QTO mới (Hoàn chỉnh)
  */
 export async function createQtoItem(
-    //prevState: ActionResponse,
-    formData: FormData
+    formData: FormData // Chỉ nhận formData (khớp với useTransition ở Client)
 ): Promise<ActionResponse> {
     const { client: supabase, error: authError } = await getSupabaseClient();
     if (authError || !supabase) return { success: false, error: authError.message };
 
     const projectId = formData.get("projectId") as string | null;
     const templateCode = formData.get("template_code") as string | null;
+
+    // Xác định chế độ: Dùng Mẫu hay Thủ công
     const isTemplate = !!templateCode && templateCode !== 'manual';
 
     if (!projectId || !isValidUUID(projectId)) return { success: false, error: "ID Dự án không hợp lệ." };
 
-    let templateData: QtoTemplate | null = null;
-    let quantity: number = 0;
     let itemName: string = "";
     let unit: string = "";
     let unit_price: number = 0;
+    let quantity: number = 0;
     let item_type: QtoItem['item_type'] = 'material';
+    let notes: string | null = (formData.get("notes") as string) || null;
 
     try {
         if (isTemplate) {
-            // === LOGIC BÁN TỰ ĐỘNG (DÙNG TEMPLATE) ===
+            // === 1. LOGIC BÁN TỰ ĐỘNG (DÙNG FORMULA) ===
             const { data } = await supabase.from("qto_templates").select('*').eq('code', templateCode).single();
-            templateData = data as QtoTemplate;
+            const templateData = data as QtoTemplate;
+
             if (!templateData) return { success: false, error: "Mã công tác mẫu không tồn tại." };
 
-            // Lấy các tham số (Parameters) từ Form
-            const L = Number(formData.get("param_L")) || 0; // Dài
-            const W = Number(formData.get("param_W")) || 0; // Rộng
-            const H = Number(formData.get("param_H")) || 0; // Cao
-            const T = Number(formData.get("param_T")) || 0; // Dày (ví dụ: dày sàn)
-            const N = Number(formData.get("param_N")) || 1; // Số lượng cấu kiện (ví dụ: 5 móng)
+            // Lấy tham số từ Form
+            const L = Number(formData.get("param_L")) || 0;
+            const W = Number(formData.get("param_W")) || 0;
+            const H = Number(formData.get("param_H")) || 0;
+            const T = Number(formData.get("param_T")) || 0;
+            const N = Number(formData.get("param_N")) || 1;
 
-            itemName = templateData.name;
+            itemName = templateData.name; // Dùng tên chuẩn của Mẫu để khớp Định mức
             unit = templateData.unit;
-            unit_price = templateData.estimated_price || 0;
+            unit_price = templateData.estimated_price ?? 0; // Fix lỗi null
             item_type = (templateData.type as QtoItem['item_type']) || 'material';
 
-            // --- BỘ MÁY TÍNH TOÁN (Formula Engine V1) - Dựa trên File 222 ---
+            // --- BỘ MÁY TÍNH TOÁN (Formula Engine) ---
             switch (templateCode) {
-                // (Bạn có thể mở rộng logic này)
-                case 'BT_MONG': // Bê tông Móng
-                case 'BT_LOT_MONG': // Bê tông Lót Móng
-                    // V = Dài * Rộng * Cao * Số lượng
-                    quantity = L * W * H * N;
+                case 'BT_MONG':
+                case 'BT_LOT_MONG':
+                case 'BT_COT':
+                    quantity = L * W * H * N; // V = Dài x Rộng x Cao x Số lượng
                     break;
 
-                case 'VK_MONG': // Ván khuôn Móng
-                    // S = (Chu vi * Cao) * Số lượng
-                    quantity = ((L + W) * 2) * H * N;
+                case 'VK_MONG':
+                case 'VK_COT':
+                    quantity = ((L + W) * 2) * H * N; // S = Chu vi x Cao x Số lượng
                     break;
 
-                case 'BT_COT': // Bê tông Cột
-                    // V = Dài(cạnh) * Rộng(cạnh) * Cao * Số lượng
-                    quantity = L * W * H * N;
+                case 'BT_SAN':
+                    quantity = L * W * T * N; // V = Dài x Rộng x Dày x Số lượng
                     break;
 
-                case 'VK_COT': // Ván khuôn Cột
-                    // S = (Chu vi * Cao) * Số lượng
-                    quantity = ((L + W) * 2) * H * N;
-                    break;
-
-                case 'BT_SAN': // Bê tông Sàn (Quy tắc 1: Tính hết)
-                    // V = Dài * Rộng * Dày(T) * Số lượng
-                    quantity = L * W * T * N;
-                    break;
-
-                case 'VK_SAN': // Ván khuôn Sàn
-                    // S = Dài * Rộng * Số lượng (Chưa trừ giao cột/dầm)
-                    quantity = L * W * N;
-                    // (TODO: Trừ giao cột/dầm)
-                    break;
-
-                case 'BT_DAM': // Bê tông Dầm (Quy tắc 1: Trừ sàn)
+                case 'BT_DAM':
                     // V = Rộng * (Cao - Dày Sàn) * Dài * Số lượng
-                    const beamHeightBelowSlab = H - T;
-                    if (beamHeightBelowSlab <= 0) return { success: false, error: "Lỗi: Chiều cao dầm phải lớn hơn độ dày sàn." };
-                    quantity = W * beamHeightBelowSlab * L * N;
+                    const beamH_Net = H - T;
+                    quantity = W * (beamH_Net > 0 ? beamH_Net : H) * L * N;
                     break;
 
-                case 'VK_DAM': // Ván khuôn Dầm (2 thành + đáy)
-                    // S = (2 * Cao Dưới Sàn + 1 * Rộng Đáy) * Dài * Số lượng
-                    const beamHeightBelowSlab_FW = H - T;
-                    if (beamHeightBelowSlab_FW <= 0) return { success: false, error: "Lỗi: Chiều cao dầm phải lớn hơn độ dày sàn." };
-                    const perimeter = (2 * beamHeightBelowSlab_FW) + W;
+                case 'VK_DAM':
+                    // S = (2 * Cao Net + Rộng) * Dài
+                    const beamH_Net_FW = H - T;
+                    const perimeter = (2 * (beamH_Net_FW > 0 ? beamH_Net_FW : H)) + W;
                     quantity = perimeter * L * N;
                     break;
 
-                case 'CT_DAO_DAT': // Đào đất (Có ta-luy/không gian)
-                    // (Logic Pro-tip: Thêm 0.5m mỗi bên)
-                    const L_dao = L + 2 * 0.5;
-                    const W_dao = W + 2 * 0.5;
-                    quantity = L_dao * W_dao * H * N;
-                    break;
-
                 default:
-                    // Mặc định (nếu công thức chưa code): Lấy quantity thủ công
-                    quantity = Number(formData.get("quantity")) || 1;
+                    quantity = Number(formData.get("quantity")) || 1; // Mặc định nếu chưa có công thức
             }
-            // --- Kết thúc Bộ máy tính toán ---
-
         } else {
-            // === LOGIC THỦ CÔNG (NHƯ CŨ) ===
-            itemName = (formData.get("item_name") as string)?.trim() || "Công tác (Thủ công)";
+            // === 2. LOGIC THỦ CÔNG ===
+            itemName = (formData.get("item_name") as string)?.trim() || "Công tác mới";
             unit = (formData.get("unit") as string)?.trim() || "Lần";
             unit_price = Number(formData.get("unit_price")) || 0;
             quantity = Number(formData.get("quantity")) || 1;
             item_type = (formData.get("item_type") as QtoItem['item_type']) || 'material';
         }
 
+        // 3. Insert vào bảng `qto_items`
+        const insertData: Partial<QtoItem> = {
+            project_id: projectId,
+            item_name: itemName,
+            unit: unit,
+            unit_price: unit_price,
+            quantity: quantity,
+            item_type: item_type,
+            notes: notes,
+        };
+
+        const { data: newItem, error: insertError } = await supabase
+            .from("qto_items")
+            .insert(insertData)
+            .select()
+            .single(); // Lấy lại item vừa tạo để có ID
+
+        if (insertError) {
+            console.error("Lỗi tạo QTO:", insertError.message);
+            return { success: false, error: `Lỗi CSDL: ${insertError.message}` };
+        }
+
+        // 4. TỰ ĐỘNG PHÂN TÍCH VẬT TƯ (Cho tab Dự toán)
+        if (newItem) {
+            await calculateResources(supabase, projectId, newItem.id, newItem.item_name, newItem.quantity);
+        }
+
+        revalidatePath(`/projects/${projectId}`);
+        return { success: true, message: `Đã thêm: ${itemName}` };
+
     } catch (e: any) {
-        return { success: false, error: `Lỗi tính toán: ${e.message}` };
+        return { success: false, error: `Lỗi xử lý: ${e.message}` };
     }
-
-    // 3. Xây dựng đối tượng Insert
-    const insertData: Partial<QtoItem> = {
-        project_id: projectId,
-        item_name: itemName,
-        unit: unit,
-        unit_price: unit_price,
-        quantity: quantity, // <-- Khối lượng đã được tính toán (hoặc nhập thủ công)
-        item_type: item_type,
-        notes: (formData.get("notes") as string) || null,
-        // (Chúng ta có thể thêm 'formula_id' và 'param_group' nếu dùng CSDL nâng cao)
-    };
-
-    const { error: insertError } = await supabase.from("qto_items").insert(insertData);
-
-    if (insertError) {
-        console.error("Lỗi tạo QTO:", insertError.message);
-        return { success: false, error: `Lỗi CSDL: ${insertError.message}` };
-    }
-
-    revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: `Đã thêm: ${itemName} = ${quantity.toFixed(2)} ${unit}` };
 }
 
 export async function updateQtoItem(
@@ -499,4 +479,53 @@ export async function getEstimationItems(projectId: string): Promise<ActionFetch
         return { data: null, error: { message: `Lỗi tải Dự toán: ${error.message}`, code: error.code } };
     }
     return { data: data as EstimationItem[], error: null };
+}
+
+// --- HÀM TRỢ GIÚP: TÍNH TOÁN HAO PHÍ (DỰ TOÁN) ---
+// Hàm này sẽ tự động "nổ" (explode) đầu việc QTO thành các vật tư/nhân công chi tiết
+async function calculateResources(supabase: any, projectId: string, qtoItemId: string, qtoItemName: string, qtoQuantity: number) {
+    // 1. Xóa các resource cũ của item này (nếu có)
+    await supabase.from("estimation_items").delete().eq("qto_item_id", qtoItemId);
+
+    // 2. Tìm Định mức (Norm) phù hợp dựa trên Tên công tác
+    // (Lưu ý: Tên công tác trong QTO phải khớp với Tên trong CSDL Định Mức)
+    const { data: norm } = await supabase
+        .from("norm_definitions")
+        .select(`id, norm_analysis ( material_code, material_name, unit, quantity )`)
+        .eq("name", qtoItemName)
+        .single();
+
+    const resources = [];
+
+    if (norm && norm.norm_analysis) {
+        // A. Nếu tìm thấy Định mức: "Nổ" ra vật tư chi tiết
+        for (const analysis of norm.norm_analysis) {
+            resources.push({
+                project_id: projectId,
+                qto_item_id: qtoItemId,
+                material_code: analysis.material_code,
+                material_name: analysis.material_name,
+                unit: analysis.unit,
+                quantity: qtoQuantity * analysis.quantity, // Nhân khối lượng QTO với Định mức
+                unit_price: 0, // Giá sẽ nhập bên tab Dự toán
+            });
+        }
+    } else {
+        // B. Nếu không có Định mức (hoặc làm Thủ công): Giữ nguyên dòng đó
+        resources.push({
+            project_id: projectId,
+            qto_item_id: qtoItemId,
+            material_code: "THU_CONG",
+            material_name: qtoItemName,
+            unit: "Lần",
+            quantity: qtoQuantity,
+            unit_price: 0,
+        });
+    }
+
+    // 3. Lưu vào bảng estimation_items
+    if (resources.length > 0) {
+        const { error } = await supabase.from("estimation_items").insert(resources);
+        if (error) console.error("Lỗi tự động tính resource:", error.message);
+    }
 }

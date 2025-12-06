@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { BiometricAuth } from "./biometric-auth";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { Eye, EyeOff } from "lucide-react";
 
 export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [email, setEmail] = useState("");
@@ -17,7 +18,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [rememberMe, setRememberMe] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
-
+    const [showPassword, setShowPassword] = useState(false);
     const { signIn } = useAuth();
     const router = useRouter();
 
@@ -100,22 +101,37 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                 </div>
 
                 <div className="space-y-2">
+                    {/* Label và Link "Quên mật khẩu" */}
                     <div className="flex items-center justify-between">
                         <Label htmlFor="password">Mật khẩu</Label>
                         <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline">
                             Quên mật khẩu?
                         </Link>
                     </div>
-                    <Input
-                        id="password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        disabled={isLoading}
-                        autoComplete="current-password"
-                    />
+
+                    {/* --- PHẦN FIX: BỌC INPUT VÀ BUTTON TRONG DIV RELATIVE --- */}
+                    <div className="relative">
+                        <Input
+                            id="password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            disabled={isLoading}
+                            autoComplete="current-password"
+                        />
+                        {/* Nút Absolute */}
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(prev => !prev)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-800 transition duration-150"
+                            aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                        >
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                    </div>
+                    {/* KẾT THÚC BỌC */}
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -126,7 +142,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                     />
                     <Label htmlFor="remember">Ghi nhớ đăng nhập</Label>
                 </div>
-
+                
                 <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : null}
                     Đăng nhập

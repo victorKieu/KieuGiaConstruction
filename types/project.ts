@@ -90,6 +90,9 @@ export interface MemberData {
         phone?: string;
         position: string;
         avatar_url?: string;
+        project_role?: {
+            name: string;
+        } | null;
     };
 }
 
@@ -256,6 +259,13 @@ export interface QtoItem {
         unit: string;
         estimated_price: number;
     } | null;
+    components?: {
+        id: string;
+        material_code: string;
+        material_name: string;
+        unit: string;
+        quantity: number;
+    }[];
 }
 
 // Định nghĩa Mẫu Công việc Khảo sát

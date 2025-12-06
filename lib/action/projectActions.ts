@@ -74,25 +74,30 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
     const { client: supabase, error: authError } = await getSupabaseClient();
     if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
 
+    // --- PHẦN FIX: Thêm JOIN với project_roles ---
     const { data, error } = await supabase
         .from("project_members")
         .select(`
             project_id,
             role,
             joined_at,
-            employee:employees ( id, name, email, phone, position, avatar_url)
+            employee:employees!inner ( 
+                id, name, email, phone, position, avatar_url
+            ),
+            project_role:project_roles (
+                name
+            )
         `)
         .eq("project_id", projectId)
-        .not("employee_id", "is", null);
+        
+    // --- KẾT THÚC FIX ---
 
     if (error) {
         console.error("Lỗi Supabase trong getProjectMembers:", error.message);
         return { data: null, error: { message: `Lỗi truy vấn thành viên: ${error.message}`, code: error.code || "db_error" } };
     }
 
-    // (Phần mapping giữ nguyên)
     const membersData: MemberData[] = (data || []).map((item: any) => {
-        // ... (mapping logic) ...
         const employeeDetails = Array.isArray(item.employee) && item.employee.length > 0
             ? item.employee[0]
             : item.employee;
@@ -103,6 +108,12 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
                 role: item.role,
                 joined_at: item.joined_at,
                 employee: employeeDetails,
+
+                // --- PHẦN FIX: Map dữ liệu project_role ---
+                // (Supabase trả về object hoặc mảng tùy quan hệ, ta xử lý an toàn)
+                project_role: Array.isArray(item.project_role) ? item.project_role[0] : item.project_role,
+                // --- KẾT THÚC FIX ---
+
             } as MemberData;
         }
         return null;
@@ -110,6 +121,7 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
 
     return { data: membersData, error: null };
 }
+
 /**
  * Lấy một dự án cụ thể theo ID.
  */
@@ -177,23 +189,21 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
         code: formData.get("code") as string,
         description: (formData.get("description") as string) || null,
         address: (formData.get("address") as string) || null,
-        // location removed earlier
         status: formData.get("status") as string,
-        project_type: (formData.get("project_type") as string), // Ensure this matches DB Enum
-        construction_type: (formData.get("construction_type") as string) || null, // Ensure this matches DB Enum, allow null
-        risk_level: (formData.get("risk_level") as string) || null, // Ensure this matches DB Enum, allow null
-        // --- USE THE CORRECT KEY ---
-        project_manager: (formData.get("project_manager") as string) || null, // Should be the UUID string
+        project_type: (formData.get("project_type") as string),
+        construction_type: (formData.get("construction_type") as string) || null,
+        risk_level: (formData.get("risk_level") as string) || null,
+        project_manager: (formData.get("project_manager") as string) || null,
         customer_id: (formData.get("customer_id") as string) || null,
         progress: Number.parseInt(formData.get("progress") as string) || 0,
         budget: Number.parseFloat(formData.get("budget") as string) || 0,
-        start_date: (formData.get("start_date") as string), // Ensure correct date format
-        end_date: (formData.get("end_date") as string),   // Ensure correct date format
-        // created_at should likely be handled by DB default
+        start_date: (formData.get("start_date") as string),
+        end_date: (formData.get("end_date") as string),
         updated_at: new Date().toISOString(),
-        created_by: currentUser.id, // Make sure this column exists and is used correctly
+        created_by: currentUser.id,
     };
 
+    // 1. Tạo Dự án
     const { data, error } = await supabase!
         .from("projects")
         .insert(projectData)
@@ -203,6 +213,47 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
         console.error("Lỗi khi tạo dự án:", error.message);
         return { success: false, error: error.message };
     }
+
+    const newProject = data?.[0];
+
+    // 2. --- PHẦN FIX: Tự động thêm Người tạo là Manager (có role_id) ---
+    if (newProject) {
+        // Bước 2a: Tìm role_id của vai trò "Manager" hoặc "Quản lý" trong bảng project_roles
+        // Dùng .ilike để tìm kiếm không phân biệt hoa thường
+        const { data: managerRole, error: roleError } = await supabase!
+            .from("project_roles")
+            .select("id")
+            .or("name.ilike.%manager%,name.ilike.%quản lý%")
+            .limit(1)
+            .maybeSingle();
+
+        if (managerRole) {
+            // Bước 2b: Insert vào project_members VỚI role_id
+            const { error: memberError } = await supabase!
+                .from("project_members")
+                .insert({
+                    project_id: newProject.id,
+                    employee_id: currentUser.id,
+                    role_id: managerRole.id, // ✅ ĐÃ FIX: Gán UUID vào đây
+                    // role: 'manager',     // Có thể bỏ dòng này nếu Trigger tự động điền từ role_id
+                    joined_at: new Date().toISOString()
+                });
+
+            if (memberError) {
+                console.error("Cảnh báo: Không thể thêm người tạo vào thành viên:", memberError.message);
+            }
+        } else {
+            console.warn("Cảnh báo: Không tìm thấy vai trò Manager trong bảng project_roles. Thêm thành viên không có role_id.");
+            // Fallback: Thêm không có role_id nếu không tìm thấy role
+            await supabase!.from("project_members").insert({
+                project_id: newProject.id,
+                employee_id: currentUser.id,
+                role: 'manager', // Fallback dùng string
+                joined_at: new Date().toISOString()
+            });
+        }
+    }
+    // --- KẾT THÚC FIX ---
 
     revalidatePath("/projects");
     return { success: true, message: "Dự án đã được tạo thành công!", data: data as ProjectData[] };

@@ -144,16 +144,7 @@ export default function ProjectTabs({
                 />
             )}
             {activeTab === TABS.MEMBERS && <ProjectMembersTab members={members} />}
-            {/* (MỚI) Tab Bóc tách Khối lượng */}
-            {activeTab === TABS.SURVEY && (
-                <ProjectSurveyTab
-                    projectId={projectId}
-                    surveys={surveys}
-                    members={members}
-                    surveyTemplates={surveyTemplates}
-                    surveyTaskTemplates={surveyTaskTemplates}
-                />
-            )}
+            
             {activeTab === TABS.QTO && (
                 <ProjectQtoTab
                     projectId={projectId}

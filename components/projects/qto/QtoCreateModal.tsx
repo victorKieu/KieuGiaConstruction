@@ -52,9 +52,12 @@ export default function QtoCreateModal({ projectId, qtoTemplates, onSuccess }: Q
 
     // (useEffect xử lý success giữ nguyên)
     useEffect(() => {
-        if (state.success && isOpen) {
+        if (state.success) {
+            // Khi thành công, chỉ cần đóng modal VÀ gọi refresh
             setIsOpen(false);
-            onSuccess(); // Gọi callback refresh
+            // Các bước reset (formRef.current?.reset(), setSelectedTemplateCode...)
+            // đã được xử lý TỰ ĐỘNG bởi cơ chế 'key={refreshKey}' (buộc remount)
+            onSuccess();
         }
     }, [state.success, isOpen, onSuccess]);
 

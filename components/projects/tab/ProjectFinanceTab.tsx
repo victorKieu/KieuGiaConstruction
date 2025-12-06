@@ -3,7 +3,7 @@ import { formatCurrency } from "@/lib/utils/utils";
 import { FinanceData } from "@/types/project";
 
 // Component hiển thị thông tin tài chính của dự án.
-// Chấp nhận prop 'finance' có thể là null nếu dự án chưa có dữ liệu tài chính.
+// Chấp nhận prop 'finance' có thể là null.
 export default function ProjectFinanceTab({ finance }: { finance: FinanceData | null }) {
     // 1. Xử lý trường hợp không có dữ liệu tài chính
     if (!finance) {
@@ -19,16 +19,13 @@ export default function ProjectFinanceTab({ finance }: { finance: FinanceData | 
         );
     }
 
-    // 2. Xử lý an toàn cho thuộc tính allocation (ngăn lỗi TypeError)
-    // Nếu finance.allocation là null/undefined, gán cho nó một đối tượng rỗng
-    const allocationData = finance.allocation || {};
-
-    // 3. Khởi tạo dữ liệu phân bổ, sử dụng 0 nếu giá trị bị null/undefined
+    // 2. Xử lý an toàn cho thuộc tính allocation
+    // Dùng optional chaining (?.) và nullish coalescing (?? 0) để tránh lỗi nếu allocation là null
     const allocation = {
-        materials: allocationData.materials ?? 0,
-        labor: allocationData.labor ?? 0,
-        equipment: allocationData.equipment ?? 0,
-        others: allocationData.others ?? 0,
+        materials: finance.allocation?.materials ?? 0,
+        labor: finance.allocation?.labor ?? 0,
+        equipment: finance.allocation?.equipment ?? 0,
+        others: finance.allocation?.others ?? 0,
     };
 
     return (
@@ -51,10 +48,12 @@ export default function ProjectFinanceTab({ finance }: { finance: FinanceData | 
                         </div>
                         <div
                             // Thay đổi màu sắc dựa trên ngân sách còn lại
-                            className={finance.remaining >= 0 ? "p-3 bg-green-50 rounded-lg" : "p-3 bg-yellow-50 rounded-lg"}
+                            // FIX: Thêm ?? 0 để xử lý trường hợp null
+                            className={(finance.remaining ?? 0) >= 0 ? "p-3 bg-green-50 rounded-lg" : "p-3 bg-yellow-50 rounded-lg"}
                         >
                             <p className="font-medium text-gray-700">Còn lại</p>
-                            <p className="text-lg font-bold text-gray-900">{formatCurrency(finance.remaining)}</p>
+                            {/* FIX: Thêm ?? 0 để xử lý trường hợp null */}
+                            <p className="text-lg font-bold text-gray-900">{formatCurrency(finance.remaining ?? 0)}</p>
                         </div>
                     </div>
                 </div>
