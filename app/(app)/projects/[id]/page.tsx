@@ -1,4 +1,4 @@
-// app/projects/[id]/page.tsx
+// app/(app)/projects/[id]/page.tsx
 // PHẢI LÀ SERVER COMPONENT
 
 import { getProject, getProjectMembers, getProjectDocuments, getProjectMilestones, getProjectFinance } from "@/lib/action/projectActions";
@@ -11,17 +11,22 @@ import StatCard from "@/components/projects/StatCard";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { Clock, Banknote, TrendingUp } from 'lucide-react';
 import { formatDate, formatCurrency } from "@/lib/utils/utils";
-import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper'; // ✅ IMPORT SERVER WRAPPER MỚI
+import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper';
 import { getCurrentUser } from "@/lib/action/authActions";
-import { ProjectData } from "@/types/project"; 
-import { Textarea } from '@/components/ui/textarea'; // Thêm Textarea cho input bình luận dài
-
+import { ProjectData } from "@/types/project";
+import { getCurrentUserRoleInProject } from "@/lib/utils/auth";
 
 export default async function ProjectPage({ params }: { params: { id: string } }) {
     const { id } = await params;
 
     const currentUser = await getCurrentUser();
     const currentUserId = currentUser?.id ?? "";
+    const currentUserRole = await getCurrentUserRoleInProject(id);
+    const permissions = {
+        canEdit: currentUserRole?.includes("manager") || currentUserRole?.includes("quản lý"),
+        canDelete: currentUserRole?.includes("manager") || currentUserRole?.includes("quản lý"),
+        canAddMember: currentUserRole?.includes("manager") || currentUserRole?.includes("giám sát"),
+    };
 
     // Bước 1: Lấy dữ liệu song song
     const [
@@ -34,8 +39,8 @@ export default async function ProjectPage({ params }: { params: { id: string } }
         surveysResult,
         surveyTemplatesResult,
         surveyTaskTemplatesResult,
-        qtoItemsResult, // ✅ THÊM BIẾN NÀY
-        qtoTemplatesResult // ✅ THÊM BIẾN NÀY
+        qtoItemsResult,
+        qtoTemplatesResult
     ] = await Promise.all([
         getProject(id),
         getProjectMembers(id),
@@ -52,7 +57,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
 
     const project = projectResult.data as ProjectData;
 
-    // KHẮC PHỤC LỖI TS2322: Xử lý giá trị null
+    // Xử lý giá trị null
     const members = membersResult.data || [];
     const documents = documentsResult.data || [];
     const finance = financeResult.data;
@@ -64,9 +69,8 @@ export default async function ProjectPage({ params }: { params: { id: string } }
     const qtoItems = qtoItemsResult.data || [];
     const qtoTemplates = qtoTemplatesResult.data || [];
 
-    // ✅ BƯỚC 2: TẠO TASK FEED ĐÃ ĐƯỢC SERVER RENDER
-    // TaskItemServerWrapper sẽ gọi TaskCommentWrapper (Server) để lấy user ID, sau đó render TaskCommentSection (Client)
-    const taskFeedOutput = tasks.map((task: any) => ( // Cast 'any' tạm thời nếu types/project chưa được import
+    // Bước 2: Tạo Task Feed
+    const taskFeedOutput = tasks.map((task: any) => (
         <TaskItemServerWrapper
             key={task.id}
             task={task}
@@ -83,38 +87,58 @@ export default async function ProjectPage({ params }: { params: { id: string } }
     }
 
     return (
-        <div className="container mx-auto px-4 md:px-6 py-8 space-y-6 bg-gray-50 min-h-screen">
-            {/* Header */}
-            <ProjectHeaderWrapper project={project} />
+        // ✅ MOBILE FIX: Giảm padding container chính (px-2 trên mobile, px-6 trên desktop)
+        <div className="container mx-auto px-2 md:px-6 py-4 md:py-8 space-y-4 md:space-y-6 bg-gray-50 min-h-screen">
 
-            {/* Stat Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard
-                    icon={<Clock size={20} />}
-                    title="Thời gian"
-                    value={`${formatDate(project.start_date)} - ${formatDate(project.end_date)}`}
-                />
-                <StatCard
-                    icon={<Banknote size={20} />}
-                    title="Ngân sách"
-                    value={`${formatCurrency(project.budget)} ₫`}
-                />
-                <StatCard
-                    icon={<TrendingUp size={20} />}
-                    title="Tiến độ"
-                    value={
-                        <div className="w-full">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-base font-semibold text-gray-800">{project.progress_percent || 0}%</span>
-                            </div>
-                            <ProgressBar value={project.progress_percent || 0} />
-                        </div>
-                    }
+            {/* Header */}
+            <div className="bg-white p-3 md:p-0 rounded-lg md:bg-transparent shadow-sm md:shadow-none">
+                <ProjectHeaderWrapper
+                    project={project}
+                    permissions={permissions}
                 />
             </div>
 
-            {/* Tabs - Phần nội dung chi tiết sẽ nằm trong này */}
-            <div className="bg-white p-6 rounded-lg shadow">
+            {/* ✅ MOBILE FIX: Stat Cards Grid
+               - Mobile: Grid 2 cột (col-span-2 cho Tiến độ để nó nằm ngang full width dưới cùng)
+               - Desktop: Grid 3 cột như cũ
+            */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6">
+                <div className="col-span-1">
+                    <StatCard
+                        icon={<Clock size={18} />} // Giảm size icon chút xíu
+                        title="Thời gian"
+                        value={`${formatDate(project.start_date)} - ${formatDate(project.end_date)}`}
+                    />
+                </div>
+
+                <div className="col-span-1">
+                    <StatCard
+                        icon={<Banknote size={18} />}
+                        title="Ngân sách"
+                        value={`${formatCurrency(project.budget)}`} // Bỏ chữ 'đ' nếu formatCurrency đã có, hoặc giữ nguyên
+                    />
+                </div>
+
+                {/* Card Tiến độ chiếm 2 cột trên mobile, 1 cột trên desktop */}
+                <div className="col-span-2 md:col-span-1">
+                    <StatCard
+                        icon={<TrendingUp size={18} />}
+                        title="Tiến độ tổng thể"
+                        value={
+                            <div className="w-full mt-1">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-semibold text-gray-800">{project.progress_percent || 0}%</span>
+                                </div>
+                                <ProgressBar value={project.progress_percent || 0} />
+                            </div>
+                        }
+                    />
+                </div>
+            </div>
+
+            {/* Tabs Content */}
+            {/* ✅ MOBILE FIX: Giảm padding p-2 trên mobile để nội dung tab rộng rãi hơn */}
+            <div className="bg-white p-2 md:p-6 rounded-lg shadow border border-gray-100">
                 <ProjectTabs
                     projectId={id}
                     project={project}
@@ -131,7 +155,6 @@ export default async function ProjectPage({ params }: { params: { id: string } }
                     taskFeed={taskFeedOutput}
                     membersCount={members.length}
                     documentsCount={documents.length}
-                    
                 />
             </div>
         </div>
