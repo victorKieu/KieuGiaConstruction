@@ -7,10 +7,9 @@ export function createClient() {
     )
 }
 
-// Alias cho các file import tên khác
+// Hỗ trợ các file import { createSupabaseClient }
 export const createSupabaseClient = createClient;
 
-// Một số file cũ có thể import biến 'supabase' trực tiếp (Singleton)
-// Tuy nhiên trong Next.js mới, nên dùng hàm createClient(). 
-// Dòng dưới đây để fix lỗi import, nhưng bạn nên sửa code gọi thành createClient()
-export const supabase = createClient();
+// Hỗ trợ các file import supabase from '@/lib/supabase/client'
+const supabase = createClient();
+export default supabase;

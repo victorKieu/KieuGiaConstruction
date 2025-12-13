@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 import xlsx from "node-xlsx"
 
-export const config = { api: { bodyParser: false } }
+//export const config = { api: { bodyParser: false } }
 
 export async function POST(request: NextRequest) {
     const supabase = createRouteHandlerClient({ cookies })
