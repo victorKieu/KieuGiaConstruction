@@ -14,9 +14,7 @@ export const PERMISSIONS = {
  * Trả về tên Role (đã normalized về lowercase) hoặc null nếu không tham gia.
  */
 export async function getCurrentUserRoleInProject(projectId: string): Promise<string | null> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     // 1. Lấy User ID hiện tại
     const { data: { user }, error: authError } = await supabase.auth.getUser();

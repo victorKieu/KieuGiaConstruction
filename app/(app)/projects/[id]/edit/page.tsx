@@ -26,10 +26,8 @@ export default async function EditProjectPage({ params }: { params: { id: string
     const resolvedParams = await params; // <--- THAY ĐỔI TẠI ĐÂY: await params
     const projectId = resolvedParams.id; // Truy cập id từ resolvedParams
     // `cookies()` là hàm đồng bộ, không cần `await` ở đây
-    const cookieStore = await cookies(); // phải await
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
-
+    
+    const supabase = await createSupabaseServerClient();
     const { data: project, error } = await supabase
         .from("projects")
         .select("*")

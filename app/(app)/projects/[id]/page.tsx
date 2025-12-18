@@ -23,9 +23,10 @@ export default async function ProjectPage({ params }: { params: { id: string } }
     const currentUserId = currentUser?.id ?? "";
     const currentUserRole = await getCurrentUserRoleInProject(id);
     const permissions = {
-        canEdit: currentUserRole?.includes("manager") || currentUserRole?.includes("quản lý"),
-        canDelete: currentUserRole?.includes("manager") || currentUserRole?.includes("quản lý"),
-        canAddMember: currentUserRole?.includes("manager") || currentUserRole?.includes("giám sát"),
+        // Thêm dấu !! để ép kiểu về boolean (true/false), tránh undefined
+        canEdit: !!(currentUserRole?.includes("manager") || currentUserRole?.includes("quản lý")),
+        canDelete: !!(currentUserRole?.includes("manager") || currentUserRole?.includes("quản lý")),
+        canAddMember: !!(currentUserRole?.includes("manager") || currentUserRole?.includes("giám sát")),
     };
 
     // Bước 1: Lấy dữ liệu song song

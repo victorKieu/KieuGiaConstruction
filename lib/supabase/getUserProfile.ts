@@ -1,72 +1,58 @@
-﻿"use server";
+﻿import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { cache } from "react";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
-import { UserProfile } from "@/types/userProfile"; // Import type
+export const getUserProfile = cache(async () => {
+    const supabase = await createSupabaseServerClient();
 
-/**
- * Lấy user cơ bản (chỉ từ auth.users).
- * Dùng nội bộ khi chỉ cần ID/Email.
- */
-export async function getCurrentUser() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
-    const { data, error } = await supabase.auth.getUser();
-
-    if (error) {
-        console.error("[ Server ] Lỗi Supabase trong getCurrentUser:", error.message);
-        return null;
-    }
-    return data.user;
-}
-
-
-/**
- * Lấy thông tin đầy đủ của người dùng (File ĐÚNG: lib/supabase/getUserProfile.ts).
- * Hàm này gọi RPC 'get_full_user_profile' và trả về profile đầy đủ.
- * Sẽ trả về NULL nếu RPC lỗi hoặc user không có profile.
- */
-export async function getUserProfile(): Promise<UserProfile | null> {
-    console.log("[getUserProfile] Bắt đầu chạy (File: lib/supabase/getUserProfile.ts)..."); // <-- LOG MỚI
-
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
-
-    // Bước 1: Kiểm tra Auth (vẫn cần thiết)
+    // 1. Lấy User ID
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return null;
 
-    if (authError || !user) {
-        // --- LOG 1: Lỗi xác thực ---
-        console.log("[getUserProfile] Lỗi: Xác thực thất bại. Trả về null.");
-        console.error("[getUserProfile] Chi tiết lỗi Auth:", authError?.message);
+    // 2. Query thông tin Profile + Join Role + Join Type
+    // Lưu ý: Thay 'user_types' bằng tên bảng thực tế chứa định nghĩa type_id của bạn
+    const { data: profile, error: profileError } = await supabase
+        .from("user_profiles") // Hoặc 'employees'
+        .select(`
+            *,
+            roles:role_id ( name ),     
+            type:type_id ( code, id ) 
+        `)
+        // 👆 Join thêm bảng type để lấy code phân biệt
+        .eq("id", user.id)
+        .single();
+
+    if (profileError) {
+        console.error("Lỗi lấy profile:", profileError.message);
         return null;
     }
 
-    console.log("[getUserProfile] Đã xác thực user ID:", user.id); // <-- LOG MỚI
+    // 3. XỬ LÝ LOGIC ROLE (QUAN TRỌNG)
+    let finalRole = "anonymous";
 
-    // Bước 2: Gọi RPC (đã fix, chạy với quyền INVOKER)
-    const { data: profileData, error: rpcError } = await supabase
-        .rpc('get_full_user_profile');
+    // Ép kiểu để TS không báo lỗi
+    const typeData = profile.type as any;
+    const roleData = profile.roles as any;
 
-    // Bước 3: Xử lý kết quả
-    if (rpcError) {
-        // --- LOG 2: Lỗi RPC ---
-        // Nếu RPC lỗi (ví dụ: permission denied)
-        console.error("[getUserProfile] LỖI khi gọi RPC:", rpcError.message);
-        return null; // Trả về null
+    const typeCode = typeData?.code?.toUpperCase() || ""; // Ví dụ: 'EMPLOYEE', 'CUSTOMER'
+
+    if (typeCode === 'CUSTOMER') {
+        // Nếu là Khách hàng -> Gán luôn role là 'customer'
+        finalRole = "customer";
+    } else if (typeCode === 'SUPPLIER') {
+        // Nếu là Nhà cung cấp -> Gán luôn role là 'supplier'
+        finalRole = "supplier";
+    } else {
+        // Nếu là Nhân viên (hoặc code rỗng mặc định coi là nhân viên) -> Lấy theo role_id
+        finalRole = roleData?.name?.toLowerCase() || "employee";
     }
 
-    if (!profileData) {
-        // --- LOG 3: RPC Trả về Null ---
-        // Nếu RPC chạy thành công nhưng không tìm thấy dữ liệu (chưa INSERT data)
-        console.log("[getUserProfile] RPC trả về null (User chưa có profile chi tiết).");
-        return null; // Trả về null
-    }
-
-    // Bước 4: RPC thành công và có dữ liệu.
-    // --- LOG 4: THÀNH CÔNG ---
-    console.log("[getUserProfile] THÀNH CÔNG. Đang trả về RPC profile.");
-    return profileData as UserProfile;
-}
+    // 4. Trả về kết quả
+    return {
+        ...user,
+        ...profile,
+        // Gán đè role_name hiển thị (cho đẹp)
+        display_role: typeCode === 'EMPLOYEE' ? roleData?.name : typeData?.name,
+        // Role dùng để phân quyền (logic code)
+        role: finalRole
+    };
+});

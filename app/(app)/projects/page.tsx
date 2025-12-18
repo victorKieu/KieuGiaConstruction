@@ -1,21 +1,23 @@
 export const dynamic = "force-dynamic";
 
-import { cookies } from "next/headers";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/action/authActions";
 import ProjectList from "@/components/projects/project-list";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkPermission } from "@/lib/auth/permissions";
 
 export default async function ProjectsPage() {
-    const cookieStore = await cookies();
-    const token = await cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+   
+    const supabase = await createSupabaseServerClient();
     const user = await getCurrentUser();
 
     if (!user) {
         return <div>Bạn cần đăng nhập để xem dự án.</div>;
     }
-
+    const canView = await checkPermission("projects", "view");
+    if (!canView) {
+        return <div>Bạn không có quyền truy cập</div>
+    }
     // 1. Lấy các project mà user là thành viên (Giữ nguyên, đã chuẩn)
     const { data: memberProjects, error: memberError } = await supabase
         .from("project_members")

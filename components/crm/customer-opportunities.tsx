@@ -1,167 +1,113 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import supabase from '@/lib/supabase/client';
+import Link from "next/link";
+import { Plus, DollarSign, Calendar, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { ArrowRight, Briefcase } from "lucide-react";
 
-interface Opportunity {
-    id: string;
-    title: string;
-    description: string;
-    stage: string;
-    estimated_value: number;
-    probability: number;
-    expected_close_date: string;
-    created_at: string;
-}
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { getOpportunitiesByCustomerId } from "@/lib/action/opportunity";
 
-interface CustomerOpportunitiesProps {
-    customerId: string;
-}
-
-const stageLabels: Record<string, string> = {
-    lead: "Tiềm năng",
-    qualified: "Đủ điều kiện",
-    proposal: "Đề xuất",
-    negotiation: "Đàm phán",
-    closed_won: "Thành công",
-    closed_lost: "Thất bại",
+// Helper format tiền tệ VNĐ
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 };
 
-const stageColors: Record<string, string> = {
-    lead: "bg-blue-100 text-blue-800",
-    qualified: "bg-indigo-100 text-indigo-800",
-    proposal: "bg-purple-100 text-purple-800",
-    negotiation: "bg-amber-100 text-amber-800",
-    closed_won: "bg-green-100 text-green-800",
-    closed_lost: "bg-red-100 text-red-800",
+// Map màu sắc cho các giai đoạn (Stages)
+const STAGE_CONFIG: Record<string, { label: string; color: string }> = {
+    new: { label: "Mới", color: "bg-blue-100 text-blue-800" },
+    qualification: { label: "Đánh giá", color: "bg-purple-100 text-purple-800" },
+    proposal: { label: "Gửi báo giá", color: "bg-yellow-100 text-yellow-800" },
+    negotiation: { label: "Đàm phán", color: "bg-orange-100 text-orange-800" },
+    closed_won: { label: "Thắng thầu", color: "bg-green-100 text-green-800" },
+    closed_lost: { label: "Thất bại", color: "bg-gray-100 text-gray-800" },
 };
 
-export function CustomerOpportunities({ customerId }: CustomerOpportunitiesProps) {
-    const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+export async function CustomerOpportunities({ customerId }: { customerId: string }) {
+    // Fetch dữ liệu trực tiếp trong Server Component
+    const opportunities = await getOpportunitiesByCustomerId(customerId);
 
-    useEffect(() => {
-        async function fetchOpportunities() {
-            setIsLoading(true); // Đặt loading là true khi bắt đầu fetch
-
-            try {
-                const { data, error } = await supabase
-                    .from("opportunities")
-                    .select("*")
-                    .eq("customer_id", customerId)
-                    .order("created_at", { ascending: false });
-
-                if (error) {
-                    console.error("Lỗi khi lấy cơ hội:", error.message);
-                    throw new Error(error.message); // Ném lỗi để dừng quá trình
-                }
-
-                setOpportunities(data || []);
-            } catch (error) {
-                console.error("Error fetching customer opportunities:", error);
-            } finally {
-                setIsLoading(false); // Đặt loading là false khi hoàn thành
-            }
-        }
-
-        fetchOpportunities();
-    }, [customerId]);
-
-    if (isLoading) {
-        return (
-            <div className="space-y-4">
-                {Array(2)
-                    .fill(0)
-                    .map((_, i) => (
-                        <Card key={i} className="animate-pulse">
-                            <CardHeader className="h-16 bg-muted/20"></CardHeader>
-                            <CardContent className="h-24 bg-muted/10"></CardContent>
-                        </Card>
-                    ))}
-            </div>
-        );
+    if (!opportunities || opportunities.length === 0) {
+        return <EmptyOpportunities customerId={customerId} />;
     }
 
-    if (opportunities.length === 0) {
-        return (
-            <Card>
-                <CardContent className="text-center py-10">
-                    <p className="text-muted-foreground mb-4">Chưa có cơ hội bán hàng nào với khách hàng này</p>
-                    <Button>Thêm cơ hội mới</Button>
-                </CardContent>
-            </Card>
-        );
-    }
+    // Tính tổng giá trị tiềm năng
+    const totalValue = opportunities.reduce((sum, item) => sum + (item.value || 0), 0);
 
     return (
         <div className="space-y-4">
-            {opportunities.map((opportunity) => {
-                const stageLabel = stageLabels[opportunity.stage] || opportunity.stage;
-                const stageColor = stageColors[opportunity.stage] || "bg-gray-100 text-gray-800";
-                const isClosed = opportunity.stage === "closed_won" || opportunity.stage === "closed_lost";
-
-                return (
-                    <Card key={opportunity.id}>
-                        <CardHeader className="pb-2">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Briefcase className="h-4 w-4 text-muted-foreground" />
-                                    <CardTitle className="text-base">{opportunity.title}</CardTitle>
-                                </div>
-                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${stageColor}`}>
-                                    {stageLabel}
-                                </span>
-                            </div>
-                            <p className="text-xs">
-                                Ngày dự kiến: {format(new Date(opportunity.expected_close_date), "PPP", { locale: vi })}
-                            </p>
-                        </CardHeader>
-                        <CardContent className="pb-2 space-y-3">
-                            <p className="text-sm">{opportunity.description}</p>
-                            <div className="space-y-1">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span>Xác suất thành công</span>
-                                    <span className="font-medium">{opportunity.probability}%</span>
-                                </div>
-                                <Progress value={opportunity.probability} className="h-2" />
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">Giá trị dự kiến:</span>
-                                <span className="font-medium">
-                                    {new Intl.NumberFormat("vi-VN", {
-                                        style: "currency",
-                                        currency: "VND",
-                                        maximumFractionDigits: 0,
-                                    }).format(opportunity.estimated_value)}
-                                </span>
-                            </div>
-                        </CardContent>
-                        <CardFooter className="pt-2 flex justify-between">
-                            <span className="text-xs text-muted-foreground">
-                                Tạo lúc: {format(new Date(opportunity.created_at), "PPp", { locale: vi })}
-                            </span>
-                            <Button size="sm" variant="outline" className="h-7 gap-1" disabled={isClosed}>
-                                {isClosed ? (
-                                    "Đã đóng"
-                                ) : (
-                                    <>
-                                        Cập nhật <ArrowRight className="h-3 w-3" />
-                                    </>
-                                )}
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                );
-            })}
-            <div className="flex justify-center">
-                <Button>Thêm cơ hội mới</Button>
+            {/* Header nhỏ thống kê */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <TrendingUp className="h-4 w-4" />
+                    <span>Tổng giá trị tiềm năng: <span className="font-bold text-foreground">{formatCurrency(totalValue)}</span></span>
+                </div>
+                <Button size="sm" asChild>
+                    <Link href={`/crm/opportunities/new?customer_id=${customerId}`}>
+                        <Plus className="h-4 w-4 mr-1" /> Thêm cơ hội
+                    </Link>
+                </Button>
             </div>
+
+            {/* Danh sách thẻ */}
+            <div className="grid gap-4 md:grid-cols-2">
+                {opportunities.map((opp) => {
+                    const stage = STAGE_CONFIG[opp.stage] || { label: opp.stage, color: "bg-gray-100" };
+
+                    return (
+                        <Card key={opp.id} className="hover:shadow-md transition-shadow">
+                            <CardHeader className="pb-2">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <CardTitle className="text-base font-semibold">
+                                            <Link href={`/crm/opportunities/${opp.id}`} className="hover:underline">
+                                                {opp.title}
+                                            </Link>
+                                        </CardTitle>
+                                        <CardDescription className="text-xs mt-1">
+                                            Tạo ngày: {format(new Date(opp.created_at), "dd/MM/yyyy", { locale: vi })}
+                                        </CardDescription>
+                                    </div>
+                                    <Badge variant="secondary" className={stage.color}>
+                                        {stage.label}
+                                    </Badge>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center justify-between mt-2">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-green-700">
+                                        <DollarSign className="h-4 w-4" />
+                                        {formatCurrency(opp.value)}
+                                    </div>
+                                    {opp.expected_close_date && (
+                                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                            <Calendar className="h-3 w-3" />
+                                            <span>Chốt: {format(new Date(opp.expected_close_date), "dd/MM/yy")}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function EmptyOpportunities({ customerId }: { customerId: string }) {
+    return (
+        <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed rounded-lg bg-muted/10">
+            <TrendingUp className="h-10 w-10 text-muted-foreground mb-3" />
+            <h3 className="text-lg font-medium">Chưa có cơ hội bán hàng</h3>
+            <p className="text-sm text-muted-foreground mb-4 text-center max-w-xs">
+                Tạo cơ hội mới để theo dõi tiến trình chào giá và chốt hợp đồng với khách hàng này.
+            </p>
+            <Button variant="outline" asChild>
+                <Link href={`/crm/opportunities/new?customer_id=${customerId}`}>
+                    <Plus className="h-4 w-4 mr-2" /> Tạo cơ hội đầu tiên
+                </Link>
+            </Button>
         </div>
     );
 }

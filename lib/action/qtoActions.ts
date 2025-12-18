@@ -10,23 +10,13 @@ import type { Tables } from "@/types/supabase";
 import type { QtoItem, QtoTemplate, EstimationItem } from "@/types/project";
 
 
-// Helper function (Lấy từ projectActions)
-async function getSupabaseClient() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    if (!token) return { client: null, error: { message: "Phiên đăng nhập hết hạn.", code: "401" } };
-    return { client: createSupabaseServerClient(token), error: null };
-}
-
 // --- FETCH ACTIONS ---
 
 /**
  * Lấy danh sách các công tác QTO của một dự án (Đã JOIN template)
  */
 export async function getQtoItems(projectId: string): Promise<ActionFetchResult<QtoItem[]>> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError };
-
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from("qto_items")
         .select(`*`) // <-- SỬA LẠI THÀNH DÒNG NÀY
@@ -41,9 +31,7 @@ export async function getQtoItems(projectId: string): Promise<ActionFetchResult<
  * Lấy danh sách các Mẫu Công tác (Template Catalog)
  */
 export async function getQtoTemplates(): Promise<ActionFetchResult<QtoTemplate[]>> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError };
-
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from("qto_templates")
         .select(`*`)
@@ -62,9 +50,7 @@ export async function getQtoTemplates(): Promise<ActionFetchResult<QtoTemplate[]
 export async function createQtoItem(
     formData: FormData // Chỉ nhận formData (khớp với useTransition ở Client)
 ): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
-
+    const supabase = await createSupabaseServerClient();
     const projectId = formData.get("projectId") as string | null;
     const templateCode = formData.get("template_code") as string | null;
 
@@ -181,9 +167,7 @@ export async function updateQtoItem(
     prevState: ActionResponse,
     formData: FormData
 ): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
-
+    const supabase = await createSupabaseServerClient();
     // Lấy dữ liệu
     const itemId = formData.get("itemId") as string | null;
     const projectId = formData.get("projectId") as string | null;
@@ -225,8 +209,7 @@ export async function deleteQtoItem(
     prevState: ActionResponse,
     formData: FormData
 ): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
+    const supabase = await createSupabaseServerClient();
 
     const itemId = formData.get("itemId") as string | null;
     const projectId = formData.get("projectId") as string | null;
@@ -275,8 +258,7 @@ export async function calculateQto_SemiAuto(
     prevState: ActionResponse,
     formData: FormData
 ): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
+    const supabase = await createSupabaseServerClient();
 
     const projectId = formData.get("projectId") as string | null;
     const itemType = formData.get("itemType") as string | null; // Ví dụ: "CONCRETE_BEAM"
@@ -378,8 +360,7 @@ export async function runEstimationAnalysis(
     prevState: ActionResponse,
     formData: FormData
 ): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
+    const supabase = await createSupabaseServerClient();
 
     const projectId = formData.get("projectId") as string | null;
     if (!projectId || !isValidUUID(projectId)) return { success: false, error: "ID Dự án không hợp lệ." };
@@ -465,8 +446,7 @@ export async function runEstimationAnalysis(
 * (MỚI) Lấy danh sách Dự toán Chi tiết (estimation_items) của một dự án
 */
 export async function getEstimationItems(projectId: string): Promise<ActionFetchResult<EstimationItem[]>> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError };
+    const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase
         .from("estimation_items")

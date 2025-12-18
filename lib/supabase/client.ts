@@ -7,9 +7,12 @@ export function createClient() {
     )
 }
 
-// Hỗ trợ các file import { createSupabaseClient }
+// 1. Alias cho createSupabaseClient
 export const createSupabaseClient = createClient;
 
-// Hỗ trợ các file import supabase from '@/lib/supabase/client'
-const supabase = createClient();
-export default supabase;
+// 2. Export default cho các file gọi "import supabase from..."
+const clientInstance = createClient();
+export default clientInstance;
+
+// 3. ✅ FIX QUAN TRỌNG: Export named 'supabase' cho file use-activity-logger.ts
+export const supabase = clientInstance;

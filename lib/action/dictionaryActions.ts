@@ -16,10 +16,7 @@ export async function getDictionaryLabels(
     category: string,
     lang: "vi" | "en" = "vi"
 ): Promise<DictionaryLabel[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
-
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from("system_dictionary")
         .select("code, label_vi, label_en, extra")

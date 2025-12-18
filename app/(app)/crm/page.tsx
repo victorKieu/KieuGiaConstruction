@@ -1,23 +1,18 @@
 import { Suspense } from "react"
 import type { Metadata } from "next"
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card"
-import {
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-} from "@/components/ui/tabs"
+
+// UI Components
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+
+// Business Components
 import { CrmStats } from "@/components/crm/crm-stats"
 import { RecentCustomers } from "@/components/crm/recent-customers"
 import { SalesPipeline } from "@/components/crm/sales-pipeline"
 import { UpcomingActivities } from "@/components/crm/upcoming-activities"
-import { Skeleton } from "@/components/ui/skeleton"
+
+// Chart Components
 import { SourcePieChart } from "@/components/crm/charts/SourcePieChart"
 import { SalesByLevelChart } from "@/components/crm/charts/SalesByLevelChart"
 import { WeeklyInteractionChart } from "@/components/crm/charts/WeeklyInteractionChart"
@@ -36,8 +31,12 @@ export const metadata: Metadata = {
 
 export default function CrmDashboardPage() {
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col h-full">
             <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+                <div className="flex items-center justify-between space-y-2">
+                    <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+                </div>
+
                 <Tabs defaultValue="overview" className="space-y-4">
                     <TabsList>
                         <TabsTrigger value="overview">Tổng quan</TabsTrigger>
@@ -45,190 +44,98 @@ export default function CrmDashboardPage() {
                         <TabsTrigger value="reports">Báo cáo</TabsTrigger>
                     </TabsList>
 
-                    {/* Tab: Tổng quan */}
+                    {/* --- TAB: TỔNG QUAN --- */}
                     <TabsContent value="overview" className="space-y-4">
                         <Suspense fallback={<StatsLoading />}>
                             <CrmStats />
                         </Suspense>
 
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                            <Card className="col-span-4">
-                                <CardHeader>
-                                    <CardTitle>Cơ hội bán hàng</CardTitle>
-                                    <CardDescription>
-                                        Theo dõi tiến trình các cơ hội bán hàng theo giai đoạn
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="pl-2">
-                                    <Suspense
-                                        fallback={
-                                            <div className="h-[300px] flex items-center justify-center">
-                                                <Skeleton className="h-[250px] w-full" />
-                                            </div>
-                                        }
-                                    >
-                                        <SalesPipeline />
-                                    </Suspense>
-                                </CardContent>
-                            </Card>
-                            <Card className="col-span-3">
-                                <CardHeader>
-                                    <CardTitle>Khách hàng gần đây</CardTitle>
-                                    <CardDescription>
-                                        Khách hàng mới và cập nhật gần đây
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Suspense fallback={<CustomersLoading />}>
-                                        <RecentCustomers />
-                                    </Suspense>
-                                </CardContent>
-                            </Card>
+                            <DashboardCard
+                                title="Cơ hội bán hàng"
+                                description="Theo dõi tiến trình các cơ hội bán hàng theo giai đoạn"
+                                className="col-span-4"
+                            >
+                                <Suspense fallback={<ChartSkeleton height="h-[250px]" />}>
+                                    <SalesPipeline />
+                                </Suspense>
+                            </DashboardCard>
+
+                            <DashboardCard
+                                title="Khách hàng gần đây"
+                                description="Khách hàng mới và cập nhật gần đây"
+                                className="col-span-3"
+                            >
+                                <Suspense fallback={<ListSkeleton count={5} />}>
+                                    <RecentCustomers />
+                                </Suspense>
+                            </DashboardCard>
                         </div>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Hoạt động sắp tới</CardTitle>
-                                <CardDescription>
-                                    Các cuộc gọi, cuộc họp và nhiệm vụ đã lên lịch
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <Suspense fallback={<ActivitiesLoading />}>
+                        <div className="grid gap-4 grid-cols-1">
+                            <DashboardCard
+                                title="Hoạt động sắp tới"
+                                description="Các cuộc gọi, cuộc họp và nhiệm vụ đã lên lịch"
+                            >
+                                <Suspense fallback={<ListSkeleton count={3} />}>
                                     <UpcomingActivities />
                                 </Suspense>
-                            </CardContent>
-                        </Card>
+                            </DashboardCard>
+                        </div>
                     </TabsContent>
 
-                    {/* Tab: Phân tích */}
+                    {/* --- TAB: PHÂN TÍCH --- */}
                     <TabsContent value="analytics" className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Phân bổ khách hàng theo nguồn</CardTitle>
-                                    <CardDescription>
-                                        Tỷ lệ khách hàng đến từ các kênh khác nhau
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <SourcePieChart />
-                                </CardContent>
-                            </Card>
+                            <DashboardCard title="Phân bổ nguồn" description="Tỷ lệ khách hàng theo kênh" contentClassName="h-[300px]">
+                                <SourcePieChart />
+                            </DashboardCard>
 
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Doanh số theo cấp độ</CardTitle>
-                                    <CardDescription>
-                                        Phân tích tổng doanh số theo nhóm khách hàng
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <SalesByLevelChart />
-                                </CardContent>
-                            </Card>
+                            <DashboardCard title="Doanh số theo cấp" description="Phân tích doanh số nhóm KH" contentClassName="h-[300px]">
+                                <SalesByLevelChart />
+                            </DashboardCard>
 
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Tương tác theo tuần</CardTitle>
-                                    <CardDescription>
-                                        Số lượt gọi, gặp, gửi báo giá mỗi tuần
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <WeeklyInteractionChart />
-                                </CardContent>
-                            </Card>
+                            <DashboardCard title="Tương tác tuần" description="Số lượt gọi, gặp, báo giá" contentClassName="h-[300px]">
+                                <WeeklyInteractionChart />
+                            </DashboardCard>
                         </div>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Cảnh báo chăm sóc</CardTitle>
-                                <CardDescription>
-                                    Danh sách khách hàng chưa được chăm sóc đúng hạn
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <DashboardCard title="Cảnh báo chăm sóc" description="Khách hàng chưa được chăm sóc đúng hạn">
                                 <AlertTable />
-                            </CardContent>
-                        </Card>
+                            </DashboardCard>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Hiệu suất giới thiệu</CardTitle>
-                                <CardDescription>
-                                    Khách hàng và cộng tác viên giới thiệu thành công
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
+                            <DashboardCard title="Hiệu suất giới thiệu" description="Khách hàng và CTV giới thiệu thành công">
                                 <ReferralTable />
-                            </CardContent>
-                        </Card>
+                            </DashboardCard>
+                        </div>
                     </TabsContent>
 
-                    {/* Tab: Báo cáo */}
+                    {/* --- TAB: BÁO CÁO --- */}
                     <TabsContent value="reports" className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Báo cáo hợp đồng</CardTitle>
-                                    <CardDescription>
-                                        Thống kê trạng thái và giá trị hợp đồng
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <ContractReportChart />
-                                </CardContent>
-                            </Card>
+                            <DashboardCard title="Hợp đồng" description="Thống kê trạng thái và giá trị" contentClassName="h-[300px]">
+                                <ContractReportChart />
+                            </DashboardCard>
 
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Dự báo doanh thu</CardTitle>
-                                    <CardDescription>
-                                        Ước lượng doanh thu từ các cơ hội đang mở
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <OpportunityForecastChart />
-                                </CardContent>
-                            </Card>
+                            <DashboardCard title="Dự báo doanh thu" description="Ước lượng từ các cơ hội mở" contentClassName="h-[300px]">
+                                <OpportunityForecastChart />
+                            </DashboardCard>
 
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Phân khúc khách hàng</CardTitle>
-                                    <CardDescription>
-                                        Phân tích theo nhóm khách hàng
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-[300px]">
-                                    <CustomerSegmentChart />
-                                </CardContent>
-                            </Card>
+                            <DashboardCard title="Phân khúc" description="Phân tích theo nhóm khách hàng" contentClassName="h-[300px]">
+                                <CustomerSegmentChart />
+                            </DashboardCard>
                         </div>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>KPI nhân viên</CardTitle>
-                                <CardDescription>
-                                    Hiệu suất bán hàng và chăm sóc khách hàng
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <DashboardCard title="KPI Nhân viên" description="Hiệu suất bán hàng và CSKH">
                                 <KpiDashboardTable />
-                            </CardContent>
-                        </Card>
+                            </DashboardCard>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Cảnh báo đến hạn</CardTitle>
-                                <CardDescription>
-                                    Hợp đồng và hoạt động cần xử lý
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
+                            <DashboardCard title="Cảnh báo đến hạn" description="Hợp đồng và hoạt động cần xử lý">
                                 <ReminderAlertsTable />
-                            </CardContent>
-                        </Card>
+                            </DashboardCard>
+                        </div>
                     </TabsContent>
                 </Tabs>
             </div>
@@ -236,60 +143,69 @@ export default function CrmDashboardPage() {
     )
 }
 
+// --- REUSABLE COMPONENT (Giảm lặp code) ---
+interface DashboardCardProps {
+    title: string
+    description?: string
+    children: React.ReactNode
+    className?: string
+    contentClassName?: string
+}
+
+function DashboardCard({ title, description, children, className, contentClassName }: DashboardCardProps) {
+    return (
+        <Card className={className}>
+            <CardHeader>
+                <CardTitle>{title}</CardTitle>
+                {description && <CardDescription>{description}</CardDescription>}
+            </CardHeader>
+            <CardContent className={contentClassName || "pl-2"}>
+                {children}
+            </CardContent>
+        </Card>
+    )
+}
+
+// --- SKELETONS (Clean & Generic) ---
 function StatsLoading() {
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {Array(4)
-                .fill(0)
-                .map((_, i) => (
-                    <Card key={i}>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <Skeleton className="h-4 w-[70px]" />
-                            <Skeleton className="h-4 w-4 rounded-full" />
-                        </CardHeader>
-                        <CardContent>
-                            <Skeleton className="h-7 w-[100px] mb-1" />
-                            <Skeleton className="h-4 w-[120px]" />
-                        </CardContent>
-                    </Card>
-                ))}
+            {Array(4).fill(0).map((_, i) => (
+                <Card key={i}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <Skeleton className="h-4 w-[70px]" />
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                    </CardHeader>
+                    <CardContent>
+                        <Skeleton className="h-7 w-[100px] mb-1" />
+                        <Skeleton className="h-4 w-[120px]" />
+                    </CardContent>
+                </Card>
+            ))}
         </div>
     )
 }
 
-function CustomersLoading() {
+function ListSkeleton({ count = 5 }: { count?: number }) {
     return (
         <div className="space-y-4">
-            {Array(5)
-                .fill(0)
-                .map((_, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                        <Skeleton className="h-10 w-10 rounded-full" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-4 w-[150px]" />
-                            <Skeleton className="h-3 w-[100px]" />
-                        </div>
+            {Array(count).fill(0).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="space-y-2 flex-1">
+                        <Skeleton className="h-4 w-[60%]" />
+                        <Skeleton className="h-3 w-[40%]" />
                     </div>
-                ))}
+                </div>
+            ))}
         </div>
     )
 }
 
-function ActivitiesLoading() {
+function ChartSkeleton({ height = "h-[300px]" }: { height?: string }) {
     return (
-        <div className="space-y-4">
-            {Array(3)
-                .fill(0)
-                .map((_, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                        <Skeleton className="h-10 w-10 rounded-full" />
-                        <div className="space-y-2 flex-1">
-                            <Skeleton className="h-4 w-[200px]" />
-                            <Skeleton className="h-3 w-full" />
-                        </div>
-                        <Skeleton className="h-8 w-[100px]" />
-                    </div>
-                ))}
+        <div className={`${height} flex items-center justify-center w-full`}>
+            <Skeleton className="h-[90%] w-[90%] rounded-md" />
         </div>
     )
 }

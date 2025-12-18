@@ -27,8 +27,7 @@ const CreateEmployeeSchema = z.object({
  * Chỉ Admin, HR Manager, HR Staff có quyền thực hiện.
  */
 export async function createFullEmployeeAccount(formData: FormData): Promise<ActionResponse> {
-    const supabaseAdmin = createSupabaseAdminClient();
-
+    const supabase = await createSupabaseServerClient();
     const callingUserRole = await get_user_role();
     if (!callingUserRole || !['admin', 'hr_manager', 'hr_staff'].includes(callingUserRole)) {
         return { success: false, error: "Bạn không có quyền tạo tài khoản nhân viên." };
@@ -55,7 +54,7 @@ export async function createFullEmployeeAccount(formData: FormData): Promise<Act
     let newUserId: string | undefined;
 
     try {
-        const { data: roleData, error: roleError } = await supabaseAdmin
+        const { data: roleData, error: roleError } = await supabase
             .from('roles')
             .select('id, name')
             .eq('name', 'employee')
@@ -68,7 +67,7 @@ export async function createFullEmployeeAccount(formData: FormData): Promise<Act
         const employeeRoleId = roleData.id;
         const employeeRoleName = roleData.name;
 
-        const { data: authUserData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        const { data: authUserData, error: authError } = await supabase.auth.admin.createUser({
             email: email,
             password: password,
             email_confirm: true,
@@ -104,13 +103,13 @@ export async function createFullEmployeeAccount(formData: FormData): Promise<Act
             avatar_url: null,
         };
 
-        const { error: employeeProfileError } = await supabaseAdmin
+        const { error: employeeProfileError } = await supabase
             .from('employees')
             .insert(employeeInsertData); // Truyền đối tượng đã được typed
 
         if (employeeProfileError) {
             console.error("Lỗi khi tạo hồ sơ nhân viên:", employeeProfileError);
-            await supabaseAdmin.auth.admin.deleteUser(newUserId);
+            await supabase.auth.admin.deleteUser(newUserId);
             return { success: false, error: employeeProfileError.message || "Không thể tạo hồ sơ nhân viên." };
         }
 
@@ -121,7 +120,7 @@ export async function createFullEmployeeAccount(formData: FormData): Promise<Act
     } catch (error: any) {
         console.error("Lỗi không mong muốn trong createFullEmployeeAccount:", error);
         if (newUserId) {
-            await supabaseAdmin.auth.admin.deleteUser(newUserId).catch(e => console.error("Failed to cleanup auth user:", e));
+            await supabase.auth.admin.deleteUser(newUserId).catch(e => console.error("Failed to cleanup auth user:", e));
         }
         return { success: false, error: error.message || "Đã xảy ra lỗi không mong muốn khi tạo nhân viên." };
     }
@@ -139,9 +138,7 @@ export async function getEmployees({
     page = 1,
     limit = 5,
 }: GetEmployeesParams = {}): Promise<GetEmployeesResult> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     let query = supabase
         .from("employees")
@@ -204,10 +201,7 @@ interface ProjectManager {
 }
 
 export async function getProjectManagers(): Promise<ProjectManager[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
-
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong getProjectManagers");
         return [];
@@ -247,9 +241,7 @@ export async function getProjectManagers(): Promise<ProjectManager[]> {
  * Quyền hạn được kiểm soát bởi RLS.
  */
 export async function getEmployeeById(id: string): Promise<Employee | null> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase
         .from("employees")
@@ -285,10 +277,7 @@ export async function getEmployeeById(id: string): Promise<Employee | null> {
  * Chỉ Admin, HR Manager, HR Staff hoặc chính nhân viên đó có quyền cập nhật (cần RLS).
  */
 export async function updateEmployeeProfile(id: string, formData: FormData): Promise<ActionResponse | null> {
-    const supabaseAdmin = createSupabaseAdminClient();
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -326,7 +315,7 @@ export async function updateEmployeeProfile(id: string, formData: FormData): Pro
     if (status !== null) updateData.status = status;
     if (avatar_url !== null) updateData.avatar_url = avatar_url;
 
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
         .from('employees')
         .update(updateData) // Truyền đối tượng đã được typed
         .eq('id', id);
@@ -379,3 +368,5 @@ export async function deleteEmployee(id: string): Promise<ActionResponse> {
         return { success: false, error: error.message || "Đã xảy ra lỗi không mong muốn khi xóa nhân viên." };
     }
 }
+
+export const createEmployeeAuthAndProfile = createFullEmployeeAccount;

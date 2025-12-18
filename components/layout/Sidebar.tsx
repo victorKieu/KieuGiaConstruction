@@ -153,6 +153,7 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
     );
 }
 
+// --- QUAN TRỌNG: Đã đổi từ "export default function" thành "export function" ---
 export function Sidebar() {
     const pathname = usePathname();
     const [expanded, setExpanded] = useState(false);
@@ -226,6 +227,7 @@ export function Sidebar() {
                             src="/images/logo.png"
                             alt="Kieu Gia Logo"
                             fill
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                             className="object-contain"
                             onError={() => setLogoError(true)}
                             priority

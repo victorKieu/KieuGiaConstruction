@@ -34,7 +34,10 @@ interface ProjectHeaderProps {
     };
 }
 
-export default function ProjectHeader({ project, permissions }: ProjectHeaderProps) {
+export default function ProjectHeader({
+    project,
+    permissions = { canEdit: false, canDelete: false, canAddMember: false } // ✅ FIX: Thêm giá trị mặc định
+}: ProjectHeaderProps) {
     const router = useRouter();
     const [isDeleting, setIsDeleting] = useState(false);
 

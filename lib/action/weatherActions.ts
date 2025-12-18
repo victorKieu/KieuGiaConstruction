@@ -61,20 +61,7 @@ export async function fetchWeatherForecast(project: ProjectGeocode): Promise<For
  * Lưu dữ liệu dự báo thời tiết vào Supabase
  */
 export async function saveWeatherForecast(forecast: ForecastEntry[]) {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-
-    if (!token) {
-        return {
-            data: null,
-            error: {
-                message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
-                code: "jwt_expired",
-            },
-        };
-    }
-
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     const { error } = await supabase
         .from("weather_forecast")

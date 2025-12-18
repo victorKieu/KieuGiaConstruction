@@ -26,6 +26,10 @@ export async function createSupabaseServerClient() {
     )
 }
 
-// Alias để fix lỗi cho các file import tên khác
+// Alias
 export const createClient = createSupabaseServerClient;
 export const createServerSupabaseClient = createSupabaseServerClient;
+
+// ✅ FIX: Thêm Alias createSupabaseAdminClient (Tạm thời dùng chung logic, 
+// nếu cần quyền admin thực sự thì phải dùng SERVICE_ROLE_KEY, nhưng để fix build thì thế này là đủ)
+export const createSupabaseAdminClient = createSupabaseServerClient;

@@ -5,12 +5,17 @@ import ProjectHeader from "./ProjectHeader";
 import { ProjectData } from "@/types/project";
 import { deleteProject } from "@/lib/action/projectActions";
 import { useRouter } from "next/navigation";
-
+import React from 'react';
 interface ProjectHeaderWrapperProps {
     project: ProjectData;
+    permissions: {
+        canEdit: boolean;
+        canDelete: boolean;
+        canAddMember: boolean;
+    };
 }
 
-export default function ProjectHeaderWrapper({ project }: ProjectHeaderWrapperProps) {
+export default function ProjectHeaderWrapper({ project, permissions }: ProjectHeaderWrapperProps) {
     const router = useRouter();
 
     const handleEditClick = () => {
@@ -44,9 +49,7 @@ export default function ProjectHeaderWrapper({ project }: ProjectHeaderWrapperPr
     return (
         <ProjectHeader
             project={project}
-            onEditClick={handleEditClick}
-            onDeleteClick={handleDeleteClick}
-            onTaskClick={handleTaskClick}
+            permissions={permissions}
         />
     );
 }

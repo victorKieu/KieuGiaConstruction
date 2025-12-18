@@ -1,54 +1,58 @@
-import { Suspense } from "react";
 import Link from "next/link";
+import { Suspense } from "react";
+import { Plus, LayoutGrid, List } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-//import { vi } from "date-fns/locale";
-import { Plus } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-//import { format } from "date-fns";
-import { OpportunitiesList } from "@/components/opportunities/opportunities-list"; // Import OpportunitiesList
+import { PipelineBoard } from "@/components/crm/opportunities/pipeline-board";
 
 export const dynamic = "force-dynamic";
 
 export default function OpportunitiesPage() {
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col h-full">
             <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+                {/* Header */}
                 <div className="flex items-center justify-between">
-                    <h2 className="text-3xl font-bold tracking-tight">Cơ hội bán hàng</h2>
-                    <Button asChild>
-                        <Link href="/crm/opportunities/new">
-                            <Plus className="mr-2 h-4 w-4" /> Thêm cơ hội mới
-                        </Link>
-                    </Button>
+                    <div>
+                        <h2 className="text-3xl font-bold tracking-tight">Cơ hội bán hàng</h2>
+                        <p className="text-muted-foreground">
+                            Quản lý quy trình bán hàng và dự báo doanh thu.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline">Xuất Excel</Button>
+                        <Button asChild>
+                            <Link href="/crm/opportunities/new">
+                                <Plus className="mr-2 h-4 w-4" /> Tạo cơ hội mới
+                            </Link>
+                        </Button>
+                    </div>
                 </div>
-                <Tabs defaultValue="all" className="space-y-4">
-                    <TabsList>
-                        <TabsTrigger value="all">Tất cả</TabsTrigger>
-                        <TabsTrigger value="open">Đang mở</TabsTrigger>
-                        <TabsTrigger value="won">Thành công</TabsTrigger>
-                        <TabsTrigger value="lost">Thất bại</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="all" className="space-y-4">
-                        <Suspense fallback={<OpportunitiesLoading />}>
-                            <OpportunitiesList />
+
+                {/* View Switcher (Kanban vs List) */}
+                <Tabs defaultValue="kanban" className="space-y-4 h-full">
+                    <div className="flex items-center justify-between">
+                        <TabsList>
+                            <TabsTrigger value="kanban" className="gap-2">
+                                <LayoutGrid className="h-4 w-4" /> Kanban
+                            </TabsTrigger>
+                            <TabsTrigger value="list" className="gap-2">
+                                <List className="h-4 w-4" /> Danh sách
+                            </TabsTrigger>
+                        </TabsList>
+                    </div>
+
+                    <TabsContent value="kanban" className="h-full border-none p-0">
+                        <Suspense fallback={<PipelineLoading />}>
+                            <PipelineBoard />
                         </Suspense>
                     </TabsContent>
-                    <TabsContent value="open" className="space-y-4">
-                        <Suspense fallback={<OpportunitiesLoading />}>
-                            <OpportunitiesList status="open" />
-                        </Suspense>
-                    </TabsContent>
-                    <TabsContent value="won" className="space-y-4">
-                        <Suspense fallback={<OpportunitiesLoading />}>
-                            <OpportunitiesList status="closed_won" />
-                        </Suspense>
-                    </TabsContent>
-                    <TabsContent value="lost" className="space-y-4">
-                        <Suspense fallback={<OpportunitiesLoading />}>
-                            <OpportunitiesList status="closed_lost" />
-                        </Suspense>
+
+                    <TabsContent value="list">
+                        <div className="flex items-center justify-center h-64 border rounded-md bg-muted/10">
+                            <p className="text-muted-foreground">Chế độ xem danh sách đang được phát triển...</p>
+                        </div>
                     </TabsContent>
                 </Tabs>
             </div>
@@ -56,48 +60,12 @@ export default function OpportunitiesPage() {
     );
 }
 
-function OpportunitiesLoading() {
+function PipelineLoading() {
     return (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {Array(6)
-                .fill(0)
-                .map((_, i) => (
-                    <Card key={i} className="animate-pulse">
-                        <CardHeader className="pb-2">
-                            <div className="flex items-center justify-between">
-                                <Skeleton className="h-5 w-[120px]" />
-                                <Skeleton className="h-5 w-[80px] rounded-full" />
-                            </div>
-                            <div className="flex justify-between items-center pt-1">
-                                <Skeleton className="h-4 w-[100px]" />
-                                <Skeleton className="h-4 w-[80px]" />
-                            </div>
-                        </CardHeader>
-                        <CardContent className="pb-2 space-y-3">
-                            <Skeleton className="h-4 w-full" />
-                            <Skeleton className="h-4 w-full" />
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <Skeleton className="h-3 w-[40px] mb-1" />
-                                    <Skeleton className="h-4 w-[80px]" />
-                                </div>
-                                <div>
-                                    <Skeleton className="h-3 w-[40px] mb-1" />
-                                    <Skeleton className="h-4 w-[60px]" />
-                                </div>
-                            </div>
-                        </CardContent>
-                        <CardContent className="pt-0 pb-2">
-                            <Skeleton className="h-2 w-full rounded-full" />
-                        </CardContent>
-                        <CardContent className="pt-0 pb-2">
-                            <Skeleton className="h-3 w-[120px]" />
-                        </CardContent>
-                        <CardContent className="pt-0 pb-4 flex justify-end">
-                            <Skeleton className="h-8 w-[80px] rounded-md" />
-                        </CardContent>
-                    </Card>
-                ))}
+        <div className="flex gap-4 overflow-hidden">
+            {[1, 2, 3, 4].map(i => (
+                <div key={i} className="min-w-[300px] h-[500px] bg-muted/20 rounded-lg animate-pulse" />
+            ))}
         </div>
-    );
+    )
 }

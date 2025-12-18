@@ -1,81 +1,89 @@
-// --- START OF FILE middleware.ts ---
+import { type NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-// Import createClient từ supabase-js để tạo client server-side
-import { createClient } from "@supabase/supabase-js";
+export async function middleware(request: NextRequest) {
+    // 1. Khởi tạo Response mặc định để có thể thao tác với header/cookie sau này
+    let response = NextResponse.next({
+        request: {
+            headers: request.headers,
+        },
+    });
 
-// Lấy biến môi trường cho Supabase URL và Anon Key
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    // 2. Khởi tạo Supabase Client (Phiên bản SSR)
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                // Lấy tất cả cookie từ browser gửi lên
+                getAll() {
+                    return request.cookies.getAll();
+                },
+                // Quan trọng: Hàm này giúp Server Action đồng bộ cookie mới nếu token được refresh
+                setAll(cookiesToSet) {
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                        request.cookies.set(name, value);
+                    });
+                    response = NextResponse.next({
+                        request,
+                    });
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                        response.cookies.set(name, value, options);
+                    });
+                },
+            },
+        }
+    );
 
-export async function middleware(req: NextRequest) { // Thêm async vì chúng ta sẽ gọi hàm bất đồng bộ
-    const { pathname } = req.nextUrl;
+    // 3. Quan trọng: Gọi getUser để Supabase kiểm tra và REFRESH token nếu cần
+    // Lưu ý: Không dùng getSession() ở đây vì nó không an toàn bằng getUser()
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
 
-    // Trang không cần bảo vệ
-    if (pathname === "/" || pathname === "/login" || pathname === "/register") {
-        return NextResponse.next();
-    }
-
-    // Lấy token từ cookie VỚI TÊN ĐÃ ĐƯỢC ĐỒNG NHẤT
-    const token = req.cookies.get("sb-access-token")?.value; // <-- Sử dụng tên cookie thống nhất
-
-    // Danh sách các trang yêu cầu xác thực
-    const authRequiredPages = [
+    // 4. Định nghĩa các trang cần bảo vệ (Auth Guard)
+    const authRequiredPaths = [
         "/dashboard",
         "/projects",
         "/employees",
         "/customers",
         "/reports",
+        "/crm", // Bảo vệ toàn bộ folder CRM
         "/permissions",
-        "/system-status",
-        "/settings",
-        "/crm",
+        "/settings"
     ];
 
-    // Kiểm tra xem người dùng có token không VÀ đang truy cập trang bảo vệ
-    if (authRequiredPages.some((page) => pathname.startsWith(page))) {
-        // Nếu không có token, chuyển hướng đến trang đăng nhập ngay lập tức
-        if (!token) {
-            return NextResponse.redirect(new URL("/login", req.url));
-        }
+    const { pathname } = request.nextUrl;
 
-        // Nếu có token, chúng ta cần xác thực nó
-        try {
-            // Tạo một client Supabase để xác thực token server-side
-            const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-                global: {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                },
-            });
-
-            // Gọi getUser() để xác thực token
-            const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-            if (authError || !user) {
-                console.warn("Xác thực token thất bại trong middleware:", authError?.message || "Không có người dùng.");
-                // Token không hợp lệ hoặc hết hạn, chuyển hướng về trang đăng nhập
-                return NextResponse.redirect(new URL("/login", req.url));
-            }
-
-            // Nếu user hợp lệ, cho phép tiếp tục
-            return NextResponse.next();
-
-        } catch (error) {
-            console.error("Lỗi không mong muốn trong quá trình xác thực middleware:", error);
-            return NextResponse.redirect(new URL("/login", req.url));
-        }
+    // 5. Logic chặn truy cập
+    // Nếu đường dẫn bắt đầu bằng các path bảo vệ VÀ user chưa đăng nhập
+    if (authRequiredPaths.some((path) => pathname.startsWith(path)) && !user) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/login";
+        // Trả về login và kết thúc middleware
+        return NextResponse.redirect(url);
     }
 
-    // Nếu không phải trang yêu cầu xác thực, cho phép tiếp tục
-    return NextResponse.next();
+    // 6. Logic ngược lại: Nếu đã login mà cố vào trang login/register -> Đẩy về Dashboard hoặc CRM
+    if (user && (pathname === "/login" || pathname === "/register" || pathname === "/")) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard"; // Hoặc trang chủ của bạn
+        return NextResponse.redirect(url);
+    }
+
+    // 7. Trả về response đã được update cookie (nếu có)
+    return response;
 }
 
-// Cấu hình matcher để xác định các đường dẫn mà middleware sẽ áp dụng
 export const config = {
     matcher: [
-        "/((?!_next/static|_next/image|favicon.ico|public).*)", // Bỏ qua các đường dẫn tĩnh
+        /*
+         * Match tất cả request paths ngoại trừ:
+         * - _next/static (static files)
+         * - _next/image (image optimization files)
+         * - favicon.ico (favicon file)
+         * - public folder
+         */
+        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     ],
 };

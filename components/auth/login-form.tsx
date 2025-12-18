@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -6,22 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react"; // Thêm AlertCircle cho icon lỗi
 import Link from "next/link";
 import { BiometricAuth } from "./biometric-auth";
-import { useIsMobile } from "@/lib/hooks/useIsMobile";
-import { Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner"; // Thêm toast để thông báo nổi
 
 export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [errorMessage, setErrorMessage] = useState("");
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+
     const { signIn } = useAuth();
     const router = useRouter();
 
+    // Load email đã lưu
     useEffect(() => {
         const savedEmail = localStorage.getItem("biometric_auth_email");
         if (savedEmail) {
@@ -37,11 +39,11 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        setErrorMessage("");
+        setErrorMessage(null); // Reset lỗi cũ
 
-        // Kiểm tra client-side trước khi gọi API
+        // 1. Validate Client-side
         if (!validateEmail(email)) {
-            setErrorMessage("Email không hợp lệ.");
+            setErrorMessage("Email không đúng định dạng.");
             setIsLoading(false);
             return;
         }
@@ -53,55 +55,80 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
         }
 
         try {
+            // 2. Gọi hàm đăng nhập
             await signIn(email, password);
 
-            // Lưu email nếu chọn rememberMe
+            // 3. Xử lý Remember Me
             if (rememberMe) {
                 localStorage.setItem("biometric_auth_email", email);
             } else {
                 localStorage.removeItem("biometric_auth_email");
             }
 
-            // Đợi cookie được sync rồi redirect
+            // 4. Thông báo thành công
+            toast.success("Đăng nhập thành công!");
+
+            // 5. Redirect (Thêm delay nhỏ để cookie kịp set)
             setTimeout(() => {
                 router.push("/dashboard");
+                router.refresh(); // Refresh để cập nhật Server Components
             }, 500);
+
         } catch (error: any) {
-            console.error("Lỗi đăng nhập:", error.message);
-            setErrorMessage(error.message || "Đăng nhập không thành công.");
+            console.error("Login Error:", error);
+
+            // 6. ✅ FIX: Dịch lỗi sang tiếng Việt
+            let message = "Đăng nhập không thành công. Vui lòng thử lại.";
+            const rawMsg = error.message || error.toString();
+
+            if (rawMsg.includes("Invalid login credentials")) {
+                message = "Email hoặc mật khẩu không chính xác.";
+            } else if (rawMsg.includes("Email not confirmed")) {
+                message = "Email chưa được xác thực. Vui lòng kiểm tra hộp thư đến.";
+            } else if (rawMsg.includes("Too many requests")) {
+                message = "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau giây lát.";
+            }
+
+            setErrorMessage(message);
+            toast.error(message); // Hiện popup lỗi luôn cho chắc
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleBiometricSuccess = () => {
+        toast.success("Xác thực sinh trắc học thành công!");
         router.push("/dashboard");
     };
 
     return (
         <div className="space-y-6">
+            {/* Hiển thị lỗi màu đỏ nếu có */}
             {errorMessage && (
-                <div className="p-3 bg-red-100 text-red-700 rounded-md text-sm">
-                    {errorMessage}
+                <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{errorMessage}</span>
                 </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Input Email */}
                 <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input
                         id="email"
                         type="email"
-                        placeholder="your.email@example.com"
+                        placeholder="name@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={isLoading}
+                        className="bg-white"
                     />
                 </div>
 
+                {/* Input Password */}
                 <div className="space-y-2">
-                    {/* Label và Link "Quên mật khẩu" */}
                     <div className="flex items-center justify-between">
                         <Label htmlFor="password">Mật khẩu</Label>
                         <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline">
@@ -109,7 +136,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                         </Link>
                     </div>
 
-                    {/* --- PHẦN FIX: BỌC INPUT VÀ BUTTON TRONG DIV RELATIVE --- */}
                     <div className="relative">
                         <Input
                             id="password"
@@ -120,37 +146,42 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                             required
                             disabled={isLoading}
                             autoComplete="current-password"
+                            className="pr-10 bg-white" // Thêm padding phải để không đè icon
                         />
-                        {/* Nút Absolute */}
                         <button
                             type="button"
                             onClick={() => setShowPassword(prev => !prev)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-800 transition duration-150"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
                             aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                            tabIndex={-1} // Không focus vào nút này khi tab
                         >
-                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                     </div>
-                    {/* KẾT THÚC BỌC */}
                 </div>
 
+                {/* Checkbox Remember Me */}
                 <div className="flex items-center space-x-2">
                     <Checkbox
                         id="remember"
                         checked={rememberMe}
                         onCheckedChange={(checked) => setRememberMe(!!checked)}
                     />
-                    <Label htmlFor="remember">Ghi nhớ đăng nhập</Label>
+                    <Label htmlFor="remember" className="font-normal cursor-pointer">
+                        Ghi nhớ đăng nhập
+                    </Label>
                 </div>
-                
+
+                {/* Nút Submit */}
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : null}
+                    {isLoading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : null}
                     Đăng nhập
                 </Button>
             </form>
 
+            {/* Biometric cho Mobile */}
             {isMobile && (
-                <div>
+                <div className="pt-2 border-t mt-4">
                     <BiometricAuth email={email} onSuccess={handleBiometricSuccess} />
                 </div>
             )}

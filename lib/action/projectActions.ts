@@ -6,7 +6,8 @@ import { cookies } from "next/headers";
 import { isValidUUID } from "@/lib/utils/uuid";
 import { getCurrentUser } from "./authActions"; // Import từ authActions
 import { ProjectData, MemberData, DocumentData, FinanceData, MilestoneData, TaskData, CommentData } from "@/types/project";
-import { checkProjectPermission, PERMISSIONS } from "@/lib/utils/auth";
+import { checkPermission } from "@/lib/auth/permissions";
+import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
 export interface ActionError {
     message: string;
@@ -45,7 +46,6 @@ type GetCommentsResult = ActionFetchResult<CommentData[]>;
 
 // --- Helper function để xử lý token ---
 async function getSupabaseClient() {
-    // Luôn cần truyền cookiestore vào createSupabaseServerClient nếu muốn tạo client server
     const cookieStore = await cookies();
     const token = cookieStore.get("sb-access-token")?.value || null;
 
@@ -59,9 +59,11 @@ async function getSupabaseClient() {
         };
     }
 
-    // Tạo Supabase client server với token đã lấy
+    // ✅ FIX: Thêm 'await' để giải nén Promise lấy Client thực sự
+    const client = await createSupabaseServerClient();
+
     return {
-        client: createSupabaseServerClient(token),
+        client: client, // Bây giờ đây là SupabaseClient, không phải Promise
         error: null
     };
 }
@@ -75,40 +77,68 @@ async function getSupabaseClient() {
 export async function getProject(id: string): Promise<GetProjectResult> {
     if (!isValidUUID(id)) return { data: null, error: { message: "ID dự án không hợp lệ.", code: "400" } };
 
+    // 1. Khởi tạo Client
     const { client: supabase, error: authError } = await getSupabaseClient();
     if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
 
-    const { data: project, error } = await supabase
-        .from("projects")
-        .select(`
-            *,
-            customers ( name ),
-            manager:employees!projects_project_manager_fkey ( name ), 
-            creator:employees!projects_created_by_fkey ( name ), 
-            member_count:project_members ( count ),
-            document_count:project_documents ( count )
-        `)
-        .eq("id", id)
-        // --- PHẦN FIX ---
-        .maybeSingle(); // <-- Sửa từ .single() thành .maybeSingle()
-    // --- KẾT THÚC FIX ---
+    // 2. Lấy thông tin User hiện tại để check quyền
+    const user = await getUserProfile();
+    if (!user) return { data: null, error: { message: "Bạn chưa đăng nhập.", code: "401" } };
 
+    // 3. Chuẩn bị câu Query cơ bản
+    // Lưu ý: Chúng ta tách chuỗi select ra biến để dễ thao tác
+    let selectQuery = `
+        *,
+        customers ( name ),
+        manager:employees!projects_project_manager_fkey ( name ), 
+        creator:employees!projects_created_by_fkey ( name ), 
+        member_count:project_members ( count ),
+        document_count:project_documents ( count )
+    `;
+
+    let query = supabase.from("projects");
+
+    // 4. 🔒 ÁP DỤNG DATA SCOPE (Quan trọng)
+    if (user.role !== 'admin') {
+        // Nếu KHÔNG phải Admin: Buộc phải join với bảng members để kiểm tra
+        // Kỹ thuật: Thêm !inner join vào select string và lọc theo user.id
+        selectQuery += `, check_member:project_members!inner(user_id)`;
+
+        query = query
+            .select(selectQuery)
+            .eq('check_member.user_id', user.id);
+        // Nếu user không có trong bảng members của dự án này, query sẽ trả về null
+    } else {
+        // Nếu là Admin: Query bình thường, không cần check member
+        query = query.select(selectQuery);
+    }
+
+    // 5. Thực thi Query
+    const { data: project, error } = await query
+        .eq("id", id)
+        .maybeSingle();
+
+    // 6. Xử lý lỗi
     if (error) {
         console.error("Lỗi Supabase trong getProject:", error.message);
         return { data: null, error: { message: `Lỗi tải dự án: ${error.message}`, code: error.code || "db_error" } };
     }
 
-    // .maybeSingle() sẽ trả về null nếu không tìm thấy, logic này xử lý đúng
     if (!project) {
-        return { data: null, error: { message: "Không tìm thấy dự án.", code: "404" } };
+        // Nếu user role 'employee' truy cập dự án mình không tham gia -> project sẽ là null -> Rơi vào đây (404 Not Found)
+        // Điều này rất bảo mật vì hacker sẽ không biết dự án đó có tồn tại hay không.
+        return { data: null, error: { message: "Không tìm thấy dự án hoặc bạn không có quyền truy cập.", code: "404" } };
     }
 
-    // (Phần mapping dữ liệu giữ nguyên)
+    // 7. Mapping dữ liệu (Cleanup)
     const memberCount = (project.member_count as any)?.[0]?.count || 0;
     const documentCount = (project.document_count as any)?.[0]?.count || 0;
 
+    // Loại bỏ field thừa 'check_member' trước khi trả về UI
+    const { check_member, ...cleanProjectData } = project;
+
     const finalProject: ProjectData = {
-        ...project,
+        ...cleanProjectData,
         customers: project.customers,
         manager: project.manager,
         created: project.creator,
@@ -194,9 +224,9 @@ export async function updateProject(formData: FormData): Promise<ActionResponse>
     if (!projectId) return { success: false, error: "Thiếu ID dự án." };
 
     // Kiểm tra quyền
-    const hasPermission = await checkProjectPermission(projectId, PERMISSIONS.MANAGE_PROJECT);
+    const hasPermission = await checkPermission("projects", "update");
     if (!hasPermission) {
-        return { success: false, error: "Bạn không có quyền chỉnh sửa dự án này." };
+        return { success: false, error: "⛔ Bạn không có quyền chỉnh sửa dự án này!" };
     }
 
     const updateData: any = {
@@ -233,11 +263,13 @@ export async function updateProject(formData: FormData): Promise<ActionResponse>
  * Xóa một dự án.
  */
 export async function deleteProject(projectId: string): Promise<ActionResponse> {
+
+    const hasPermission = await checkPermission("projects", "delete");
+    if (!hasPermission) {
+        return { success: false, error: "⛔ Bạn không có quyền xóa dự án này!" };
+    }
     const { client: supabase } = await getSupabaseClient();
     if (!supabase) return { success: false, error: "Lỗi kết nối" };
-
-    const hasPermission = await checkProjectPermission(projectId, PERMISSIONS.MANAGE_PROJECT);
-    if (!hasPermission) return { success: false, error: "Không có quyền xóa." };
 
     const { error } = await supabase.from("projects").delete().eq("id", projectId);
     if (error) return { success: false, error: error.message };
@@ -251,7 +283,11 @@ export async function deleteProject(projectId: string): Promise<ActionResponse> 
  */
 export async function getProjectMembers(projectId: string): Promise<GetMembersResult> {
     const { client: supabase } = await getSupabaseClient();
-    if (!supabase) return { data: null, error: "Lỗi kết nối" };
+
+    if (!supabase) return {
+        data: null,
+        error: { message: "Lỗi kết nối đến Supabase", code: "500" } // ✅ Error là object
+    };
 
     const { data, error } = await supabase
         .from("project_members")
@@ -290,9 +326,9 @@ export async function addProjectMember(formData: FormData): Promise<ActionRespon
     }
 
     // Kiểm tra quyền
-    const hasPermission = await checkProjectPermission(projectId, PERMISSIONS.MANAGE_MEMBERS);
+    const hasPermission = await checkPermission("project_members", "create");
     if (!hasPermission) {
-        return { success: false, error: "Bạn không có quyền thêm thành viên." };
+        return { success: false, error: "⛔ Bạn không có quyền thêm mới thành viên dự án này!" };
     }
 
     // Insert
@@ -321,8 +357,10 @@ export async function removeProjectMember(formData: FormData): Promise<ActionRes
     const projectId = formData.get("project_id") as string;
     const employeeId = formData.get("employee_id") as string;
 
-    const hasPermission = await checkProjectPermission(projectId, PERMISSIONS.MANAGE_MEMBERS);
-    if (!hasPermission) return { success: false, error: "Không có quyền xóa thành viên." };
+    const hasPermission = await checkPermission("project_members", "delete");
+    if (!hasPermission) {
+        return { success: false, error: "⛔ Bạn không có quyền loại bỏ thành viên dự án này!" };
+    }
 
     const { error } = await supabase
         .from("project_members")
@@ -727,7 +765,7 @@ export async function createComment(
         // Ta sẽ dùng created_by_id và dựa vào JOIN trong RLS.
     };
 
-    const { data, error } = await supabase!
+    const { data, error } = await supabase
         .from("project_comments")
         .insert(newComment)
         .select()

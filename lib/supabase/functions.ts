@@ -1,30 +1,28 @@
 ﻿// lib/supabase/functions.ts
-"use server"; // Đây là Server Function
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { cache } from "react";
 
-import { createSupabaseServerClient } from './server';
-import { cookies } from "next/headers";
+export const get_user_role = cache(async () => {
+    console.log(`[🔎 GET_USER_ROLE] Đang khởi tạo Supabase Client...`);
 
-/**
- * Calls the Supabase SQL function 'get_user_role' to determine the current user's role
- * based on their auth.users.raw_app_meta_data.
- * This function uses a Supabase client that respects Row Level Security (RLS).
- *
- * @returns The role name (string) if found, otherwise null.
- */
-export async function get_user_role(): Promise<string | null> {
-    const cookieStore = await cookies(); // phải await
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    // Nhớ có await như đã fix
+    const supabase = await createSupabaseServerClient();
 
-    // Gọi hàm RPC (Remote Procedure Call) để thực thi SQL function
-    // Đảm bảo SQL function 'get_user_role' trong Supabase của bạn đọc từ raw_app_meta_data
-    const { data, error } = await supabase.rpc('get_user_role');
+    try {
+        console.log(`[🔎 GET_USER_ROLE] Đang gọi RPC 'get_user_role'...`);
 
-    if (error) {
-        console.error('Error calling get_user_role RPC:', error);
+        const { data, error } = await supabase.rpc('get_user_role');
+
+        if (error) {
+            console.error('[🔎 GET_USER_ROLE] ❌ Lỗi RPC:', error.message);
+            return null;
+        }
+
+        console.log(`[🔎 GET_USER_ROLE] ✅ Kết quả RPC trả về: "${data}"`);
+        return data as string;
+
+    } catch (err: any) {
+        console.error('[🔎 GET_USER_ROLE] 💥 Lỗi ngoại lệ (Exception):', err.message || err);
         return null;
     }
-
-    // Hàm SQL function `get_user_role()` trả về text, nên `data` sẽ là string
-    return data;
-}
+});

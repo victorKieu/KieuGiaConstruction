@@ -39,9 +39,8 @@ export async function getProjectMembers(projectId: string) {
 }
 // Lấy danh sách employee toàn hệ thống (id, name, email)
 export async function getAllEmployees(): Promise<Employee[]> {
-    const cookieStore = await cookies(); // phải await
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    
+    const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase
         .from("employees")

@@ -37,9 +37,7 @@ interface ActionResponse {
  * Lấy danh sách các nhật ký công trình cho một dự án cụ thể.
  */
 export async function getLogs(projectId: string): Promise<Log[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong getLogs");
         return [];
@@ -94,9 +92,7 @@ export async function getLogs(projectId: string): Promise<Log[]> {
  * Tạo một bản ghi nhật ký công trình mới.
  */
 export async function createLog(formData: FormData): Promise<ActionResponse> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong createLog");
         return { success: false, error: "Không thể kết nối đến Supabase để tạo log" };

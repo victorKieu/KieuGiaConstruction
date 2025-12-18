@@ -1,10 +1,10 @@
-import { createRouteHandlerClient } from "@supabase/ssr"
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+      const supabase = await createSupabaseServerClient();
 
     // Kiểm tra xác thực
     const {

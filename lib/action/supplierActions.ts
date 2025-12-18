@@ -35,9 +35,7 @@ interface ActionResponse {
  * Lấy danh sách tất cả nhà cung cấp.
  */
 export async function getSuppliers(): Promise<Supplier[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong getSuppliers");
         return [];

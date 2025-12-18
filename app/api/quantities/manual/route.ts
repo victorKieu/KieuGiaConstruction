@@ -1,9 +1,9 @@
-import { createRouteHandlerClient } from "@supabase/ssr"
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createSupabaseServerClient();
     const { workItems, projectId } = await request.json()
     if (!projectId || !Array.isArray(workItems)) {
         return NextResponse.json({ error: "Thiếu dữ liệu đầu vào" }, { status: 400 })

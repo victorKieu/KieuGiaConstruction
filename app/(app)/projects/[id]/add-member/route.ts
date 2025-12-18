@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/ssr";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 
 export async function POST(request: NextRequest, { params }: { params: { projectId: string } }) {
     try {
-        const supabase = createRouteHandlerClient({ cookies });
+        const supabase = await createSupabaseServerClient();
 
         // Lấy thông tin phiên làm việc
         const { data: { session } } = await supabase.auth.getSession();

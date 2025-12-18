@@ -1,12 +1,11 @@
-import { createRouteHandlerClient } from "@supabase/ssr"
-import { cookies } from "next/headers"
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server"
 import xlsx from "node-xlsx"
 
 //export const config = { api: { bodyParser: false } }
 
 export async function POST(request: NextRequest) {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createSupabaseServerClient();
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 

@@ -129,13 +129,12 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
                 {/* Menu user */}
                 <UserDropdownMenu
                     user={{
-                        name: displayName, // Sử dụng tên từ userProfile
-                        avatar_url: displayAvatarUrl, // Sử dụng avatar_url từ userProfile
-                        email: displayEmail // Sử dụng email từ userProfile
+                        name: displayName,
+                        avatar_url: displayAvatarUrl,
+                        email: displayEmail
                     }}
                     onProfile={() => router.push("/profile")}
                     onSettings={() => router.push("/settings")}
-                    onLogout={handleLogout}
                 />
             </div>
         </header>

@@ -32,9 +32,7 @@ interface ActionResponse {
  * Lấy danh sách khách hàng chỉ với id, name, code để sử dụng trong các dropdown.
  */
 export async function getCustomersForDropdown(): Promise<{ id: string; name: string; code: string | null }[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong getCustomersForDropdown");
         return [];
@@ -57,9 +55,7 @@ export async function getCustomersForDropdown(): Promise<{ id: string; name: str
  * Lấy danh sách khách hàng đầy đủ, có thể áp dụng các bộ lọc.
  */
 export async function getCustomerList(filters: { search?: string; status?: string; tag?: string } = {}): Promise<Customer[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong getCustomerList");
         return [];
@@ -93,9 +89,7 @@ export async function getCustomerList(filters: { search?: string; status?: strin
  * Lấy danh sách khách hàng gần đây nhất.
  */
 export async function getRecentCustomers(): Promise<Customer[]> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     if (!supabase) {
         console.error("Supabase client là null trong getRecentCustomers");
         return [];
@@ -120,9 +114,7 @@ export async function getRecentCustomers(): Promise<Customer[]> {
  * Trả về cả dữ liệu và lỗi để dễ xử lý trong UI hoặc API.
  */
 export async function getCustomerById(id: string): Promise<{ data: Customer | null; error: string | null }> {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     if (!supabase) {
         console.error("Supabase client là null trong getCustomerById");

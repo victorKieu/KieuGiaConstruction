@@ -1,0 +1,14 @@
+{
+  "greeting": "Xin chào",
+  "dashboard": "Dashboard",
+  "activeProjects": "Dự án Đang Thực hiện",
+  "totalRevenue": "Tổng Doanh thu",
+  "upcomingDeadlines": "Các Deadline Sắp Tới",
+  "designConsulting": "Tư vấn Thiết kế",
+  "constructionSupervision": "Giám sát Thi công",
+  "civilProjects": "Dự án Dân dụng",
+  "industrialProjects": "Dự án Công nghiệp",
+  "warrantyTasks": "Nhiệm vụ Bảo hành",
+  "customerManagement": "Quản lý Khách hàng",
+  "inventoryLevels": "Mức Tồn kho"
+}

@@ -1,13 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import Dashboard from '@/components/dashboard/Dashboard'
-import { cookies } from "next/headers";
+import Dashboard from '@/components/dashboard/Dashboard';
 
 export default async function DashboardPage() {
 
     // --- PHẦN 1: Lấy User ---
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 

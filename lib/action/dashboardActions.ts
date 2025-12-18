@@ -7,9 +7,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 
 export async function getOverviewStats() {
-    const cookieStore = await cookies(); // phải await
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     try {
         const { data, error } = await supabase
             .from("overview_statistics")
@@ -30,9 +28,7 @@ export async function getOverviewStats() {
 
 export async function getDesignConsultingActivities() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token);
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("design_consulting")
             .select("task, status, deadline")
@@ -53,9 +49,7 @@ export async function getDesignConsultingActivities() {
 
 export async function getConstructionSupervisionStatus() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token)
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("construction_supervision_status")
             .select("*");
@@ -74,9 +68,7 @@ export async function getConstructionSupervisionStatus() {
 
 export async function getCivilConstructionProjects() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token);
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("civil_construction_projects")
             .select("*");
@@ -95,9 +87,7 @@ export async function getCivilConstructionProjects() {
 
 export async function getIndustrialConstructionProjects() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token);
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("industrial_construction_projects")
             .select("*");
@@ -116,9 +106,7 @@ export async function getIndustrialConstructionProjects() {
 
 export async function getWarrantyTasks() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token);
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("warranty_tasks")
             .select("*");
@@ -137,9 +125,7 @@ export async function getWarrantyTasks() {
 
 export async function getCustomerManagementStats() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token);
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("customers")
             .select(`
@@ -162,9 +148,7 @@ export async function getCustomerManagementStats() {
 
 export async function getInventoryLevels() {
     try {
-        const cookieStore = await cookies(); // phải await
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const supabase = createSupabaseServerClient(token);
+        const supabase = await createSupabaseServerClient();
         const { data, error } = await supabase
             .from("inventory")
             .select("item_name, level");

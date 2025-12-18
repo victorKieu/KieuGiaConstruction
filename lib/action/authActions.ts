@@ -1,7 +1,7 @@
 ﻿"use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
+//import { cookies } from "next/headers";
 import { UserProfile } from "@/types/userProfile"; // Import type
 
 /**
@@ -9,9 +9,7 @@ import { UserProfile } from "@/types/userProfile"; // Import type
  * Dùng nội bộ khi chỉ cần ID/Email.
  */
 export async function getCurrentUser() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase.auth.getUser();
 
     if (error) {
@@ -30,9 +28,7 @@ export async function getCurrentUser() {
 export async function getUserProfile(): Promise<UserProfile | null> {
     console.log("[getUserProfile] Bắt đầu chạy (File: lib/supabase/getUserProfile.ts)..."); // <-- LOG MỚI
 
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
     // Bước 1: Kiểm tra Auth (vẫn cần thiết)
     const { data: { user }, error: authError } = await supabase.auth.getUser();

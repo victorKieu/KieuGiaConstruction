@@ -7,12 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AlertCircle } from "lucide-react"
 
 type DueItem = {
-    item_id: string
-    title: string
-    type: "contract" | "opportunity" | "task"
-    customer_name: string
-    employee_name: string
-    remind_at: string
+    item_id: string;
+    title: string;
+    type: "contract" | "opportunity" | "task";
+    customer_name: string;
+    employee_name: string;
+    remind_at: string;
     status: string
 }
 
@@ -25,7 +25,7 @@ export function ReminderAlertsTable() {
             const { data, error } = await supabase
                 .from("crm_reminder_alerts")
                 .select("item_id, title, type, customer_name, employee_name, remind_at, status")
-                .lte("due_date", new Date().toISOString()) // lấy các mục đến hạn hoặc quá hạn
+                .lte("remind_at", new Date().toISOString()) // lấy các mục đến hạn hoặc quá hạn
 
             if (error) {
                 console.error("Lỗi khi lấy dữ liệu cảnh báo đến hạn:", error.message || error)
