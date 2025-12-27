@@ -5,14 +5,9 @@ import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search, Sun, Moon } from "lucide-react";
 import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
-// XÓA DÒNG NÀY: import { getUserProfile } from '@/lib/supabase/getUserProfile';
 import { useTheme } from "next-themes"; // <--- Sửa lỗi ở đây
 import { useTranslation } from 'next-i18next';
-//import Link from 'next/link';
 import i18next from '@/app/src/config/i18n';
-
-// IMPORT UserProfile interface
-
 import type { UserProfile } from '@/types/userProfile';
 
 // Map đường dẫn -> tiêu đề trang

@@ -1,10 +1,8 @@
 ﻿// lib/actions/crmActions.ts
 "use server";
 
-import { cookies } from "next/headers";
-//import { revalidatePath } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-//import { getCurrentUser } from "./authActions"; // Import từ authActions
 
 // --- Giao diện dữ liệu (Interfaces) ---
 interface Customer {
@@ -139,5 +137,37 @@ export async function getCustomerById(id: string): Promise<{ data: Customer | nu
     return { data, error: null };
 }
 
-// - createCustomerActivity
-// - getCustomerActivities
+export async function deleteCustomer(id: string) {
+    const supabase = await createSupabaseServerClient();
+
+    try {
+        const { error } = await supabase
+            .from("customers")
+            .delete()
+            .eq("id", id);
+
+        if (error) {
+            // BẮT LỖI RÀNG BUỘC KHÓA NGOẠI (Foreign Key Violation)
+            // Mã lỗi Postgres cho vi phạm khóa ngoại là '23503'
+            if (error.code === '23503') {
+                return {
+                    success: false,
+                    error: "Không thể xóa: Khách hàng này đang có Dự án hoặc Hợp đồng liên quan."
+                };
+            }
+
+            // Các lỗi khác
+            throw error;
+        }
+
+        revalidatePath("/crm/customers");
+        return { success: true, message: "Đã xóa khách hàng thành công." };
+
+    } catch (error: any) {
+        console.error("Delete Customer Error:", error);
+        return {
+            success: false,
+            error: error.message || "Lỗi hệ thống khi xóa khách hàng."
+        };
+    }
+}

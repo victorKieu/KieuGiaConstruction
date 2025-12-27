@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
@@ -9,46 +9,67 @@ import {
     CardFooter,
     CardHeader,
     CardTitle,
-    CardDescription,
 } from "@/components/ui/card"
 import supabase from "@/lib/supabase/client"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
-import { Calendar, Check, Clock, Phone, Users } from "lucide-react"
+import {
+    Calendar,
+    Check,
+    Clock,
+    Phone,
+    Users,
+    Mail,
+    FileText,
+    AlertCircle,
+    MoreHorizontal
+} from "lucide-react"
+import { cn } from "@/lib/utils/utils" // Giả sử bạn có util này (thường có trong shadcn)
 
-interface Customer {
-    name: string
-}
-
+// --- TYPES ---
 interface Activity {
     id: string
     activity_type: string
     title: string
     description: string
     scheduled_at: string
-    status: string
+    status: "pending" | "completed" | "cancelled"
     created_at: string
     customer_id: string
-    customer?: Customer
 }
 
 interface CustomerActivitiesProps {
     customerId: string
 }
 
-const activityIcons: Record<string, any> = {
+// --- CONSTANTS & CONFIG ---
+const ACTIVITY_ICONS: Record<string, any> = {
     call: Phone,
     meeting: Users,
     task: Calendar,
+    email: Mail,
+    other: FileText,
 }
 
-const activityStatusColors: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    completed: "bg-green-100 text-green-800",
-    cancelled: "bg-red-100 text-red-800",
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon?: any }> = {
+    pending: {
+        label: "Chờ xử lý",
+        color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+        icon: Clock
+    },
+    completed: {
+        label: "Hoàn thành",
+        color: "bg-green-100 text-green-800 border-green-200",
+        icon: Check
+    },
+    cancelled: {
+        label: "Đã hủy",
+        color: "bg-red-100 text-red-800 border-red-200",
+        icon: AlertCircle
+    },
 }
 
-const activityTypeLabels: Record<string, string> = {
+const TYPE_LABELS: Record<string, string> = {
     call: "Cuộc gọi",
     meeting: "Cuộc họp",
     task: "Nhiệm vụ",
@@ -56,47 +77,123 @@ const activityTypeLabels: Record<string, string> = {
     other: "Khác",
 }
 
+// --- SUB-COMPONENT: ACTIVITY ITEM ---
+// Tách ra để code chính gọn gàng hơn
+function ActivityItem({
+    activity,
+    onComplete,
+}: {
+    activity: Activity
+    onComplete: (id: string) => void
+}) {
+    const Icon = ACTIVITY_ICONS[activity.activity_type] || FileText
+    const statusConfig = STATUS_CONFIG[activity.status] || STATUS_CONFIG.pending
+    const isPast = new Date(activity.scheduled_at) < new Date() && activity.status === 'pending'
+
+    return (
+        <Card className={cn("transition-all hover:shadow-md", isPast ? "border-red-200" : "")}>
+            <CardHeader className="pb-2 grid grid-cols-[1fr_auto] items-start gap-4 space-y-0">
+                <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                        <div className="p-2 bg-muted rounded-full">
+                            <Icon className="h-4 w-4 text-foreground" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-base font-semibold leading-none">
+                                {activity.title}
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                {TYPE_LABELS[activity.activity_type] || "Hoạt động"}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border",
+                    statusConfig.color
+                )}>
+                    {statusConfig.label}
+                </div>
+            </CardHeader>
+
+            <CardContent className="pb-2">
+                <p className="text-sm text-foreground/80 whitespace-pre-line">
+                    {activity.description || "Không có mô tả chi tiết."}
+                </p>
+
+                {/* Thời gian */}
+                <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                    <div className={cn("flex items-center gap-1", isPast && "text-red-600 font-medium")}>
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>
+                            Lịch: {format(new Date(activity.scheduled_at), "PPp", { locale: vi })}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>Tạo: {format(new Date(activity.created_at), "dd/MM/yyyy", { locale: vi })}</span>
+                    </div>
+                </div>
+            </CardContent>
+
+            {/* Action Footer */}
+            {activity.status === "pending" && (
+                <CardFooter className="pt-2 pb-4 bg-muted/20 border-t">
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 gap-2 ml-auto hover:bg-green-100 hover:text-green-700"
+                        onClick={() => onComplete(activity.id)}
+                    >
+                        <Check className="h-4 w-4" />
+                        Đánh dấu hoàn thành
+                    </Button>
+                </CardFooter>
+            )}
+        </Card>
+    )
+}
+
+// --- MAIN COMPONENT ---
 export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
     const [activities, setActivities] = useState<Activity[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    useEffect(() => {
-        async function fetchActivities() {
-            try {
-                const { data, error } = await supabase
-                    .from("customer_activities")
-                    .select(`
-            id, activity_type, title, description, status, scheduled_at, created_at, customer_id,
-            customer:customers!customer_activities_customer_id_fkey(name)
-          `)
-                    .eq("customer_id", customerId)
-                    .order("created_at", { ascending: false })
-
-                if (error) throw error
-                if (!data) throw new Error("Không có dữ liệu hoạt động.")
-
-                // ✅ Chuẩn hóa customer nếu là mảng
-                const normalized = data.map((a: any) => ({
-                    ...a,
-                    customer: Array.isArray(a.customer) ? a.customer[0] : a.customer,
-                }))
-
-                setActivities(normalized)
-            } catch (error) {
-                console.error("Lỗi khi lấy dữ liệu hoạt động:", error)
-                setError("Không thể tải hoạt động khách hàng.")
-            } finally {
-                setIsLoading(false)
-            }
-        }
-
+    // Dùng useCallback để tránh re-create function khi render lại
+    const fetchActivities = useCallback(async () => {
         setIsLoading(true)
         setError(null)
-        fetchActivities()
+        try {
+            const { data, error } = await supabase
+                .from("customer_activities")
+                .select("*") // Lấy hết fields, không cần join customer vì đã biết customerId rồi
+                .eq("customer_id", customerId)
+                .order("created_at", { ascending: false })
+
+            if (error) throw error
+            setActivities(data || [])
+        } catch (err: any) {
+            console.error("Fetch error:", err)
+            setError(err.message || "Không thể tải dữ liệu.")
+        } finally {
+            setIsLoading(false)
+        }
     }, [customerId])
 
-    async function markAsCompleted(activityId: string) {
+    useEffect(() => {
+        fetchActivities()
+    }, [fetchActivities])
+
+    const handleMarkCompleted = async (activityId: string) => {
+        // 1. Optimistic Update (Cập nhật giao diện ngay lập tức để cảm giác nhanh hơn)
+        setActivities((prev) =>
+            prev.map((a) => (a.id === activityId ? { ...a, status: "completed" } : a))
+        )
+
+        // 2. Gọi API Background
         try {
             const { error } = await supabase
                 .from("customer_activities")
@@ -104,118 +201,80 @@ export function CustomerActivities({ customerId }: CustomerActivitiesProps) {
                 .eq("id", activityId)
 
             if (error) throw error
+        } catch (err: any) {
+            // Sửa lại cách log lỗi để nhìn thấy nội dung bên trong
+            console.error("Update error detailed:", JSON.stringify(err, null, 2));
+            console.error("Message:", err.message);
+            console.error("Details:", err.details);
 
-            setActivities((prev) =>
-                prev.map((a) =>
-                    a.id === activityId ? { ...a, status: "completed" } : a
-                )
-            )
-        } catch (error) {
-            console.error("Lỗi cập nhật trạng thái:", error)
+            // Revert nếu lỗi
+            fetchActivities()
         }
     }
 
+    // --- RENDERS ---
+
     if (isLoading) {
         return (
-            <Card>
-                <CardContent className="text-center py-10">
-                    <p className="text-muted-foreground mb-4">Đang tải hoạt động...</p>
-                </CardContent>
-            </Card>
+            <div className="space-y-4">
+                {[1, 2].map((i) => (
+                    <div key={i} className="h-32 rounded-lg bg-muted animate-pulse" />
+                ))}
+            </div>
         )
     }
 
     if (error) {
         return (
-            <Card>
-                <CardContent className="text-center py-10">
-                    <p className="text-red-500 mb-4">{error}</p>
-                    <Button onClick={() => window.location.reload()}>Thử lại</Button>
-                </CardContent>
-            </Card>
+            <div className="p-6 text-center border rounded-lg bg-red-50 text-red-600">
+                <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+                <p>{error}</p>
+                <Button variant="outline" size="sm" onClick={fetchActivities} className="mt-4 bg-white">
+                    Thử lại
+                </Button>
+            </div>
         )
     }
 
     if (activities.length === 0) {
         return (
-            <Card>
-                <CardContent className="text-center py-10">
-                    <p className="text-muted-foreground mb-4">
-                        Chưa có hoạt động nào với khách hàng này
-                    </p>
-                    <Button asChild>
-                        <Link href={`/crm/customers/${customerId}/activities/new`}>
-                            Thêm hoạt động mới
-                        </Link>
-                    </Button>
-                </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-12 border border-dashed rounded-lg bg-muted/10">
+                <div className="p-3 bg-muted rounded-full mb-3">
+                    <Calendar className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium">Chưa có hoạt động</h3>
+                <p className="text-sm text-muted-foreground mb-4 text-center max-w-xs">
+                    Khách hàng này chưa có lịch sử tương tác nào. Hãy bắt đầu ngay!
+                </p>
+                <Button asChild>
+                    <Link href={`/crm/customers/${customerId}/activities/new`}>
+                        <MoreHorizontal className="mr-2 h-4 w-4" />
+                        Thêm hoạt động
+                    </Link>
+                </Button>
+            </div>
         )
     }
 
     return (
-        <div className="space-y-4">
-            {activities.map((activity) => {
-                const ActivityIcon = activityIcons[activity.activity_type] || Calendar
-                const statusClass =
-                    activityStatusColors[activity.status] || "bg-gray-100 text-gray-800"
-                const isPast = new Date(activity.scheduled_at) < new Date()
-
-                return (
-                    <Card key={activity.id}>
-                        <CardHeader className="pb-2">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <ActivityIcon className="h-4 w-4 text-muted-foreground" />
-                                    <CardTitle className="text-base">{activity.title}</CardTitle>
-                                </div>
-                                <span
-                                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusClass}`}
-                                >
-                                    {activity.status === "pending"
-                                        ? "Chờ xử lý"
-                                        : activity.status === "completed"
-                                            ? "Hoàn thành"
-                                            : "Đã hủy"}
-                                </span>
-                            </div>
-                            <CardDescription className="text-xs flex items-center gap-1">
-                                {isPast ? (
-                                    <Clock className="h-3 w-3" />
-                                ) : (
-                                    <Calendar className="h-3 w-3" />
-                                )}
-                                {format(new Date(activity.scheduled_at), "PPp", { locale: vi })}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="pb-2">
-                            <p className="text-sm">{activity.description}</p>
-                        </CardContent>
-                        <CardFooter className="pt-2 flex justify-between">
-                            <span className="text-xs text-muted-foreground">
-                                Tạo lúc:{" "}
-                                {format(new Date(activity.created_at), "PPp", { locale: vi })}
-                            </span>
-                            {activity.status === "pending" && (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 gap-1"
-                                    onClick={() => markAsCompleted(activity.id)}
-                                >
-                                    <Check className="h-3 w-3" /> Đánh dấu hoàn thành
-                                </Button>
-                            )}
-                        </CardFooter>
-                    </Card>
-                )
-            })}
-            <div className="flex justify-center">
-                <Button asChild>
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Lịch sử hoạt động ({activities.length})</h3>
+                <Button asChild size="sm">
                     <Link href={`/crm/customers/${customerId}/activities/new`}>
-                        Thêm hoạt động mới
+                        Thêm mới
                     </Link>
                 </Button>
+            </div>
+
+            <div className="space-y-4">
+                {activities.map((activity) => (
+                    <ActivityItem
+                        key={activity.id}
+                        activity={activity}
+                        onComplete={handleMarkCompleted}
+                    />
+                ))}
             </div>
         </div>
     )

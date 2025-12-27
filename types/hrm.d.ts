@@ -3,7 +3,7 @@
 // Đường dẫn này cần chính xác đến file Database.ts của bạn.
 // Ví dụ: '@/types/supabase' nếu Database.ts của bạn nằm ở root/types/supabase.ts
 // Hoặc '@/lib/supabase/Database' nếu nó ở root/lib/supabase/Database.ts
-import { Database } from '@/types/supabase'; // <--- HÃY KIỂM TRA LẠI ĐƯỜNG DẪN NÀY CHO CHÍNH XÁC!
+import { Database } from "../types/supabase"; // <--- HÃY KIỂM TRA LẠI ĐƯỜNG DẪN NÀY CHO CHÍNH XÁC!
 
 // Định nghĩa kiểu Employee DỰA TRÊN bảng 'employees' từ database
 export type Employee = Database['public']['Tables']['employees']['Row'];

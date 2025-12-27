@@ -18,6 +18,7 @@ import {
     Handshake,
     Menu as MenuIcon,
     X as CloseIcon,
+    Database
 } from "lucide-react";
 import Image from "next/image";
 
@@ -111,6 +112,9 @@ const navItems = [
         icon: ShieldAlert,
         permission: "permission:view",
         roles: ["admin"],
+        children: [
+            { title: "Từ điển dữ liệu", href: "/admin/dictionaries" },
+        ],
     },
     {
         title: "Trạng thái hệ thống",
@@ -123,6 +127,7 @@ const navItems = [
         href: "/settings",
         icon: Settings,
         permission: null,
+        
     },
 ];
 

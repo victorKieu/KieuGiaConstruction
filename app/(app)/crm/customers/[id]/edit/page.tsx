@@ -1,158 +1,216 @@
-// app/(app)/crm/customers/[id]/edit/page.tsx
-import { notFound, redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
+import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { cookies } from "next/headers";
+import {
+    CustomerForm,
+    CustomerFormData,
+    RawCustomerDataFromDB
+} from "@/components/crm/CustomerForm";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-// ✅ FIX: Import từ file CustomerForm (đã được sửa) và customer-schema
-import { CustomerForm } from "@/components/crm/CustomerForm";
-import { CustomerFormData, mapRawDataToFormData, RawCustomerDataFromDB } from "@/components/crm/customer-schema";
-
-// Định nghĩa các Interface
-interface CustomerTag { id: string; name: string }
-interface User { id: string; name: string; email: string }
-interface Source { id: string; name: string }
-
-// Hàm kiểm tra UUID hợp lệ (Cần thiết cho Server Action)
-function isValidUUID(uuid: string) {
-    const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return regex.test(uuid);
+// Helper check UUID
+function isValidUUID(uuid: string | null | undefined) {
+    if (!uuid) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
 }
 
-/**
- * Trang chỉnh sửa chi tiết khách hàng.
- */
+interface CustomerTag { id: string; name: string }
+interface User { id: string; name: string; email: string }
+
+// Props của Page động
 export default async function CustomerEditPage({ params }: { params: { id: string } }) {
-    const resolvedParams = await params;
-    const customerId = resolvedParams.id;
+    // 1. FIX LỖI QUAN TRỌNG: Thêm 'await'
+    const supabase = await createSupabaseServerClient();
 
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    // Lưu ý: Trong Next.js 15, params cũng có thể là Promise, nên await cho chắc chắn
+    const { id } = await params;
 
-    let initialCustomerData: RawCustomerDataFromDB | null = null;
-    let tags: CustomerTag[] = [];
-    let users: User[] = [];
-    let sources: Source[] = [];
-
-    // 1. Lấy dữ liệu khách hàng ban đầu
-    try {
-        const { data, error } = await supabase.from("customers").select("*").eq("id", customerId).single();
-        if (error) {
-            if (error.code === 'PGRST116') notFound();
-            console.error("Lỗi khi tải dữ liệu khách hàng:", error.message);
-            return (
-                <div className="flex justify-center items-center min-h-[80vh] text-red-500">
-                    <Card className="w-full max-w-2xl">
-                        <CardHeader><CardTitle>Lỗi tải dữ liệu</CardTitle></CardHeader>
-                        <CardContent>Đã xảy ra lỗi khi tải dữ liệu khách hàng. Vui lòng thử lại.</CardContent>
-                    </Card>
-                </div>
-            );
-        }
-        // Ép kiểu và map dữ liệu DB -> Form
-        initialCustomerData = data as unknown as RawCustomerDataFromDB;
-    } catch (err: any) {
-        console.error("Lỗi không mong muốn:", err.message);
-        return <div className="text-red-500 text-center mt-10">Đã xảy ra lỗi không mong muốn.</div>;
+    if (!isValidUUID(id)) {
+        return notFound(); // Hoặc redirect về danh sách
     }
 
-    // 2. Load dependencies (tags, users, sources)
-    const { data: tagData } = await supabase.from("customer_tags").select("id, name").order("name");
-    tags = tagData || [];
+    let tags: CustomerTag[] = [];
+    let users: User[] = [];
+    let initialData: RawCustomerDataFromDB | null = null;
+    let errorMsg: string | null = null;
 
-    const { data: userData } = await supabase.from("employees").select("id, name, email").order("name");
-    users = userData || [];
+    // 2. Load danh mục (Tag, Employees) - Parallel Fetching
+    try {
+        const [tagRes, userRes] = await Promise.all([
+            supabase.from("customer_tags").select("id, name").order("name"),
+            supabase.from("employees").select("id, name, email").order("name"),
+        ]);
+        tags = tagRes.data || [];
+        users = userRes.data || [];
+    } catch (err) {
+        console.error("Error loading metadata:", err);
+    }
 
-    const { data: sourceData } = await supabase.from("customer_sources").select("id, name").order("name");
-    sources = sourceData || [];
+    // 3. Load dữ liệu Khách hàng hiện tại
+    try {
+        const { data, error } = await supabase
+            .from("customers")
+            .select("*")
+            .eq("id", id)
+            .single();
 
-    // 3. Làm sạch dữ liệu
-    const initialDataForForm: CustomerFormData = initialCustomerData
-        ? mapRawDataToFormData(initialCustomerData)
-        : {} as CustomerFormData; // Khởi tạo rỗng an toàn
+        if (error) throw error;
 
-    // --- Server Action ---
+        // Gán thẳng data vào initialData (Không map ở đây để tránh lỗi Type)
+        initialData = data as unknown as RawCustomerDataFromDB;
+
+    } catch (err) {
+        console.error("Lỗi tải khách hàng:", err);
+        errorMsg = "Không tìm thấy thông tin khách hàng hoặc bạn không có quyền truy cập.";
+    }
+
+    // --- SERVER ACTION (Copy logic chuẩn từ trang New sang) ---
     async function handleUpdateCustomerAction(formData: CustomerFormData) {
         "use server";
+        const supabase = await createSupabaseServerClient();
 
-        const cookieStore = await cookies();
-        const token = cookieStore.get("sb-access-token")?.value || null;
-        const actionSupabase = createSupabaseServerClient(token);
+        // 1. Sanitize Data
+        const tag_id = isValidUUID(formData.tag) ? formData.tag : null;
+        const owner_id = isValidUUID(formData.ownerId) ? formData.ownerId : null;
+        const source_id = isValidUUID(formData.source) ? formData.source : null;
+        const type_id = formData.type;
+        const status_id = formData.status;
 
         try {
-            if (!formData.id) return { success: false, error: "Không tìm thấy ID khách hàng." };
+            // --- LOGIC TỰ ĐỘNG ĐỔI MÃ KHI ĐỔI LOẠI KHÁCH HÀNG ---
+            let finalCode = formData.code; // Mặc định giữ mã hiện tại
 
-            // Chuẩn hóa dữ liệu UUID và các giá trị nullable
-            const sourceVal = formData.source;
-            const finalSourceId = (sourceVal && isValidUUID(sourceVal)) ? sourceVal : null;
-
-            const ownerVal = formData.ownerId;
-            const finalOwnerId = (ownerVal && isValidUUID(ownerVal)) ? ownerVal : null;
-
-            const tagVal = formData.tag;
-            const finalTagId = (tagVal && isValidUUID(tagVal)) ? tagVal : null;
-
-            const dataToUpdate = {
-                name: formData.name,
-                code: formData.code,
-                type: formData.type,
-                contact_person: formData.contactPerson || null,
-                email: formData.email || null,
-                phone: formData.phone || null,
-                address: formData.address || null,
-                tax_code: formData.taxCode || null,
-                birthday: formData.birthday ? new Date(formData.birthday).toISOString().split('T')[0] : null,
-                gender: formData.gender,
-                status: formData.status,
-
-                // Dùng biến đã chuẩn hóa và tên cột ĐÚNG
-                tag_id: finalTagId,
-                owner_id: finalOwnerId,
-                source_id: finalSourceId,
-                notes: formData.notes || null, // Chắc chắn dùng 'notes'
-                avatar_url: formData.avatarUrl || null,
-            };
-
-            const { error: updateError } = await actionSupabase
+            // A. Lấy dữ liệu hiện tại trong DB để so sánh
+            const { data: currentData } = await supabase
                 .from("customers")
-                .update(dataToUpdate)
-                .eq("id", formData.id);
+                .select("type, code")
+                .eq("id", id)
+                .single();
 
-            if (updateError) {
-                if (updateError.code === '23505' && updateError.message.includes('code')) {
-                    return { success: false, error: "Mã khách hàng đã tồn tại." };
+            if (currentData) {
+                const oldType = currentData.type || "";
+                const newType = type_id || "";
+
+                // B. Nếu Loại thay đổi (Khác nhau) -> Tiến hành sinh mã mới
+                if (oldType !== newType) {
+                    console.log(`♻️ Phát hiện đổi loại từ [${oldType}] sang [${newType}]. Đang sinh mã mới...`);
+
+                    // B1. Lấy Prefix của loại MỚI
+                    const { data: typeConfig } = await supabase
+                        .from('sys_dictionaries')
+                        .select('meta_data')
+                        .eq('id', newType) // Dùng ID loại mới
+                        .single();
+
+                    const meta = typeConfig?.meta_data as { prefix?: string } | null;
+                    const prefix = meta?.prefix || "KH"; // Fallback nếu quên cấu hình
+
+                    // B2. Tìm mã lớn nhất theo Prefix mới
+                    const { data: lastCustomer } = await supabase
+                        .from("customers")
+                        .select("code")
+                        .ilike("code", `${prefix}-%`)
+                        .order("created_at", { ascending: false })
+                        .limit(1)
+                        .single();
+
+                    // B3. Tính số thứ tự kế tiếp
+                    let nextSequence = 1;
+                    if (lastCustomer?.code) {
+                        const match = lastCustomer.code.match(/(\d+)$/); // Lấy cụm số cuối cùng
+                        if (match && match[0]) {
+                            nextSequence = parseInt(match[0], 10) + 1;
+                        }
+                    }
+
+                    // B4. Gán mã mới
+                    finalCode = `${prefix}-${String(nextSequence).padStart(3, "0")}`;
+                    console.log(`✅ Mã mới được cấp: ${finalCode}`);
                 }
-                console.error("Lỗi cập nhật Supabase:", updateError);
-                return { success: false, error: updateError.message };
             }
 
+            // 2. Prepare Payload
+            const payload = {
+                name: formData.name,
+                code: finalCode, // <--- QUAN TRỌNG: Dùng biến đã tính toán
+                type: type_id,
+
+                email: formData.email || null,
+                phone: formData.phone || null,
+                contact_person: formData.contactPerson || null,
+
+                address: formData.address || null,
+                ward: formData.ward || null,
+                province: formData.province || null,
+
+                tax_code: formData.taxCode || null,
+                id_number: formData.idNumber || null,
+                bank_account: formData.bankAccount || null,
+                website: formData.website || null,
+                business_type: formData.businessType || null, // Lưu ý check lại tên cột trong DB (business_type hay businness_type)
+                title: formData.title || null,
+
+                gender: formData.gender,
+                birthday: formData.birthday || null,
+                avatar_url: formData.avatarUrl || null,
+
+                status: status_id,
+                notes: formData.notes || null,
+
+                tag_id,
+                owner_id,
+                source_id,
+
+                updated_at: new Date().toISOString(),
+            };
+
+            // 3. Thực hiện Update
+            const { error } = await supabase
+                .from("customers")
+                .update(payload)
+                .eq("id", id);
+
+            if (error) {
+                if (error.code === "23505") return { success: false, error: "Trùng mã khách hàng (Vui lòng thử lại)." };
+                throw error;
+            }
+
+            revalidatePath(`/crm/customers/${id}`);
             revalidatePath("/crm/customers");
-            revalidatePath(`/crm/customers/${formData.id}`);
 
-            return { success: true, id: formData.id, error: undefined };
+            return { success: true, id: id };
 
-        } catch (err: any) {
-            console.error("Lỗi Server Action:", err);
-            return { success: false, error: "Đã xảy ra lỗi không mong muốn." };
+        } catch (e: any) {
+            console.error("Update Error:", e);
+            return { success: false, error: e.message || "Lỗi cập nhật dữ liệu" };
         }
+    }
+
+    // Render UI
+    if (errorMsg) {
+        return (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+                <p className="text-red-500 mb-4">{errorMsg}</p>
+                <a href="/crm/customers" className="text-blue-600 hover:underline">Quay lại danh sách</a>
+            </div>
+        );
     }
 
     return (
-        <div className="flex justify-center items-center min-h-[80vh]">
-            <Card className="w-full max-w-2xl">
+        <div className="flex justify-center py-8 px-4">
+            <Card className="w-full max-w-5xl shadow-md">
                 <CardHeader>
-                    <CardTitle>Chỉnh sửa khách hàng</CardTitle>
+                    <CardTitle className="text-xl font-bold">
+                        Cập nhật khách hàng: {initialData?.code || initialData?.name}
+                    </CardTitle>
                 </CardHeader>
                 <CardContent>
                     <CustomerForm
-                        initialData={initialDataForForm}
                         onSubmitAction={handleUpdateCustomerAction}
+                        initialData={initialData}
                         tags={tags}
                         users={users}
-                        sources={sources}
-                        isCustomerProfileEdit={false} // ✅ FIX: Đặt là false để hiển thị full field (Chế độ Admin Edit)
+                        isCustomerProfileEdit={false} // Admin đang sửa -> false
                     />
                 </CardContent>
             </Card>
