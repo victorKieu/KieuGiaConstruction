@@ -1,13 +1,16 @@
-// components/layout/AppHeader.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Search, Sun, Moon } from "lucide-react";
-import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
-import { useTheme } from "next-themes"; // <--- Sửa lỗi ở đây
+import { useTheme } from "next-themes";
 import { useTranslation } from 'next-i18next';
 import i18next from '@/app/src/config/i18n';
+
+// 👇 1. Import component UserDropdownMenu và NotificationBell
+import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
+import { NotificationBell } from "@/components/layout/notification-bell"; // Import Chuông thông báo
+
 import type { UserProfile } from '@/types/userProfile';
 
 // Map đường dẫn -> tiêu đề trang
@@ -26,16 +29,12 @@ const pageTitles: Record<string, string> = {
     "/profile": "Thông tin cá nhân",
 };
 
-// Định nghĩa props cho AppHeader
 interface AppHeaderProps {
-    userProfile: UserProfile | null; // AppHeader sẽ nhận userProfile qua props
+    userProfile: UserProfile | null;
 }
 
-// Thay đổi export default function AppHeader() thành AppHeader({ userProfile }: AppHeaderProps)
 export default function AppHeader({ userProfile }: AppHeaderProps) {
     const [searchOpen, setSearchOpen] = useState(false);
-    // Bỏ state 'user' nếu bạn chỉ dùng userProfile từ props
-    // const [user, setUser] = useState<{ name?: string, email?: string, avatar_url?: string } | null>(null);
     const pathname = usePathname();
     const router = useRouter();
     const { theme, setTheme } = useTheme();
@@ -50,20 +49,16 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
 
     useEffect(() => {
         setMounted(true);
-        // XÓA DÒNG NÀY: getUserProfile().then(profile => setUser(profile));
     }, []);
 
-    // Đổi theme - Sử dụng setTheme từ useTheme
     const toggleDarkMode = () => {
         setTheme(theme === "dark" ? "light" : "dark");
     };
 
-    // Lấy tên hiển thị từ userProfile (đã được truyền từ Server Component)
     const displayName = userProfile?.name || userProfile?.email || 'Người dùng';
     const displayAvatarUrl = userProfile?.avatar_url || "/placeholder.svg";
     const displayEmail = userProfile?.email || '';
 
-    // Action logout gọi API và reload lại trang
     const handleLogout = async () => {
         await fetch("/api/auth/logout", { method: "POST" });
         router.push('/login');
@@ -74,11 +69,11 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
     };
 
     if (!mounted) {
-        return null; // Hoặc một skeleton loading placeholder
+        return null;
     }
 
     return (
-        <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900">
+        <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900 sticky top-0 z-50">
             {/* Tiêu đề động */}
             <div className="font-bold text-lg text-blue-700 dark:text-blue-200 tracking-wide">
                 {pageTitle}
@@ -87,30 +82,33 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
             {/* Nút chức năng */}
             <div className="flex items-center gap-2">
                 {/* Language Switcher */}
-                <div>
-                    <button onClick={() => changeLanguage('vi')} className="mr-2 p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800">
-                        <span role="img" aria-label="Vietnamese">VI</span>
+                <div className="hidden md:flex"> {/* Ẩn trên mobile cho đỡ chật */}
+                    <button onClick={() => changeLanguage('vi')} className="mr-1 p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-sm font-medium">
+                        VI
                     </button>
-                    <button onClick={() => changeLanguage('en')} className="mr-2 p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800">
-                        <span role="img" aria-label="English">EN</span>
+                    <button onClick={() => changeLanguage('en')} className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-sm font-medium">
+                        EN
                     </button>
                 </div>
-                {/* Nút tìm kiếm */}
-                <button
-                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800"
-                    onClick={() => setSearchOpen((v) => !v)}
-                    aria-label="Tìm kiếm"
-                >
-                    <Search className="w-5 h-5" />
-                </button>
 
-                {searchOpen && (
-                    <input
-                        autoFocus
-                        className="ml-2 px-2 py-1 border rounded"
-                        placeholder="Tìm kiếm..."
-                    />
-                )}
+                {/* Nút tìm kiếm */}
+                <div className="flex items-center">
+                    <button
+                        className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800"
+                        onClick={() => setSearchOpen((v) => !v)}
+                        aria-label="Tìm kiếm"
+                    >
+                        <Search className="w-5 h-5" />
+                    </button>
+
+                    {searchOpen && (
+                        <input
+                            autoFocus
+                            className="ml-2 px-2 py-1 border rounded text-sm w-32 md:w-48 bg-transparent"
+                            placeholder="Tìm kiếm..."
+                        />
+                    )}
+                </div>
 
                 {/* Nút đổi theme */}
                 <button
@@ -120,6 +118,9 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
                 >
                     {mounted && (theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />)}
                 </button>
+
+                {/* 👇 2. NHÚNG CHUÔNG THÔNG BÁO TẠI ĐÂY */}
+                <NotificationBell />
 
                 {/* Menu user */}
                 <UserDropdownMenu

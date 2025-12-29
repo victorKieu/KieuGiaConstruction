@@ -149,7 +149,7 @@ export default async function CustomerUpsertPage({ params }: { params?: { id?: s
                 id_number: formData.idNumber || null,
                 bank_account: formData.bankAccount || null,
                 website: formData.website || null,
-                businness_type: formData.businessType || null,
+                business_type: formData.businessType || null,
                 title: formData.title || null,
 
                 gender: formData.gender,

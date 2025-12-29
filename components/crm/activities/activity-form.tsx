@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarIcon, Loader2, Save } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { toast } from "sonner";
+import { toast } from "sonner"; // Dùng sonner như file cũ của bạn
 
 import { cn } from "@/lib/utils/utils";
 import { Button } from "@/components/ui/button";
@@ -15,67 +15,66 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+    Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { activitySchema, ActivityFormValues } from "@/lib/schemas/activity";
-import { createActivityAction } from "@/lib/action/activity";
+import { createActivityAction, updateActivityAction } from "@/lib/action/activity"; // Import thêm update
 
-export function ActivityForm({ customers }: { customers: { id: string; name: string }[] }) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
+// Interface mở rộng để nhận dữ liệu cũ
+interface ActivityFormProps {
+    customers: { id: string; name: string }[];
+    initialData?: ActivityFormValues; // Dữ liệu cũ (nếu có)
+    activityId?: string;              // ID để update (nếu có)
+}
 
-  // 1. Khởi tạo Form với Default Values
-  const form = useForm<ActivityFormValues>({
-    resolver: zodResolver(activitySchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      activity_type: "call",
-      // customer_id: "", // Để trống để bắt buộc user chọn
-    },
-  });
+export function ActivityForm({ customers, initialData, activityId }: ActivityFormProps) {
+    const router = useRouter();
+    const [loading, setLoading] = useState(false);
+    const isEditMode = !!initialData; // Kiểm tra đang ở chế độ sửa hay thêm
 
-  // 2. Handle Submit
-  async function onSubmit(data: ActivityFormValues) {
-    setLoading(true);
-    try {
-      const result = await createActivityAction(data);
+    const form = useForm<ActivityFormValues>({
+        resolver: zodResolver(activitySchema),
+        defaultValues: initialData || { // Nếu có dữ liệu cũ thì điền vào
+            title: "",
+            description: "",
+            activity_type: "call",
+            customer_id: "",
+        },
+    });
 
-      if (result.success) {
-        toast.success(result.message);
-        router.push("/crm/activities"); // Redirect về danh sách
-        router.refresh(); // Đảm bảo data mới được load
-      } else {
-        toast.error(result.error);
-      }
-    } catch (error) {
-      toast.error("Đã có lỗi xảy ra. Vui lòng thử lại.");
-    } finally {
-      setLoading(false);
+    async function onSubmit(data: ActivityFormValues) {
+        setLoading(true);
+        try {
+            let result;
+
+            if (isEditMode && activityId) {
+                // --- GỌI UPDATE ---
+                result = await updateActivityAction(activityId, data);
+            } else {
+                // --- GỌI CREATE ---
+                result = await createActivityAction(data);
+            }
+
+            if (result.success) {
+                toast.success(result.message);
+                router.push("/crm/activities");
+                router.refresh();
+            } else {
+                toast.error(result.error);
+            }
+        } catch (error) {
+            toast.error("Đã có lỗi xảy ra.");
+        } finally {
+            setLoading(false);
+        }
     }
-  }
 
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
+    return (
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
         
         <div className="grid gap-6 md:grid-cols-2">
           {/* Tiêu đề */}
@@ -206,16 +205,16 @@ export function ActivityForm({ customers }: { customers: { id: string; name: str
         />
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-4">
-          <Button type="button" variant="outline" onClick={() => router.back()}>
-            Hủy bỏ
-          </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Lưu hoạt động
-          </Button>
-        </div>
-      </form>
-    </Form>
-  );
+                <div className="flex items-center gap-4">
+                    <Button type="button" variant="outline" onClick={() => router.back()}>
+                        Hủy bỏ
+                    </Button>
+                    <Button type="submit" disabled={loading}>
+                        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                        {isEditMode ? "Lưu thay đổi" : "Tạo mới"}
+                    </Button>
+                </div>
+            </form>
+        </Form>
+    );
 }

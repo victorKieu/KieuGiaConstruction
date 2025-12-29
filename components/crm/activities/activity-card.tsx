@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { Calendar, Clock, Phone, Users, FileText } from "lucide-react";
+import { Calendar, Clock, Phone, Users, FileText, Pencil } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompleteActivityButton } from "@/components/crm/activities/activity-actions";
 import { Activity } from "@/types/crm";
+import { Button } from "@/components/ui/button";
 
 // Mapping icons & colors constants
 const ACTIVITY_CONFIG: Record<string, { icon: any; label: string }> = {
@@ -33,7 +34,7 @@ export function ActivityCard({ activity }: { activity: Activity }) {
     const initials = customerName.split(" ").map((n) => n[0]).join("").toUpperCase().substring(0, 2);
 
     return (
-        <Card className="flex flex-col h-full hover:shadow-md transition-shadow">
+        <Card className="flex flex-col h-full hover:shadow-md transition-shadow group">
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -78,7 +79,18 @@ export function ActivityCard({ activity }: { activity: Activity }) {
                 <span className="text-[10px] text-muted-foreground">
                     Tạo: {format(new Date(activity.created_at), "dd/MM/yy", { locale: vi })}
                 </span>
-                {activity.status === "pending" && <CompleteActivityButton id={activity.id} />}
+
+                <div className="flex gap-2">
+                    {/* CÁCH 2: Hoặc đặt nút sửa ở dưới cùng, cạnh nút Hoàn thành */}
+                    <Button variant="outline" size="sm" className="h-7 px-2" asChild>
+                        <Link href={`/crm/activities/${activity.id}/edit`}>
+                            <Pencil className="h-3 w-3 mr-1" /> Sửa
+                        </Link>
+                    </Button>
+
+                    {activity.status === "pending" && <CompleteActivityButton id={activity.id} />}
+                </div>
+
             </CardFooter>
         </Card>
     );

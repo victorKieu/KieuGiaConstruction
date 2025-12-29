@@ -1,17 +1,23 @@
 import { z } from "zod";
 
 export const activitySchema = z.object({
-    title: z.string().min(1, { message: "Tiêu đề không được để trống" }),
-    activity_type: z.enum(["call", "meeting", "task", "email"], {
-        required_error: "Vui lòng chọn loại hoạt động",
-    }),
+    title: z.string().min(1, "Vui lòng nhập tiêu đề hoạt động."),
+
     description: z.string().optional(),
-    scheduled_at: z.date({
-        required_error: "Vui lòng chọn thời gian",
+
+    // --- SỬA LẠI DÒNG NÀY ---
+    // Tên key PHẢI LÀ "activity_type" (để khớp với input form và cột database)
+    activity_type: z.enum(["call", "meeting", "task", "email"], {
+        errorMap: () => ({ message: "Vui lòng chọn loại hoạt động." }),
     }),
-    // Trong thực tế, bạn sẽ cần validate customer_id tồn tại, 
-    // tạm thời check string non-empty
-    customer_id: z.string().min(1, { message: "Vui lòng chọn khách hàng" }),
+    // -------------------------
+
+    customer_id: z.string().min(1, "Vui lòng chọn khách hàng."),
+
+    scheduled_at: z.date({
+        required_error: "Vui lòng chọn ngày thực hiện.",
+        invalid_type_error: "Định dạng ngày không hợp lệ.",
+    }),
 });
 
 export type ActivityFormValues = z.infer<typeof activitySchema>;

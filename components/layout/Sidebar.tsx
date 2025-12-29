@@ -60,7 +60,7 @@ const navItems = [
         icon: DollarSign,
         permission: "finance:view",
         children: [
-            { title: "Nghiệp vụ kế toán", href: "/finance/accounting" },
+            { title: "Thu/ Chi", href: "/finance/accounting" },
             { title: "Công nợ", href: "/finance/debts" },
         ],
     },
@@ -70,8 +70,9 @@ const navItems = [
         icon: Package,
         permission: "material:view",
         children: [
-            { title: "Danh sách mã hàng hóa", href: "/inventory/items" },
-            { title: "Danh sách kho", href: "/inventory/warehouses" },
+            { title: "Quản lý hàng hóa", href: "/inventory/catalog" },
+            { title: "Quản lý kho", href: "/inventory" },
+            
         ],
     },
     {
@@ -91,13 +92,13 @@ const navItems = [
         ],
     },
     {
-        title: "Nhà cung cấp",
-        href: "/suppliers",
+        title: "Thu Mua",
+        href: "/procurement",
         icon: Truck,
-        permission: "supplier:view",
+        //permission: "procurement:view",
         children: [
-            { title: "Danh sách nhà cung cấp", href: "/suppliers" },
-            { title: "Hợp đồng", href: "/suppliers/contracts" },
+            { title: "Danh sách nhà cung cấp", href: "/procurement/suppliers" },
+            { title: "QL Nhu Cầu Mua Hàng", href: "/procurement/orders" },
         ],
     },
     {

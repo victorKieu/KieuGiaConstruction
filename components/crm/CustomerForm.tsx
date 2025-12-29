@@ -94,7 +94,7 @@ export interface RawCustomerDataFromDB {
     id_number?: string | null;
     bank_account?: string | null;
     website?: string | null;
-    businness_type?: string | null;
+    business_type?: string | null;
     title?: string | null;
 
     // Update Status: String UUID
@@ -150,7 +150,7 @@ export const mapRawDataToFormData = (rawData: RawCustomerDataFromDB): CustomerFo
         idNumber: rawData.id_number ?? "",
         bankAccount: rawData.bank_account ?? "",
         website: rawData.website ?? "",
-        businessType: rawData.businness_type ?? "",
+        businessType: rawData.business_type ?? "",
         title: rawData.title ?? "",
 
         birthday: rawData.birthday ?? "",

@@ -117,3 +117,36 @@ export async function deleteOpportunityAction(id: string) {
         return { success: false, error: error.message };
     }
 }
+
+// Update Opportunity
+export async function updateOpportunityAction(id: string, formData: any) {
+    const supabase = await createClient();
+
+    // Xử lý dữ liệu (tương tự hàm Create)
+    const payload = {
+        title: formData.title,
+        customer_id: formData.customer_id,
+        value: formData.value ? Number(formData.value) : null,
+        stage: formData.stage,
+        expected_close_date: formData.expected_close_date || null,
+        description: formData.description || null,
+        updated_at: new Date().toISOString(),
+    };
+
+    try {
+        const { error } = await supabase
+            .from("opportunities")
+            .update(payload)
+            .eq("id", id);
+
+        if (error) throw error;
+
+        revalidatePath("/crm/opportunities");
+        revalidatePath(`/crm/customers/${formData.customer_id}`);
+        return { success: true };
+
+    } catch (e: any) {
+        console.error("Update Opportunity Error:", e);
+        return { success: false, error: e.message };
+    }
+}
