@@ -172,46 +172,48 @@ export default function EmployeesClientPage({
                                         <TableHead></TableHead>
                                     </TableRow>
                                 </TableHeader>
-                                <TableBody>
-                                    {employees.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
-                                                Không có nhân viên nào
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        employees.map(emp => (
-                                            <TableRow key={emp.id}>
-                                                <TableCell>
-                                                    <Avatar>
-                                                        {/* Sử dụng emp.avatar_url trực tiếp */}
-                                                        <AvatarImage src={emp.avatar_url || undefined} alt={emp.name || "avatar"} />
-                                                        <AvatarFallback>
-                                                            {/* Sử dụng emp.name cho fallback */}
-                                                            {(emp.name?.trim()?.split(" ").map((w: string) => w[0]).join("") || "?").toUpperCase()}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                </TableCell>
-                                                <TableCell>{emp.code || 'N/A'}</TableCell>
-                                                <TableCell>{emp.name}</TableCell> {/* Sử dụng emp.name */}
-                                                <TableCell>{emp.email}</TableCell>
-                                                <TableCell>{emp.position}</TableCell>
-                                                <TableCell>{emp.department || 'N/A'}</TableCell>
-                                                <TableCell>{emp.hire_date ? new Date(emp.hire_date).toLocaleDateString() : "N/A"}</TableCell>
-                                                <TableCell>{emp.status}</TableCell>
-                                                <TableCell>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => router.push(`/hrm/employees/${emp.id}`)}
-                                                    >
-                                                        Xem
-                                                    </Button>
+                                    <TableBody>
+                                        {employees.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                                                    Không có nhân viên nào
                                                 </TableCell>
                                             </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
+                                        ) : (
+                                            employees.map(emp => (
+                                                <TableRow key={emp.id}>
+                                                    <TableCell>
+                                                        <Avatar>
+                                                            {/* Comment bên trong Component con thì OK, nhưng comment giữa các TD thì lỗi */}
+                                                            <AvatarImage src={emp.avatar_url || undefined} alt={emp.name || "avatar"} />
+                                                            <AvatarFallback>
+                                                                {(emp.name?.trim()?.split(" ").map((w: string) => w[0]).join("") || "?").toUpperCase()}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                    </TableCell>
+                                                    <TableCell>{emp.code || 'N/A'}</TableCell>
+
+                                                    {/* ĐÃ SỬA: Xóa comment ở dòng này để tránh lỗi whitespace */}
+                                                    <TableCell>{emp.name}</TableCell>
+
+                                                    <TableCell>{emp.email}</TableCell>
+                                                    <TableCell>{emp.position}</TableCell>
+                                                    <TableCell>{emp.department || 'N/A'}</TableCell>
+                                                    <TableCell>{emp.hire_date ? new Date(emp.hire_date).toLocaleDateString() : "N/A"}</TableCell>
+                                                    <TableCell>{emp.status}</TableCell>
+                                                    <TableCell>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => router.push(`/hrm/employees/${emp.id}`)}
+                                                        >
+                                                            Xem
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
                             </Table>
                             {totalPages > 1 && (
                                 <div className="flex justify-center mt-4">
