@@ -1,41 +1,40 @@
-﻿// app/profile/page.tsx
+﻿// app/(app)/profile/page.tsx
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getUserProfile, UserProfile } from '@/lib/supabase/getUserProfile';
-import { cookies } from "next/headers";
-import ProfileForm from '@/components/profile/ProfileForm'; // Chúng ta sẽ tạo component này sau
+import { getUserProfile } from '@/lib/supabase/getUserProfile';
+import { redirect } from "next/navigation";
+import ProfileForm from '@/components/profile/ProfileForm'; // Import component vừa tạo ở Bước 1
 
 export default async function ProfilePage() {
-    const cookieStore = cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-    const supabase = createSupabaseServerClient(token);
+    const supabase = await createSupabaseServerClient();
 
+    // 1. Kiểm tra đăng nhập
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {
-        // Redirect hoặc hiển thị lỗi nếu người dùng chưa đăng nhập
-        // Trong thực tế, bạn có thể redirect về trang đăng nhập
-        return (
-            <div className="flex items-center justify-center h-screen">
-                <p className="text-xl text-red-500">Bạn cần đăng nhập để xem hồ sơ.</p>
-            </div>
-        );
+        redirect('/login'); // Nếu chưa đăng nhập thì đẩy về login
     }
 
-    // Fetch userProfile chi tiết từ Server Action
-    const userProfile: UserProfile | null = await getUserProfile();
+    // 2. Lấy dữ liệu Profile từ Database
+    const userProfile = await getUserProfile();
 
+    // 3. Kiểm tra dữ liệu Profile
     if (!userProfile) {
         return (
-            <div className="flex items-center justify-center h-screen">
-                <p className="text-xl text-gray-500">Không thể tải thông tin hồ sơ.</p>
+            <div className="flex items-center justify-center h-[50vh]">
+                <div className="text-center">
+                    <h2 className="text-xl font-semibold text-red-500">Không tìm thấy hồ sơ</h2>
+                    <p className="text-gray-500">Vui lòng liên hệ quản trị viên.</p>
+                </div>
             </div>
         );
     }
 
+    // 4. Truyền dữ liệu vào Client Component
     return (
-        <div className="container mx-auto p-6">
-            <h1 className="text-3xl font-bold mb-6">Thông tin cá nhân</h1>
-            {/* Truyền userProfile xuống Client Component để hiển thị và chỉnh sửa */}
+        <div className="container mx-auto p-6 max-w-5xl">
+            <h1 className="text-3xl font-bold mb-6 text-slate-800">Hồ sơ cá nhân</h1>
+
+            {/* Đây là nơi initialData được truyền vào */}
             <ProfileForm initialData={userProfile} />
         </div>
     );

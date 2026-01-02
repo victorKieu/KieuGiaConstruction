@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Building2, TrendingUp, AlertTriangle,
     PackagePlus, PackageMinus, ArrowRight, Wallet,
     Briefcase, CheckCircle2, Clock, CalendarClock, PieChart,
-    Users, UserPlus, Handshake, Percent // <--- Icon CRM
+    Users, UserPlus, Handshake, Percent // Icon CRM
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -16,11 +16,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge"; // <--- Import Badge
+import { Badge } from "@/components/ui/badge";
+
+// Import biểu đồ
+import { SourcePieChart } from "@/components/crm/charts/SourcePieChart"; // <--- Import mới
 
 import {
     getDashboardSummary, getLowStockItems, getRecentWarehouseActivity,
-    getProductionStats, getCRMStats, getRecentCustomers // <--- Import hàm CRM
+    getProductionStats, getCRMStats, getRecentCustomers,
+    getCustomerSourceStats // <--- Import hàm lấy nguồn khách
 } from "@/lib/action/dashboard";
 
 export default function DashboardPage() {
@@ -33,26 +37,34 @@ export default function DashboardPage() {
     // State CRM mới
     const [crmStats, setCrmStats] = useState<any>(null);
     const [recentCustomers, setRecentCustomers] = useState<any[]>([]);
+    const [sourceStats, setSourceStats] = useState<any[]>([]); // <--- State cho biểu đồ tròn
 
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         async function load() {
-            const [sum, prod, low, act, crm, cus] = await Promise.all([
-                getDashboardSummary(),
-                getProductionStats(),
-                getLowStockItems(),
-                getRecentWarehouseActivity(),
-                getCRMStats(),        // Load CRM KPI
-                getRecentCustomers()  // Load Khách mới
-            ]);
-            setSummary(sum);
-            setProdStats(prod);
-            setLowStock(low);
-            setActivities(act);
-            setCrmStats(crm);
-            setRecentCustomers(cus);
-            setLoading(false);
+            try {
+                const [sum, prod, low, act, crm, cus, src] = await Promise.all([
+                    getDashboardSummary(),
+                    getProductionStats(),
+                    getLowStockItems(),
+                    getRecentWarehouseActivity(),
+                    getCRMStats(),        // Load CRM KPI
+                    getRecentCustomers(), // Load Khách mới
+                    getCustomerSourceStats() // <--- Load Nguồn khách
+                ]);
+                setSummary(sum);
+                setProdStats(prod);
+                setLowStock(low);
+                setActivities(act);
+                setCrmStats(crm);
+                setRecentCustomers(cus);
+                setSourceStats(src || []); // Set state biểu đồ
+            } catch (error) {
+                console.error("Lỗi tải Dashboard:", error);
+            } finally {
+                setLoading(false);
+            }
         }
         load();
     }, []);
@@ -148,28 +160,36 @@ export default function DashboardPage() {
             {/* --- KHỐI 2: KINH DOANH & KHÁCH HÀNG (CRM - MỚI) --- */}
             <h3 className="text-lg font-semibold text-slate-700 mt-4">2. Khách hàng & Kinh doanh (CRM)</h3>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                {/* KPI CRM */}
-                <div className="col-span-4 grid grid-cols-2 gap-4">
-                    <Card className="bg-indigo-50 border-indigo-100">
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-indigo-700 flex gap-2"><Users className="h-4 w-4" /> Tổng Khách hàng</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold text-indigo-800">{crmStats?.total_customers || 0}</div><p className="text-xs text-indigo-600">Data khách hàng tích lũy</p></CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex gap-2"><UserPlus className="h-4 w-4 text-blue-500" /> Lead Mới (Tháng)</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold">{crmStats?.new_leads_month || 0}</div><p className="text-xs text-muted-foreground">Khách hàng mới tạo tháng này</p></CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex gap-2"><Handshake className="h-4 w-4 text-orange-500" /> Đang Đàm phán</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold text-orange-600">{crmStats?.negotiating_count || 0}</div><p className="text-xs text-muted-foreground">Cơ hội ký hợp đồng cao</p></CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex gap-2"><Percent className="h-4 w-4 text-green-500" /> Tỷ lệ Chốt đơn</CardTitle></CardHeader>
-                        <CardContent><div className="text-2xl font-bold text-green-700">{Number(crmStats?.conversion_rate || 0).toFixed(1)}%</div><p className="text-xs text-muted-foreground">Hiệu quả kinh doanh</p></CardContent>
-                    </Card>
+                {/* Cột trái: KPI + Biểu đồ tròn (Chiếm 4/7) */}
+                <div className="col-span-4 space-y-4">
+                    {/* Hàng KPI nhỏ */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <Card className="bg-indigo-50 border-indigo-100">
+                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-indigo-700 flex gap-2"><Users className="h-4 w-4" /> Tổng Khách hàng</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-indigo-800">{crmStats?.total_customers || 0}</div><p className="text-xs text-indigo-600">Data khách hàng tích lũy</p></CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex gap-2"><UserPlus className="h-4 w-4 text-blue-500" /> Lead Mới (Tháng)</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold">{crmStats?.new_leads_month || 0}</div><p className="text-xs text-muted-foreground">Khách hàng mới tạo tháng này</p></CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex gap-2"><Handshake className="h-4 w-4 text-orange-500" /> Đang Đàm phán</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-orange-600">{crmStats?.negotiating_count || 0}</div><p className="text-xs text-muted-foreground">Cơ hội ký hợp đồng cao</p></CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex gap-2"><Percent className="h-4 w-4 text-green-500" /> Tỷ lệ Chốt đơn</CardTitle></CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-green-700">{Number(crmStats?.conversion_rate || 0).toFixed(1)}%</div><p className="text-xs text-muted-foreground">Hiệu quả kinh doanh</p></CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Biểu đồ tròn (Mới thêm) */}
+                    <div className="h-[300px]">
+                        <SourcePieChart data={sourceStats} />
+                    </div>
                 </div>
 
-                {/* Danh sách Khách mới */}
-                <Card className="col-span-3">
+                {/* Cột phải: Danh sách Khách mới (Chiếm 3/7) */}
+                <Card className="col-span-3 h-full">
                     <CardHeader className="pb-3"><CardTitle className="text-base">Liên hệ mới nhất</CardTitle></CardHeader>
                     <CardContent className="p-0">
                         <Table>

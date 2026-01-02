@@ -2,16 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Sun, Moon } from "lucide-react";
+import { Search, Sun, Moon, Menu } from "lucide-react"; // Import thêm icon Menu
 import { useTheme } from "next-themes";
 import { useTranslation } from 'next-i18next';
 import i18next from '@/app/src/config/i18n';
 
-// 👇 1. Import component UserDropdownMenu và NotificationBell
+// Components
 import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
-import { NotificationBell } from "@/components/layout/notification-bell"; // Import Chuông thông báo
+import { NotificationBell } from "@/components/layout/notification-bell";
+import { UserProfile } from "@/lib/supabase/getUserProfile";
 
-import type { UserProfile } from '@/types/userProfile';
+// Shadcn Sheet & Sidebar
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sidebar } from "@/components/layout/Sidebar"; // Import Sidebar component của bạn
 
 // Map đường dẫn -> tiêu đề trang
 const pageTitles: Record<string, string> = {
@@ -40,89 +44,95 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
     const { theme, setTheme } = useTheme();
     const { t } = useTranslation();
     const [mounted, setMounted] = useState(false);
+    const [mobileOpen, setMobileOpen] = useState(false); // State quản lý việc đóng mở Sidebar Mobile
 
-    // Lấy tiêu đề động theo route
-    const pageTitle =
-        Object.entries(pageTitles).find(([path]) =>
-            pathname === path || pathname.startsWith(path + "/")
-        )?.[1] || "Kieu Gia Construction";
+    // Lấy tiêu đề động
+    const pageTitle = Object.entries(pageTitles).find(([path]) =>
+        pathname === path || pathname.startsWith(path + "/")
+    )?.[1] || "Kieu Gia Construction";
 
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    const toggleDarkMode = () => {
-        setTheme(theme === "dark" ? "light" : "dark");
-    };
+    // Tự động đóng sidebar mobile khi chuyển trang
+    useEffect(() => {
+        setMobileOpen(false);
+    }, [pathname]);
+
+    const toggleDarkMode = () => setTheme(theme === "dark" ? "light" : "dark");
 
     const displayName = userProfile?.name || userProfile?.email || 'Người dùng';
     const displayAvatarUrl = userProfile?.avatar_url || "/placeholder.svg";
     const displayEmail = userProfile?.email || '';
 
-    const handleLogout = async () => {
-        await fetch("/api/auth/logout", { method: "POST" });
-        router.push('/login');
-    };
+    const changeLanguage = (locale: string) => i18next.changeLanguage(locale);
 
-    const changeLanguage = (locale: string) => {
-        i18next.changeLanguage(locale);
-    };
-
-    if (!mounted) {
-        return null;
-    }
+    if (!mounted) return null;
 
     return (
-        <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900 sticky top-0 z-50">
-            {/* Tiêu đề động */}
-            <div className="font-bold text-lg text-blue-700 dark:text-blue-200 tracking-wide">
-                {pageTitle}
+        <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900 sticky top-0 z-50 shadow-sm">
+            {/* --- KHU VỰC BÊN TRÁI --- */}
+            <div className="flex items-center gap-3">
+                {/* 1. Nút Menu Mobile (Chỉ hiện < md) */}
+                <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+                    <SheetTrigger asChild>
+                        <Button variant="ghost" size="icon" className="md:hidden -ml-2 text-slate-500 hover:bg-slate-100">
+                            <Menu className="w-6 h-6" />
+                        </Button>
+                    </SheetTrigger>
+
+                    {/* Nội dung Sidebar Mobile */}
+                    <SheetContent side="left" className="p-0 w-[280px]">
+                        {/* Tái sử dụng Component Sidebar đã có */}
+                        <Sidebar className="border-none w-full h-full" />
+                    </SheetContent>
+                </Sheet>
+
+                {/* Tiêu đề trang */}
+                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 tracking-wide truncate max-w-[200px] sm:max-w-none">
+                    {pageTitle}
+                </div>
             </div>
 
-            {/* Nút chức năng */}
+            {/* --- KHU VỰC BÊN PHẢI (Nút chức năng) --- */}
             <div className="flex items-center gap-2">
                 {/* Language Switcher */}
-                <div className="hidden md:flex"> {/* Ẩn trên mobile cho đỡ chật */}
-                    <button onClick={() => changeLanguage('vi')} className="mr-1 p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-sm font-medium">
-                        VI
-                    </button>
-                    <button onClick={() => changeLanguage('en')} className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-sm font-medium">
-                        EN
-                    </button>
+                <div className="hidden md:flex items-center">
+                    <button onClick={() => changeLanguage('vi')} className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-xs font-semibold text-slate-600">VI</button>
+                    <span className="text-slate-300">|</span>
+                    <button onClick={() => changeLanguage('en')} className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-neutral-800 text-xs font-semibold text-slate-600">EN</button>
                 </div>
 
-                {/* Nút tìm kiếm */}
+                {/* Tìm kiếm */}
                 <div className="flex items-center">
                     <button
-                        className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800"
+                        className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 text-slate-500"
                         onClick={() => setSearchOpen((v) => !v)}
-                        aria-label="Tìm kiếm"
                     >
                         <Search className="w-5 h-5" />
                     </button>
-
                     {searchOpen && (
                         <input
                             autoFocus
-                            className="ml-2 px-2 py-1 border rounded text-sm w-32 md:w-48 bg-transparent"
+                            className="ml-2 px-3 py-1.5 text-sm border rounded-full w-32 md:w-48 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
                             placeholder="Tìm kiếm..."
                         />
                     )}
                 </div>
 
-                {/* Nút đổi theme */}
+                {/* Theme Toggle */}
                 <button
-                    className="p-2 rounded hover:bg-gray-100 dark:hover:bg-neutral-800"
+                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 text-slate-500"
                     onClick={toggleDarkMode}
-                    aria-label="Chuyển theme"
                 >
                     {mounted && (theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />)}
                 </button>
 
-                {/* 👇 2. NHÚNG CHUÔNG THÔNG BÁO TẠI ĐÂY */}
+                {/* Notification */}
                 <NotificationBell />
 
-                {/* Menu user */}
+                {/* User Menu */}
                 <UserDropdownMenu
                     user={{
                         name: displayName,

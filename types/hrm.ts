@@ -52,9 +52,39 @@ export interface GetEmployeesResult {
     totalCount: number;
 }
 
+
 export interface Employee {
     id: string;
     name: string;
     email: string;
+    phone?: string | null;
+
+    // --- CÁC TRƯỜNG BẠN ĐANG THIẾU ---
+    code: string;           // Mã nhân viên
+    avatar_url?: string | null; // Ảnh đại diện
+    position: string;       // Chức vụ
+    department?: string | null; // Tên phòng ban (Lưu ý: Server Action cần join để lấy tên, không phải ID)
+    hire_date: string;      // Ngày vào làm
+    status: string;         // Trạng thái (đang làm việc, nghỉ việc...)
+
+    // Các trường khác có thể có trong DB (tùy chọn)
+    gender?: string | null;
+    birth_date?: string | null;
+    address?: string | null;
+    tax_code?: string | null;
+    manager_id?: string | null;
+    created_at?: string;
 }
 
+export interface GetEmployeesParams {
+    search?: string;
+    status?: string;
+    department?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface GetEmployeesResult {
+    employees: Employee[];
+    totalCount: number;
+}

@@ -1,209 +1,149 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-// 1. Lấy số liệu tổng quan chung (Cũ - vẫn giữ để đảm bảo tương thích nếu cần)
-export async function getDashboardSummary() {
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("get_dashboard_summary");
-    if (error) {
-        console.error("Dashboard Summary Error:", error);
-        return null;
-    }
-    return data[0];
-}
+// Helper để tạo client
+const getClient = async () => await createSupabaseServerClient();
 
-// 2. Lấy số liệu SẢN XUẤT & TÀI CHÍNH (Mới - Dùng cho khối 1 & 3)
+// 1. Lấy số liệu SẢN XUẤT (Projects) - Query trực tiếp
 export async function getProductionStats() {
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("get_dashboard_production_stats");
+    const supabase = await getClient();
 
-    if (error) {
-        console.error("Production Stats Error:", error);
+    try {
+        // Đếm tổng dự án
+        const { count: total } = await supabase.from("projects").select("*", { count: "exact", head: true });
+
+        // Đếm dự án hoàn thành (status = 'completed')
+        const { count: completed } = await supabase.from("projects").select("*", { count: "exact", head: true }).eq("status", "completed");
+
+        // Đếm dự án đang chạy (status = 'processing' hoặc 'construction')
+        const { count: active } = await supabase.from("projects").select("*", { count: "exact", head: true }).in("status", ["processing", "construction"]);
+
+        // Đếm dự án sắp chạy (status = 'planning')
+        const { count: planning } = await supabase.from("projects").select("*", { count: "exact", head: true }).eq("status", "planning");
+
+        return {
+            total_projects: total || 0,
+            completed_projects: completed || 0,
+            active_projects: active || 0,
+            planning_projects: planning || 0,
+            delayed_projects: 0, // Tạm thời để 0, logic chậm tiến độ cần so sánh ngày
+            total_revenue: 0,    // Cần bảng contracts để tính
+            total_cost: 0        // Cần bảng expenses để tính
+        };
+    } catch (error) {
+        console.error("Lỗi Production Stats:", error);
         return null;
     }
-    return data[0];
 }
 
-// 3. Lấy số liệu CRM (Mới - Dùng cho khối 2)
+// 2. Lấy số liệu CRM (Customers) - Query trực tiếp
 export async function getCRMStats() {
-    const supabase = await createClient();
-    // Lưu ý: Đảm bảo bạn đã chạy SQL tạo hàm get_dashboard_crm_stats ở bước trước
-    const { data, error } = await supabase.rpc("get_dashboard_crm_stats");
+    const supabase = await getClient();
 
-    if (error) {
-        // Nếu chưa tạo RPC hoặc bảng customers, trả về default để không crash trang
-        console.warn("CRM Stats Error (Có thể chưa tạo RPC):", error);
+    try {
+        // Tổng khách
+        const { count: total } = await supabase.from("customers").select("*", { count: "exact", head: true });
+
+        // Khách đang đàm phán (status = 'negotiating')
+        const { count: negotiating } = await supabase.from("customers").select("*", { count: "exact", head: true }).eq("status", "negotiating");
+
+        // Khách mới trong tháng này
+        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+        const { count: newLeads } = await supabase.from("customers").select("*", { count: "exact", head: true }).gte("created_at", startOfMonth);
+
+        // Tính tỷ lệ chuyển đổi (Signed / Total)
+        const { count: signed } = await supabase.from("customers").select("*", { count: "exact", head: true }).eq("status", "signed");
+        const conversion_rate = total && total > 0 ? ((signed || 0) / total) * 100 : 0;
+
         return {
-            total_customers: 0,
-            new_leads_month: 0,
-            negotiating_count: 0,
-            conversion_rate: 0
+            total_customers: total || 0,
+            new_leads_month: newLeads || 0,
+            negotiating_count: negotiating || 0,
+            conversion_rate: conversion_rate
         };
+    } catch (error) {
+        console.error("Lỗi CRM Stats:", error);
+        return null;
     }
-    return data[0];
 }
 
-// 4. Lấy danh sách Khách hàng mới nhất (Mới - Dùng cho khối 2)
-export async function getRecentCustomers() {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-    if (error) {
-        console.warn("Recent Customers Error:", error);
-        return [];
-    }
-    return data || [];
-}
-
-// 5. Lấy danh sách vật tư sắp hết hàng (Dùng cho khối 4)
-export async function getLowStockItems() {
-    const supabase = await createClient();
-    const { data } = await supabase
-        .from("project_inventory")
-        .select("id, item_name, unit, quantity_on_hand, warehouse:warehouses(name)")
-        .lt("quantity_on_hand", 10) // Dưới 10 là báo động
-        .order("quantity_on_hand", { ascending: true })
-        .limit(5);
-    return data || [];
-}
-
-// 6. Lấy hoạt động kho gần đây (Nhập kho & Xuất kho) (Dùng cho khối 4)
-export async function getRecentWarehouseActivity() {
-    const supabase = await createClient();
-
-    // Lấy 5 phiếu nhập gần nhất
-    const { data: receipts } = await supabase
-        .from("goods_receipts")
-        .select("id, code:purchase_orders(code), created_at, notes")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-    // Lấy 5 phiếu xuất gần nhất
-    const { data: issues } = await supabase
-        .from("goods_issues")
-        .select("id, code, created_at, notes, receiver_name")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-    // Gộp và sort lại theo thời gian
-    const combined = [
-        ...(receipts || []).map(r => ({
-            id: r.id,
-            type: 'IN', // Nhập
-            code: r.code?.code || 'PN-???',
-            date: r.created_at,
-            desc: `Nhập kho: ${r.notes || 'Không ghi chú'}`
-        })),
-        ...(issues || []).map(i => ({
-            id: i.id,
-            type: 'OUT', // Xuất
-            code: i.code,
-            date: i.created_at,
-            desc: `Xuất cho: ${i.receiver_name}`
-        }))
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
-
-    return combined;
-}
-
-export async function getUpcomingCRMActivities() {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-        .from("customer_activities") // <--- Đổi tên bảng
-        .select(`
-            id, 
-            type:activity_type, 
-            subject:title, 
-            due_date:scheduled_at, 
-            status,
-            customer:customers(name, phone)
-        `)
-        .eq("status", "pending") // Hoặc trạng thái tương đương bạn dùng để chỉ việc chưa làm
-        .gte("scheduled_at", new Date().toISOString())
-        .order("scheduled_at", { ascending: true })
-        .limit(5);
-
-    if (error) {
-        console.warn("CRM Activities Error:", error);
-        return [];
-    }
-
-    // Map dữ liệu về format chuẩn cho Component hiển thị
-    return (data || []).map(item => ({
-        id: item.id,
-        type: item.type, // call, meeting...
-        subject: item.subject,
-        due_date: item.due_date,
-        status: item.status,
-        customer: item.customer
-    }));
-}
-
-// 👇 8. LẤY THỐNG KÊ NGUỒN KHÁCH HÀNG (Cho biểu đồ tròn)
+// 3. Lấy nguồn khách hàng (Biểu đồ tròn)
 export async function getCustomerSourceStats() {
-    const supabase = await createClient();
+    const supabase = await getClient();
 
-    // 1. Lấy toàn bộ khách hàng (chỉ cần cột source_id)
-    const { data: customers, error } = await supabase
-        .from("customers")
-        .select("source_id");
+    // Lấy source_id của tất cả khách hàng
+    const { data: customers } = await supabase.from("customers").select("source_id");
 
-    if (error || !customers) {
-        console.error("Lỗi lấy data khách hàng:", error);
-        return [];
-    }
+    if (!customers || customers.length === 0) return [];
 
-    // 2. Lấy danh sách định nghĩa Nguồn từ từ điển hệ thống
-    // Lấy các dictionary mà id có xuất hiện trong list khách hàng để tối ưu
-    const sourceIds = Array.from(new Set(customers.map(c => c.source_id).filter(Boolean))) as string[];
+    // Lấy bảng từ điển để map tên nguồn
+    const { data: dicts } = await supabase.from("sys_dictionaries").select("id, name, color").in("type", ["customer_source", "source"]); // Check lại type trong DB của bạn
 
-    let dictMap: Record<string, any> = {};
-
-    if (sourceIds.length > 0) {
-        const { data: dicts } = await supabase
-            .from("sys_dictionaries")
-            .select("id, name, color")
-            .in("id", sourceIds);
-
-        if (dicts) {
-            dicts.forEach(d => { dictMap[d.id] = d; });
-        }
-    }
-
-    // 3. Tổng hợp dữ liệu
     const statsMap = new Map<string, number>();
-    let unknownCount = 0;
+    const dictMap = new Map<string, { name: string, color: string }>();
 
+    dicts?.forEach(d => dictMap.set(d.id, { name: d.name, color: d.color || "#cccccc" }));
+
+    let unknownCount = 0;
     customers.forEach(c => {
-        if (c.source_id && dictMap[c.source_id]) {
-            const id = c.source_id;
-            statsMap.set(id, (statsMap.get(id) || 0) + 1);
+        if (c.source_id && dictMap.has(c.source_id)) {
+            statsMap.set(c.source_id, (statsMap.get(c.source_id) || 0) + 1);
         } else {
             unknownCount++;
         }
     });
 
-    // 4. Format dữ liệu cho Recharts
-    const chartData = Array.from(statsMap.entries()).map(([id, count]) => ({
-        name: dictMap[id].name,
+    const result = Array.from(statsMap.entries()).map(([id, count]) => ({
+        name: dictMap.get(id)?.name || "N/A",
         value: count,
-        fill: dictMap[id].color || `hsl(${Math.random() * 360}, 70%, 50%)`, // Màu mặc định nếu thiếu
+        fill: dictMap.get(id)?.color || "#8884d8"
     }));
 
-    // Thêm mục "Khác/Chưa rõ" nếu có
     if (unknownCount > 0) {
-        chartData.push({
-            name: "Chưa xác định",
-            value: unknownCount,
-            fill: "#94a3b8", // Màu xám slate-400
-        });
+        result.push({ name: "Khác", value: unknownCount, fill: "#94a3b8" });
     }
 
-    return chartData.sort((a, b) => b.value - a.value); // Sắp xếp giảm dần
+    return result;
+}
+
+// 4. Các hàm phụ trợ khác (Giữ nguyên logic cũ nhưng thêm try-catch)
+export async function getDashboardSummary() { return {}; } // Placeholder
+
+export async function getRecentCustomers() {
+    const supabase = await getClient();
+    const { data } = await supabase.from("customers").select("*").order("created_at", { ascending: false }).limit(5);
+    return data || [];
+}
+
+export async function getLowStockItems() {
+    const supabase = await getClient();
+    // Chú ý: đảm bảo bảng project_inventory và warehouses tồn tại
+    try {
+        const { data } = await supabase
+            .from("project_inventory")
+            .select("id, item_name, unit, quantity_on_hand, warehouse:warehouses(name)") // warehouse là tên relation
+            .lt("quantity_on_hand", 10)
+            .limit(5);
+        return data || [];
+    } catch (e) { return []; }
+}
+
+export async function getRecentWarehouseActivity() {
+    const supabase = await getClient();
+    try {
+        const { data: receipts } = await supabase.from("goods_receipts").select("id, code:purchase_orders(code), created_at, notes").order("created_at", { ascending: false }).limit(5);
+        const { data: issues } = await supabase.from("goods_issues").select("id, code, created_at, notes, receiver_name").order("created_at", { ascending: false }).limit(5);
+
+        const combined = [
+            ...(receipts || []).map(r => {
+                const poCodeObj: any = r.code;
+                const displayCode = Array.isArray(poCodeObj) ? poCodeObj[0]?.code : poCodeObj?.code;
+                return { id: r.id, type: 'IN', code: displayCode || 'PN-???', date: r.created_at, desc: r.notes || 'Nhập kho' };
+            }),
+            ...(issues || []).map(i => ({ id: i.id, type: 'OUT', code: i.code, date: i.created_at, desc: i.receiver_name }))
+        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
+
+        return combined;
+    } catch (e) { return []; }
 }

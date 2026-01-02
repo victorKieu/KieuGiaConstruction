@@ -72,7 +72,7 @@ const navItems = [
         children: [
             { title: "Quản lý hàng hóa", href: "/inventory/catalog" },
             { title: "Quản lý kho", href: "/inventory" },
-            
+
         ],
     },
     {
@@ -128,7 +128,7 @@ const navItems = [
         href: "/settings",
         icon: Settings,
         permission: null,
-        
+
     },
 ];
 
@@ -159,8 +159,13 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
     );
 }
 
-// --- QUAN TRỌNG: Đã đổi từ "export default function" thành "export function" ---
-export function Sidebar() {
+// 👇 1. Thêm Interface Props
+interface SidebarProps {
+    className?: string; // Để nhận class từ Shadcn Sheet
+}
+
+// 👇 2. Cập nhật component nhận props
+export function Sidebar({ className }: SidebarProps) {
     const pathname = usePathname();
     const [expanded, setExpanded] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -179,7 +184,8 @@ export function Sidebar() {
         setMobileOpen(false);
     }, [pathname]);
 
-    const collapsed = !expanded && !mobileOpen;
+    // Nếu có className (tức là đang nằm trong Sheet), ta coi như không collapsed
+    const collapsed = !expanded && !mobileOpen && !className;
 
     useEffect(() => {
         navItems.forEach((item) => {
@@ -216,12 +222,19 @@ export function Sidebar() {
         h-screen bg-white dark:bg-neutral-900 border-r border-blue-100 dark:border-neutral-800 shadow-2xl
         flex flex-col transition-all duration-300
         ${collapsed ? "w-16 min-w-16 max-w-16" : "w-[252px] min-w-[252px] max-w-[252px]"}
-        ${isMobile ? "fixed z-50 left-0 top-0" : "relative"}
-        ${isMobile && mobileOpen ? "translate-x-0" : isMobile ? "-translate-x-full" : "translate-x-0"}
+        ${/* Nếu có className (trong Sheet), ta bỏ logic fixed/absolute của Sidebar đi */ ""}
+        ${!className && isMobile ? "fixed z-50 left-0 top-0" : ""}
+        ${!className && isMobile && mobileOpen ? "translate-x-0" : !className && isMobile ? "-translate-x-full" : "translate-x-0"}
+        ${className || ""} 
       `}
-            style={{ width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }}
-            onMouseEnter={() => !isMobile && setExpanded(true)}
-            onMouseLeave={() => !isMobile && setExpanded(false)}
+            style={{
+                // Nếu đang trong Sheet (có className), ta force width 100% để khớp với sheet
+                width: className ? "100%" : sidebarWidth,
+                minWidth: className ? "100%" : sidebarWidth,
+                maxWidth: className ? "100%" : sidebarWidth
+            }}
+            onMouseEnter={() => !isMobile && !className && setExpanded(true)}
+            onMouseLeave={() => !isMobile && !className && setExpanded(false)}
         >
             {/* Header logo */}
             <div className="flex items-center gap-3 h-20 px-4 border-b border-blue-100 dark:border-neutral-800 relative bg-gradient-to-tr from-blue-50 to-white dark:from-neutral-900 dark:to-neutral-800">
@@ -246,7 +259,8 @@ export function Sidebar() {
                         <div className="text-xs text-gray-500 dark:text-gray-300 font-medium">Construction</div>
                     </div>
                 )}
-                {isMobile && mobileOpen && (
+                {/* Chỉ hiện nút đóng nếu không có className (tức là mode tự quản lý mobile cũ) */}
+                {!className && isMobile && mobileOpen && (
                     <button
                         className="absolute right-2 top-2 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-neutral-800 transition"
                         onClick={() => setMobileOpen(false)}
@@ -351,8 +365,8 @@ export function Sidebar() {
     // --- MOBILE overlay ---
     return (
         <>
-            {/* Nút mở sidebar cho mobile */}
-            {isMobile && !mobileOpen && (
+            {/* Chỉ hiện nút Menu nội bộ nếu KHÔNG có className (tức là không dùng Sheet của AppHeader) */}
+            {!className && isMobile && !mobileOpen && (
                 <button
                     className="fixed top-4 left-4 z-50 bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all"
                     onClick={() => setMobileOpen(true)}
@@ -361,16 +375,20 @@ export function Sidebar() {
                     <MenuIcon className="w-6 h-6 text-blue-600 dark:text-blue-200" />
                 </button>
             )}
-            {/* Sidebar */}
+
+            {/* Sidebar Content */}
             {sidebarContent}
-            {/* Overlay che mờ nền khi mở sidebar trên mobile */}
-            {isMobile && mobileOpen && (
+
+            {/* Chỉ hiện Overlay nội bộ nếu KHÔNG có className */}
+            {!className && isMobile && mobileOpen && (
                 <div
                     className="fixed inset-0 bg-black/40 z-40 backdrop-blur-[2px] transition-opacity"
                     onClick={() => setMobileOpen(false)}
                 />
             )}
-            {!isMobile && (
+
+            {/* Placeholder giữ chỗ cho desktop (Chỉ hiện khi không dùng Sheet) */}
+            {!isMobile && !className && (
                 <div
                     style={{ width: sidebarWidth, minWidth: sidebarWidth }}
                     className="shrink-0 transition-all"

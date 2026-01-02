@@ -5,10 +5,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createFullEmployeeAccount } from "@/lib/action/hrmActions"; // Import action
+import { createFullEmployeeAccount } from "@/lib/action/hrmActions"; // Đảm bảo đường dẫn này đúng
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
     Form,
     FormControl,
@@ -18,25 +17,26 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2 } from "lucide-react"; // Import icon loading
+import { Loader2 } from "lucide-react";
 
-// Zod Schema cho form (tương tự schema trong hrmActions nhưng có thể khác đôi chút cho client-side validation)
+// Zod Schema
 const formSchema = z.object({
     email: z.string().email("Email không hợp lệ."),
     password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự."),
     fullName: z.string().min(1, "Tên đầy đủ không được để trống."),
     position: z.string().min(1, "Chức vụ không được để trống."),
-    department: z.string().optional().nullable(),
-    hireDate: z.string().optional().nullable(),
-    birthday: z.string().optional().nullable(),
-    phone: z.string().optional().nullable(),
-    address: z.string().optional().nullable(),
+    // Các trường optional: sử dụng .or(z.literal('')) để cho phép chuỗi rỗng từ input
+    department: z.string().optional().or(z.literal('')),
+    hireDate: z.string().optional().or(z.literal('')),
+    birthday: z.string().optional().or(z.literal('')),
+    phone: z.string().optional().or(z.literal('')),
+    address: z.string().optional().or(z.literal('')),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
 interface CreateEmployeeFormProps {
-    onSuccess: () => void; // Callback khi tạo thành công
+    onSuccess: () => void;
 }
 
 export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProps) {
@@ -61,11 +61,13 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
     const onSubmit = async (values: FormValues) => {
         setIsSubmitting(true);
         const formData = new FormData();
-        for (const key in values) {
-            if (values[key as keyof FormValues] !== null && values[key as keyof FormValues] !== undefined) {
-                formData.append(key, String(values[key as keyof FormValues]));
+
+        // Chuyển đổi values sang FormData
+        Object.entries(values).forEach(([key, value]) => {
+            if (value) { // Chỉ append nếu có giá trị (tránh gửi chuỗi rỗng hoặc null/undefined không cần thiết)
+                formData.append(key, String(value));
             }
-        }
+        });
 
         try {
             const response = await createFullEmployeeAccount(formData);
@@ -76,8 +78,8 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
                     description: response.message,
                     variant: "default",
                 });
-                form.reset(); // Reset form sau khi thành công
-                onSuccess(); // Gọi callback để đóng dialog và refresh list
+                form.reset();
+                onSuccess();
             } else {
                 toast({
                     title: "Lỗi",
@@ -88,8 +90,8 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
         } catch (error: any) {
             console.error("Lỗi không mong muốn:", error);
             toast({
-                title: "Lỗi",
-                description: "Đã xảy ra lỗi không mong muốn: " + error.message,
+                title: "Lỗi hệ thống",
+                description: "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.",
                 variant: "destructive",
             });
         } finally {
@@ -105,7 +107,7 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
                     name="email"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Email</FormLabel>
+                            <FormLabel>Email <span className="text-red-500">*</span></FormLabel>
                             <FormControl>
                                 <Input placeholder="email@example.com" {...field} />
                             </FormControl>
@@ -118,7 +120,7 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
                     name="password"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Mật khẩu</FormLabel>
+                            <FormLabel>Mật khẩu <span className="text-red-500">*</span></FormLabel>
                             <FormControl>
                                 <Input type="password" placeholder="••••••••" {...field} />
                             </FormControl>
@@ -131,7 +133,7 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
                     name="fullName"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Tên đầy đủ</FormLabel>
+                            <FormLabel>Tên đầy đủ <span className="text-red-500">*</span></FormLabel>
                             <FormControl>
                                 <Input placeholder="Nguyễn Văn A" {...field} />
                             </FormControl>
@@ -144,72 +146,82 @@ export default function CreateEmployeeForm({ onSuccess }: CreateEmployeeFormProp
                     name="position"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Chức vụ</FormLabel>
+                            <FormLabel>Chức vụ <span className="text-red-500">*</span></FormLabel>
                             <FormControl>
-                                <Input placeholder="Nhân viên" {...field} />
+                                <Input placeholder="Nhân viên Kinh doanh" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
-                <FormField
-                    control={form.control}
-                    name="department"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Phòng ban (Tùy chọn)</FormLabel>
-                            <FormControl>
-                                <Input placeholder="Phòng Kỹ thuật" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="hireDate"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Ngày vào làm (Tùy chọn)</FormLabel>
-                            <FormControl>
-                                <Input type="date" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="birthday"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Ngày sinh (Tùy chọn)</FormLabel>
-                            <FormControl>
-                                <Input type="date" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-                <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Số điện thoại (Tùy chọn)</FormLabel>
-                            <FormControl>
-                                <Input placeholder="0901234567" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                        control={form.control}
+                        name="department"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Phòng ban</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="Phòng Kỹ thuật" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="phone"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Số điện thoại</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="0901234567" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                        control={form.control}
+                        name="hireDate"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Ngày vào làm</FormLabel>
+                                <FormControl>
+                                    {/* Input type="date" cần value là string YYYY-MM-DD. 
+                                        Nếu field.value là undefined/null, React sẽ warning component đổi từ uncontrolled sang controlled.
+                                        DefaultValues đã xử lý việc này, nhưng thêm || '' để chắc chắn. */}
+                                    <Input type="date" {...field} value={field.value || ''} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="birthday"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Ngày sinh</FormLabel>
+                                <FormControl>
+                                    <Input type="date" {...field} value={field.value || ''} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+
                 <FormField
                     control={form.control}
                     name="address"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Địa chỉ (Tùy chọn)</FormLabel>
+                            <FormLabel>Địa chỉ</FormLabel>
                             <FormControl>
                                 <Input placeholder="123 Đường ABC, Quận 1, TP.HCM" {...field} />
                             </FormControl>
