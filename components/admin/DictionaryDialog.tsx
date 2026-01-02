@@ -6,45 +6,48 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogDescription, // 👈 1. Import thêm DialogDescription
 } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast"; // Hoặc hooks/use-toast tùy setup
+import { useToast } from "@/components/ui/use-toast";
 import { upsertDictionary, DictionaryFormData } from "@/lib/action/dictionary";
 import { Loader2, Plus } from "lucide-react";
 import { CategoryCombobox } from "@/components/admin/CategoryCombobox";
 import { formatCategoryCode } from "@/lib/constants/dictionary";
+import { ColorPicker } from "@/components/ui/color-picker";
 
-// 1. Cập nhật Interface Props
 interface Props {
     initialData?: any;
     trigger?: React.ReactNode;
     defaultCategory?: string;
-    existingCategories?: string[]; // <--- BẮT BUỘC KHAI BÁO Ở ĐÂY
+    existingCategories?: string[];
 }
 
-// 2. Cập nhật hàm nhận Props (Destructuring)
 export function DictionaryDialog({
     initialData,
     trigger,
     defaultCategory,
-    existingCategories = [] // <--- BẮT BUỘC PHẢI LẤY RA Ở ĐÂY VÀ GÁN MẶC ĐỊNH
+    existingCategories = []
 }: Props) {
 
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const { toast } = useToast(); // Đảm bảo hook này đúng đường dẫn
+    const { toast } = useToast();
 
     const [formData, setFormData] = useState<DictionaryFormData>({
         id: initialData?.id,
         category: initialData?.category || defaultCategory || "",
         code: initialData?.code || "",
         name: initialData?.name || "",
-        color: initialData?.color || "gray",
+        color: initialData?.color || "#94a3b8",
         sort_order: initialData?.sort_order || 0,
         meta_data: initialData?.meta_data ? JSON.stringify(initialData.meta_data, null, 2) : "{}",
     });
 
-    // Reset form khi mở dialog hoặc đổi data
     useEffect(() => {
         if (open) {
             setFormData({
@@ -52,7 +55,7 @@ export function DictionaryDialog({
                 category: initialData?.category || defaultCategory || "",
                 code: initialData?.code || "",
                 name: initialData?.name || "",
-                color: initialData?.color || "gray",
+                color: initialData?.color || "#94a3b8",
                 sort_order: initialData?.sort_order || 0,
                 meta_data: initialData?.meta_data ? JSON.stringify(initialData.meta_data, null, 2) : "{}",
             });
@@ -68,7 +71,6 @@ export function DictionaryDialog({
         setLoading(false);
         if (res.success) {
             setOpen(false);
-            // Nếu không dùng toast thì dùng alert hoặc console.log
             toast({ title: "Thành công", description: "Dữ liệu đã được lưu." });
         } else {
             toast({ title: "Lỗi", description: res.error, variant: "destructive" });
@@ -87,22 +89,25 @@ export function DictionaryDialog({
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                     <DialogTitle>{initialData ? "Chỉnh sửa" : "Thêm mới danh mục"}</DialogTitle>
+                    {/* 👇 2. Thêm DialogDescription vào đây để fix lỗi Warning */}
+                    <DialogDescription>
+                        {initialData
+                            ? "Cập nhật thông tin chi tiết cho mục từ điển này."
+                            : "Điền thông tin để tạo mới một mục từ điển dữ liệu vào hệ thống."}
+                    </DialogDescription>
                 </DialogHeader>
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        {/* --- CATEGORY INPUT --- */}
                         <div className="col-span-2">
                             <Label>Phân hệ (Category) *</Label>
-
                             {initialData ? (
-                                // Khi Edit: Disable input
                                 <Input value={formData.category} disabled readOnly className="bg-gray-100 text-gray-500 cursor-not-allowed" />
                             ) : (
-                                // Khi Thêm mới: Dùng Combobox
                                 <CategoryCombobox
                                     value={formData.category}
                                     onChange={(val) => setFormData({ ...formData, category: val })}
-                                    existingCategories={existingCategories} // <--- GIỜ ĐÃ CÓ BIẾN NÀY
+                                    existingCategories={existingCategories}
                                 />
                             )}
                             <p className="text-[10px] text-gray-400 mt-1">
@@ -133,10 +138,10 @@ export function DictionaryDialog({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Màu sắc (Badge)</Label>
-                            <Input
+                            <ColorPicker
                                 value={formData.color}
-                                onChange={e => setFormData({ ...formData, color: e.target.value })}
-                                placeholder="gray, red, blue..."
+                                onChange={(val) => setFormData({ ...formData, color: val })}
+                                className="w-full"
                             />
                         </div>
                         <div>

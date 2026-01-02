@@ -2,87 +2,110 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 
-// --- Schema Validation ---
-const dictionarySchema = z.object({
-    id: z.string().optional(),
-    category: z.string().min(1, "Phân hệ không được để trống"),
-    code: z.string().min(1, "Mã không được để trống"),
-    name: z.string().min(1, "Tên hiển thị không được để trống"),
-    color: z.string().optional(),
-    sort_order: z.coerce.number().default(0),
-    meta_data: z.string().optional().refine((val) => {
-        if (!val) return true;
-        try { JSON.parse(val); return true; } catch { return false; }
-    }, "JSON không hợp lệ"),
-});
-
-export type DictionaryFormData = z.infer<typeof dictionarySchema>;
-
-// --- HELPER CHECK ADMIN ---
-async function checkAdminPermission() {
-    const supabase = await createSupabaseServerClient();
-    // Lấy user hiện tại
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Chưa đăng nhập");
-
-    // Query kiểm tra role (Tùy cấu trúc bảng nhân viên của bạn)
-    // Ví dụ: Check trong bảng employees
-    const { data: emp } = await supabase
-        .from("employees")
-        .select("roles(code)")
-        .eq("id", user.id) // Giả sử id nhân viên trùng auth.uid()
-        .single();
-
-    // Logic kiểm tra role admin
-    // Lưu ý: Sửa logic này khớp với bảng roles của bạn
-    const isAdmin = emp?.roles?.code === 'admin' || emp?.roles?.code === 'director';
-
-    if (!isAdmin) {
-        // throw new Error("Bạn không có quyền thực hiện thao tác này.");
-        // Tạm thời comment để bạn test code, sau này uncomment
-    }
+export interface DictionaryFormData {
+    id?: string;
+    category: string;
+    code: string;
+    name: string;
+    color?: string;
+    sort_order?: number;
+    meta_data?: string; // JSON string
 }
 
-// --- ACTIONS ---
-
-export async function upsertDictionary(data: DictionaryFormData) {
-    await checkAdminPermission(); // Bảo mật 2 lớp
+export async function upsertDictionary(formData: DictionaryFormData) {
     const supabase = await createSupabaseServerClient();
 
+    // 1. Validate dữ liệu cơ bản
+    if (!formData.category || !formData.code || !formData.name) {
+        return { success: false, error: "Vui lòng điền đầy đủ thông tin bắt buộc." };
+    }
+
+    // 2. Kiểm tra trùng lặp Mã (Code) trong cùng 1 Category
+    let query = supabase
+        .from("sys_dictionaries")
+        .select("id")
+        .eq("category", formData.category)
+        .eq("code", formData.code);
+
+    // Nếu đang là chế độ Sửa (có ID), thì phải loại trừ chính dòng đang sửa ra khỏi việc check trùng
+    if (formData.id) {
+        query = query.neq("id", formData.id);
+    }
+
+    const { data: existing, error: checkError } = await query;
+
+    if (checkError) {
+        return { success: false, error: "Lỗi kiểm tra dữ liệu: " + checkError.message };
+    }
+
+    if (existing && existing.length > 0) {
+        return { success: false, error: `Mã "${formData.code}" đã tồn tại trong phân hệ này.` };
+    }
+
+    // 3. Xử lý an toàn cho Meta Data (JSON Parsing)
+    let parsedMetaData = {};
+    try {
+        // Nếu có dữ liệu thì mới parse, không thì để rỗng
+        if (formData.meta_data && formData.meta_data.trim() !== "") {
+            parsedMetaData = JSON.parse(formData.meta_data);
+        }
+    } catch (e) {
+        // Trả về lỗi thân thiện thay vì để Server Crash
+        return { success: false, error: "Meta Data không hợp lệ. Vui lòng nhập đúng định dạng JSON (ví dụ: {})." };
+    }
+
+    // 4. Chuẩn bị dữ liệu để lưu
     const payload = {
-        category: data.category,
-        code: data.code,
-        name: data.name,
-        color: data.color,
-        sort_order: data.sort_order,
-        meta_data: data.meta_data ? JSON.parse(data.meta_data) : {},
+        category: formData.category,
+        code: formData.code,
+        name: formData.name,
+        color: formData.color,
+        sort_order: formData.sort_order || 0,
+        meta_data: parsedMetaData, // Sử dụng biến đã parse an toàn
+        updated_at: new Date().toISOString(),
     };
 
-    try {
-        if (data.id) {
-            // Update
-            await supabase.from("sys_dictionaries").update(payload).eq("id", data.id).throwOnError();
-        } else {
-            // Insert
-            await supabase.from("sys_dictionaries").insert(payload).throwOnError();
-        }
-        revalidatePath("/admin/dictionaries");
-        return { success: true };
-    } catch (error: any) {
+    let error;
+
+    if (formData.id) {
+        // Update
+        const { error: updateError } = await supabase
+            .from("sys_dictionaries")
+            .update(payload)
+            .eq("id", formData.id);
+        error = updateError;
+    } else {
+        // Insert
+        const { error: insertError } = await supabase
+            .from("sys_dictionaries")
+            .insert([payload]);
+        error = insertError;
+    }
+
+    if (error) {
+        console.error("Lỗi lưu từ điển:", error);
         return { success: false, error: error.message };
     }
+
+    // 5. Revalidate lại trang
+    revalidatePath("/admin/dictionaries");
+    return { success: true };
 }
 
 export async function deleteDictionary(id: string) {
-    await checkAdminPermission();
     const supabase = await createSupabaseServerClient();
-    try {
-        await supabase.from("sys_dictionaries").delete().eq("id", id).throwOnError();
-        revalidatePath("/admin/dictionaries");
-        return { success: true };
-    } catch (error: any) {
+
+    const { error } = await supabase
+        .from("sys_dictionaries")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+        console.error("Error deleting dictionary:", error);
         return { success: false, error: error.message };
     }
+
+    revalidatePath("/admin/dictionaries");
+    return { success: true };
 }

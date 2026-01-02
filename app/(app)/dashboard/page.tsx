@@ -78,13 +78,31 @@ export default function DashboardPage() {
     const costPercentage = revenue > 0 ? (cost / revenue) * 100 : 0;
 
     // Helper badge CRM
+    // Helper badge CRM
     const getCustomerStatusBadge = (status: string) => {
-        switch (status) {
-            case 'new': return <Badge variant="outline" className="border-blue-500 text-blue-500">Mới</Badge>;
-            case 'negotiating': return <Badge className="bg-orange-500 hover:bg-orange-600">Đàm phán</Badge>;
-            case 'signed': return <Badge className="bg-green-600 hover:bg-green-700">Đã ký HĐ</Badge>;
-            case 'lost': return <Badge variant="destructive">Đã hủy</Badge>;
-            default: return <Badge variant="secondary">{status}</Badge>;
+        // Chuyển về chữ thường để so sánh cho chính xác
+        const normalizedStatus = status ? status.toLowerCase() : "";
+
+        switch (normalizedStatus) {
+            case 'new':
+                return <Badge variant="outline" className="border-blue-500 text-blue-500">Mới</Badge>;
+
+            case 'negotiating':
+                return <Badge className="bg-orange-500 hover:bg-orange-600">Đàm phán</Badge>;
+
+            case 'signed':
+                return <Badge className="bg-green-600 hover:bg-green-700">Đã ký HĐ</Badge>;
+
+            case 'lost':
+                return <Badge variant="destructive">Đã hủy</Badge>;
+
+            // 👇 THÊM TRƯỜNG HỢP NÀY (Khớp với dữ liệu trong ảnh của bạn)
+            case 'active':
+                return <Badge className="bg-emerald-500 hover:bg-emerald-600">Hoạt động</Badge>;
+
+            default:
+                // Các trạng thái lạ khác sẽ hiện màu xám mặc định
+                return <Badge variant="secondary">{status}</Badge>;
         }
     };
 
