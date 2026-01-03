@@ -1,11 +1,12 @@
-﻿// --- START OF FILE auth-context.tsx (sửa đổi tiếp) ---
-
-"use client";
+﻿"use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import supabase from '@/lib/supabase/client';
-import type { Session, User, SupabaseClient } from "@supabase/supabase-js";
+// ✅ 1. Thêm AuthChangeEvent vào import để sửa lỗi TS
+import type { Session, User, SupabaseClient, AuthChangeEvent } from "@supabase/supabase-js";
 import { Database } from "@/types/supabase";
+import Cookies from "js-cookie"; // ✅ 2. Import lại js-cookie (QUAN TRỌNG)
+import GlobalLoader from '@/components/ui/GlobalLoader';
 
 interface AuthContextProps {
     session: Session | null;
@@ -35,40 +36,55 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         let mounted = true;
 
-        const getSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+        // Hàm xử lý chung để cập nhật State và Cookie
+        const handleAuthState = (currentSession: Session | null) => {
             if (mounted) {
-                setSession(session);
-                setUser(session?.user ?? null);
+                setSession(currentSession);
+                setUser(currentSession?.user ?? null);
+
+                // ✅ 3. LOGIC QUAN TRỌNG: Đồng bộ Cookie cho Middleware
+                // Nếu thiếu đoạn này, Middleware sẽ không biết bạn đã đăng nhập -> Redirect loop
+                if (currentSession?.access_token) {
+                    Cookies.set("sb-access-token", currentSession.access_token, {
+                        path: "/",
+                        secure: process.env.NODE_ENV === "production",
+                        sameSite: "lax",
+                        expires: 7, // 7 ngày
+                    });
+                } else {
+                    // Nếu logout hoặc hết hạn -> Xóa cookie
+                    Cookies.remove("sb-access-token");
+                }
+
                 setIsLoading(false);
             }
         };
-        getSession();
 
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (mounted) {
-                setSession(session);
-                setUser(session?.user ?? null);
-                // Supabase SDK tự động quản lý cookie cho session này.
-                // Nếu bạn muốn lưu 'sb-access-token' riêng cho server-side reads,
-                // bạn cần thêm logic tại đây để ghi cookie bằng `js-cookie` nếu cần.
-                // Tuy nhiên, việc này KHÔNG được khuyến khích vì có thể gây không nhất quán.
-                // Tốt nhất là sử dụng `createServerClient` trên server để tự động đọc cookie Supabase.
+        const getSessionInitial = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            handleAuthState(session);
+        };
+        getSessionInitial();
+
+        // ✅ 4. Sửa lỗi TS: Khai báo kiểu cho _event và session
+        const { data: listener } = supabase.auth.onAuthStateChange(
+            (_event: AuthChangeEvent, session: Session | null) => {
+                handleAuthState(session);
             }
-        });
+        );
 
         return () => {
             mounted = false;
             listener?.subscription.unsubscribe();
         };
-    }, [supabase]);
+    }, []);
 
     const signOut = async () => {
         setIsLoading(true);
         setError(null);
         try {
             await supabase.auth.signOut();
-            // onAuthStateChange sẽ tự cập nhật state.
+            // onAuthStateChange sẽ tự chạy và xóa cookie
         } catch (e) {
             setError(e);
             throw e;
@@ -84,13 +100,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
             if (authError) {
-                console.error("Lỗi đăng nhập từ Supabase Auth:", authError.message);
+                console.error("Lỗi đăng nhập:", authError.message);
                 setError(authError);
                 throw new Error(authError.message || "Đăng nhập thất bại.");
             }
-            // onAuthStateChange sẽ tự cập nhật state.
+            // onAuthStateChange sẽ tự chạy và set cookie
         } catch (e: any) {
-            console.error("Lỗi không mong muốn trong signIn (AuthContext):", e.message);
             setError(e);
             throw e;
         } finally {
@@ -103,24 +118,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         try {
             const { data, error } = await supabase
                 .from("user_permissions")
-                .select(`
-                    permissions ( code )
-                `)
+                .select(`permissions ( code )`)
                 .eq("user_id", user.id);
 
-            if (error) {
-                console.error("Lỗi khi lấy quyền (đã tối ưu):", error);
-                return false;
-            }
+            if (error || !data) return false;
 
-            if (!data) return false;
-
-            return data.some((item) =>
-                item.permissions.some(p => p.code === permissionToCheck)
-            );
+            // ✅ 5. Sửa lỗi TS: Dùng item: any hoặc định nghĩa interface nếu cần
+            return data.some((item: any) => {
+                if (Array.isArray(item.permissions)) {
+                    return item.permissions.some((p: any) => p.code === permissionToCheck);
+                }
+                return item.permissions?.code === permissionToCheck;
+            });
 
         } catch (error) {
-            console.error("Lỗi không xác định khi kiểm tra quyền:", error);
+            console.error("Lỗi checkPermission:", error);
             return false;
         }
     };
@@ -138,6 +150,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return (
         <AuthContext.Provider value={value}>
+            {/* ✅ 6. Hiển thị Loader khi đang tải, tránh màn hình trắng */}
+            {isLoading && <GlobalLoader text="Đang xác thực..." />}
+
+            {/* Chỉ hiển thị nội dung khi đã load xong (hoặc vẫn hiển thị bên dưới loader) */}
             {!isLoading && children}
         </AuthContext.Provider>
     );

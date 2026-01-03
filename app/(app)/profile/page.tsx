@@ -1,41 +1,81 @@
-﻿// app/(app)/profile/page.tsx
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getUserProfile } from '@/lib/supabase/getUserProfile';
+﻿import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentSession } from "@/lib/supabase/session";
+import { getDictionaryOptions } from "@/lib/action/dictionaryActions";
 import { redirect } from "next/navigation";
-import ProfileForm from '@/components/profile/ProfileForm'; // Import component vừa tạo ở Bước 1
+import ProfileForm from "@/components/profile/ProfileForm";
+import PasswordForm from "@/components/profile/PasswordForm";
 
 export default async function ProfilePage() {
-    const supabase = await createSupabaseServerClient();
+    const session = await getCurrentSession();
 
-    // 1. Kiểm tra đăng nhập
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-        redirect('/login'); // Nếu chưa đăng nhập thì đẩy về login
+    if (!session || !session.isAuthenticated) {
+        redirect('/login');
     }
 
-    // 2. Lấy dữ liệu Profile từ Database
-    const userProfile = await getUserProfile();
+    const supabase = await createSupabaseServerClient();
 
-    // 3. Kiểm tra dữ liệu Profile
-    if (!userProfile) {
+    // 1. Lấy đồng thời Employee và Avatar từ user_profiles
+    const [empRes, profileRes] = await Promise.all([
+        supabase
+            .from("employees")
+            .select("*")
+            .eq("auth_id", session.id)
+            .single(),
+        supabase
+            .from("user_profiles")
+            .select("avatar_url")
+            .eq("id", session.id)
+            .single()
+    ]);
+
+    const employee = empRes.data;
+    const profile = profileRes.data;
+
+    // 2. Kiểm tra dữ liệu nhân viên
+    if (empRes.error || !employee) {
         return (
-            <div className="flex items-center justify-center h-[50vh]">
-                <div className="text-center">
-                    <h2 className="text-xl font-semibold text-red-500">Không tìm thấy hồ sơ</h2>
-                    <p className="text-gray-500">Vui lòng liên hệ quản trị viên.</p>
+            <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
+                <div className="bg-yellow-50 text-yellow-700 p-6 rounded-lg border border-yellow-200">
+                    <h2 className="text-xl font-semibold mb-2">⚠️ Chưa liên kết hồ sơ</h2>
+                    <p className="text-sm">Tài khoản <strong>{session.email}</strong> chưa có hồ sơ nhân viên.</p>
                 </div>
             </div>
         );
     }
 
-    // 4. Truyền dữ liệu vào Client Component
-    return (
-        <div className="container mx-auto p-6 max-w-5xl">
-            <h1 className="text-3xl font-bold mb-6 text-slate-800">Hồ sơ cá nhân</h1>
+    // 3. Gộp dữ liệu ảnh từ profile vào employee
+    const combinedData = {
+        ...employee,
+        avatar_url: profile?.avatar_url || null
+    };
 
-            {/* Đây là nơi initialData được truyền vào */}
-            <ProfileForm initialData={userProfile} />
+    // 4. Lấy dữ liệu Từ điển
+    const [departments, positions, genders, maritalStatuses] = await Promise.all([
+        getDictionaryOptions('DEPARTMENT'),
+        getDictionaryOptions('POSITION'),
+        getDictionaryOptions('GENDER'),
+        getDictionaryOptions('MARITAL_STATUS')
+    ]);
+
+    return (
+        <div className="container mx-auto p-6 max-w-4xl space-y-6">
+            <div className="mb-4">
+                <h1 className="text-2xl font-bold text-gray-800">Hồ sơ cá nhân</h1>
+                <p className="text-gray-500 text-sm mt-1">Quản lý thông tin tài khoản và bảo mật.</p>
+            </div>
+
+            {/* Khối thông tin cá nhân */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <ProfileForm
+                    initialData={combinedData}
+                    options={{ departments, positions, genders, maritalStatuses }}
+                />
+            </div>
+
+            {/* Khối bảo mật/Đổi mật khẩu */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <PasswordForm />
+            </div>
         </div>
     );
 }

@@ -1,12 +1,10 @@
-// --- START OF FILE auth-context.tsx (PHIÊN BẢN CẦN THAY ĐỔI) ---
-
 "use client";
 
+import type { Session, User, SupabaseClient, AuthChangeEvent } from "@supabase/supabase-js";
 import React, { createContext, useContext, useState, useEffect } from "react";
 import supabase from '@/lib/supabase/client';
-import type { Session, User, SupabaseClient } from "@supabase/supabase-js";
 import { Database } from "@/types/supabase";
-import Cookies from "js-cookie"; // <-- Thêm lại js-cookie
+import Cookies from "js-cookie"; // ✅ Đã thêm lại js-cookie để đồng bộ Middleware
 import GlobalLoader from '@/components/ui/GlobalLoader';
 
 interface AuthContextProps {
@@ -41,28 +39,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (mounted) {
                 setSession(currentSession);
                 setUser(currentSession?.user ?? null);
-                // Ghi access_token vào cookie cho Server Components/Actions/Middleware đọc
+
+                // ✅ LOGIC QUAN TRỌNG: Ghi access_token vào cookie thủ công
+                // Giúp Middleware nhận biết user ngay cả khi reload trang
                 if (currentSession?.access_token) {
                     Cookies.set("sb-access-token", currentSession.access_token, {
                         path: "/",
-                        secure: process.env.NODE_ENV === "production", // Chỉ secure trong production
+                        secure: process.env.NODE_ENV === "production",
                         sameSite: "lax",
-                        expires: 7, // Hoặc thời gian hết hạn của session Supabase
+                        expires: 7, // 7 ngày (hoặc theo cấu hình Supabase)
                     });
                 } else {
                     Cookies.remove("sb-access-token");
                 }
+
                 setIsLoading(false);
             }
         };
 
+        // 1. Lấy session ngay lập tức khi vào trang
         const getSessionInitial = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             handleAuthState(session);
         };
         getSessionInitial();
 
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        // 2. Lắng nghe sự thay đổi (Login, Logout, Token refresh)
+        const { data: listener } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
             handleAuthState(session);
         });
 
@@ -70,16 +73,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             mounted = false;
             listener?.subscription.unsubscribe();
         };
-        // Dependency supabase là cần thiết nếu supabase client có thể thay đổi, nhưng thường là không.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Chỉ chạy 1 lần khi component mount
+    }, []);
 
     const signOut = async () => {
         setIsLoading(true);
         setError(null);
         try {
             await supabase.auth.signOut();
-            // handleAuthState sẽ tự cập nhật và xóa cookie
+            // Cookies sẽ tự được xóa nhờ listener onAuthStateChange ở trên
         } catch (e) {
             setError(e);
             throw e;
@@ -99,7 +101,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setError(authError);
                 throw new Error(authError.message || "Đăng nhập thất bại.");
             }
-            // handleAuthState sẽ tự cập nhật và ghi cookie
+            // Không cần làm gì thêm, onAuthStateChange sẽ tự bắt sự kiện và cập nhật state/cookie
         } catch (e: any) {
             console.error("Lỗi không mong muốn trong signIn (AuthContext):", e.message);
             setError(e);
@@ -120,15 +122,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 .eq("user_id", user.id);
 
             if (error) {
-                console.error("Lỗi khi lấy quyền (đã tối ưu):", error);
+                console.error("Lỗi khi lấy quyền:", error);
                 return false;
             }
 
             if (!data) return false;
 
-            return data.some((item) =>
-                item.permissions.some(p => p.code === permissionToCheck)
-            );
+            // Kiểm tra xem user có quyền đó không
+            // Lưu ý: Tùy vào cấu trúc trả về mà permissions là object hay mảng
+            // Code dưới đây giả định quan hệ One-to-Many hoặc Many-to-Many trả về mảng
+            return data.some((item: any) => {
+                // Nếu permissions là mảng
+                if (Array.isArray(item.permissions)) {
+                    return item.permissions.some((p: any) => p.code === permissionToCheck);
+                }
+                // Nếu permissions là object đơn lẻ
+                return item.permissions?.code === permissionToCheck;
+            });
 
         } catch (error) {
             console.error("Lỗi không xác định khi kiểm tra quyền:", error);
@@ -149,26 +159,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return (
         <AuthContext.Provider value={value}>
-            {/* * FIX: Hiển thị GlobalLoader KHI đang xác thực (đăng nhập/đăng xuất)
-              * (Chúng ta KHÔNG dùng isLoading ở đây cho việc tải session ban đầu, 
-              * mà chỉ dùng cho các hành động (signIn, signOut) 
-              * để tránh loader che mất trang khi vừa tải xong)
-            */}
-            {/* {isLoading && <GlobalLoader text="Đang xác thực..." />} */}
-
-            {/* FIX Tốt hơn: 
-              Chúng ta cần phân biệt 'loading ban đầu' (initialLoad) và 'loading hành động' (actionLoading)
-              Hãy sửa lại logic state:
-            */}
-            {/* (Sửa lại logic state ở trên nếu cần - nhưng tạm thời giữ nguyên) */}
-
-            {/* FIX Đơn giản nhất:
-              Hàm signIn/signOut đã set isLoading.
-              Hàm useEffect (lấy session) cũng set isLoading (true -> false).
-              Chúng ta chỉ cần hiển thị nó.
-            */}
+            {/* ✅ Hiển thị Loader toàn màn hình khi đang xử lý (Login/Check Session) */}
             {isLoading && <GlobalLoader text="Đang xử lý..." />}
-
             {children}
         </AuthContext.Provider>
     );

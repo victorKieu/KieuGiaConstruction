@@ -1,6 +1,6 @@
 ﻿import { createBrowserClient } from '@supabase/ssr'
 
-// 1. Khai báo Type cho globalThis
+// 1. Định nghĩa Type cho biến global
 declare global {
     var __supabaseInstance: ReturnType<typeof createBrowserClient> | undefined;
 }
@@ -12,23 +12,25 @@ export function createClient() {
     )
 }
 
-// 2. Alias
+// 2. Alias (để tương thích code cũ)
 export const createSupabaseClient = createClient;
 
-// 3. Logic Singleton (SỬA LỖI global -> globalThis)
+// 3. Logic Singleton (Chống tạo nhiều instance khi Dev Hot Reload)
 let clientInstance: ReturnType<typeof createBrowserClient>;
 
 if (process.env.NODE_ENV === "production") {
+    // Production: Tạo mới bình thường
     clientInstance = createClient();
 } else {
-    // 👇 Thay 'global' bằng 'globalThis'
+    // Development: Kiểm tra trong globalThis trước
     if (!globalThis.__supabaseInstance) {
         globalThis.__supabaseInstance = createClient();
     }
     clientInstance = globalThis.__supabaseInstance;
 }
 
-export default clientInstance;
-
-// 4. Export named
+// 4. Export instance duy nhất
 export const supabase = clientInstance;
+
+// 5. Export default
+export default clientInstance;

@@ -50,7 +50,8 @@ export async function middleware(request: NextRequest) {
         "/reports",
         "/crm", // Bảo vệ toàn bộ folder CRM
         "/permissions",
-        "/settings"
+        "/settings",
+        "/profile"
     ];
 
     const { pathname } = request.nextUrl;

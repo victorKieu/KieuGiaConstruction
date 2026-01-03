@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import Link from "next/link";
 import { cn } from "@/lib/utils/utils";
 import { Edit, Trash2 } from "lucide-react";
-import { deleteDictionary } from "@/lib/action/dictionary";
+import { deleteDictionary } from "@/lib/action/dictionaryActions";
 
 // ... (Component DeleteButton giữ nguyên) ...
 function DeleteButton({ id }: { id: string }) {

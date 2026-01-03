@@ -27,9 +27,7 @@
     // PHẦN QUAN TRỌNG NHẤT LÀ ĐÂY
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": [ "./*" ]
     }
   },
   "include": [

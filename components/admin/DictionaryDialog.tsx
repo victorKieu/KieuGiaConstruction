@@ -14,7 +14,7 @@ import {
     DialogDescription, // 👈 1. Import thêm DialogDescription
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { upsertDictionary, DictionaryFormData } from "@/lib/action/dictionary";
+import { upsertDictionary, DictionaryFormData } from "@/lib/action/dictionaryActions";
 import { Loader2, Plus } from "lucide-react";
 import { CategoryCombobox } from "@/components/admin/CategoryCombobox";
 import { formatCategoryCode } from "@/lib/constants/dictionary";

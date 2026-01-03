@@ -2,40 +2,39 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
+import { getCurrentSession } from "@/lib/supabase/session"; // ✅ Import hàm Session tập trung
 import { isValidUUID } from "@/lib/utils/uuid";
-import { getCurrentUser } from "./authActions"; // Import từ authActions
-import { ProjectData, MemberData, DocumentData, FinanceData, MilestoneData, TaskData, CommentData } from "@/types/project";
+import {
+    ProjectData, MemberData, DocumentData, FinanceData,
+    MilestoneData, TaskData, CommentData
+} from "@/types/project";
 import { checkPermission } from "@/lib/auth/permissions";
-import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
+// --- TYPES ---
 export interface ActionError {
     message: string;
     code: string;
 }
 
-// Kiểu trả về chung cho các hàm query/fetch
 export interface ActionFetchResult<T> {
     data: T | null;
     error: ActionError | null;
 }
 
-// Kiểu trả về cho các hàm CRUD (Create, Update, Delete)
 export interface ActionResponse {
     success: boolean;
     message?: string;
     error?: string;
-    data?: ProjectData[]; // Chỉ dùng cho createProject
+    data?: any;
 }
 
-// Định nghĩa kiểu cho tham số state đầu tiên của useFormState/useActionState
+// Kiểu cho useActionState
 export interface ActionFormState {
     success: boolean;
     message?: string;
     error?: string;
 }
 
-// Định nghĩa các kiểu trả về cụ thể cho từng hàm
 type GetProjectResult = ActionFetchResult<ProjectData>;
 type GetMembersResult = ActionFetchResult<MemberData[]>;
 type GetDocumentsResult = ActionFetchResult<DocumentData[]>;
@@ -44,120 +43,98 @@ type GetMilestonesResult = ActionFetchResult<MilestoneData[]>;
 type GetTasksResult = ActionFetchResult<TaskData[]>;
 type GetCommentsResult = ActionFetchResult<CommentData[]>;
 
-// --- Helper function để xử lý token ---
-async function getSupabaseClient() {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("sb-access-token")?.value || null;
-
-    if (!token) {
-        return {
-            client: null,
-            error: {
-                message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
-                code: "jwt_expired"
-            }
-        };
-    }
-
-    // ✅ FIX: Thêm 'await' để giải nén Promise lấy Client thực sự
-    const client = await createSupabaseServerClient();
-
-    return {
-        client: client, // Bây giờ đây là SupabaseClient, không phải Promise
-        error: null
-    };
-}
 // ----------------------------------------------------------------------
-// --- Project Actions ---
+// --- PROJECT ACTIONS ---
 // ----------------------------------------------------------------------
 
 /**
- * Lấy một dự án cụ thể theo ID.
+ * Lấy một dự án cụ thể theo ID (Sử dụng Centralized Session)
  */
 export async function getProject(id: string): Promise<GetProjectResult> {
     if (!isValidUUID(id)) return { data: null, error: { message: "ID dự án không hợp lệ.", code: "400" } };
 
-    // 1. Khởi tạo Client
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
+    // 1. Lấy Session tập trung (Tối ưu cache, check 1 lần)
+    const session = await getCurrentSession();
 
-    // 2. Lấy thông tin User hiện tại để check quyền
-    const user = await getUserProfile();
-    if (!user) return { data: null, error: { message: "Bạn chưa đăng nhập.", code: "401" } };
+    // 2. Kiểm tra quyền cơ bản
+    if (!session.isAuthenticated || !session.entityId) {
+        return {
+            data: null,
+            error: {
+                message: session.error || "Bạn không có quyền truy cập hoặc tài khoản chưa liên kết.",
+                code: "403"
+            }
+        };
+    }
 
-    // 3. Chuẩn bị câu Query cơ bản
-    // Lưu ý: Chúng ta tách chuỗi select ra biến để dễ thao tác
-    let selectQuery = `
+    const supabase = await createSupabaseServerClient();
+
+    // 3. Xây dựng Select Query
+    let selectString = `
         *,
-        customers ( name ),
-        manager:employees!projects_project_manager_fkey ( name ), 
-        creator:employees!projects_created_by_fkey ( name ), 
+        client:customers ( id, name, avatar_url ),
+        manager:employees!projects_project_manager_fkey ( id, name, avatar_url ), 
+        creator:employees!projects_created_by_fkey ( id, name ),
         member_count:project_members ( count ),
         document_count:project_documents ( count )
     `;
 
-    let query = supabase.from("projects");
-
-    // 4. 🔒 ÁP DỤNG DATA SCOPE (Quan trọng)
-    if (user.role !== 'admin') {
-        // Nếu KHÔNG phải Admin: Buộc phải join với bảng members để kiểm tra
-        // Kỹ thuật: Thêm !inner join vào select string và lọc theo user.id
-        selectQuery += `, check_member:project_members!inner(user_id)`;
-
-        query = query
-            .select(selectQuery)
-            .eq('check_member.user_id', user.id);
-        // Nếu user không có trong bảng members của dự án này, query sẽ trả về null
-    } else {
-        // Nếu là Admin: Query bình thường, không cần check member
-        query = query.select(selectQuery);
+    // Nếu là nhân viên thường: Cần join bảng members để check data scope
+    if (session.type === 'employee' && session.role !== 'admin') {
+        selectString += `, check_member:project_members!inner(employee_id)`;
     }
 
-    // 5. Thực thi Query
-    const { data: project, error } = await query
+    // 4. Khởi tạo Query
+    let query = supabase.from("projects").select(selectString);
+
+    // 5. Áp dụng Data Scope (Phân quyền dữ liệu)
+    if (session.type === 'employee' && session.role !== 'admin') {
+        // Chỉ lấy dự án mà nhân viên này tham gia
+        query = query.eq('check_member.employee_id', session.entityId);
+    }
+    else if (session.type === 'customer') {
+        // Chỉ lấy dự án của khách hàng này
+        query = query.eq('customer_id', session.entityId);
+    }
+
+    // 6. Thực thi
+    const { data: projectData, error } = await query
         .eq("id", id)
         .maybeSingle();
 
-    // 6. Xử lý lỗi
     if (error) {
-        console.error("Lỗi Supabase trong getProject:", error.message);
+        console.error("Lỗi getProject:", error.message);
         return { data: null, error: { message: `Lỗi tải dự án: ${error.message}`, code: error.code || "db_error" } };
     }
 
-    if (!project) {
-        // Nếu user role 'employee' truy cập dự án mình không tham gia -> project sẽ là null -> Rơi vào đây (404 Not Found)
-        // Điều này rất bảo mật vì hacker sẽ không biết dự án đó có tồn tại hay không.
-        return { data: null, error: { message: "Không tìm thấy dự án hoặc bạn không có quyền truy cập.", code: "404" } };
+    if (!projectData) {
+        return { data: null, error: { message: "Không tìm thấy dự án hoặc bạn không có quyền.", code: "404" } };
     }
 
     // 7. Mapping dữ liệu (Cleanup)
-    const memberCount = (project.member_count as any)?.[0]?.count || 0;
-    const documentCount = (project.document_count as any)?.[0]?.count || 0;
-
-    // Loại bỏ field thừa 'check_member' trước khi trả về UI
-    const { check_member, ...cleanProjectData } = project;
+    const rawProject = projectData as any;
+    const { check_member, ...cleanProjectData } = rawProject;
 
     const finalProject: ProjectData = {
         ...cleanProjectData,
-        customers: project.customers,
-        manager: project.manager,
-        created: project.creator,
-        member_count: memberCount,
-        document_count: documentCount,
+        client: rawProject.client,
+        manager: rawProject.manager,
+        creator: rawProject.creator,
+        member_count: rawProject.member_count?.[0]?.count || 0,
+        document_count: rawProject.document_count?.[0]?.count || 0,
     };
 
     return { data: finalProject, error: null };
 }
 
 /**
- * Tạo một dự án mới.
+ * Tạo dự án mới
  */
 export async function createProject(formData: FormData): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.entityId) return { success: false, error: "Bạn cần đăng nhập." };
 
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
+    const supabase = await createSupabaseServerClient();
 
     const projectData: Partial<ProjectData> = {
         name: formData.get("name") as string,
@@ -173,11 +150,10 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
         start_date: (formData.get("start_date") as string),
         end_date: (formData.get("end_date") as string),
         updated_at: new Date().toISOString(),
-        created_by: currentUser.id,
+        created_by: session.entityId, // Dùng Entity ID (Employee ID) thay vì Auth ID
     };
 
-    // Insert Project
-    const { data, error } = await supabase!
+    const { data, error } = await supabase
         .from("projects")
         .insert(projectData)
         .select();
@@ -186,24 +162,21 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
 
     const newProject = data?.[0];
 
-    // Tự động thêm người tạo là Manager
-    if (newProject) {
-        // Tìm role_id của Manager
-        const { data: roleData } = await supabase!
+    // Tự động thêm người tạo là Manager (nếu họ là nhân viên)
+    if (newProject && session.type === 'employee') {
+        const { data: roleData } = await supabase
             .from("project_roles")
             .select("id")
             .or("name.ilike.%manager%,name.ilike.%quản lý%")
             .limit(1)
             .maybeSingle();
 
-        const managerRoleId = roleData?.id || null;
-
-        await supabase!
+        await supabase
             .from("project_members")
             .insert({
                 project_id: newProject.id,
-                employee_id: currentUser.id,
-                role_id: managerRoleId,
+                employee_id: session.entityId,
+                role_id: roleData?.id || null,
                 joined_at: new Date().toISOString()
             });
     }
@@ -213,26 +186,19 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
 }
 
 /**
- * Cập nhật thông tin một dự án.
+ * Cập nhật dự án
  */
 export async function updateProject(formData: FormData): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
-
-    // Lấy ID từ FormData
     const projectId = formData.get("id") as string;
     if (!projectId) return { success: false, error: "Thiếu ID dự án." };
 
-    // Kiểm tra quyền
+    // Check quyền
     const hasPermission = await checkPermission("projects", "update");
-    if (!hasPermission) {
-        return { success: false, error: "⛔ Bạn không có quyền chỉnh sửa dự án này!" };
-    }
+    if (!hasPermission) return { success: false, error: "⛔ Bạn không có quyền chỉnh sửa dự án này!" };
 
-    const updateData: any = {
-        updated_at: new Date().toISOString(),
-    };
+    const supabase = await createSupabaseServerClient();
 
+    const updateData: any = { updated_at: new Date().toISOString() };
     const fields = [
         "name", "code", "description", "address", "project_type",
         "construction_type", "start_date", "end_date",
@@ -245,9 +211,8 @@ export async function updateProject(formData: FormData): Promise<ActionResponse>
     });
 
     if (formData.has("budget")) updateData.budget = Number(formData.get("budget"));
-    if (formData.has("geocode")) updateData.geocode = formData.get("geocode") || null;
 
-    const { error } = await supabase!
+    const { error } = await supabase
         .from("projects")
         .update(updateData)
         .eq("id", projectId);
@@ -260,34 +225,27 @@ export async function updateProject(formData: FormData): Promise<ActionResponse>
 }
 
 /**
- * Xóa một dự án.
+ * Xóa dự án
  */
 export async function deleteProject(projectId: string): Promise<ActionResponse> {
-
     const hasPermission = await checkPermission("projects", "delete");
-    if (!hasPermission) {
-        return { success: false, error: "⛔ Bạn không có quyền xóa dự án này!" };
-    }
-    const { client: supabase } = await getSupabaseClient();
-    if (!supabase) return { success: false, error: "Lỗi kết nối" };
+    if (!hasPermission) return { success: false, error: "⛔ Bạn không có quyền xóa dự án này!" };
 
+    const supabase = await createSupabaseServerClient();
     const { error } = await supabase.from("projects").delete().eq("id", projectId);
+
     if (error) return { success: false, error: error.message };
 
     revalidatePath("/projects");
     return { success: true, message: "Đã xóa dự án." };
 }
 
-/**
- * 4. Lấy Danh Sách Thành Viên (Có JOIN Role)
- */
-export async function getProjectMembers(projectId: string): Promise<GetMembersResult> {
-    const { client: supabase } = await getSupabaseClient();
+// ----------------------------------------------------------------------
+// --- MEMBER ACTIONS ---
+// ----------------------------------------------------------------------
 
-    if (!supabase) return {
-        data: null,
-        error: { message: "Lỗi kết nối đến Supabase", code: "500" } // ✅ Error là object
-    };
+export async function getProjectMembers(projectId: string): Promise<GetMembersResult> {
+    const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase
         .from("project_members")
@@ -298,9 +256,8 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
         `)
         .eq("project_id", projectId);
 
-    if (error) return { data: null, error };
+    if (error) return { data: null, error: { message: error.message, code: error.code } };
 
-    // Map data
     const members = data?.map((item: any) => ({
         ...item,
         employee: item.employee,
@@ -310,34 +267,23 @@ export async function getProjectMembers(projectId: string): Promise<GetMembersRe
     return { data: members, error: null };
 }
 
-/**
- * 5. Thêm Thành Viên Mới
- */
 export async function addProjectMember(formData: FormData): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
-
     const projectId = formData.get("project_id") as string;
     const employeeId = formData.get("employee_id") as string;
-    const roleId = formData.get("role_id") as string; // UUID của Role
+    const roleId = formData.get("role_id") as string;
 
-    if (!projectId || !employeeId) {
-        return { success: false, error: "Thiếu thông tin dự án hoặc nhân viên." };
-    }
+    if (!projectId || !employeeId) return { success: false, error: "Thiếu thông tin." };
 
-    // Kiểm tra quyền
     const hasPermission = await checkPermission("project_members", "create");
-    if (!hasPermission) {
-        return { success: false, error: "⛔ Bạn không có quyền thêm mới thành viên dự án này!" };
-    }
+    if (!hasPermission) return { success: false, error: "⛔ Không có quyền thêm thành viên!" };
 
-    // Insert
-    const { error } = await supabase!
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase
         .from("project_members")
         .insert({
             project_id: projectId,
             employee_id: employeeId,
-            role_id: roleId || null, // Gửi UUID nếu có
+            role_id: roleId || null,
             joined_at: new Date().toISOString()
         });
 
@@ -347,21 +293,14 @@ export async function addProjectMember(formData: FormData): Promise<ActionRespon
     return { success: true, message: "Đã thêm thành viên." };
 }
 
-/**
- * 6. Xóa Thành Viên
- */
 export async function removeProjectMember(formData: FormData): Promise<ActionResponse> {
-    const { client: supabase } = await getSupabaseClient();
-    if (!supabase) return { success: false, error: "Lỗi kết nối" };
-
     const projectId = formData.get("project_id") as string;
     const employeeId = formData.get("employee_id") as string;
 
     const hasPermission = await checkPermission("project_members", "delete");
-    if (!hasPermission) {
-        return { success: false, error: "⛔ Bạn không có quyền loại bỏ thành viên dự án này!" };
-    }
+    if (!hasPermission) return { success: false, error: "⛔ Không có quyền xóa thành viên!" };
 
+    const supabase = await createSupabaseServerClient();
     const { error } = await supabase
         .from("project_members")
         .delete()
@@ -374,823 +313,433 @@ export async function removeProjectMember(formData: FormData): Promise<ActionRes
     return { success: true, message: "Đã xóa thành viên." };
 }
 
-/**
- * Lấy danh sách tài liệu của một dự án.
- */
-export async function getProjectDocuments(projectId: string): Promise<GetDocumentsResult> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
+// ----------------------------------------------------------------------
+// --- SUB-ENTITY GETTERS (Documents, Finance, Tasks...) ---
+// ----------------------------------------------------------------------
 
-    // --- FIX: SELECT trực tiếp với alias gọn hơn ---
+export async function getProjectDocuments(projectId: string): Promise<GetDocumentsResult> {
+    const supabase = await createSupabaseServerClient();
+
     const { data, error } = await supabase
         .from("project_documents")
         .select(`
-            id, name, type, url, uploaded_at,
-            project_id,
-            description,
-            category,
+            id, name, type, url, uploaded_at, project_id, description, category,
             uploaded_by:employees!project_documents_uploaded_by_fkey ( name )
         `)
         .eq("project_id", projectId);
 
     if (error) {
-        console.error("Lỗi Supabase trong getProjectDocuments:", error.message);
-        return { data: null, error: { message: `Lỗi tải tài liệu: ${error.message}`, code: error.code || "db_error" } };
+        console.error("Lỗi getProjectDocuments:", error);
+        return { data: null, error: { message: error.message, code: error.code } };
     }
 
-    // --- FIX: Mapping đơn giản hơn ---
-    const documentsData: DocumentData[] = (data || []).map((item: any) => {
-        const uploaderDetails = (Array.isArray(item.uploaded_by) && item.uploaded_by.length > 0)
-            ? item.uploaded_by[0]
-            : item.uploaded_by;
-
-        return {
-            id: item.id,
-            name: item.name,
-            type: item.type,
-            url: item.url,
-            uploaded_at: item.uploaded_at,
-            uploaded_by: uploaderDetails || { name: "N/A" },
-            project_id: item.project_id,  // <-- FIX: Thêm vào
-            description: item.description,  // <-- FIX: Thêm vào
-            category: item.category,      // <-- FIX: Thêm vào
-        } as unknown as DocumentData; // Dùng 'as unknown as' để tạm bỏ qua lỗi type nếu DocumentData chưa cập nhật
-    });
+    const documentsData: DocumentData[] = (data || []).map((item: any) => ({
+        ...item,
+        uploaded_by: Array.isArray(item.uploaded_by) ? item.uploaded_by[0] : item.uploaded_by || { name: "N/A" }
+    }));
 
     return { data: documentsData, error: null };
 }
 
-/**
- * Lấy thông tin tài chính của một dự án.
- */
 export async function getProjectFinance(projectId: string): Promise<GetFinanceResult> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
+    const supabase = await createSupabaseServerClient();
 
-    // Truy vấn này đơn giản, không cần JOIN
     const { data, error } = await supabase
         .from("project_finance")
         .select(`
-            id, 
-            budget, 
-            spent, 
-            remaining, 
-            updated_at,
-            allocation:finance_allocation ( * ) 
-        `) // <-- SỬA LẠI THÀNH DÒNG NÀY
+            id, budget, spent, remaining, updated_at,
+            allocation:finance_allocation ( * )
+        `)
         .eq("project_id", projectId)
         .maybeSingle();
 
-    if (error) {
-        console.error("Lỗi Supabase trong getProjectFinance:", error.message);
-        return { data: null, error: { message: `Lỗi tải tài chính: ${error.message}`, code: error.code || "db_error" } };
-    }
+    if (error) return { data: null, error: { message: error.message, code: error.code } };
 
-    // Trả về dữ liệu hoặc null nếu không tìm thấy
     return { data: data as FinanceData | null, error: null };
 }
 
-/**
- * Lấy danh sách các mốc thời gian (milestones) của dự án.
- */
-export async function getProjectMilestones(projectId: string): Promise<GetMilestonesResult> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
-
-    // Truy vấn này đơn giản, không cần JOIN phức tạp
-    const { data, error } = await supabase
-        .from("project_milestones")
-        // --- FIX: Select thêm các trường cần thiết cho MilestoneData ---
-        .select(`
-            id, milestone, description, 
-            planned_start_date, planned_end_date, 
-            actual_start_date, actual_end_date, 
-            status, created_at, updated_at, 
-            completion_percentage, project_id
-        `)
-        .eq("project_id", projectId)
-        .order("planned_start_date", { ascending: true });
-
-    if (error) {
-        console.error("Lỗi Supabase trong getProjectMilestones:", error.message);
-        return { data: null, error: { message: `Lỗi tải mốc thời gian: ${error.message}`, code: error.code || "db_error" } };
-    }
-
-    return { data: data as MilestoneData[], error: null };
-}
-
-/**
- * Lấy danh sách các công việc (tasks) của dự án.
- */
 export async function getProjectTasks(projectId: string): Promise<GetTasksResult> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
+    const supabase = await createSupabaseServerClient();
 
-    // --- FIX: SELECT trực tiếp với alias ---
     const { data, error } = await supabase
         .from("project_tasks")
         .select(`
             id, project_id, name, description, status, priority, progress,
             start_date, due_date, completed_at, created_at, updated_at,
-            assigned_to:employees ( id, name, avatar_url ) 
+            assigned_to:employees ( id, name, avatar_url )
         `)
         .eq("project_id", projectId)
-        .order("due_date", { ascending: true, nullsFirst: false }); // Đẩy task không có due date xuống cuối
+        .order("due_date", { ascending: true, nullsFirst: false });
 
-    if (error) {
-        console.error("Lỗi Supabase trong getProjectTasks:", error.message);
-        return { data: null, error: { message: `Lỗi tải công việc: ${error.message}`, code: error.code || "db_error" } };
-    }
+    if (error) return { data: null, error: { message: error.message, code: error.code } };
 
-    // --- FIX: Mapping đơn giản hơn ---
-    const tasksData: TaskData[] = (data || []).map((item: any) => {
-        // Explicitly take the first element if 'assigned_to' is an array
-        const assigneeDetails = Array.isArray(item.assigned_to) && item.assigned_to.length > 0
-            ? item.assigned_to[0]
-            : item.assigned_to; // Use directly if object or null
-
-        return {
-            // ... (other task properties)
-            id: item.id,
-            project_id: item.project_id,
-            name: item.name,
-            description: item.description,
-            status: item.status as TaskData['status'],
-            priority: item.priority as TaskData['priority'],
-            progress: item.progress,
-            start_date: item.start_date,
-            due_date: item.due_date,
-            completed_at: item.completed_at,
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-            // Assign the corrected object or null/undefined
-            assigned_to: assigneeDetails,
-        } as TaskData;
-    });
+    const tasksData: TaskData[] = (data || []).map((item: any) => ({
+        ...item,
+        assigned_to: Array.isArray(item.assigned_to) ? item.assigned_to[0] : item.assigned_to
+    }));
 
     return { data: tasksData, error: null };
 }
 
-// --- Task Actions ---
+export async function getProjectMilestones(projectId: string): Promise<GetMilestonesResult> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+        .from("project_milestones")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("planned_start_date", { ascending: true });
+
+    if (error) return { data: null, error: { message: error.message, code: error.code } };
+    return { data: data as MilestoneData[], error: null };
+}
+
+// ----------------------------------------------------------------------
+// --- TASK & COMMENT ACTIONS ---
 // ----------------------------------------------------------------------
 
-/**
- * Tạo một công việc (task) mới cho dự án.
- */
 export async function createTask(projectId: string, formData: FormData): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated) return { success: false, error: "Chưa đăng nhập." };
 
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để thực hiện thao tác này" };
-    }
+    const supabase = await createSupabaseServerClient();
 
-    // ✅ FIX ReferenceError: Đảm bảo biến được định nghĩa ở đây
-    const assignedToValue = (formData.get("assigned_to") as string) || null;
-    const progressValue = Number.parseInt(formData.get("progress") as string) || 0;
-
-    // Chuẩn bị dữ liệu để insert vào Supabase (dùng object literals để tránh lỗi TS2322)
+    const assignedTo = formData.get("assigned_to") as string;
     const insertData = {
         project_id: projectId,
         name: formData.get("name") as string,
         description: (formData.get("description") as string) || null,
         status: (formData.get("status") as string) || "pending",
-
-        // Gán ID (string) hoặc NULL (khớp với cột Foreign Key trong DB)
-        assigned_to: assignedToValue === "unassigned" ? null : assignedToValue,
-
+        assigned_to: (assignedTo === "unassigned" || !assignedTo) ? null : assignedTo,
         priority: (formData.get("priority") as string) || "low",
-        progress: progressValue,
+        progress: Number(formData.get("progress")) || 0,
         start_date: (formData.get("start_date") as string) || null,
         due_date: (formData.get("due_date") as string) || null,
         created_at: new Date().toISOString(),
     };
 
-
-    const { error } = await supabase!
-        .from("project_tasks")
-        .insert(insertData);
-
-    if (error) {
-        console.error("Lỗi khi tạo công việc:", error.message);
-        return { success: false, error: error.message };
-    }
+    const { error } = await supabase.from("project_tasks").insert(insertData);
+    if (error) return { success: false, error: error.message };
 
     revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Công việc đã được tạo thành công!" };
+    return { success: true, message: "Tạo công việc thành công!" };
 }
 
-/**
-* Cập nhật thông tin chi tiết của một công việc.
-*/
 export async function updateTask(taskId: string, formData: FormData): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    if (!isValidUUID(taskId)) return { success: false, error: "ID không hợp lệ." };
 
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để thực hiện thao tác này" };
-    }
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated) return { success: false, error: "Chưa đăng nhập." };
 
-    if (!isValidUUID(taskId)) {
-        return { success: false, error: "ID công việc không hợp lệ." };
-    }
+    const supabase = await createSupabaseServerClient();
+    const updatedData: any = { updated_at: new Date().toISOString() };
 
-    // Lấy dữ liệu từ FormData
-    const updatedTaskData: { [key: string]: any } = {};
-
-    // Danh sách các trường có thể cập nhật
-    const fields = ["name", "description", "status", "assigned_to", "priority", "start_date", "due_date", "progress"];
-
-    fields.forEach(field => {
-        const value = formData.get(field);
-        if (value !== null && value !== undefined) {
-            // ✅ FIX TS2322: Xử lý trường assigned_to để gửi ID hoặc NULL
-            if (field === "assigned_to") {
-                // Nếu là 'unassigned' hoặc chuỗi rỗng (không được gán), gán NULL cho DB
-                updatedTaskData[field] = (value === "unassigned" || value === "") ? null : value;
-            } else if (field === "progress") {
-                updatedTaskData[field] = Number.parseInt(value as string) || 0;
-            }
-            else if (value === "") {
-                updatedTaskData[field] = null;
-            } else {
-                updatedTaskData[field] = value;
-            }
-        }
+    const fields = ["name", "description", "status", "priority", "start_date", "due_date", "progress"];
+    fields.forEach(f => {
+        const val = formData.get(f);
+        if (val !== null) updatedData[f] = val;
     });
 
-    // Cập nhật updated_at
-    updatedTaskData.updated_at = new Date().toISOString();
-
-    const { error } = await supabase!
-        .from("project_tasks")
-        .update(updatedTaskData)
-        .eq("id", taskId);
-
-    if (error) {
-        console.error("Lỗi khi cập nhật công việc:", error.message);
-        return { success: false, error: error.message };
+    const assignedTo = formData.get("assigned_to") as string;
+    if (assignedTo !== null) {
+        updatedData.assigned_to = (assignedTo === "unassigned" || assignedTo === "") ? null : assignedTo;
     }
 
-    // Lấy project_id để revalidate
-    const { data: taskData, error: fetchError } = await supabase!
-        .from("project_tasks")
-        .select("project_id")
-        .eq("id", taskId)
-        .single();
+    const { error } = await supabase.from("project_tasks").update(updatedData).eq("id", taskId);
+    if (error) return { success: false, error: error.message };
 
-    if (taskData?.project_id) {
-        revalidatePath(`/projects/${taskData.project_id}`);
-    }
+    // Tìm projectId để revalidate
+    const { data } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
+    if (data?.project_id) revalidatePath(`/projects/${data.project_id}`);
 
-    return { success: true, message: "Công việc đã được cập nhật thành công!" };
+    return { success: true, message: "Cập nhật thành công!" };
 }
 
-/**
- * Xóa một công việc khỏi dự án.
- */
 export async function deleteTask(taskId: string): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    const supabase = await createSupabaseServerClient();
 
-    if (!isValidUUID(taskId)) {
-        return { success: false, error: "ID công việc không hợp lệ." };
-    }
+    // Lấy project_id trước
+    const { data } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
 
-    // Lấy project_id trước khi xóa để revalidate
-    const { data: taskData, error: fetchError } = await supabase!
-        .from("project_tasks")
-        .select("project_id")
-        .eq("id", taskId)
-        .single();
+    const { error } = await supabase.from("project_tasks").delete().eq("id", taskId);
+    if (error) return { success: false, error: error.message };
 
-    if (fetchError || !taskData?.project_id) {
-        console.error("Không tìm thấy project ID để xóa công việc:", fetchError?.message);
-        // Vẫn tiếp tục xóa, nhưng không thể revalidate chính xác
-    }
-
-    const { error } = await supabase!
-        .from("project_tasks")
-        .delete()
-        .eq("id", taskId);
-
-    if (error) {
-        console.error("Lỗi khi xóa công việc:", error.message);
-        return { success: false, error: error.message };
-    }
-
-    if (taskData?.project_id) {
-        revalidatePath(`/projects/${taskData.project_id}`);
-    }
-
-    return { success: true, message: "Công việc đã được xóa thành công!" };
+    if (data?.project_id) revalidatePath(`/projects/${data.project_id}`);
+    return { success: true, message: "Đã xóa công việc." };
 }
-/**
- * Lấy danh sách bình luận cho một Task cụ thể.
- * @param taskId ID của công việc.
- * @returns ActionFetchResult<CommentData[]>
- */
+
+// ----------------------------------------------------------------------
+// --- COMMENT & LIKE ACTIONS ---
+// ----------------------------------------------------------------------
+
 export async function getTaskComments(taskId: string): Promise<GetCommentsResult> {
-    if (!isValidUUID(taskId)) return { data: null, error: { message: "ID công việc không hợp lệ.", code: "400" } };
-
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { data: null, error: authError || { message: "Lỗi kết nối.", code: "500" } };
-
-    // --- FIX: SELECT trực tiếp với alias ---
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from("project_comments")
-        .select(`
-            *, 
-            created_by:user_profiles ( id, name, avatar_url ) 
-        `)
+        .select(`*, created_by:user_profiles ( id, name, avatar_url )`)
         .eq("task_id", taskId)
         .order("created_at", { ascending: true });
 
-    if (error) {
-        console.error("Lỗi Supabase khi tải bình luận:", error);
-        return { data: null, error: { message: `Lỗi tải bình luận: ${error.message}`, code: error.code || "db_error" } };
-    }
+    if (error) return { data: null, error: { message: error.message, code: error.code } };
 
-    // --- FIX: Mapping đơn giản hơn ---
-    const commentsData = (data || []).map(item => ({
-        ...item, // Spread các trường gốc của comment
-        created_by: item.created_by || { id: "unknown", name: "Người dùng ẩn", avatar_url: null }, // Fallback
-        // replies: [], // Sẽ xử lý logic replies ở Client nếu cần Tree View
+    const comments = data?.map(item => ({
+        ...item,
+        created_by: item.created_by || { id: "unknown", name: "Ẩn danh", avatar_url: null }
     })) as CommentData[];
 
-    // (Logic xây dựng cây bình luận Tree View nên thực hiện ở Client)
-
-    return { data: commentsData, error: null };
+    return { data: comments, error: null };
 }
 
-/**
- * Tạo một bình luận mới cho công việc.
- */
 export async function createComment(
     projectId: string,
     taskId: string,
-    // ✅ THAY ĐỔI: Thêm tham số state (tên là prevState để không sử dụng)
     prevState: ActionFormState,
     formData: FormData
 ): Promise<ActionFormState> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.userId) return { success: false, error: "Chưa đăng nhập." };
 
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để tạo bình luận." };
-    }
+    const content = (formData.get("content") as string)?.trim();
+    if (!content) return { success: false, error: "Nội dung trống." };
 
-    const content = formData.get("content") as string;
-    const parentCommentId = formData.get("parent_comment_id") as string | undefined;
-
-    if (!content || content.trim().length === 0) {
-        return { success: false, error: "Nội dung bình luận không được để trống." };
-    }
-
-    if (!isValidUUID(projectId) || !isValidUUID(taskId)) {
-        return { success: false, error: "ID Dự án hoặc ID Công việc không hợp lệ." };
-    }
-
-    const newComment = {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from("project_comments").insert({
         project_id: projectId,
         task_id: taskId,
-        content: content.trim(),
-        created_by: currentUser.id,
-        parent_comment_id: parentCommentId || null,
-        // Giả định created_by_name và created_by_avatar được xử lý trong RLS/Trigger, 
-        // hoặc bạn phải thêm chúng vào đây nếu schema yêu cầu. 
-        // Ta sẽ dùng created_by_id và dựa vào JOIN trong RLS.
-    };
+        content: content,
+        created_by: session.userId, // Comment dùng Auth ID
+        parent_comment_id: (formData.get("parent_comment_id") as string) || null
+    });
 
-    const { data, error } = await supabase
-        .from("project_comments")
-        .insert(newComment)
-        .select()
-        .single();
+    if (error) return { success: false, error: error.message };
 
-    if (error) {
-        console.error("Lỗi khi tạo bình luận:", error.message);
-        return { success: false, error: error.message };
-    }
-
-    // Revalidate Task Detail page
     revalidatePath(`/projects/${projectId}/tasks/${taskId}`);
-
-    return { success: true, message: "Bình luận đã được tạo thành công." };
+    return { success: true, message: "Đã gửi bình luận." };
 }
 
+export async function toggleTaskLike(taskId: string, isLiking: boolean): Promise<ActionResponse> {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated) return { success: false, error: "Chưa đăng nhập." };
+
+    const supabase = await createSupabaseServerClient();
+    const userId = session.userId;
+
+    if (isLiking) {
+        await supabase.from("task_likes").insert({ task_id: taskId, user_id: userId });
+    } else {
+        await supabase.from("task_likes").delete().eq("task_id", taskId).eq("user_id", userId);
+    }
+
+    // Recount
+    const { count } = await supabase.from("task_likes").select('*', { count: 'exact', head: true }).eq("task_id", taskId);
+    await supabase.from("project_tasks").update({ likes_count: count || 0 }).eq("id", taskId);
+
+    // Revalidate
+    const { data } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
+    if (data?.project_id) revalidatePath(`/projects/${data.project_id}`);
+
+    return { success: true };
+}
+
+// ----------------------------------------------------------------------
+// --- DOCUMENT ACTIONS (Upload/Update/Delete) ---
+// ----------------------------------------------------------------------
+
+export async function uploadDocument(
+    prevState: ActionFormState, // ✅ Đã sửa type
+    formData: FormData
+): Promise<ActionFormState> {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.entityId) return { success: false, error: "Chưa đăng nhập." };
+
+    const projectId = formData.get("projectId") as string;
+    const file = formData.get("document_file") as File;
+    const name = (formData.get("name") as string)?.trim();
+    const category = (formData.get("category") as string)?.trim() || 'others';
+
+    if (!projectId || !file || !name) return { success: false, error: "Thiếu thông tin." };
+
+    const supabase = await createSupabaseServerClient();
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+    const filePath = `${projectId}/${category}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const bucketName = 'project-documents';
+
+    // 1. Upload Storage
+    const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, file);
+    if (uploadError) return { success: false, error: `Lỗi upload: ${uploadError.message}` };
+
+    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+
+    // 2. Insert DB
+    const { error: insertError } = await supabase.from("project_documents").insert({
+        project_id: projectId,
+        name: name,
+        description: formData.get("description") as string,
+        type: fileExt,
+        url: urlData.publicUrl,
+        uploaded_by: session.entityId, // Lưu Employee ID
+        category: category,
+    });
+
+    if (insertError) {
+        await supabase.storage.from(bucketName).remove([filePath]); // Rollback file
+        return { success: false, error: insertError.message };
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true, message: "Tải tài liệu thành công!" };
+}
+
+export async function updateDocument(
+    prevState: ActionFormState,
+    formData: FormData
+): Promise<ActionFormState> {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated) return { success: false, error: "Chưa đăng nhập." };
+
+    const documentId = formData.get("documentId") as string;
+    const projectId = formData.get("projectId") as string;
+
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from("project_documents").update({
+        name: formData.get("name") as string,
+        description: formData.get("description") as string,
+        category: formData.get("category") as string,
+    }).eq("id", documentId);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true, message: "Cập nhật thành công!" };
+}
+
+export async function deleteDocument(
+    prevState: ActionFormState,
+    formData: FormData
+): Promise<ActionFormState> {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated) return { success: false, error: "Chưa đăng nhập." };
+
+    const documentId = formData.get("documentId") as string;
+    const projectId = formData.get("projectId") as string;
+
+    const supabase = await createSupabaseServerClient();
+
+    // 1. Lấy URL để xóa file
+    const { data: doc } = await supabase.from("project_documents").select("url").eq("id", documentId).single();
+
+    // 2. Xóa DB
+    const { error } = await supabase.from("project_documents").delete().eq("id", documentId);
+    if (error) return { success: false, error: error.message };
+
+    // 3. Xóa Storage (Async - không cần chặn user)
+    if (doc?.url) {
+        const bucketName = 'project-documents';
+        const filePath = doc.url.split(`${bucketName}/`)[1];
+        if (filePath) await supabase.storage.from(bucketName).remove([filePath]);
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true, message: "Đã xóa tài liệu." };
+}
 /**
- * Cập nhật nội dung bình luận. (Chữ ký được điều chỉnh cho useFormState)
+ * Cập nhật nội dung bình luận
  */
 export async function updateComment(
     prevState: ActionFormState,
     formData: FormData
 ): Promise<ActionFormState> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.userId) return { success: false, error: "Chưa đăng nhập." };
 
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để sửa bình luận." };
-    }
-
-    const content = formData.get("content") as string;
+    const content = (formData.get("content") as string)?.trim();
     const commentId = formData.get("comment_id") as string;
     const projectId = formData.get("project_id") as string;
 
+    if (!content) return { success: false, error: "Nội dung trống." };
 
-    if (!content || content.trim().length === 0) {
-        return { success: false, error: "Nội dung bình luận không được để trống." };
-    }
+    const supabase = await createSupabaseServerClient();
 
-    if (!isValidUUID(commentId) || !isValidUUID(projectId)) {
-        return { success: false, error: "ID Bình luận hoặc ID Dự án không hợp lệ." };
-    }
-
-    // First, update the comment
-    const { error: updateError } = await supabase!
+    // Chỉ cho phép chỉnh sửa chính comment của mình
+    const { error } = await supabase
         .from("project_comments")
-        .update({ content: content.trim(), updated_at: new Date().toISOString() })
+        .update({ content: content, updated_at: new Date().toISOString() })
         .eq("id", commentId)
-        .eq("created_by", currentUser.id); // Ensure only the owner can edit
+        .eq("created_by", session.userId);
 
-    if (updateError) {
-        console.error("Lỗi khi cập nhật bình luận:", updateError.message);
-        return { success: false, error: updateError.message };
-    }
+    if (error) return { success: false, error: error.message };
 
-    // After successful update, get the task_id for revalidation
-    const { data: commentData, error: fetchError } = await supabase
-        .from("project_comments")
-        .select("task_id")
-        .eq("id", commentId)
-        .single();
+    // Tìm task_id để revalidate đúng chỗ
+    const { data } = await supabase.from("project_comments").select("task_id").eq("id", commentId).single();
+    if (data?.task_id) revalidatePath(`/projects/${projectId}/tasks/${data.task_id}`);
 
-    if (fetchError || !commentData?.task_id) {
-        console.error("Lỗi khi lấy task_id để revalidate:", fetchError?.message);
-        // Return success but with a warning that revalidation might have failed
-        return { success: true, message: "Bình luận đã được cập nhật, nhưng có lỗi khi làm mới trang." };
-    }
-
-    // Revalidate the specific task detail page
-    revalidatePath(`/projects/${projectId}/tasks/${commentData.task_id}`);
-    return { success: true, message: "Bình luận đã được cập nhật thành công." };
+    return { success: true, message: "Đã cập nhật bình luận." };
 }
 
-
 /**
- * Xóa bình luận. (Chữ ký được điều chỉnh cho useActionState)
+ * Xóa bình luận
  */
 export async function deleteComment(
     prevState: ActionFormState,
     formData: FormData
 ): Promise<ActionFormState> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError) return { success: false, error: authError.message };
-
-    const currentUser = await getCurrentUser();
-    if (!currentUser) {
-        return { success: false, error: "Bạn cần đăng nhập để xóa bình luận." };
-    }
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.userId) return { success: false, error: "Chưa đăng nhập." };
 
     const commentId = formData.get("comment_id") as string;
     const projectId = formData.get("project_id") as string;
 
-    if (!isValidUUID(commentId) || !isValidUUID(projectId)) {
-        return { success: false, error: "ID Bình luận hoặc ID Dự án không hợp lệ." };
-    }
+    const supabase = await createSupabaseServerClient();
 
-    // First, get the task_id for revalidation before deleting
-    const { data: commentData, error: fetchError } = await supabase
-        .from("project_comments")
-        .select("task_id")
-        .eq("id", commentId)
-        .single();
+    // Lấy task_id trước khi xóa
+    const { data } = await supabase.from("project_comments").select("task_id").eq("id", commentId).single();
 
-    if (fetchError || !commentData?.task_id) {
-        console.error("Lỗi khi lấy task_id để revalidate:", fetchError?.message);
-        // Don't block deletion, but we won't be able to revalidate
-    }
-
-    // Now, delete the comment
-    const { error: deleteError } = await supabase!
+    // Xóa (Chỉ chủ sở hữu mới được xóa)
+    const { error } = await supabase
         .from("project_comments")
         .delete()
         .eq("id", commentId)
-        .eq("created_by", currentUser.id); // Ensure only the owner can delete
+        .eq("created_by", session.userId);
 
-    if (deleteError) {
-        console.error("Lỗi khi xóa bình luận:", deleteError.message);
-        return { success: false, error: deleteError.message };
-    }
+    if (error) return { success: false, error: error.message };
 
-    // Revalidate if we got the task_id
-    if (commentData?.task_id) {
-        revalidatePath(`/projects/${projectId}/tasks/${commentData.task_id}`);
-    }
+    if (data?.task_id) revalidatePath(`/projects/${projectId}/tasks/${data.task_id}`);
 
-    return { success: true, message: "Bình luận đã được xóa thành công." };
+    return { success: true, message: "Đã xóa bình luận." };
 }
 
-// Hàm trợ giúp tính toán lại likes_count
-export async function recountLikes(supabase: any, targetTable: 'project_tasks' | 'project_comments', targetId: string, likeTable: 'task_likes' | 'comment_likes', idColumn: 'task_id' | 'comment_id'): Promise<number> {
-    const { count, error: countError } = await supabase
-        .from(likeTable)
-        .select('*', { count: 'exact', head: true })
-        .eq(idColumn, targetId);
+/**
+ * Toggle Like cho Comment (Tương tự Task Like)
+ */
+export async function toggleCommentLike(commentId: string, isLiking: boolean): Promise<ActionResponse> {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.userId) return { success: false, error: "Chưa đăng nhập." };
 
-    if (countError) {
-        console.error(`Error counting likes for ${targetTable}:`, countError.message);
-        return 0;
-    }
-
-    const newCount = count ?? 0;
-
-    const { error: updateError } = await supabase
-        .from(targetTable)
-        .update({ likes_count: newCount })
-        .eq("id", targetId);
-
-    if (updateError) {
-        console.error(`Error updating likes_count for ${targetTable}:`, updateError.message);
-    }
-
-    return newCount;
-}
-
-// ==========================================================
-// BÌNH LUẬN & LIKES ACTIONS
-// ==========================================================
-
-export async function toggleTaskLike(taskId: string, isLiking: boolean): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
-
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
-
-    const userId = currentUser.id;
+    const supabase = await createSupabaseServerClient();
+    const userId = session.userId;
 
     if (isLiking) {
-        const { error } = await supabase
-            .from("task_likes")
-            .insert({ task_id: taskId, user_id: userId, created_at: new Date().toISOString() });
-
-        if (error && error.code !== '23505') { // Bỏ qua lỗi trùng lặp key
-            console.error("Error liking task:", error.message);
-            return { success: false, error: "Không thể thích công việc." };
-        }
+        await supabase.from("comment_likes").insert({ comment_id: commentId, user_id: userId });
     } else {
-        const { error } = await supabase.from("task_likes").delete().eq("task_id", taskId).eq("user_id", userId);
-        if (error) {
-            console.error("Error unliking task:", error.message);
-            return { success: false, error: "Không thể bỏ thích công việc." };
-        }
+        await supabase.from("comment_likes").delete().eq("comment_id", commentId).eq("user_id", userId);
     }
 
-    await recountLikes(supabase, 'project_tasks', taskId, 'task_likes', 'task_id');
-    const { data: taskData } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
-    if (taskData?.project_id) {
-        revalidatePath(`/projects/${taskData.project_id}`);
+    // Recount Like cho Comment
+    // (Logic inline: đếm và update trực tiếp để tránh phụ thuộc hàm helper rời rạc)
+    const { count } = await supabase
+        .from("comment_likes")
+        .select('*', { count: 'exact', head: true })
+        .eq("comment_id", commentId);
+
+    await supabase
+        .from("project_comments")
+        .update({ likes_count: count || 0 })
+        .eq("id", commentId);
+
+    // Revalidate
+    const { data } = await supabase.from("project_comments").select("project_id, task_id").eq("id", commentId).single();
+    if (data?.project_id && data?.task_id) {
+        revalidatePath(`/projects/${data.project_id}/tasks/${data.task_id}`);
     }
 
     return { success: true };
-}
-
-    export async function toggleCommentLike(commentId: string, isLiking: boolean): Promise<ActionResponse> {
-        const { client: supabase, error: authError } = await getSupabaseClient();
-        if (authError || !supabase) return { success: false, error: authError.message };
-
-        const currentUser = await getCurrentUser();
-        if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
-
-        const userId = currentUser.id;
-
-        if (isLiking) {
-            const { error } = await supabase
-                .from("comment_likes")
-                .insert({ comment_id: commentId, user_id: userId, created_at: new Date().toISOString() });
-
-            if (error && error.code !== '23505') { // Bỏ qua lỗi trùng lặp key
-                console.error("Error liking comment:", error.message);
-                return { success: false, error: "Không thể thích bình luận." };
-            }
-        } else {
-            const { error } = await supabase.from("comment_likes").delete().eq("comment_id", commentId).eq("user_id", userId);
-            if (error) {
-                console.error("Error unliking comment:", error.message);
-                return { success: false, error: "Không thể bỏ thích bình luận." };
-            }
-        }
-
-        await recountLikes(supabase, 'project_comments', commentId, 'comment_likes', 'comment_id');
-        const { data: commentData } = await supabase.from("project_comments").select("project_id, task_id").eq("id", commentId).single();
-        if (commentData?.project_id && commentData.task_id) {
-            revalidatePath(`/projects/${commentData.project_id}/tasks/${commentData.task_id}`);
-        }
-
-        return { success: true };
-}
-
-// --- Server Action: Tải tài liệu lên ---
-export async function uploadDocument(
-    // ✅ THÊM prevState làm tham số đầu tiên
-    prevState: ActionResponse,
-    formData: FormData
-): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
-
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
-
-    const projectId = formData.get("projectId") as string | null;
-
-    if (!projectId || !isValidUUID(projectId)) return { success: false, error: "ID Dự án không hợp lệ hoặc bị thiếu." };
-
-    // 1. Lấy dữ liệu từ FormData
-    const file = formData.get("document_file") as File | null;
-    const name = (formData.get("name") as string)?.trim();
-    const description = (formData.get("description") as string)?.trim() || null;
-    const category = (formData.get("category") as string)?.trim() || 'others';
-
-    if (!file || file.size === 0) return { success: false, error: "Vui lòng chọn một file để tải lên." };
-    if (!name) return { success: false, error: "Vui lòng nhập tên tài liệu." };
-
-    // 2. Kiểm tra quyền (Ví dụ: user có phải member của project?)
-    // (Thêm logic kiểm tra quyền ở đây nếu cần, ví dụ: select từ project_members)
-    // const { count } = await supabase.from("project_members").select('*', { count: 'exact', head: true }).eq('project_id', projectId).eq('employee_id', currentUser.id);
-    // if (count === 0) return { success: false, error: "Bạn không có quyền tải tài liệu cho dự án này." };
-
-
-    // 3. Tải file lên Supabase Storage
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
-    const uniqueFileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${projectId}/${category}/${uniqueFileName}`;
-    const bucketName = 'project-documents';
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(bucketName)
-        .upload(filePath, file);
-
-    if (uploadError) {
-        console.error("Lỗi tải file lên Storage:", uploadError.message);
-        return { success: false, error: `Lỗi tải file: ${uploadError.message}` };
-    }
-
-    // 4. Lấy URL công khai (nếu Bucket là public) hoặc URL có chữ ký
-    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-    const fileUrl = urlData?.publicUrl || null;
-
-    if (!fileUrl) {
-        console.error("Không lấy được public URL cho file:", filePath);
-        await supabase.storage.from(bucketName).remove([filePath]);
-        return { success: false, error: "Lỗi khi lấy đường dẫn file sau khi tải lên." };
-    }
-
-    // 5. Insert metadata vào bảng `project_documents`
-    const { error: insertError } = await supabase
-        .from("project_documents")
-        .insert({ /* ... dữ liệu ... */
-            project_id: projectId, // Sử dụng projectId lấy từ formData
-            name: name,
-            description: description,
-            type: fileExt,
-            url: fileUrl,
-            uploaded_by: currentUser.id,
-            category: category,
-        });
-
-    if (insertError) {
-        console.error("Lỗi insert vào project_documents:", insertError.message);
-        await supabase.storage.from(bucketName).remove([filePath]);
-        return { success: false, error: `Lỗi lưu thông tin tài liệu: ${insertError.message}` };
-    }
-
-    // 6. Revalidate trang chi tiết dự án
-    revalidatePath(`/projects/${projectId}`);
-
-    return { success: true, message: "Tài liệu đã được tải lên thành công!" };
-}
-
-export async function updateDocument(
-    prevState: ActionResponse, // Thêm prevState
-    formData: FormData
-): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
-
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
-
-    // Lấy dữ liệu từ FormData
-    const documentId = formData.get("documentId") as string | null;
-    const projectId = formData.get("projectId") as string | null; // Cần projectId để revalidate
-    const name = (formData.get("name") as string)?.trim();
-    const description = (formData.get("description") as string)?.trim() || null;
-    const category = (formData.get("category") as string)?.trim() || 'others';
-
-    if (!documentId || !isValidUUID(documentId)) return { success: false, error: "ID Tài liệu không hợp lệ." };
-    if (!projectId || !isValidUUID(projectId)) return { success: false, error: "ID Dự án bị thiếu." };
-    if (!name) return { success: false, error: "Vui lòng nhập tên tài liệu." };
-
-    // Kiểm tra quyền (Ví dụ: Chỉ người tải lên hoặc PM mới được sửa?)
-    // const { data: docData, error: fetchError } = await supabase
-    //     .from("project_documents")
-    //     .select("uploaded_by, projects(project_manager)")
-    //     .eq("id", documentId)
-    //     .single();
-    // if (!docData || (docData.uploaded_by !== currentUser.id && docData.projects?.project_manager !== currentUser.id)) {
-    //     return { success: false, error: "Bạn không có quyền sửa tài liệu này." };
-    // }
-
-    // Cập nhật bản ghi trong CSDL
-    const { error: updateError } = await supabase
-        .from("project_documents")
-        .update({
-            name: name,
-            description: description,
-            category: category,
-            // updated_at có thể tự động cập nhật nếu có trigger
-        })
-        .eq("id", documentId);
-
-    if (updateError) {
-        console.error("Lỗi cập nhật project_documents:", updateError.message);
-        return { success: false, error: `Lỗi cập nhật thông tin: ${updateError.message}` };
-    }
-
-    // Revalidate trang chi tiết dự án
-    revalidatePath(`/projects/${projectId}`);
-
-    return { success: true, message: "Thông tin tài liệu đã được cập nhật!" };
-}
-
-export async function deleteDocument(
-    prevState: ActionResponse,
-    formData: FormData
-): Promise<ActionResponse> {
-    const { client: supabase, error: authError } = await getSupabaseClient();
-    if (authError || !supabase) return { success: false, error: authError.message };
-
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return { success: false, error: "Bạn cần đăng nhập." };
-
-    const documentId = formData.get("documentId") as string | null;
-    const projectId = formData.get("projectId") as string | null;
-
-    if (!documentId || !isValidUUID(documentId)) return { success: false, error: "ID Tài liệu không hợp lệ." };
-    if (!projectId || !isValidUUID(projectId)) return { success: false, error: "ID Dự án bị thiếu." };
-
-    // 1. Kiểm tra quyền (Tương tự như update)
-    // (Thêm logic kiểm tra quyền ở đây, ví dụ: chỉ người tải lên hoặc PM mới được xóa)
-
-    // 2. Lấy URL file từ CSDL TRƯỚC KHI XÓA
-    const { data: docData, error: fetchError } = await supabase
-        .from("project_documents")
-        .select("url") // Chỉ cần lấy URL
-        .eq("id", documentId)
-        .single();
-
-    if (fetchError || !docData) {
-        console.error("Lỗi khi tìm tài liệu để xóa:", fetchError?.message);
-        return { success: false, error: "Không tìm thấy tài liệu để xóa." };
-    }
-
-    // 3. Xóa file khỏi Supabase Storage
-    // Tên bucket của chúng ta
-    const bucketName = 'project-documents';
-    // Lấy đường dẫn file từ URL (ví dụ: "projectId/category/fileName.pdf")
-    // URL có dạng: https://.../storage/v1/object/public/project-documents/projectId/category/fileName.pdf
-    const filePath = docData.url.substring(docData.url.indexOf(bucketName) + bucketName.length + 1);
-
-    const { error: storageError } = await supabase.storage
-        .from(bucketName)
-        .remove([filePath]);
-
-    if (storageError) {
-        // Vẫn tiếp tục xóa CSDL, nhưng báo lỗi cho admin
-        console.error(`Lỗi xóa file khỏi Storage: ${storageError.message}. Sẽ tiếp tục xóa khỏi CSDL.`);
-        // Tùy chọn: Bạn có thể return lỗi ở đây nếu muốn
-        // return { success: false, error: `Lỗi xóa file: ${storageError.message}` };
-    }
-
-    // 4. Xóa bản ghi khỏi CSDL (project_documents)
-    const { error: deleteError } = await supabase
-        .from("project_documents")
-        .delete()
-        .eq("id", documentId);
-
-    if (deleteError) {
-        console.error("Lỗi xóa khỏi project_documents:", deleteError.message);
-        return { success: false, error: `Lỗi xóa thông tin: ${deleteError.message}` };
-    }
-
-    // 5. Revalidate
-    revalidatePath(`/projects/${projectId}`);
-
-    return { success: true, message: "Tài liệu đã được xóa thành công!" };
 }
