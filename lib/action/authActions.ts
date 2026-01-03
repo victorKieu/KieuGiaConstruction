@@ -1,6 +1,26 @@
 ﻿"use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { User } from "@supabase/supabase-js";
+
+/**
+ * Hàm lấy thông tin User hiện tại từ session
+ */
+export async function getCurrentUser(): Promise<User | null> {
+    const supabase = await createSupabaseServerClient();
+
+    const {
+        data: { user },
+        error,
+    } = await supabase.auth.getUser();
+
+    if (error || !user) {
+        console.warn("User not found or error fetching user:", error);
+        return null;
+    }
+
+    return user;
+}
 
 export async function changePassword(formData: FormData) {
     const supabase = await createSupabaseServerClient();
