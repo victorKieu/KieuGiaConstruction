@@ -12,7 +12,8 @@ import ProjectMilestoneTab from "./tab/ProjectMilestoneTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
 import ProjectQtoTab from "./tab/ProjectQtoTab";
 import ProjectEstimationTab from "./tab/ProjectEstimationTab";
-import ProjectRequestsTab from "./tab/ProjectRequestsTab"; // ✅ Đã import
+import ProjectRequestsTab from "./tab/ProjectRequestsTab";
+
 // --- IMPORT TYPES ---
 import {
     ProjectData,
@@ -43,9 +44,13 @@ interface ProjectTabsProps {
     qtoTemplates: QtoTemplate[];
     membersCount: number;
     documentsCount: number;
-
-    // 👇 CẬP NHẬT: Thêm prop requests để nhận dữ liệu từ page.tsx
     requests: any[];
+
+    // 👇 CẬP NHẬT: Thêm các props cho chức năng quản lý nhân sự
+    allEmployees?: any[];
+    roles?: any[];
+    isManager?: boolean;
+    currentUserId?: string;
 }
 
 const TABS = {
@@ -55,7 +60,7 @@ const TABS = {
     MEMBERS: "Nhân sự",
     QTO: "Bóc tách Khối lượng",
     ESTIMATION: "Dự toán",
-    REQUESTS: "Yêu cầu vật tư", // ✅ Đã thêm
+    REQUESTS: "Yêu cầu vật tư",
     DOCUMENTS: "Tài liệu",
     FINANCE: "Tài chính"
 };
@@ -73,7 +78,7 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
         case "members": return TABS.MEMBERS;
         case "documents": return TABS.DOCUMENTS;
         case "finance": return TABS.FINANCE;
-        case "requests": return TABS.REQUESTS; // ✅ Thêm case
+        case "requests": return TABS.REQUESTS;
         default: return TABS.OVERVIEW;
     }
 }
@@ -87,7 +92,7 @@ function getUrlParamFromTabName(tabName: string): string {
         case TABS.MEMBERS: return "members";
         case TABS.DOCUMENTS: return "documents";
         case TABS.FINANCE: return "finance";
-        case TABS.REQUESTS: return "requests"; // ✅ Thêm case
+        case TABS.REQUESTS: return "requests";
         default: return "overview";
     }
 }
@@ -108,9 +113,13 @@ export default function ProjectTabs({
     documentsCount,
     qtoItems,
     qtoTemplates,
-
-    // 👇 CẬP NHẬT: Nhận prop requests
     requests,
+
+    // 👇 CẬP NHẬT: Nhận props mới
+    allEmployees = [],
+    roles = [],
+    isManager = false,
+    currentUserId = "",
 }: ProjectTabsProps) {
 
     const searchParams = useSearchParams();
@@ -144,6 +153,8 @@ export default function ProjectTabs({
                             }`}
                     >
                         {tab}
+                        {/* Hiển thị số lượng nhân sự/tài liệu nhanh trên tab (tùy chọn) */}
+                        {tab === TABS.MEMBERS && <span className="ml-1 text-xs opacity-60">({membersCount})</span>}
                     </button>
                 ))}
             </div>
@@ -175,7 +186,14 @@ export default function ProjectTabs({
                 )}
 
                 {activeTab === TABS.MEMBERS && (
-                    <ProjectMembersTab members={members} />
+                    <ProjectMembersTab
+                        projectId={projectId}
+                        members={members}
+                        allEmployees={allEmployees}
+                        roles={roles}
+                        isManager={isManager}
+                        currentUserId={currentUserId}
+                    />
                 )}
 
                 {activeTab === TABS.QTO && (
@@ -191,7 +209,6 @@ export default function ProjectTabs({
                 )}
 
                 {activeTab === TABS.REQUESTS && (
-                    // ✅ Đã truyền prop requests vào component con
                     <ProjectRequestsTab projectId={projectId} requests={requests} />
                 )}
 

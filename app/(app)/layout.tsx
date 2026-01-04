@@ -4,42 +4,27 @@ import { getUserProfile } from "@/lib/supabase/getUserProfile";
 import { redirect } from "next/navigation";
 import AutoLogoutProvider from "@/components/auth/AutoLogoutProvider"; // 1. Import Component tự động logout
 
-export default async function AppLayout({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
-    // 1. Fetch dữ liệu Server
-    const userProfile = await getUserProfile();
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+    const session = await getUserProfile();
 
-    // 2. Security Check: BẮT BUỘC NÊN CÓ
-    // Nếu không lấy được profile (token hết hạn, user bị xóa...), đá về login ngay.
-    // Điều này giúp tránh lỗi render ở AppHeader khi userProfile bị null.
-    if (!userProfile) {
+    if (!session || !session.isAuthenticated) {
         redirect("/login");
     }
 
-    // 3. Render giao diện
+    // ✅ Ép kiểu session về 'any' hoặc interface mà Sidebar/AppHeader mong đợi
+    const userData = session as any;
+
     return (
-        <div className="flex h-screen overflow-hidden">
-            {/* Nhúng AutoLogoutProvider vào đây.
-                Vì nó là "Client Component", nó sẽ chạy ngầm bên dưới
-                và lắng nghe sự kiện chuột/phím của người dùng.
-            */}
-            <AutoLogoutProvider />
-
-            {/* Sidebar tĩnh bên trái */}
-            <Sidebar />
-
-            <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Header nhận data user truyền xuống */}
-                <AppHeader userProfile={userProfile} />
-
-                {/* Khu vực nội dung chính */}
-                <main className="flex-1 overflow-y-auto bg-slate-50 p-4">
-                    {children}
-                </main>
+        <AutoLogoutProvider>
+            <div className="flex h-screen bg-gray-50">
+                <Sidebar user={userData} />
+                <div className="flex flex-col flex-1 overflow-hidden">
+                    <AppHeader user={userData} />
+                    <main className="flex-1 overflow-y-auto p-4 md:p-6">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </AutoLogoutProvider>
     );
 }

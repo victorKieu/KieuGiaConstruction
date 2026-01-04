@@ -1,43 +1,82 @@
 ﻿import { createSupabaseServerClient } from "./server";
 import { cache } from "react";
 
+/**
+ * Hàm trung tâm lấy thông tin danh tính và phiên làm việc.
+ * Giữ nguyên tên getUserProfile để tránh lỗi Build ở layout/header/sidebar.
+ */
 export const getUserProfile = cache(async () => {
     const supabase = await createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
 
-    // ✅ Lấy thẳng avatar_url và role từ bảng user_profiles
+    // 1. Lấy thông tin từ Supabase Auth
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (!user || authError) return null;
+
+    // 2. Lấy Profile trung gian kết hợp với Từ điển (Dictionary)
     const { data: profile } = await supabase
         .from("user_profiles")
         .select(`
             id,
             avatar_url,
+            name,
             role_data:sys_dictionaries!role_id(code),
             type_data:sys_dictionaries!type_id(code)
         `)
-        .eq("id", user.id)
+        .eq("auth_id", user.id)
         .single();
 
-    const role = (profile?.role_data as any)?.code || "VIEWER";
-    const type = (profile?.type_data as any)?.code || "GUEST";
-
-    // Lấy tên từ bảng employees nếu là nhân viên
-    let displayName = user.email?.split('@')[0];
-    if (type === 'EMPLOYEE') {
-        const { data: emp } = await supabase
-            .from("employees")
-            .select("name")
-            .eq("auth_id", user.id)
-            .single();
-        if (emp) displayName = emp.name;
+    if (!profile) {
+        return {
+            isAuthenticated: true,
+            id: user.id, // Vẫn trả về id để layout không bị lỗi
+            authId: user.id,
+            email: user.email,
+            name: user.email?.split('@')[0] || "Người dùng",
+            role: "VIEWER",
+            type: "GUEST",
+            avatar_url: null
+        };
     }
 
+    const roleCode = (profile.role_data as any)?.code || "VIEWER";
+    const typeCode = (profile.type_data as any)?.code || "GUEST";
+
+    // 3. Truy vấn ID nghiệp vụ (Entity ID) dựa trên USER_TYPE (Ảnh b1478c)
+    let entityId = null;
+    let entityName = profile.name;
+
+    const tableMap: Record<string, string> = {
+        'EMPLOYEE': 'employees',
+        'CUSTOMER': 'customers',
+        'SUPPLIER': 'suppliers'
+    };
+
+    const targetTable = tableMap[typeCode];
+
+    if (targetTable) {
+        const { data: entity } = await supabase
+            .from(targetTable)
+            .select("id, name")
+            .eq("profile_id", profile.id)
+            .single();
+
+        if (entity) {
+            entityId = entity.id;
+            entityName = entity.name;
+        }
+    }
+
+    // Trả về đối tượng đầy đủ, giữ các key cũ để Sidebar/Header không lỗi
     return {
-        id: user.id,
-        name: displayName,
+        isAuthenticated: true,
+        id: user.id,           // Key cũ (Auth ID)
+        authId: user.id,       // Key rõ nghĩa cho Auth
+        profileId: profile.id, // Key cho Profile trung gian
+        entityId: entityId,    // Key cho nghiệp vụ (EmployeeID, CustomerID...)
+        name: entityName || user.email?.split('@')[0] || "Người dùng",
         email: user.email,
-        role: role,
-        // ✅ Đảm bảo trả về avatar_url lấy từ profile ở trên
-        avatar_url: profile?.avatar_url || null
+        role: roleCode,        // ADMIN, MANAGER...
+        type: typeCode,        // EMPLOYEE, CUSTOMER, SUPPLIER
+        avatar_url: profile.avatar_url || null
     };
 });

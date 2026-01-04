@@ -4,35 +4,75 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { EmployeeFormData } from "@/types/employee";
-import { getCurrentSession } from "@/lib/supabase/session";
 import { v4 as uuidv4 } from "uuid";
 
-// Hàm tiện ích: Làm sạch UUID
+export interface ActionState {
+    success: boolean;
+    message?: string;
+    error?: string;
+    fields?: Record<string, any>; // Dùng Record để tránh lỗi "Property does not exist"
+}
+
+// --- 1. HÀM TIỆN ÍCH (UTILS) ---
+
 const cleanUUID = (value: any) => {
     if (!value || value === "" || value === "null" || value === "undefined") return null;
     return value;
 };
 
-// Hàm tiện ích: Xóa ảnh cũ
+/**
+ * Xóa ảnh cũ khỏi Storage khi cập nhật hoặc xóa nhân viên
+ */
 async function deleteOldAvatar(url: string | null) {
     if (!url || !url.includes("avatars/")) return;
     try {
         const supabase = await createSupabaseServerClient();
         const fileName = url.split('/').pop();
-        if (fileName) await supabase.storage.from("avatars").remove([fileName]);
-    } catch (e) { console.error("Lỗi xóa ảnh cũ:", e); }
+        if (fileName) {
+            await supabase.storage.from("avatars").remove([fileName]);
+        }
+    } catch (e) {
+        console.error("Lỗi xóa ảnh cũ trên Storage:", e);
+    }
 }
 
-// --- 1. LẤY DANH SÁCH NHÂN VIÊN ---
+/**
+ * Hàm upload avatar (Dùng trong trường hợp bạn gửi File trực tiếp lên Server Action)
+ */
+export async function uploadAvatar(file: File) {
+    const supabase = await createSupabaseServerClient();
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${uuidv4()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(fileName, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(fileName);
+
+    return publicUrl;
+}
+
+// --- 2. TRUY VẤN DỮ LIỆU (QUERIES) ---
+
 export async function getEmployees(queryStr: string = "") {
     const supabase = await createSupabaseServerClient();
-
     try {
-        // BƯỚC 1: Query bảng Employees (Bảng dữ liệu chính)
         let query = supabase
             .from("employees")
             .select(`
                 *,
+                user_profiles ( 
+                    id, 
+                    avatar_url, 
+                    auth_id, 
+                    email 
+                ),
                 gender:sys_dictionaries!gender_id (id, code, name),
                 position:sys_dictionaries!position_id (id, code, name),
                 department:sys_dictionaries!department_id (id, code, name),
@@ -43,353 +83,254 @@ export async function getEmployees(queryStr: string = "") {
             .order("created_at", { ascending: false });
 
         if (queryStr) {
-            query = query.or(`name.ilike.%${queryStr}%,code.ilike.%${queryStr}%,email.ilike.%${queryStr}%`);
+            query = query.or(`name.ilike.%${queryStr}%,code.ilike.%${queryStr}%`);
         }
 
         const { data: employees, error: empError } = await query;
 
         if (empError) {
-            console.error("Lỗi query employees:", empError);
+            // Log chi tiết để xử lý triệt để
+            console.error("Supabase Query Error:", empError.message, empError.details);
             throw empError;
         }
 
-        // BƯỚC 2: Query bảng User Profiles (Để lấy Avatar & Trạng thái TK)
-        // Kỹ thuật: Lấy tất cả Profile có ID nằm trong danh sách nhân viên vừa tải
-        const empIds = employees.map((e: any) => e.id);
-
-        let profiles: any[] = [];
-        if (empIds.length > 0) {
-            const { data: profileData, error: proError } = await supabase
-                .from("user_profiles")
-                .select("id, avatar_url, auth_id, email")
-                .in("id", empIds); // Tìm profile theo ID nhân viên (Shared ID)
-
-            if (proError) {
-                console.error("Lỗi query profiles:", proError);
-            }
-            profiles = profileData || [];
-        }
-
-        // BƯỚC 3: Gộp dữ liệu (Merge Data)
-        // Tạo Map để tra cứu nhanh: ID -> Profile
-        const profileMap = new Map(profiles.map(p => [p.id, p]));
-
         const formattedData = employees.map((emp: any) => {
-            const profile = profileMap.get(emp.id);
+            // Tránh lỗi nếu user_profiles trả về array hoặc null
+            const profile = Array.isArray(emp.user_profiles) ? emp.user_profiles[0] : emp.user_profiles;
             return {
                 ...emp,
-                // Ưu tiên lấy avatar từ Profile (nơi lưu chính thức), fallback về Employee nếu có
-                avatar_url: profile?.avatar_url || emp.avatar_url || null,
-
-                // Kiểm tra xem nhân viên này đã được cấp tài khoản chưa?
-                // (Nếu profile có auth_id khác null -> Đã Active)
+                avatar_url: profile?.avatar_url || null,
                 has_account: !!profile?.auth_id,
-
-                // Gắn kèm object profile để UI dùng thêm nếu cần
                 user_profiles: profile || null
             };
         });
 
         return { data: formattedData, error: null };
-
     } catch (error: any) {
-        console.error("Exception getEmployees:", error);
+        console.error("Lỗi getEmployees:", error);
         return { data: [], error: error.message || "Lỗi tải dữ liệu" };
     }
 }
 
-// --- 2. TẠO HỒ SƠ NHÂN VIÊN MỚI ---
-export async function createEmployee(formData: EmployeeFormData) {
-    const session = await getCurrentSession();
-    const supabase = await createSupabaseServerClient();
-
-    try {
-        const sharedId = uuidv4(); // Shared ID
-
-        // ✅ BƯỚC 0: LẤY TYPE_ID CHO "EMPLOYEE"
-        // Bạn cần đảm bảo trong bảng sys_dictionaries đã có dòng có code='EMPLOYEE'
-        const { data: typeData, error: typeError } = await supabase
-            .from("sys_dictionaries")
-            .select("id")
-            .eq("code", "EMPLOYEE") // ⚠️ Đảm bảo code trong DB là 'EMPLOYEE' (hoặc 'STAFF' tùy bạn đặt)
-            // .eq("category", "USER_TYPE") // Nên thêm điều kiện category nếu cần chính xác hơn
-            .single();
-
-        if (!typeData) {
-            throw new Error("Lỗi hệ thống: Chưa cấu hình loại tài khoản 'EMPLOYEE' trong từ điển.");
-        }
-
-        // BƯỚC 1: Insert Employee (Cha)
-        const { error: empError } = await supabase.from("employees").insert({
-            id: sharedId,
-            name: formData.name,
-            email: formData.email,
-            phone: formData.phone,
-            address: formData.address,
-            identity_card: formData.identity_card,
-            basic_salary: Number(formData.basic_salary) || 0,
-            gender_id: cleanUUID(formData.gender_id),
-            department_id: cleanUUID(formData.department_id),
-            position_id: cleanUUID(formData.position_id),
-            status_id: cleanUUID(formData.status_id),
-            contract_type_id: cleanUUID(formData.contract_type_id),
-            marital_status_id: cleanUUID(formData.marital_status_id),
-            hire_date: formData.hire_date || null,
-            birth_date: formData.birth_date || null
-        });
-
-        if (empError) throw empError;
-
-        // BƯỚC 2: Insert Profile (Con)
-        const { error: profileError } = await supabase.from("user_profiles").insert({
-            id: sharedId,
-            auth_id: null,
-
-            // ✅ ĐÃ SỬA: Gán ID lấy được từ Bước 0 vào đây
-            type_id: typeData.id,
-
-            // user_type: 'EMPLOYEE', <-- Bỏ dòng này nếu bạn đã chuyển sang dùng type_id
-            name: formData.name,
-            email: formData.email,
-            avatar_url: formData.avatar_url || null,
-        });
-
-        if (profileError) {
-            await supabase.from("employees").delete().eq("id", sharedId);
-            throw new Error("Lỗi tạo Profile: " + profileError.message);
-        }
-
-        revalidatePath("/hrm/employees");
-        return { success: true, message: "Tạo thành công!" };
-
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
-
-// --- 3. LẤY CHI TIẾT ---
 export async function getEmployeeById(id: string) {
     const supabase = await createSupabaseServerClient();
-
     try {
-        // BƯỚC 1: Lấy thông tin Employee
         const { data: emp, error: empError } = await supabase
             .from("employees")
-            .select("*")
+            .select("*, user_profiles:id(*)")
             .eq("id", id)
             .single();
 
-        if (empError || !emp) {
-            return null; // Trả về null để trang Page show 404
-        }
+        if (empError || !emp) return null;
 
-        // BƯỚC 2: Lấy thông tin Profile (Dùng chung ID)
-        const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("*") // Lấy hết để form có dữ liệu (avatar, email, auth_id...)
-            .eq("id", id)
-            .single();
-
-        // BƯỚC 3: Merge dữ liệu
+        const profile = Array.isArray(emp.user_profiles) ? emp.user_profiles[0] : emp.user_profiles;
         return {
             ...emp,
-            // Ưu tiên avatar từ profile
             avatar_url: profile?.avatar_url || emp.avatar_url || null,
-            // Gắn profile vào để Form sử dụng (hiển thị ảnh, check tk active...)
             user_profiles: profile || null
         };
-
     } catch (error) {
         console.error("Lỗi getEmployeeById:", error);
         return null;
     }
 }
 
-// --- 4. CẬP NHẬT HỒ SƠ (FIXED) ---
-export async function updateEmployee(id: string, formData: EmployeeFormData) {
-    const session = await getCurrentSession();
-    // Check quyền Admin...
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceRoleKey!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+// --- 3. THAO TÁC DỮ LIỆU (ACTIONS) ---
+
+// --- 1. TẠO HỒ SƠ NHÂN VIÊN MỚI (Sửa để khớp useActionState) ---
+export async function createEmployee(prevState: any, formData: FormData) {
+    const supabase = await createSupabaseServerClient();
+    const rawData = Object.fromEntries(formData.entries());
 
     try {
-        // Update bảng Employees
-        await supabaseAdmin.from("employees").update({
-            updated_at: new Date().toISOString(),
-            name: formData.name,
-            phone: formData.phone,
-            email: formData.email,
-            address: formData.address,
-            identity_card: formData.identity_card,
-            basic_salary: Number(formData.basic_salary) || 0,
-            hire_date: formData.hire_date || null,
-            birth_date: formData.birth_date || null,
+        const sharedId = uuidv4();
 
-            gender_id: cleanUUID(formData.gender_id),
-            marital_status_id: cleanUUID(formData.marital_status_id),
-            position_id: cleanUUID(formData.position_id),
-            department_id: cleanUUID(formData.department_id),
-            status_id: cleanUUID(formData.status_id),
-            contract_type_id: cleanUUID(formData.contract_type_id),
-        }).eq("id", id);
-
-        // Update bảng User Profiles (Dựa vào shared ID)
-        const { data: oldProfile } = await supabaseAdmin
-            .from("user_profiles")
-            .select("avatar_url")
-            .eq("id", id)
+        // Lấy type_id cho 'EMPLOYEE' từ từ điển
+        const { data: typeData } = await supabase
+            .from("sys_dictionaries")
+            .select("id")
+            .eq("code", "EMPLOYEE")
+            .eq("category", "USER_TYPE")
             .single();
 
-        await supabaseAdmin.from("user_profiles").update({
-            name: formData.name,
-            avatar_url: formData.avatar_url || null,
-            updated_at: new Date().toISOString()
-        }).eq("id", id);
+        if (!typeData) throw new Error("Chưa cấu hình loại nhân viên trong hệ thống.");
 
-        // Xóa ảnh cũ
-        if (oldProfile?.avatar_url && oldProfile.avatar_url !== formData.avatar_url) {
-            await deleteOldAvatar(oldProfile.avatar_url);
+        // B1: TẠO USER_PROFILE (ID chung)
+        const { error: pError } = await supabase.from("user_profiles").insert({
+            id: sharedId,
+            type_id: typeData.id,
+            name: String(rawData.name),
+            email: String(rawData.email),
+            avatar_url: String(rawData.avatar_url || ""),
+            role_id: cleanUUID(rawData.role_id) // Sử dụng cột role_id mới
+        });
+        if (pError) throw pError;
+
+        // B2: TẠO EMPLOYEE (Không truyền 'code' để Trigger tự sinh mã)
+        const { error: eError } = await supabase.from("employees").insert({
+            id: sharedId,
+            name: String(rawData.name),
+            email: String(rawData.email),
+            phone: String(rawData.phone),
+            address: String(rawData.address),
+            identity_card: String(rawData.identity_card),
+            basic_salary: Number(rawData.basic_salary) || 0,
+            gender_id: cleanUUID(rawData.gender_id),
+            department_id: cleanUUID(rawData.department_id),
+            position_id: cleanUUID(rawData.position_id),
+            status_id: cleanUUID(rawData.status_id),
+            contract_type_id: cleanUUID(rawData.contract_type_id),
+            marital_status_id: cleanUUID(rawData.marital_status_id),
+            hire_date: rawData.hire_date ? String(rawData.hire_date) : null,
+            birth_date: rawData.birth_date ? String(rawData.birth_date) : null
+        });
+
+        if (eError) {
+            // Rollback nếu lỗi
+            await supabase.from("user_profiles").delete().eq("id", sharedId);
+            throw eError;
         }
 
-        revalidatePath(`/hrm/employees/${id}`);
-        revalidatePath('/hrm/employees');
-        return { success: true, message: "Cập nhật thành công!" };
+        revalidatePath("/hrm/employees");
+        return { success: true, message: "Thêm nhân viên thành công!", fields: {} };
 
     } catch (error: any) {
-        return { success: false, error: "Lỗi cập nhật: " + error.message };
+        return { success: false, error: error.message, fields: rawData }; // Giữ lại dữ liệu đã nhập
     }
 }
 
-// --- 5. CẤP TÀI KHOẢN (Chuyển đổi ID: EmployeeID -> AuthID) ---
-export async function grantSystemAccess(employeeId: string, email: string) {
+export async function updateEmployee(id: string, prevState: any, formData: FormData) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
         auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // 1. Lấy thông tin từ Profile (đã có sẵn với ID = employeeId)
-    const { data: profile } = await supabaseAdmin
-        .from("user_profiles")
-        .select("name, auth_id")
-        .eq("id", employeeId)
-        .single();
-
-    if (profile?.auth_id) return { success: false, error: "Nhân viên này đã có tài khoản!" };
-
-    // 2. Tạo User Auth mới
-    const defaultPassword = "KieuGia@123456";
-    const { data: user, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: defaultPassword,
-        email_confirm: true,
-        user_metadata: { full_name: profile?.name }
-    });
-
-    if (createError) return { success: false, error: createError.message };
-
-    // 3. Cập nhật auth_id vào bảng user_profiles
-    // Đây là bước "Link" tài khoản đăng nhập vào hồ sơ có sẵn
-    await supabaseAdmin
-        .from("user_profiles")
-        .update({ auth_id: user.user.id })
-        .eq("id", employeeId); // Tìm đúng profile có ID == EmployeeID
-
-    revalidatePath("/hrm/employees");
-    return { success: true, message: `Cấp thành công! Pass: ${defaultPassword}` };
-}
-
-// --- 6. XÓA NHÂN VIÊN (Cập nhật) ---
-export async function deleteEmployee(id: string) {
-    const session = await getCurrentSession();
-    if (session.role !== 'admin') return { success: false, error: "Unauthorized" };
-
-    const supabase = await createSupabaseServerClient();
-
-    // 1. Khởi tạo Admin Client để thao tác với Auth User
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceRoleKey!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const rawData = Object.fromEntries(formData.entries());
 
     try {
-        // 2. Lấy thông tin Auth ID cũ trước khi xóa/update
-        const { data: empData } = await supabaseAdmin
-            .from("employees")
-            .select("auth_id, user_profiles:auth_id(avatar_url)")
-            .eq("id", id)
-            .single();
-
-        // 3. Xóa tài khoản Login bên Supabase Auth (QUAN TRỌNG NHẤT)
-        // Nếu không làm bước này, họ vẫn đăng nhập được!
-        if (empData?.auth_id) {
-            await supabaseAdmin.auth.admin.deleteUser(empData.auth_id);
-        }
-
-        // 4. Xóa ảnh avatar (dọn dẹp)
-        const avatarUrl = (empData?.user_profiles as any)?.avatar_url;
-        if (avatarUrl) {
-            await deleteOldAvatar(avatarUrl);
-        }
-
-        // 5. Cập nhật trạng thái nhân viên thành Đã nghỉ (RESIGNED)
-        const { data: statusData } = await supabase
-            .from("sys_dictionaries")
-            .select("id")
-            .eq("code", "RESIGNED") // Đảm bảo code này đúng trong DB
-            .single();
-
-        await supabase.from("employees").update({
-            status_id: statusData?.id,
-            auth_id: null, // Ngắt liên kết
+        // Cập nhật bảng Employees
+        const { error: eError } = await supabaseAdmin.from("employees").update({
+            name: String(rawData.name),
+            phone: String(rawData.phone),
+            address: String(rawData.address),
+            identity_card: String(rawData.identity_card),
+            basic_salary: Number(rawData.basic_salary) || 0,
+            gender_id: cleanUUID(rawData.gender_id),
+            department_id: cleanUUID(rawData.department_id),
+            position_id: cleanUUID(rawData.position_id),
+            status_id: cleanUUID(rawData.status_id),
+            contract_type_id: cleanUUID(rawData.contract_type_id),
+            marital_status_id: cleanUUID(rawData.marital_status_id),
+            hire_date: rawData.hire_date ? String(rawData.hire_date) : null,
+            birth_date: rawData.birth_date ? String(rawData.birth_date) : null,
             updated_at: new Date().toISOString()
         }).eq("id", id);
 
-        // 6. Xóa profile ảo trong bảng user_profiles (nếu cần sạch sẽ)
-        if (empData?.auth_id) {
-            await supabaseAdmin.from("user_profiles").delete().eq("id", empData.auth_id);
+        if (eError) throw eError;
+
+        // Cập nhật bảng Profiles
+        await supabaseAdmin.from("user_profiles").update({
+            name: String(rawData.name),
+            email: String(rawData.email),
+            avatar_url: String(rawData.avatar_url || ""),
+            updated_at: new Date().toISOString()
+        }).eq("id", id);
+
+        revalidatePath(`/hrm/employees/${id}`);
+        revalidatePath("/hrm/employees");
+        return { success: true, message: "Cập nhật thành công!", fields: rawData };
+    } catch (error: any) {
+        return { success: false, error: error.message, fields: rawData };
+    }
+}
+
+// --- 4. QUẢN LÝ TÀI KHOẢN HỆ THỐNG (AUTH) ---
+
+export async function grantSystemAccess(entityId: string, email: string, typeCode: 'EMPLOYEE' | 'CUSTOMER' | 'SUPPLIER') {
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    try {
+        // ✅ Tìm trực tiếp trong user_profiles bằng entityId (vì dùng Shared ID)
+        const { data: profile, error: pError } = await supabaseAdmin
+            .from("user_profiles")
+            .select("id, name")
+            .eq("id", entityId)
+            .single();
+
+        if (pError || !profile) {
+            console.error("Lỗi tìm profile:", pError);
+            throw new Error("Không tìm thấy hồ sơ gốc trong hệ thống.");
+        }
+
+        // Tạo tài khoản Auth
+        const { data: authData, error: aError } = await supabaseAdmin.auth.admin.createUser({
+            email,
+            password: "KieuGia@123456",
+            email_confirm: true,
+            user_metadata: { full_name: profile.name, user_type: typeCode }
+        });
+
+        if (aError) throw aError;
+
+        // Cập nhật auth_id vào Profile
+        const { error: uError } = await supabaseAdmin
+            .from("user_profiles")
+            .update({ auth_id: authData.user.id })
+            .eq("id", profile.id);
+
+        if (uError) {
+            await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+            throw uError;
         }
 
         revalidatePath("/hrm/employees");
-        return { success: true, message: "Đã đóng hồ sơ và xóa tài khoản truy cập." };
-
+        return { success: true, message: "Cấp tài khoản thành công!" };
     } catch (error: any) {
-        console.error("Lỗi xóa NV:", error);
+        return { success: false, error: error.message };
+    }
+}
+export async function revokeSystemAccess(employeeId: string) {
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    try {
+        const { data: profile } = await supabaseAdmin.from("user_profiles").select("auth_id").eq("id", employeeId).single();
+        if (profile?.auth_id) {
+            await supabaseAdmin.auth.admin.deleteUser(profile.auth_id);
+            await supabaseAdmin.from("user_profiles").update({ auth_id: null }).eq("id", employeeId);
+        }
+        revalidatePath("/hrm/employees");
+        return { success: true, message: "Đã thu hồi quyền truy cập." };
+    } catch (error: any) {
         return { success: false, error: error.message };
     }
 }
 
-// --- 7. THU HỒI QUYỀN TRUY CẬP (Cập nhật) ---
-export async function revokeSystemAccess(employeeId: string) {
-    // ... Khởi tạo Admin Client ...
+export async function deleteEmployee(id: string) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
         auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // 1. Lấy auth_id từ profile
-    const { data: profile } = await supabaseAdmin
-        .from("user_profiles")
-        .select("auth_id")
-        .eq("id", employeeId)
-        .single();
+    try {
+        const { data: profile } = await supabaseAdmin.from("user_profiles").select("auth_id").eq("id", id).single();
 
-    if (profile?.auth_id) {
-        // 2. Xóa user bên Auth
-        await supabaseAdmin.auth.admin.deleteUser(profile.auth_id);
+        if (profile?.auth_id) {
+            await supabaseAdmin.auth.admin.deleteUser(profile.auth_id);
+            await supabaseAdmin.from("user_profiles").update({ auth_id: null }).eq("id", id);
+        }
 
-        // 3. Set auth_id về NULL trong profile
-        await supabaseAdmin
-            .from("user_profiles")
-            .update({ auth_id: null })
-            .eq("id", employeeId);
+        const { data: statusDict } = await supabaseAdmin.from("sys_dictionaries").select("id").eq("code", "RESIGNED").single();
+        await supabaseAdmin.from("employees").update({ status_id: statusDict?.id }).eq("id", id);
+
+        revalidatePath("/hrm/employees");
+        return { success: true, message: "Hồ sơ nhân viên đã được đóng." };
+    } catch (error: any) {
+        return { success: false, error: error.message };
     }
-
-    revalidatePath("/hrm/employees");
-    return { success: true, message: "Đã thu hồi quyền truy cập." };
 }

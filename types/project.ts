@@ -50,7 +50,7 @@ export interface ProjectMember {
     id: string;
     project_id: string;
     user_id: string;
-    role: string;
+    role_id: string;
     joined_at: string;
     employee: {
         id: string;
@@ -81,21 +81,25 @@ export interface MilestoneData {
 // --- MEMBER DATA ---
 export interface MemberData {
     project_id: string;
-    role: string;
+    employee_id: string;
     joined_at: string;
-    employee: {
+    role_id: string;
+    role_name?: string;
+    role_code?: string;
+    employee?: {
         id: string;
         name: string;
         email: string;
         phone?: string;
-        position: string;
-        avatar_url?: string;
-        project_role?: {
-            name: string;
+        // Chỉnh sửa đoạn này:
+        position?: string | { name: string } | null;
+        avatar_url?: string | null;
+        // Thêm trường này để khớp với dữ liệu Join từ Supabase
+        user_profiles?: {
+            avatar_url: string | null;
         } | null;
     };
 }
-
 // --- DOCUMENT DATA ---
 export interface DocumentData {
     id: string;

@@ -53,7 +53,7 @@ type GetCommentsResult = ActionFetchResult<CommentData[]>;
 export async function getProject(id: string): Promise<GetProjectResult> {
     if (!isValidUUID(id)) return { data: null, error: { message: "ID dự án không hợp lệ.", code: "400" } };
 
-    // 1. Lấy Session tập trung (Tối ưu cache, check 1 lần)
+    // 1. Lấy Session
     const session = await getCurrentSession();
 
     // 2. Kiểm tra quyền cơ bản
@@ -69,11 +69,18 @@ export async function getProject(id: string): Promise<GetProjectResult> {
 
     const supabase = await createSupabaseServerClient();
 
-    // 3. Xây dựng Select Query
+    // 3. Xây dựng Select Query (ĐÃ SỬA)
+    // Thay vì lấy avatar_url trực tiếp, ta join sang user_profiles
     let selectString = `
         *,
-        client:customers ( id, name, avatar_url ),
-        manager:employees!projects_project_manager_fkey ( id, name, avatar_url ), 
+        client:customers ( 
+            id, name, 
+            user_profiles ( avatar_url ) 
+        ),
+        manager:employees!projects_project_manager_fkey ( 
+            id, name, 
+            user_profiles ( avatar_url ) 
+        ), 
         creator:employees!projects_created_by_fkey ( id, name ),
         member_count:project_members ( count ),
         document_count:project_documents ( count )
@@ -87,13 +94,11 @@ export async function getProject(id: string): Promise<GetProjectResult> {
     // 4. Khởi tạo Query
     let query = supabase.from("projects").select(selectString);
 
-    // 5. Áp dụng Data Scope (Phân quyền dữ liệu)
+    // 5. Áp dụng Data Scope
     if (session.type === 'employee' && session.role !== 'admin') {
-        // Chỉ lấy dự án mà nhân viên này tham gia
         query = query.eq('check_member.employee_id', session.entityId);
     }
     else if (session.type === 'customer') {
-        // Chỉ lấy dự án của khách hàng này
         query = query.eq('customer_id', session.entityId);
     }
 
@@ -111,14 +116,29 @@ export async function getProject(id: string): Promise<GetProjectResult> {
         return { data: null, error: { message: "Không tìm thấy dự án hoặc bạn không có quyền.", code: "404" } };
     }
 
-    // 7. Mapping dữ liệu (Cleanup)
+    // 7. Mapping dữ liệu (ĐÃ SỬA)
     const rawProject = projectData as any;
     const { check_member, ...cleanProjectData } = rawProject;
 
     const finalProject: ProjectData = {
         ...cleanProjectData,
-        client: rawProject.client,
-        manager: rawProject.manager,
+
+        // Map lại Client (Customer)
+        client: rawProject.client ? {
+            id: rawProject.client.id,
+            name: rawProject.client.name,
+            // Lấy avatar từ profile lồng bên trong
+            avatar_url: rawProject.client.user_profiles?.avatar_url || null
+        } : null,
+
+        // Map lại Manager (Employee)
+        manager: rawProject.manager ? {
+            id: rawProject.manager.id,
+            name: rawProject.manager.name,
+            // Lấy avatar từ profile lồng bên trong
+            avatar_url: rawProject.manager.user_profiles?.avatar_url || null
+        } : null,
+
         creator: rawProject.creator,
         member_count: rawProject.member_count?.[0]?.count || 0,
         document_count: rawProject.document_count?.[0]?.count || 0,
@@ -164,11 +184,12 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
 
     // Tự động thêm người tạo là Manager (nếu họ là nhân viên)
     if (newProject && session.type === 'employee') {
+        // Tìm ID của MANAGER trong từ điển
         const { data: roleData } = await supabase
-            .from("project_roles")
+            .from("sys_dictionaries")
             .select("id")
-            .or("name.ilike.%manager%,name.ilike.%quản lý%")
-            .limit(1)
+            .eq("category", "PROJECT_ROLE")
+            .eq("code", "MANAGER") // ✅ Tìm theo Code chuẩn
             .maybeSingle();
 
         await supabase
@@ -176,7 +197,7 @@ export async function createProject(formData: FormData): Promise<ActionResponse>
             .insert({
                 project_id: newProject.id,
                 employee_id: session.entityId,
-                role_id: roleData?.id || null,
+                role_id: roleData?.id, // ID từ Dictionary
                 joined_at: new Date().toISOString()
             });
     }
@@ -243,64 +264,118 @@ export async function deleteProject(projectId: string): Promise<ActionResponse> 
 // ----------------------------------------------------------------------
 // --- MEMBER ACTIONS ---
 // ----------------------------------------------------------------------
-
-export async function getProjectMembers(projectId: string): Promise<GetMembersResult> {
+// 1. Helper: Lấy danh sách Vai trò từ Từ điển
+export async function getProjectRoles() {
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase
+        .from("sys_dictionaries")
+        .select("id, name, code")
+        .eq("category", "PROJECT_ROLE")
+        .order("sort_order", { ascending: true });
+    return data || [];
+}
+// 2. Action: Lấy danh sách thành viên dự án
+export async function getProjectMembers(projectId: string) {
     const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase
         .from("project_members")
         .select(`
-            project_id, role, joined_at,
-            employee:employees!inner (id, name, email, phone, position, avatar_url),
-            project_role:project_roles (name)
+            project_id, 
+            joined_at, 
+            employee_id,
+            role_id,
+            
+            role:sys_dictionaries!role_id ( 
+                name, 
+                code 
+            ),
+            
+            employee:employees (
+                id, 
+                name, 
+                email,
+                position:sys_dictionaries!position_id (name),
+                user_profiles ( avatar_url )
+            )
         `)
         .eq("project_id", projectId);
 
-    if (error) return { data: null, error: { message: error.message, code: error.code } };
+    if (error) {
+        console.error("Lỗi getProjectMembers:", error.message);
+        return { data: [], error: error.message };
+    }
 
-    const members = data?.map((item: any) => ({
-        ...item,
-        employee: item.employee,
-        project_role: item.project_role
+    // 2. Mapping để "làm phẳng" dữ liệu cho UI dễ đọc
+    const formattedMembers = data?.map((m: any) => ({
+        ...m,
+        // UI sẽ dùng m.role_name thay vì lồng m.role.name
+        role_name: m.role?.name || "Thành viên",
+        role_code: m.role?.code || "MEMBER",
+        employee: m.employee ? {
+            ...m.employee,
+            // Đưa avatar_url ra ngoài cùng cấp với name
+            avatar_url: m.employee.user_profiles?.avatar_url || null,
+            // Đưa position name ra ngoài
+            position: m.employee.position?.name || "—"
+        } : null
     })) || [];
 
-    return { data: members, error: null };
+    return { data: formattedMembers, error: null };
 }
 
-export async function addProjectMember(formData: FormData): Promise<ActionResponse> {
-    const projectId = formData.get("project_id") as string;
-    const employeeId = formData.get("employee_id") as string;
-    const roleId = formData.get("role_id") as string;
-
-    if (!projectId || !employeeId) return { success: false, error: "Thiếu thông tin." };
-
-    const hasPermission = await checkPermission("project_members", "create");
-    if (!hasPermission) return { success: false, error: "⛔ Không có quyền thêm thành viên!" };
+export async function getCurrentUserRoleInProject(projectId: string) {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated || !session.entityId) return null;
 
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase
+    const { data } = await supabase
         .from("project_members")
-        .insert({
-            project_id: projectId,
-            employee_id: employeeId,
-            role_id: roleId || null,
-            joined_at: new Date().toISOString()
-        });
+        .select(`role:sys_dictionaries!role_id ( code )`)
+        .eq("project_id", projectId)
+        .eq("employee_id", session.entityId) // ✅ Dùng Entity ID thống nhất
+        .maybeSingle();
+
+    return (data?.role as any)?.code || null;
+}
+
+// 2. Action: Thêm thành viên
+export async function addProjectMember(
+    projectId: string,
+    employeeId: string,
+    roleId: string
+) {
+    const supabase = await createSupabaseServerClient();
+
+    // Kiểm tra xem đã tồn tại chưa
+    const { data: existing } = await supabase
+        .from("project_members")
+        .select("employee_id")
+        .eq("project_id", projectId)
+        .eq("employee_id", employeeId)
+        .single();
+
+    if (existing) {
+        return { success: false, error: "Nhân viên này đã có trong dự án." };
+    }
+
+    const { error } = await supabase.from("project_members").insert({
+        project_id: projectId,
+        employee_id: employeeId,
+        role_id: roleId,
+        joined_at: new Date().toISOString()
+    });
 
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã thêm thành viên." };
+    return { success: true, message: "Đã thêm thành viên thành công." };
 }
 
-export async function removeProjectMember(formData: FormData): Promise<ActionResponse> {
-    const projectId = formData.get("project_id") as string;
-    const employeeId = formData.get("employee_id") as string;
-
-    const hasPermission = await checkPermission("project_members", "delete");
-    if (!hasPermission) return { success: false, error: "⛔ Không có quyền xóa thành viên!" };
-
+// 3. Action: Xóa thành viên
+export async function removeProjectMember(projectId: string, employeeId: string) {
     const supabase = await createSupabaseServerClient();
+
     const { error } = await supabase
         .from("project_members")
         .delete()
@@ -310,7 +385,7 @@ export async function removeProjectMember(formData: FormData): Promise<ActionRes
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã xóa thành viên." };
+    return { success: true, message: "Đã xóa thành viên khỏi dự án." };
 }
 
 // ----------------------------------------------------------------------
@@ -364,9 +439,11 @@ export async function getProjectTasks(projectId: string): Promise<GetTasksResult
     const { data, error } = await supabase
         .from("project_tasks")
         .select(`
-            id, project_id, name, description, status, priority, progress,
-            start_date, due_date, completed_at, created_at, updated_at,
-            assigned_to:employees ( id, name, avatar_url )
+            *,
+            assigned_to:employees ( 
+                id, name, 
+                user_profiles ( avatar_url ) // ✅ Join lấy ảnh
+            )
         `)
         .eq("project_id", projectId)
         .order("due_date", { ascending: true, nullsFirst: false });
@@ -375,7 +452,11 @@ export async function getProjectTasks(projectId: string): Promise<GetTasksResult
 
     const tasksData: TaskData[] = (data || []).map((item: any) => ({
         ...item,
-        assigned_to: Array.isArray(item.assigned_to) ? item.assigned_to[0] : item.assigned_to
+        assigned_to: item.assigned_to ? {
+            id: item.assigned_to.id,
+            name: item.assigned_to.name,
+            avatar_url: item.assigned_to.user_profiles?.avatar_url || null
+        } : null
     }));
 
     return { data: tasksData, error: null };
@@ -743,3 +824,4 @@ export async function toggleCommentLike(commentId: string, isLiking: boolean): P
 
     return { success: true };
 }
+

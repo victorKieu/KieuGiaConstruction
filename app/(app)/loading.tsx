@@ -6,4 +6,4 @@ export default function Loading() {
     // Server Component (trang mới) đang fetch dữ liệu.
 
     return <GlobalLoader text="Đang tải trang..." />;
-}
+}   
