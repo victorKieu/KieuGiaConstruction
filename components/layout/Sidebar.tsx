@@ -260,13 +260,14 @@ export function Sidebar({ className }: SidebarProps) {
                     </div>
                 )}
                 {/* Chỉ hiện nút đóng nếu không có className (tức là mode tự quản lý mobile cũ) */}
-                {!className && isMobile && mobileOpen && (
+                {!className && isMobile && !mobileOpen && (
                     <button
-                        className="absolute right-2 top-2 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-neutral-800 transition"
-                        onClick={() => setMobileOpen(false)}
-                        aria-label="Đóng menu"
+                        // 👇 THAY ĐỔI: Đổi z-50 thành z-[100]
+                        className="fixed top-3 left-3 z-[100] bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all hover:bg-blue-50"
+                        onClick={() => setMobileOpen(true)}
+                        aria-label="Mở menu"
                     >
-                        <CloseIcon className="w-5 h-5" />
+                        <MenuIcon className="w-6 h-6 text-blue-600 dark:text-blue-200" />
                     </button>
                 )}
             </div>

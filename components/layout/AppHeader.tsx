@@ -40,10 +40,12 @@ export default function AppHeader({ user }: AppHeaderProps) {
         <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900 sticky top-0 z-50 shadow-sm">
             {/* 1. KHU VỰC TRÁI: Chỉ còn Logo (Nút Menu đã bị xóa) */}
             <div className="flex items-center gap-3">
-                {/* ❌ Đã xóa toàn bộ cụm <Sheet>...</Sheet> ở đây */}
-                
-                {/* Logo & Tên công ty */}
-                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-2">
+
+                {/* 👇 THAY ĐỔI: Thêm class 'pl-10 md:pl-0' 
+                    Nghĩa là: Trên mobile thì cách lề trái 10 đơn vị (để chừa chỗ cho nút Menu), 
+                    trên Desktop (md) thì trả về 0. 
+                */}
+                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-10 md:pl-0 transition-all">
                     Kieu Gia Construction
                 </div>
             </div>
