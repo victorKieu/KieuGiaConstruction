@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 
 import { contractSchema, ContractFormValues } from "@/lib/schemas/contract";
-import { createContractAction } from "@/lib/action/contract";
+import { createContractFromQuotation } from "@/lib/action/contractActions";
 import { getContractTemplates } from "@/lib/action/template"; // Import action mới
 import { ContractGenerator } from "./contract-generator"; // Import Generator
 import { useEffect, useState } from "react"; // Thêm useEffect

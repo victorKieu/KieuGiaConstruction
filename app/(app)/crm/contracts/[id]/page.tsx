@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Building, Calendar, FileText, User } from "lucide-react";
 
 // Logic Server Action
-import { getContractById } from "@/lib/action/contract";
+import { getContracts } from "@/lib/action/contractActions";
 
 // Utils
 import { cn, formatCurrency, formatDate, getStatusColor } from "@/lib/utils/utils";
@@ -31,7 +31,7 @@ export default async function ContractDetailPage({ params }: PageProps) {
     }
 
     // --- Fetch dữ liệu an toàn ---
-    const contract = await getContractById(id);
+    const contract = await getContracts(id);
 
     if (!contract) {
         return notFound();
