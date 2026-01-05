@@ -10,7 +10,7 @@ import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectMilestoneTab from "./tab/ProjectMilestoneTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
-import ProjectQtoTab from "./tab/ProjectQtoTab";
+//import ProjectQtoTab from "./tab/ProjectQtoTab";
 import ProjectEstimationTab from "./tab/ProjectEstimationTab";
 import ProjectRequestsTab from "./tab/ProjectRequestsTab";
 
@@ -196,13 +196,7 @@ export default function ProjectTabs({
                     />
                 )}
 
-                {activeTab === TABS.QTO && (
-                    <ProjectQtoTab
-                        projectId={projectId}
-                        qtoItems={qtoItems}
-                        qtoTemplates={qtoTemplates}
-                    />
-                )}
+                
 
                 {activeTab === TABS.ESTIMATION && (
                     <ProjectEstimationTab projectId={projectId} />

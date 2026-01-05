@@ -1,57 +1,51 @@
-﻿export interface DictionaryOption {
+﻿// 📂 types/employee.ts
+
+import { Database } from '@/types/supabase';
+
+// --- A. SUPABASE DATABASE TYPES (Dữ liệu thô từ DB) ---
+export type EmployeeRow = Database['public']['Tables']['employees']['Row'];
+export type InsertEmployee = Database['public']['Tables']['employees']['Insert'];
+export type UpdateEmployee = Database['public']['Tables']['employees']['Update'];
+
+// --- B. HELPER TYPES (Dùng cho Dropdown/Badge) ---
+export interface DictionaryOption {
     id: string;
     code: string;
     name: string;
-    color?: string; // Dùng để tô màu badge trạng thái
+    color?: string;
 }
 
-// Kiểu dữ liệu hiển thị trên Danh sách & Chi tiết
-export interface EmployeeData {
+// --- C. MAIN UI TYPE (Dùng cho Danh sách nhân viên & Client Page) ---
+// Đây là Interface quan trọng nhất để fix lỗi TS2339
+export interface Employee {
     id: string;
     code: string;
     name: string;
-    email: string | null;
-    phone: string | null;
-    avatar_url: string | null;
+    email: string;
+    phone?: string | null;
+    avatar_url?: string | null;
 
-    // Thông tin cá nhân
-    identity_card: string | null;
-    birth_date?: string | null;
-    place_of_birth: string | null;
-    address: string | null;
-    current_address: string | null;
-
-    // Các trường quan hệ (Relation) - Có thể null nếu chưa chọn
-    gender: DictionaryOption | null;
-    position: DictionaryOption | null;
-    department: DictionaryOption | null;
-    status: DictionaryOption | null;
-    contract_type: DictionaryOption | null;
-    marital_status: DictionaryOption | null;
-
-    // Tài chính
-    bank_name: string | null;
-    bank_account: string | null;
-    basic_salary: number;
-
-    // Hệ thống
-    auth_id: string | null; // Quan trọng: Check xem đã có tài khoản chưa
-    created_at: string;
-    hire_date: string;
+    // Các trường hiển thị (đã được join bảng hoặc format)
+    position?: string;       // Tên chức vụ (VD: "Giám đốc")
+    department?: string | null; // Tên phòng ban (VD: "Phòng IT")
+    status?: string;         // Tên trạng thái (VD: "Đang làm việc")
+    hire_date?: string;      // Ngày vào làm (ISO string)
+    created_at?: string;
+    has_account?: boolean;
 }
 
-// Kiểu dữ liệu dùng cho Form (Gửi lên Server)
+// --- D. FORM DATA TYPE (Dùng cho Create/Update Form) ---
 export interface EmployeeFormData {
-    code: string;
+    code?: string; // Có thể optional vì server tự sinh
     name: string;
-    email: string; // Email liên hệ
+    email: string;
     phone: string;
     identity_card: string;
     address: string;
     birth_date?: string;
     avatar_url?: string | null;
 
-    // Dropdown chỉ gửi ID
+    // Dropdown (Chỉ lưu ID vào DB)
     gender_id?: string;
     position_id?: string;
     department_id?: string;
@@ -61,4 +55,44 @@ export interface EmployeeFormData {
 
     basic_salary: number;
     hire_date: string;
+}
+
+// --- E. DETAIL DATA TYPE (Dùng cho trang Chi tiết - Dữ liệu đầy đủ hơn) ---
+export interface EmployeeDetail extends EmployeeRow {
+    // Override các trường quan hệ để chứa Object chi tiết thay vì null
+    gender?: DictionaryOption | null;
+    position?: DictionaryOption | null;
+    department?: DictionaryOption | null;
+    status?: DictionaryOption | null;
+    contract_type?: DictionaryOption | null;
+    marital_status?: DictionaryOption | null;
+
+    // Auth info
+    user_profiles?: {
+        auth_id?: string | null;
+        avatar_url?: string | null;
+        email?: string | null;
+    } | null;
+}
+
+// --- F. ACTION TYPES (Tham số và Kết quả trả về của Server Action) ---
+export interface GetEmployeesParams {
+    search?: string;
+    status?: string;
+    department?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface GetEmployeesResult {
+    employees: Employee[]; // Trả về danh sách theo Interface Employee ở mục C
+    totalCount: number;
+}
+
+export interface ActionResponse {
+    success: boolean;
+    message?: string;
+    error?: string;
+    userId?: string;
+    fields?: Record<string, any>;
 }

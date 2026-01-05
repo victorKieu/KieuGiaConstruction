@@ -1,9 +1,9 @@
-"use client"
+﻿"use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileSignature, Trash2, CheckCircle, Clock } from "lucide-react";
+import { FileSignature, Trash2, CheckCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/utils";
 import { deleteContract } from "@/lib/action/contractActions";
 import { useRouter } from "next/navigation";
@@ -12,9 +12,12 @@ import { useTransition } from "react";
 interface Props {
     contracts: any[];
     projectId: string;
+    // ✅ Định nghĩa prop onViewDetail (có dấu ?)
+    onViewDetail?: (contract: any) => void;
 }
 
-export default function ContractList({ contracts, projectId }: Props) {
+// ✅ QUAN TRỌNG: Phải lấy onViewDetail ra ở đây thì bên dưới mới dùng được
+export default function ContractList({ contracts, projectId, onViewDetail }: Props) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
 
@@ -75,7 +78,13 @@ export default function ContractList({ contracts, projectId }: Props) {
                         </div>
 
                         <div className="mt-4 pt-3 border-t flex justify-between items-center opacity-80 group-hover:opacity-100 transition-opacity">
-                            <Button variant="outline" size="sm" className="text-xs h-8">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8"
+                                // ✅ Giờ thì biến này đã được định nghĩa
+                                onClick={() => onViewDetail && onViewDetail(contract)}
+                            >
                                 Xem chi tiết
                             </Button>
                             <Button

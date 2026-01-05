@@ -222,8 +222,10 @@ export function Sidebar({ className }: SidebarProps) {
         h-screen bg-white dark:bg-neutral-900 border-r border-blue-100 dark:border-neutral-800 shadow-2xl
         flex flex-col transition-all duration-300
         ${collapsed ? "w-16 min-w-16 max-w-16" : "w-[252px] min-w-[252px] max-w-[252px]"}
-        ${/* Nếu có className (trong Sheet), ta bỏ logic fixed/absolute của Sidebar đi */ ""}
-        ${!className && isMobile ? "fixed z-50 left-0 top-0" : ""}
+        
+        {/* 👇 THAY ĐỔI Ở DÒNG DƯỚI NÀY: Đổi z-50 thành z-[100] */}
+        ${!className && isMobile ? "fixed z-[100] left-0 top-0" : ""}
+        
         ${!className && isMobile && mobileOpen ? "translate-x-0" : !className && isMobile ? "-translate-x-full" : "translate-x-0"}
         ${className || ""} 
       `}
@@ -377,13 +379,12 @@ export function Sidebar({ className }: SidebarProps) {
                 </button>
             )}
 
-            {/* Sidebar Content */}
             {sidebarContent}
 
             {/* Chỉ hiện Overlay nội bộ nếu KHÔNG có className */}
             {!className && isMobile && mobileOpen && (
                 <div
-                    className="fixed inset-0 bg-black/40 z-40 backdrop-blur-[2px] transition-opacity"
+                    className="fixed inset-0 bg-black/40 z-[90] backdrop-blur-[2px] transition-opacity"
                     onClick={() => setMobileOpen(false)}
                 />
             )}

@@ -1,4 +1,5 @@
-﻿import { clsx } from "clsx"
+﻿// lib/utils/utils.ts
+import { clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: any[]) {

@@ -1,5 +1,5 @@
 // app/projects/new/page.tsx
-import { getProjectManagers } from "@/lib/action/hrmActions";
+import { getProjectManagers } from "@/lib/action/employeeActions";
 import { getCustomerList } from "@/lib/action/crmActions"; //
 import CreateProjectForm from "@/components/projects/ProjectForm";
 

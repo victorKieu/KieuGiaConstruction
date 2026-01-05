@@ -3,15 +3,14 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
-import { EmployeeFormData } from "@/types/employee";
 import { v4 as uuidv4 } from "uuid";
-
-export interface ActionState {
-    success: boolean;
-    message?: string;
-    error?: string;
-    fields?: Record<string, any>; // Dùng Record để tránh lỗi "Property does not exist"
-}
+import { isValidUUID } from "@/lib/utils/uuid";
+import {
+    GetEmployeesParams,
+    GetEmployeesResult,
+    Employee,
+    ActionResponse
+} from "@/types/employee";
 
 // --- 1. HÀM TIỆN ÍCH (UTILS) ---
 
@@ -21,29 +20,43 @@ const cleanUUID = (value: any) => {
 };
 
 /**
- * Xóa ảnh cũ khỏi Storage khi cập nhật hoặc xóa nhân viên
+ * Xóa ảnh cũ khỏi Storage bằng quyền ADMIN (Bypass RLS)
  */
 async function deleteOldAvatar(url: string | null) {
-    if (!url || !url.includes("avatars/")) return;
+    if (!url) return;
+
     try {
-        const supabase = await createSupabaseServerClient();
-        const fileName = url.split('/').pop();
-        if (fileName) {
-            await supabase.storage.from("avatars").remove([fileName]);
+        const pathPart = url.split("/avatars/").pop();
+        if (!pathPart) return;
+
+        // Làm sạch URL (bỏ query params, hash) và decode
+        const cleanPath = pathPart.split("?")[0].split("#")[0];
+        const fileName = decodeURIComponent(cleanPath);
+
+        console.log("🗑️ Đang xóa file rác:", fileName);
+
+        const supabaseAdmin = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+
+        const { error } = await supabaseAdmin.storage
+            .from("avatars")
+            .remove([fileName]);
+
+        if (error) {
+            console.error("⚠️ Lỗi xóa file Storage:", error.message);
         }
     } catch (e) {
-        console.error("Lỗi xóa ảnh cũ trên Storage:", e);
+        console.error("❌ Exception xóa ảnh cũ:", e);
     }
 }
 
-/**
- * Hàm upload avatar (Dùng trong trường hợp bạn gửi File trực tiếp lên Server Action)
- */
 export async function uploadAvatar(file: File) {
     const supabase = await createSupabaseServerClient();
     const fileExt = file.name.split(".").pop();
     const fileName = `${uuidv4()}.${fileExt}`;
-    const filePath = `avatars/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
         .from("avatars")
@@ -60,64 +73,96 @@ export async function uploadAvatar(file: File) {
 
 // --- 2. TRUY VẤN DỮ LIỆU (QUERIES) ---
 
-export async function getEmployees(queryStr: string = "") {
+/**
+ * Hàm lấy danh sách nhân viên (Đã chuẩn hóa để khớp với UI Client Page)
+ * Hỗ trợ: Tìm kiếm, Lọc, Phân trang, Check tài khoản Active
+ */
+export async function getEmployees(params?: GetEmployeesParams): Promise<GetEmployeesResult> {
     const supabase = await createSupabaseServerClient();
-    try {
-        let query = supabase
-            .from("employees")
-            .select(`
-                *,
-                user_profiles ( 
-                    id, 
-                    avatar_url, 
-                    auth_id, 
-                    email 
-                ),
-                gender:sys_dictionaries!gender_id (id, code, name),
-                position:sys_dictionaries!position_id (id, code, name),
-                department:sys_dictionaries!department_id (id, code, name),
-                status:sys_dictionaries!status_id (id, code, name, color),
-                contract_type:sys_dictionaries!contract_type_id (id, code, name),
-                marital_status:sys_dictionaries!marital_status_id (id, code, name)
-            `)
-            .order("created_at", { ascending: false });
 
-        if (queryStr) {
-            query = query.or(`name.ilike.%${queryStr}%,code.ilike.%${queryStr}%`);
-        }
+    // ✅ FIX QUAN TRỌNG: Nếu params là undefined hoặc null thì gán bằng object rỗng {}
+    const safeParams = params || {};
+    const { search, status, department, page = 1, limit = 10 } = safeParams;
 
-        const { data: employees, error: empError } = await query;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
-        if (empError) {
-            // Log chi tiết để xử lý triệt để
-            console.error("Supabase Query Error:", empError.message, empError.details);
-            throw empError;
-        }
+    // --- LOGIC JOIN (Giữ nguyên như trước) ---
+    const deptRelation = (department && department !== "Tất cả")
+        ? "sys_dictionaries!department_id!inner"
+        : "sys_dictionaries!department_id";
 
-        const formattedData = employees.map((emp: any) => {
-            // Tránh lỗi nếu user_profiles trả về array hoặc null
-            const profile = Array.isArray(emp.user_profiles) ? emp.user_profiles[0] : emp.user_profiles;
-            return {
-                ...emp,
-                avatar_url: profile?.avatar_url || null,
-                has_account: !!profile?.auth_id,
-                user_profiles: profile || null
-            };
-        });
+    const statusRelation = (status && status !== "Tất cả")
+        ? "sys_dictionaries!status_id!inner"
+        : "sys_dictionaries!status_id";
 
-        return { data: formattedData, error: null };
-    } catch (error: any) {
-        console.error("Lỗi getEmployees:", error);
-        return { data: [], error: error.message || "Lỗi tải dữ liệu" };
+    let query = supabase
+        .from("employees")
+        .select(`
+            *,
+            department:${deptRelation}(name),
+            status:${statusRelation}(name),
+            position:sys_dictionaries!position_id(name),
+            user_profiles!left ( auth_id, avatar_url ) 
+        `, { count: 'exact' });
+
+    // --- Áp dụng bộ lọc ---
+    if (search) {
+        query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%,email.ilike.%${search}%`);
     }
+
+    if (department && department !== "Tất cả") {
+        query = query.eq('department.name', department);
+    }
+
+    if (status && status !== "Tất cả") {
+        query = query.eq('status.name', status);
+    }
+
+    // --- Thực thi ---
+    const { data, error, count } = await query
+        .range(from, to)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching employees:", error);
+        return { employees: [], totalCount: 0 };
+    }
+
+    // --- Map dữ liệu ---
+    const formattedEmployees: Employee[] = data.map((emp: any) => ({
+        id: emp.id,
+        code: emp.code,
+        name: emp.name,
+        email: emp.email,
+        phone: emp.phone,
+
+        department: emp.department?.name || null,
+        position: emp.position?.name || null,
+        status: emp.status?.name || null,
+
+        hire_date: emp.hire_date,
+        avatar_url: emp.user_profiles?.[0]?.avatar_url || emp.user_profiles?.avatar_url || null,
+
+        has_account: !!(Array.isArray(emp.user_profiles)
+            ? emp.user_profiles[0]?.auth_id
+            : emp.user_profiles?.auth_id),
+    }));
+
+    return {
+        employees: formattedEmployees,
+        totalCount: count || 0
+    };
 }
 
 export async function getEmployeeById(id: string) {
     const supabase = await createSupabaseServerClient();
+    if (!isValidUUID(id)) return null;
+
     try {
         const { data: emp, error: empError } = await supabase
             .from("employees")
-            .select("*, user_profiles:id(*)")
+            .select("*, user_profiles (*)")
             .eq("id", id)
             .single();
 
@@ -129,44 +174,65 @@ export async function getEmployeeById(id: string) {
             avatar_url: profile?.avatar_url || emp.avatar_url || null,
             user_profiles: profile || null
         };
-    } catch (error) {
-        console.error("Lỗi getEmployeeById:", error);
+    } catch (error: any) {
+        console.error("Exception getEmployeeById:", error.message);
         return null;
     }
 }
 
-// --- 3. THAO TÁC DỮ LIỆU (ACTIONS) ---
+/**
+ * Lấy danh sách quản lý dự án (Merge từ hrmActions cũ sang)
+ */
+export async function getProjectManagers() {
+    const supabase = await createSupabaseServerClient();
+    const MANAGER_RANKS = ["Trưởng phòng", "Phó phòng", "Giám đốc", "Phó giám đốc", "Quản lý", "Project Manager", "Team Lead"];
 
-// --- 1. TẠO HỒ SƠ NHÂN VIÊN MỚI (Sửa để khớp useActionState) ---
+    // Lưu ý: Cần điều chỉnh query này khớp với dữ liệu thực tế (VD: check theo position_id hoặc bảng lương)
+    // Đây là logic tạm thời dựa trên text
+    const { data } = await supabase
+        .from("employees")
+        .select("id, name, code, position:sys_dictionaries!position_id(name)")
+        .limit(100);
+
+    // Filter phía code nếu query phức tạp
+    if (!data) return [];
+
+    return data.filter((emp: any) => MANAGER_RANKS.includes(emp.position?.name))
+        .map((emp: any) => ({
+            id: emp.id,
+            name: emp.name,
+            code: emp.code,
+            position: emp.position?.name
+        }));
+}
+
+// --- 3. ACTIONS (CREATE / UPDATE / DELETE / AUTH) ---
+
 export async function createEmployee(prevState: any, formData: FormData) {
     const supabase = await createSupabaseServerClient();
     const rawData = Object.fromEntries(formData.entries());
 
     try {
         const sharedId = uuidv4();
-
-        // Lấy type_id cho 'EMPLOYEE' từ từ điển
+        // Lấy Type ID
         const { data: typeData } = await supabase
             .from("sys_dictionaries")
-            .select("id")
-            .eq("code", "EMPLOYEE")
-            .eq("category", "USER_TYPE")
-            .single();
+            .select("id").eq("code", "EMPLOYEE").eq("category", "USER_TYPE").single();
 
-        if (!typeData) throw new Error("Chưa cấu hình loại nhân viên trong hệ thống.");
+        if (!typeData) throw new Error("Chưa cấu hình loại nhân viên (USER_TYPE).");
 
-        // B1: TẠO USER_PROFILE (ID chung)
+        // B1: TẠO USER_PROFILE
         const { error: pError } = await supabase.from("user_profiles").insert({
             id: sharedId,
             type_id: typeData.id,
             name: String(rawData.name),
             email: String(rawData.email),
             avatar_url: String(rawData.avatar_url || ""),
-            role_id: cleanUUID(rawData.role_id) // Sử dụng cột role_id mới
+            role_id: cleanUUID(rawData.role_id)
         });
         if (pError) throw pError;
 
-        // B2: TẠO EMPLOYEE (Không truyền 'code' để Trigger tự sinh mã)
+        // B2: TẠO EMPLOYEE
         const { error: eError } = await supabase.from("employees").insert({
             id: sharedId,
             name: String(rawData.name),
@@ -186,20 +252,22 @@ export async function createEmployee(prevState: any, formData: FormData) {
         });
 
         if (eError) {
-            // Rollback nếu lỗi
             await supabase.from("user_profiles").delete().eq("id", sharedId);
             throw eError;
         }
 
         revalidatePath("/hrm/employees");
         return { success: true, message: "Thêm nhân viên thành công!", fields: {} };
-
     } catch (error: any) {
-        return { success: false, error: error.message, fields: rawData }; // Giữ lại dữ liệu đã nhập
+        return { success: false, error: error.message, fields: rawData };
     }
 }
 
 export async function updateEmployee(id: string, prevState: any, formData: FormData) {
+    const supabaseUser = await createSupabaseServerClient();
+    const { data: { user } } = await supabaseUser.auth.getUser();
+    if (!user) return { success: false, error: "Phiên làm việc hết hạn." };
+
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
         auth: { autoRefreshToken: false, persistSession: false }
@@ -208,7 +276,13 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
     const rawData = Object.fromEntries(formData.entries());
 
     try {
-        // Cập nhật bảng Employees
+        const { data: oldData } = await supabaseAdmin.from("user_profiles").select("avatar_url").eq("id", id).single();
+        const newAvatarUrl = String(rawData.avatar_url || "");
+
+        if (oldData?.avatar_url && newAvatarUrl !== oldData.avatar_url) {
+            await deleteOldAvatar(oldData.avatar_url);
+        }
+
         const { error: eError } = await supabaseAdmin.from("employees").update({
             name: String(rawData.name),
             phone: String(rawData.phone),
@@ -228,11 +302,10 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
 
         if (eError) throw eError;
 
-        // Cập nhật bảng Profiles
         await supabaseAdmin.from("user_profiles").update({
             name: String(rawData.name),
             email: String(rawData.email),
-            avatar_url: String(rawData.avatar_url || ""),
+            avatar_url: newAvatarUrl || null,
             updated_at: new Date().toISOString()
         }).eq("id", id);
 
@@ -244,41 +317,50 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
     }
 }
 
-// --- 4. QUẢN LÝ TÀI KHOẢN HỆ THỐNG (AUTH) ---
-
-export async function grantSystemAccess(entityId: string, email: string, typeCode: 'EMPLOYEE' | 'CUSTOMER' | 'SUPPLIER') {
+export async function grantSystemAccess(entityId: string, email: string, typeCode: 'EMPLOYEE' | 'CUSTOMER' | 'SUPPLIER'): Promise<ActionResponse> {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
         auth: { autoRefreshToken: false, persistSession: false }
     });
 
+    console.log(`🚀 Bắt đầu cấp quyền cho ID: ${entityId}, Email: ${email}`);
+
     try {
-        // ✅ Tìm trực tiếp trong user_profiles bằng entityId (vì dùng Shared ID)
         const { data: profile, error: pError } = await supabaseAdmin
             .from("user_profiles")
-            .select("id, name")
+            .select("id, name, auth_id")
             .eq("id", entityId)
             .single();
 
-        if (pError || !profile) {
-            console.error("Lỗi tìm profile:", pError);
-            throw new Error("Không tìm thấy hồ sơ gốc trong hệ thống.");
-        }
+        if (pError || !profile) return { success: false, error: "Không tìm thấy hồ sơ nhân viên này." };
+        if (profile.auth_id) return { success: false, error: "Nhân viên này đã có tài khoản rồi." };
 
-        // Tạo tài khoản Auth
         const { data: authData, error: aError } = await supabaseAdmin.auth.admin.createUser({
-            email,
+            email: email,
             password: "KieuGia@123456",
             email_confirm: true,
-            user_metadata: { full_name: profile.name, user_type: typeCode }
+            user_metadata: {
+                full_name: profile.name,
+                user_type: typeCode,
+                entity_id: entityId
+            }
         });
 
-        if (aError) throw aError;
+        if (aError) {
+            if (aError.message.includes("already registered") || aError.status === 422) {
+                return { success: false, error: "Email này đã được đăng ký tài khoản." };
+            }
+            throw aError;
+        }
 
-        // Cập nhật auth_id vào Profile
+        if (!authData.user) throw new Error("Không tạo được user.");
+
         const { error: uError } = await supabaseAdmin
             .from("user_profiles")
-            .update({ auth_id: authData.user.id })
+            .update({
+                auth_id: authData.user.id,
+                email: email
+            })
             .eq("id", profile.id);
 
         if (uError) {
@@ -287,11 +369,13 @@ export async function grantSystemAccess(entityId: string, email: string, typeCod
         }
 
         revalidatePath("/hrm/employees");
-        return { success: true, message: "Cấp tài khoản thành công!" };
+        return { success: true, message: "Cấp tài khoản thành công! Mật khẩu: KieuGia@123456" };
     } catch (error: any) {
+        console.error("❌ Lỗi grantSystemAccess:", error);
         return { success: false, error: error.message };
     }
 }
+
 export async function revokeSystemAccess(employeeId: string) {
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
@@ -303,6 +387,8 @@ export async function revokeSystemAccess(employeeId: string) {
         if (profile?.auth_id) {
             await supabaseAdmin.auth.admin.deleteUser(profile.auth_id);
             await supabaseAdmin.from("user_profiles").update({ auth_id: null }).eq("id", employeeId);
+        } else {
+            return { success: false, error: "Nhân viên chưa có tài khoản." };
         }
         revalidatePath("/hrm/employees");
         return { success: true, message: "Đã thu hồi quyền truy cập." };
@@ -318,18 +404,23 @@ export async function deleteEmployee(id: string) {
     });
 
     try {
-        const { data: profile } = await supabaseAdmin.from("user_profiles").select("auth_id").eq("id", id).single();
+        const { data: profile } = await supabaseAdmin.from("user_profiles").select("auth_id, avatar_url").eq("id", id).single();
 
         if (profile?.auth_id) {
             await supabaseAdmin.auth.admin.deleteUser(profile.auth_id);
             await supabaseAdmin.from("user_profiles").update({ auth_id: null }).eq("id", id);
         }
 
+        if (profile?.avatar_url) {
+            await deleteOldAvatar(profile.avatar_url);
+        }
+
+        // Thay vì xóa cứng, ta set status thành "Đã nghỉ việc" (RESIGNED)
         const { data: statusDict } = await supabaseAdmin.from("sys_dictionaries").select("id").eq("code", "RESIGNED").single();
         await supabaseAdmin.from("employees").update({ status_id: statusDict?.id }).eq("id", id);
 
         revalidatePath("/hrm/employees");
-        return { success: true, message: "Hồ sơ nhân viên đã được đóng." };
+        return { success: true, message: "Đã xóa hồ sơ nhân viên thành công." };
     } catch (error: any) {
         return { success: false, error: error.message };
     }

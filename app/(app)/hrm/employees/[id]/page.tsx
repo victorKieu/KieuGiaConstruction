@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Metadata } from "next"; // 1. Import Metadata
+import { Metadata } from "next";
 import EmployeeForm from "@/components/hrm/EmployeeForm";
 import { getEmployeeById } from "@/lib/action/employeeActions";
 import { getDictionaryOptions } from "@/lib/action/dictionaryActions";
@@ -25,7 +25,7 @@ export default async function EditEmployeePage({ params }: PageProps) {
         getDictionaryOptions('DEPARTMENT'),
         getDictionaryOptions('POSITION'),
         getDictionaryOptions('GENDER'),
-        getDictionaryOptions('JOB_STATUS'), // Đã dùng đúng JOB_STATUS
+        getDictionaryOptions('JOB_STATUS'),
         getDictionaryOptions('CONTRACT_TYPE'),
         getDictionaryOptions('MARITAL_STATUS'),
     ]);

@@ -5,9 +5,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckSquare, Square, ChevronRight, ChevronDown, Loader2, Box } from "lucide-react";
-import QtoCreateModal from "../qto/QtoCreateModal";
-import QtoEditModal from "../qto/QtoEditModal";
-import QtoDeleteButton from "../qto/QtoDeleteButton";
+//import QtoCreateModal from "../qto/QtoCreateModal";
+//import QtoEditModal from "../qto/QtoEditModal";
+//import QtoDeleteButton from "../qto/QtoDeleteButton";
 import type { QtoItem, QtoTemplate } from "@/types/project";
 import { getQtoItems } from "@/lib/action/qtoActions";
 

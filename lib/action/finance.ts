@@ -3,9 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { transactionSchema, TransactionFormValues } from "@/lib/schemas/finance";
-import { startOfMonth, subMonths, format } from "date-fns"; // Đảm bảo đã import
+import { startOfMonth, subMonths, format } from "date-fns";
 
-// 1. Lấy danh sách danh mục (để đổ vào dropdown)
+// 1. Lấy danh sách danh mục
 export async function getFinanceCategories() {
     const supabase = await createClient();
     const { data } = await supabase
@@ -15,11 +15,10 @@ export async function getFinanceCategories() {
     return data || [];
 }
 
-// 2. Tạo giao dịch mới (Phiếu thu / Phiếu chi)
+// 2. Tạo giao dịch mới
 export async function createTransactionAction(data: TransactionFormValues) {
     const supabase = await createClient();
 
-    // Validate lại ở server
     const validated = transactionSchema.safeParse(data);
     if (!validated.success) {
         return { success: false, error: "Dữ liệu không hợp lệ." };
@@ -34,7 +33,7 @@ export async function createTransactionAction(data: TransactionFormValues) {
             category_id: payload.category_id,
             transaction_date: payload.transaction_date.toISOString(),
             description: payload.description,
-            project_id: payload.project_id || null, // Nếu rỗng thì gửi null
+            project_id: payload.project_id || null,
             customer_id: payload.customer_id || null,
             created_at: new Date().toISOString(),
         });
@@ -44,7 +43,12 @@ export async function createTransactionAction(data: TransactionFormValues) {
             return { success: false, error: error.message };
         }
 
-        revalidatePath("/finance"); // Làm mới trang tài chính
+        revalidatePath("/finance");
+        // Nếu có project_id, revalidate cả trang project đó
+        if (payload.project_id) {
+            revalidatePath(`/projects/${payload.project_id}`);
+        }
+
         return { success: true, message: "Đã tạo phiếu thành công!" };
 
     } catch (error: any) {
@@ -52,65 +56,51 @@ export async function createTransactionAction(data: TransactionFormValues) {
     }
 }
 
-// 3. Lấy danh sách giao dịch (Mới nhất lên đầu)
+// 3. Lấy danh sách giao dịch
 export async function getTransactions() {
     const supabase = await createClient();
 
     const { data, error } = await supabase
         .from("finance_transactions")
         .select(`
-      *,
-      category:finance_categories (
-        id,
-        name,
-        color,
-        type
-      )
-    `)
-        .order("transaction_date", { ascending: false }) // Mới nhất lên đầu
-        .limit(20); // Lấy 20 giao dịch gần nhất
+            *,
+            category:finance_categories (id, name, color, type)
+        `)
+        .order("transaction_date", { ascending: false })
+        .limit(20);
 
     if (error) {
         console.error("Error fetching transactions:", error);
         return [];
     }
-
     return data;
 }
 
-// 4. Lấy thống kê Thu/Chi 6 tháng gần nhất
+// 4. Lấy thống kê Thu/Chi 6 tháng gần nhất (Cho biểu đồ tổng)
 export async function getMonthlyStats() {
     const supabase = await createClient();
-
-    // Lấy mốc thời gian: 6 tháng trước từ ngày mùng 1
     const startDate = startOfMonth(subMonths(new Date(), 5)).toISOString();
 
     const { data, error } = await supabase
         .from("finance_transactions")
         .select("amount, type, transaction_date")
-        .gte("transaction_date", startDate) // Lấy dữ liệu từ 6 tháng trước đến nay
+        .gte("transaction_date", startDate)
         .order("transaction_date", { ascending: true });
 
-    if (error) {
-        console.error("Error fetching stats:", error);
-        return [];
-    }
+    if (error) return [];
 
-    // Xử lý dữ liệu: Gom nhóm theo tháng
-    // Tạo khung dữ liệu 6 tháng (để tháng nào không có giao dịch vẫn hiện cột 0)
     const monthlyData: Record<string, { name: string; income: number; expense: number }> = {};
 
     for (let i = 0; i < 6; i++) {
         const date = subMonths(new Date(), i);
-        const key = format(date, "MM/yyyy"); // Key dạng "12/2025"
+        const key = format(date, "MM/yyyy");
         monthlyData[key] = {
-            name: `T${format(date, "MM")}`, // Tên hiển thị: T12
+            name: `T${format(date, "MM")}`,
             income: 0,
             expense: 0
         };
     }
 
-    // Cộng dồn tiền vào từng tháng
     data?.forEach((item) => {
         const key = format(new Date(item.transaction_date), "MM/yyyy");
         if (monthlyData[key]) {
@@ -122,64 +112,72 @@ export async function getMonthlyStats() {
         }
     });
 
-    // Chuyển object thành array và đảo ngược để tháng cũ nhất bên trái
     return Object.values(monthlyData).reverse();
 }
 
-// 5. Lấy danh sách dự án (NÂNG CẤP: Lấy thêm code và type)
+// 5. Lấy danh sách dự án cho dropdown
 export async function getProjectsForSelect() {
     const supabase = await createClient();
-
     try {
         const { data, error } = await supabase
             .from("projects")
-            .select("id, name, code, project_type, status")
+            .select("id, name, code, status") // Bỏ project_type nếu không chắc chắn tên cột
             .order("created_at", { ascending: false });
 
-        if (error) {
-            console.warn("Lỗi lấy dự án:", error.message);
-            return [];
-        }
+        if (error) return [];
         return data || [];
     } catch (e) {
         return [];
     }
 }
 
-// 6. Lấy thống kê tài chính cho MỘT dự án cụ thể
+// ✅ 6. LẤY THỐNG KÊ TÀI CHÍNH DỰ ÁN (Sửa lại logic chuẩn)
 export async function getProjectFinanceStats(projectId: string) {
     const supabase = await createClient();
 
-    // A. Lấy danh sách giao dịch của dự án này
-    const { data: transactions, error } = await supabase
-        .from("finance_transactions")
-        .select(`
-      *,
-      category:finance_categories (name, color)
-    `)
-        .eq("project_id", projectId)
-        .order("transaction_date", { ascending: false });
+    // 1. Tính Tổng Doanh Thu (Giá trị trên Hợp đồng đã ký)
+    const { data: contracts, error: contractError } = await supabase
+        .from('contracts')
+        .select('value')
+        .eq('project_id', projectId)
+        .in('status', ['signed', 'liquidated']);
 
-    if (error) {
-        console.error("Lỗi lấy tài chính dự án:", error);
-        return { summary: { income: 0, expense: 0, profit: 0 }, transactions: [] };
+    // 2. Tính Tổng Thực Thu (Tiền thực tế đã thu từ các đợt thanh toán)
+    // Cách fix: Select bảng payment_milestones và lọc theo cột lồng của bảng contracts
+    const { data: payments, error: paymentError } = await supabase
+        .from('payment_milestones')
+        .select(`
+            amount,
+            contracts!inner(project_id) 
+        `)
+        .eq('status', 'paid')
+        .eq('contracts.project_id', projectId); // Lọc theo project_id thông qua quan hệ join
+
+    // 3. Tính Tổng Thực Chi (Từ các giao dịch chi phí nhập tay)
+    const { data: expenses, error: expenseError } = await supabase
+        .from('finance_transactions')
+        .select('amount')
+        .eq('project_id', projectId)
+        .eq('type', 'expense');
+
+    if (contractError || paymentError || expenseError) {
+        console.error("Lỗi lấy tài chính dự án:", { contractError, paymentError, expenseError });
+        return { totalRevenue: 0, totalCost: 0, actualReceived: 0, profit: 0, profitMargin: 0 };
     }
 
-    // B. Tính tổng Thu / Chi
-    let totalIncome = 0;
-    let totalExpense = 0;
+    // Tính toán số liệu
+    const totalRevenue = contracts?.reduce((sum, item) => sum + (Number(item.value) || 0), 0) || 0;
+    const actualReceived = payments?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
+    const totalCost = expenses?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
 
-    transactions?.forEach((t) => {
-        if (t.type === "income") totalIncome += Number(t.amount);
-        else totalExpense += Number(t.amount);
-    });
+    const profit = totalRevenue - totalCost;
+    const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
 
     return {
-        summary: {
-            income: totalIncome,
-            expense: totalExpense,
-            profit: totalIncome - totalExpense, // Lợi nhuận tạm tính
-        },
-        transactions: transactions || [],
+        totalRevenue,     // Doanh thu theo hợp đồng
+        actualReceived,   // Tiền mặt thực tế đã thu về
+        totalCost,        // Chi phí dự án
+        profit,           // Lợi nhuận gộp
+        profitMargin: parseFloat(profitMargin.toFixed(2))
     };
 }

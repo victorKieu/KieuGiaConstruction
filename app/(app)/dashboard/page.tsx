@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Building2, TrendingUp, AlertTriangle,
     PackagePlus, PackageMinus, ArrowRight, Wallet,
     Briefcase, CheckCircle2, Clock, CalendarClock, PieChart,
-    Users, UserPlus, Handshake, Percent // Icon CRM
+    Users, UserPlus, Handshake, Percent
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -77,7 +77,6 @@ export default function DashboardPage() {
     const profit = revenue - cost;
     const costPercentage = revenue > 0 ? (cost / revenue) * 100 : 0;
 
-    // Helper badge CRM
     // Helper badge CRM
     const getCustomerStatusBadge = (status: string) => {
         // Chuyển về chữ thường để so sánh cho chính xác

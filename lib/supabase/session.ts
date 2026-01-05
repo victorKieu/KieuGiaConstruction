@@ -31,19 +31,23 @@ export const getCurrentSession = cache(async (): Promise<UserSession> => {
         };
     }
 
-    // 2. Lấy thông tin từ user_profiles (Lấy Avatar tập trung tại đây)
+    // 2. Lấy thông tin từ user_profiles (FIX THEO CẤU TRÚC SQL MỚI)
     const { data: profile } = await supabase
         .from("user_profiles")
         .select(`
             id,
+            email,
+            name,        
             avatar_url,  
             type_data:sys_dictionaries!type_id ( code ),
             role_data:sys_dictionaries!role_id ( code )
         `)
-        .eq("id", user.id)
+        // ✅ QUAN TRỌNG: Tìm theo auth_id (vì auth.users.id map với user_profiles.auth_id)
+        .eq("auth_id", user.id)
         .single();
 
     if (!profile) {
+        // Trường hợp có Auth nhưng chưa có Profile (hoặc bị lỗi RLS chặn)
         return {
             isAuthenticated: true,
             userId: user.id,
@@ -52,29 +56,36 @@ export const getCurrentSession = cache(async (): Promise<UserSession> => {
             role: 'guest',
             type: 'guest',
             error: 'Profile not found',
-            email: user.email
+            email: user.email,
+            name: user.email?.split('@')[0]
         };
     }
 
-    // Ép kiểu để lấy code từ dictionaries
+    // 3. Xử lý dữ liệu
     const userType = (profile.type_data as any)?.code?.toLowerCase() || 'guest';
     const userRole = (profile.role_data as any)?.code?.toLowerCase() || 'viewer';
     const avatarUrl = profile.avatar_url || "";
+    // ✅ FIX: Dùng cột 'name' thay vì first_name/last_name
+    const displayName = profile.name || user.email?.split('@')[0] || "User";
 
-    // 3. Lấy Tên hiển thị từ bảng chi tiết (Employees / Customers)
-    let entityId = null;
-    let name = "";
+    // 4. XÁC ĐỊNH ENTITY ID (QUAN TRỌNG NHẤT)
+    // Hệ thống cần biết "Nhân viên ID" của bạn là gì để so khớp với bảng project_members.
 
+    // Mặc định dùng Profile ID (nếu user_profiles là bảng gốc)
+    let entityId = profile.id;
+
+    // NHƯNG: Nếu bạn có bảng 'employees' riêng và project_members dùng ID của bảng đó
+    // thì ta cần ưu tiên lấy ID từ bảng employees.
     if (userType === 'employee') {
         const { data: employee } = await supabase
             .from("employees")
             .select("id, name")
+            // Thử tìm theo auth_id trước (ưu tiên)
             .eq("auth_id", user.id)
             .single();
 
         if (employee) {
-            entityId = employee.id;
-            name = employee.name;
+            entityId = employee.id; // ✅ Lấy ID thật sự được dùng trong nghiệp vụ
         }
     } else if (userType === 'customer') {
         const { data: customer } = await supabase
@@ -85,7 +96,6 @@ export const getCurrentSession = cache(async (): Promise<UserSession> => {
 
         if (customer) {
             entityId = customer.id;
-            name = customer.name;
         }
     }
 
@@ -93,11 +103,11 @@ export const getCurrentSession = cache(async (): Promise<UserSession> => {
         id: user.id,
         isAuthenticated: true,
         userId: user.id,
-        entityId: entityId,
+        entityId: entityId, // ID này sẽ được dùng để filter dự án
         role: userRole,
         type: userType as UserSession['type'],
-        email: user.email,
-        name: name || user.email?.split('@')[0] || "User",
+        email: profile.email || user.email,
+        name: displayName,
         avatarUrl: avatarUrl
     };
 });

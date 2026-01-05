@@ -825,3 +825,29 @@ export async function toggleCommentLike(commentId: string, isLiking: boolean): P
     return { success: true };
 }
 
+/**
+ * Lấy chi tiết dự án theo ID (Kèm thông tin Dictionary)
+ */
+export async function getProjectById(id: string) {
+    const supabase = await createSupabaseServerClient();
+
+    const { data, error } = await supabase
+        .from('projects')
+        .select(`
+            *,
+            status_data:sys_dictionaries!status_id ( name, color, code ),
+            type_data:sys_dictionaries!type_id ( name, code ),
+            risk_data:sys_dictionaries!risk_level_id ( name, color, code ),
+            priority_data:sys_dictionaries!priority_id ( name, color, code ),
+            customer:customers ( name, phone, email, avatar_url ),
+            manager:employees!project_manager ( name, email, avatar_url )
+        `)
+        .eq('id', id)
+        .single();
+
+    if (error) {
+        console.error("Get Project Error:", error);
+        return { success: false, error: error.message };
+    }
+    return { success: true, data };
+}
