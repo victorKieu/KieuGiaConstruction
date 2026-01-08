@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, CheckCircle, Circle, Loader2, AlertCircle } from "lucide-react";
+import { Plus, Trash2, CheckCircle, Circle, Loader2, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/utils";
 import {
     getPaymentMilestones,
@@ -16,7 +16,7 @@ import {
 
 interface Props {
     contractId: string;
-    contractValue: number;
+    contractValue: number; // Tổng giá trị hợp đồng
     projectId: string;
 }
 
@@ -27,15 +27,11 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
 
     // State cho dòng thêm mới
     const [newName, setNewName] = useState("");
-    const [newPercent, setNewPercent] = useState<number>(0);
-    const [newAmount, setNewAmount] = useState<number>(0);
+    const [newPercent, setNewPercent] = useState<string>(""); // Dùng string để dễ nhập liệu
+    const [newAmount, setNewAmount] = useState<string>("");
     const [newDueDate, setNewDueDate] = useState("");
 
-    // Load dữ liệu khi component mount hoặc contractId thay đổi
-    useEffect(() => {
-        loadData();
-    }, [contractId]);
-
+    // Load dữ liệu
     const loadData = async () => {
         setLoading(true);
         const res = await getPaymentMilestones(contractId);
@@ -45,198 +41,187 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
         setLoading(false);
     };
 
-    // Tự động tính tiền khi nhập % hoặc ngược lại
-    const handlePercentChange = (percent: number) => {
-        setNewPercent(percent);
-        setNewAmount(Math.round((contractValue * percent) / 100));
-    };
+    useEffect(() => {
+        loadData();
+    }, [contractId]);
 
-    const handleAmountChange = (amount: number) => {
-        setNewAmount(amount);
-        setNewPercent(parseFloat(((amount / contractValue) * 100).toFixed(2)));
-    };
+    // --- LOGIC TỰ ĐỘNG TÍNH TOÁN ---
 
-    // Xử lý thêm đợt thanh toán
-    const handleAdd = async () => {
-        if (!newName || newAmount <= 0) {
-            alert("Vui lòng nhập tên đợt và số tiền hợp lệ");
-            return;
+    // Khi thay đổi phần trăm
+    const handlePercentChange = (val: string) => {
+        setNewPercent(val);
+        const percent = parseFloat(val);
+        if (!isNaN(percent) && contractValue > 0) {
+            const calculatedAmount = (contractValue * percent) / 100;
+            setNewAmount(Math.round(calculatedAmount).toString());
+        } else {
+            setNewAmount("");
         }
+    };
+
+    // Khi thay đổi số tiền
+    const handleAmountChange = (val: string) => {
+        setNewAmount(val);
+        const amount = parseFloat(val);
+        if (!isNaN(amount) && contractValue > 0) {
+            const calculatedPercent = (amount / contractValue) * 100;
+            // Làm tròn 2 số thập phân cho đẹp
+            setNewPercent(Math.round(calculatedPercent * 100) / 100 + "");
+        } else {
+            setNewPercent("");
+        }
+    };
+
+    // Thêm mới
+    const handleAdd = () => {
+        if (!newName || !newAmount) return;
 
         startTransition(async () => {
             const res = await createPaymentMilestone({
                 contract_id: contractId,
                 name: newName,
-                percentage: newPercent,
-                amount: newAmount,
+                percentage: parseFloat(newPercent) || 0,
+                amount: parseFloat(newAmount) || 0,
                 due_date: newDueDate
             }, projectId);
 
             if (res.success) {
-                await loadData();
-                // Reset form
                 setNewName("");
-                setNewPercent(0);
-                setNewAmount(0);
+                setNewPercent("");
+                setNewAmount("");
                 setNewDueDate("");
+                loadData(); // Reload lại list
             } else {
-                alert("Lỗi: " + res.error);
+                alert(res.error);
             }
         });
     };
 
-    // Xử lý xóa
-    const handleDelete = async (id: string) => {
-        if (!confirm("Bạn có chắc chắn muốn xóa đợt thanh toán này?")) return;
-
-        const res = await deletePaymentMilestone(id, projectId);
-        if (res.success) {
+    // Xóa
+    const handleDelete = (id: string) => {
+        if (!confirm("Xóa đợt thanh toán này?")) return;
+        startTransition(async () => {
+            await deletePaymentMilestone(id, projectId);
             loadData();
-        } else {
-            alert(res.error);
-        }
+        });
     };
 
-    // Xử lý đổi trạng thái thu tiền
-    const handleTogglePaid = async (item: any) => {
-        const nextStatus = item.status === 'paid' ? false : true;
-        const res = await markAsPaid(item.id, nextStatus, projectId);
-        if (res.success) {
+    // Đổi trạng thái thanh toán
+    const handleTogglePaid = (item: any) => {
+        startTransition(async () => {
+            await markAsPaid(item.id, !item.is_paid, projectId);
             loadData();
-        }
+        });
     };
 
-    // Hàm hiển thị trạng thái (Có xử lý cảnh báo quá hạn)
-    const renderStatus = (item: any) => {
-        const isPaid = item.status === 'paid';
-        const isOverdue = !isPaid && item.due_date && new Date(item.due_date) < new Date();
-
-        if (isPaid) {
-            return (
-                <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200 gap-1">
-                    <CheckCircle className="w-3 h-3" /> Đã thu
-                </Badge>
-            );
-        }
-        if (isOverdue) {
-            return (
-                <Badge variant="destructive" className="gap-1 animate-pulse">
-                    <AlertCircle className="w-3 h-3" /> Quá hạn
-                </Badge>
-            );
-        }
-        return (
-            <Badge variant="outline" className="text-slate-500 gap-1">
-                <Circle className="w-3 h-3" /> Chờ thu
-            </Badge>
-        );
-    };
-
-    // Tính toán tổng số tiền đã lên lịch
-    const totalScheduled = milestones.reduce((sum, item) => sum + Number(item.amount), 0);
-    const remaining = contractValue - totalScheduled;
-
-    if (loading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-slate-400" /></div>;
+    // Tính tổng
+    const totalPercent = milestones.reduce((sum, m) => sum + (m.percentage || 0), 0);
+    const totalAmount = milestones.reduce((sum, m) => sum + (m.amount || 0), 0);
+    const remainingAmount = contractValue - totalAmount;
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+            <div className="flex justify-between items-center">
+                <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 text-slate-500" />
                     Tiến độ thanh toán
-                    <Badge variant="secondary" className="font-normal text-[10px]">
-                        {milestones.length} đợt
-                    </Badge>
                 </h3>
-                <div className="text-xs space-y-1 text-right w-full md:w-auto">
-                    <div className="text-slate-500">
-                        Tổng Hợp đồng: <span className="font-bold text-slate-700">{formatCurrency(contractValue)}</span>
-                    </div>
-                    <div className="flex gap-4 justify-end">
-                        <span>Đã lập lịch: <b className="text-blue-600">{formatCurrency(totalScheduled)}</b></span>
-                        <span className={remaining > 0 ? "text-orange-500" : remaining < 0 ? "text-red-500" : "text-green-600"}>
-                            {remaining > 0 ? `Còn thiếu: ${formatCurrency(remaining)}` : remaining < 0 ? `Vượt: ${formatCurrency(Math.abs(remaining))}` : "Đã đủ 100%"}
-                        </span>
-                    </div>
+                <div className="text-xs text-slate-500">
+                    Giá trị HĐ: <span className="font-bold text-blue-600">{formatCurrency(contractValue)}</span>
                 </div>
             </div>
 
-            <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+            <div className="border rounded-lg overflow-hidden">
                 <Table>
                     <TableHeader className="bg-slate-50">
                         <TableRow>
-                            <TableHead className="text-xs uppercase font-bold">Tên đợt thanh toán</TableHead>
-                            <TableHead className="text-xs uppercase font-bold w-[80px]">%</TableHead>
-                            <TableHead className="text-xs uppercase font-bold">Số tiền</TableHead>
-                            <TableHead className="text-xs uppercase font-bold">Hạn thu</TableHead>
-                            <TableHead className="text-xs uppercase font-bold">Trạng thái</TableHead>
-                            <TableHead className="text-right w-[50px]"></TableHead>
+                            <TableHead className="w-[50px] text-center">TT</TableHead>
+                            <TableHead>Nội dung đợt</TableHead>
+                            <TableHead className="w-[15%] text-right">%</TableHead>
+                            <TableHead className="w-[20%] text-right">Số tiền (VNĐ)</TableHead>
+                            <TableHead className="w-[15%]">Hạn TT</TableHead>
+                            <TableHead className="w-[12%] text-center">Trạng thái</TableHead>
+                            <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {milestones.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={6} className="text-center py-8 text-slate-400 text-sm italic">
-                                    Chưa có kế hoạch thanh toán. Hãy thêm đợt đầu tiên bên dưới.
+                        {loading ? (
+                            <TableRow><TableCell colSpan={7} className="text-center py-4">Đang tải...</TableCell></TableRow>
+                        ) : milestones.map((item, index) => (
+                            <TableRow key={item.id} className="hover:bg-slate-50">
+                                <TableCell className="text-center">{index + 1}</TableCell>
+                                <TableCell className="font-medium">{item.name}</TableCell>
+                                <TableCell className="text-right">{item.percentage}%</TableCell>
+                                <TableCell className="text-right font-semibold">{formatCurrency(item.amount)}</TableCell>
+                                <TableCell>
+                                    {item.due_date ? new Date(item.due_date).toLocaleDateString('vi-VN') : '-'}
                                 </TableCell>
-                            </TableRow>
-                        )}
-
-                        {milestones.map((ms) => (
-                            <TableRow key={ms.id} className="group">
-                                <TableCell className="font-medium text-slate-700">{ms.name}</TableCell>
-                                <TableCell className="text-slate-500">{ms.percentage}%</TableCell>
-                                <TableCell className="font-bold text-slate-900">{formatCurrency(ms.amount)}</TableCell>
-                                <TableCell className="text-slate-600 text-sm">
-                                    {ms.due_date ? new Date(ms.due_date).toLocaleDateString('vi-VN') : '---'}
+                                <TableCell className="text-center">
+                                    <div
+                                        className="cursor-pointer inline-flex"
+                                        onClick={() => handleTogglePaid(item)}
+                                        title="Bấm để đổi trạng thái"
+                                    >
+                                        {item.is_paid
+                                            ? <Badge className="bg-green-600 hover:bg-green-700"><CheckCircle className="w-3 h-3 mr-1" /> Đã thu</Badge>
+                                            : <Badge variant="outline" className="text-slate-500 hover:bg-slate-100"><Circle className="w-3 h-3 mr-1" /> Chưa thu</Badge>
+                                        }
+                                    </div>
                                 </TableCell>
                                 <TableCell>
-                                    <button
-                                        onClick={() => handleTogglePaid(ms)}
-                                        className="focus:outline-none transition-transform active:scale-95"
-                                        title="Click để đổi trạng thái thu tiền"
-                                    >
-                                        {renderStatus(ms)}
-                                    </button>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => handleDelete(ms.id)}
-                                        className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-600 transition-all"
-                                    >
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)} className="h-8 w-8 text-red-400 hover:text-red-600">
                                         <Trash2 className="w-4 h-4" />
                                     </Button>
                                 </TableCell>
                             </TableRow>
                         ))}
 
-                        {/* DÒNG THÊM MỚI (Quick Add) */}
-                        <TableRow className="bg-indigo-50/50 border-t-2 border-indigo-100">
+                        {/* Dòng Tổng cộng */}
+                        <TableRow className="bg-slate-50 font-bold border-t-2">
+                            <TableCell colSpan={2} className="text-right">Tổng cộng:</TableCell>
+                            <TableCell className={`text-right ${totalPercent > 100 ? 'text-red-600' : 'text-slate-700'}`}>
+                                {totalPercent}%
+                            </TableCell>
+                            <TableCell className={`text-right ${totalAmount > contractValue ? 'text-red-600' : 'text-slate-700'}`}>
+                                {formatCurrency(totalAmount)}
+                            </TableCell>
+                            <TableCell colSpan={3} className="text-xs text-slate-500 font-normal italic">
+                                {remainingAmount > 0
+                                    ? `(Còn lại: ${formatCurrency(remainingAmount)})`
+                                    : remainingAmount < 0
+                                        ? `(Vượt quá: ${formatCurrency(Math.abs(remainingAmount))})`
+                                        : "(Đã khớp đủ 100%)"
+                                }
+                            </TableCell>
+                        </TableRow>
+
+                        {/* Form thêm mới */}
+                        <TableRow className="bg-blue-50/50">
+                            <TableCell className="text-center"><Plus className="w-4 h-4 text-blue-500 mx-auto" /></TableCell>
                             <TableCell>
                                 <Input
-                                    placeholder="Tên đợt (VD: Đợt 1 - Tạm ứng)"
+                                    placeholder="Tên đợt (VD: Tạm ứng...)"
                                     value={newName}
                                     onChange={(e) => setNewName(e.target.value)}
-                                    className="h-8 text-sm border-indigo-200 focus:border-indigo-500"
+                                    className="h-8 text-sm border-blue-200 focus-visible:ring-blue-400"
                                 />
                             </TableCell>
                             <TableCell>
                                 <Input
                                     type="number"
                                     placeholder="%"
-                                    value={newPercent || ''}
-                                    onChange={(e) => handlePercentChange(Number(e.target.value))}
-                                    className="h-8 text-sm border-indigo-200"
+                                    value={newPercent}
+                                    onChange={(e) => handlePercentChange(e.target.value)}
+                                    className="h-8 text-sm text-right border-blue-200 focus-visible:ring-blue-400"
                                 />
                             </TableCell>
                             <TableCell>
                                 <Input
                                     type="number"
                                     placeholder="Số tiền"
-                                    value={newAmount || ''}
-                                    onChange={(e) => handleAmountChange(Number(e.target.value))}
-                                    className="h-8 text-sm font-bold border-indigo-200"
+                                    value={newAmount}
+                                    onChange={(e) => handleAmountChange(e.target.value)}
+                                    className="h-8 text-sm text-right border-blue-200 focus-visible:ring-blue-400 font-semibold"
                                 />
                             </TableCell>
                             <TableCell>
@@ -244,18 +229,17 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                                     type="date"
                                     value={newDueDate}
                                     onChange={(e) => setNewDueDate(e.target.value)}
-                                    className="h-8 text-sm border-indigo-200"
+                                    className="h-8 text-sm border-blue-200 focus-visible:ring-blue-400"
                                 />
                             </TableCell>
                             <TableCell colSpan={2} className="text-right">
                                 <Button
                                     size="sm"
                                     onClick={handleAdd}
-                                    disabled={isPending || !newName}
-                                    className="bg-indigo-600 hover:bg-indigo-700 h-8 shadow-sm"
+                                    disabled={isPending || !newName || !newAmount}
+                                    className="bg-blue-600 hover:bg-blue-700 h-8 shadow-sm w-full"
                                 >
-                                    {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 mr-1" />}
-                                    Thêm đợt
+                                    {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Thêm"}
                                 </Button>
                             </TableCell>
                         </TableRow>
@@ -264,7 +248,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
             </div>
 
             <p className="text-[11px] text-slate-400 italic">
-                * Mẹo: Nhập % để hệ thống tự tính tiền, hoặc nhập số tiền trực tiếp. Bấm vào nhãn Trạng thái để đánh dấu đã thu tiền.
+                * Nhập % sẽ tự tính tiền và ngược lại. Tổng giá trị các đợt nên bằng 100% giá trị hợp đồng.
             </p>
         </div>
     );

@@ -29,6 +29,9 @@ export default function RequestDetailClient({ req, projectId }: { req: any; proj
     const [processing, setProcessing] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
 
+    // Nếu req bị null (trường hợp hiếm), return null để tránh crash toàn trang
+    if (!req) return null;
+
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'pending': return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="w-3 h-3 mr-1" />Chờ duyệt</Badge>;
@@ -74,7 +77,10 @@ export default function RequestDetailClient({ req, projectId }: { req: any; proj
                             {req.code} {getStatusBadge(req.status)}
                         </h2>
                         <div className="text-sm text-muted-foreground mt-1">
-                            Ngày cần hàng: <span className="font-medium text-black">{format(new Date(req.deadline_date), "dd/MM/yyyy")}</span>
+                            {/* Check null trước khi format date */}
+                            Ngày cần hàng: <span className="font-medium text-black">
+                                {req.deadline_date ? format(new Date(req.deadline_date), "dd/MM/yyyy") : "---"}
+                            </span>
                             {req.priority === 'urgent' && <span className="ml-2 text-red-600 font-bold uppercase text-xs border border-red-200 bg-red-50 px-2 py-0.5 rounded">Gấp</span>}
                         </div>
                     </div>
@@ -132,15 +138,24 @@ export default function RequestDetailClient({ req, projectId }: { req: any; proj
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {req.items.map((item: any, index: number) => (
-                                        <TableRow key={item.id}>
-                                            <TableCell className="text-center text-muted-foreground w-[50px]">{index + 1}</TableCell>
-                                            <TableCell className="font-medium">{item.item_name}</TableCell>
-                                            <TableCell className="text-center">{item.unit}</TableCell>
-                                            <TableCell className="text-center font-bold">{item.quantity}</TableCell>
-                                            <TableCell className="text-muted-foreground text-sm">{item.notes}</TableCell>
+                                    {/* ✅ FIX LỖI Ở ĐÂY: Thêm (req.items || []).map để tránh crash khi undefined */}
+                                    {(req.items || []).length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                                                Không có chi tiết vật tư
+                                            </TableCell>
                                         </TableRow>
-                                    ))}
+                                    ) : (
+                                        (req.items || []).map((item: any, index: number) => (
+                                            <TableRow key={item.id || index}>
+                                                <TableCell className="text-center text-muted-foreground w-[50px]">{index + 1}</TableCell>
+                                                <TableCell className="font-medium">{item.item_name}</TableCell>
+                                                <TableCell className="text-center">{item.unit}</TableCell>
+                                                <TableCell className="text-center font-bold">{item.quantity}</TableCell>
+                                                <TableCell className="text-muted-foreground text-sm">{item.notes}</TableCell>
+                                            </TableRow>
+                                        ))
+                                    )}
                                 </TableBody>
                             </Table>
                         </CardContent>
@@ -168,12 +183,12 @@ export default function RequestDetailClient({ req, projectId }: { req: any; proj
                             </div>
                             <div>
                                 <div className="text-muted-foreground mb-1">Ngày lập phiếu</div>
-                                <div>{format(new Date(req.created_at), "dd/MM/yyyy HH:mm")}</div>
+                                {/* Check null trước khi format */}
+                                <div>{req.created_at ? format(new Date(req.created_at), "dd/MM/yyyy HH:mm") : "---"}</div>
                             </div>
                             {req.destination_warehouse_id && (
                                 <div>
                                     <div className="text-muted-foreground mb-1">Kho nhập hàng</div>
-                                    {/* Tạm thời hiển thị ID hoặc xử lý join tên kho trong query sau */}
                                     <div className="font-medium">Kho công trường</div>
                                 </div>
                             )}

@@ -15,7 +15,7 @@ export async function getFinanceCategories() {
     return data || [];
 }
 
-// 2. Tạo giao dịch mới
+// 2. Tạo giao dịch mới (Phiếu thu / Phiếu chi)
 export async function createTransactionAction(data: TransactionFormValues) {
     const supabase = await createClient();
 
@@ -64,7 +64,8 @@ export async function getTransactions() {
         .from("finance_transactions")
         .select(`
             *,
-            category:finance_categories (id, name, color, type)
+            category:finance_categories (id, name, color, type),
+            project:projects (name, code)
         `)
         .order("transaction_date", { ascending: false })
         .limit(20);
@@ -121,7 +122,7 @@ export async function getProjectsForSelect() {
     try {
         const { data, error } = await supabase
             .from("projects")
-            .select("id, name, code, status") // Bỏ project_type nếu không chắc chắn tên cột
+            .select("id, name, code, status_id")
             .order("created_at", { ascending: false });
 
         if (error) return [];
@@ -131,53 +132,133 @@ export async function getProjectsForSelect() {
     }
 }
 
-// ✅ 6. LẤY THỐNG KÊ TÀI CHÍNH DỰ ÁN (Sửa lại logic chuẩn)
+// ✅ 6. LẤY THỐNG KÊ TÀI CHÍNH DỰ ÁN (Đã tích hợp Hợp đồng & Vật tư & Sửa lỗi Schema)
 export async function getProjectFinanceStats(projectId: string) {
     const supabase = await createClient();
 
-    // 1. Tính Tổng Doanh Thu (Giá trị trên Hợp đồng đã ký)
-    const { data: contracts, error: contractError } = await supabase
+    // --- A. DOANH THU (Contracts) ---
+    // Chỉ lấy hợp đồng chưa bị hủy
+    const { data: contracts } = await supabase
         .from('contracts')
         .select('value')
         .eq('project_id', projectId)
-        .in('status', ['signed', 'liquidated']);
+        .neq('status', 'cancelled');
 
-    // 2. Tính Tổng Thực Thu (Tiền thực tế đã thu từ các đợt thanh toán)
-    // Cách fix: Select bảng payment_milestones và lọc theo cột lồng của bảng contracts
-    const { data: payments, error: paymentError } = await supabase
+    // --- B. THỰC THU & CÔNG NỢ (Payment Milestones) ---
+    // ✅ FIX: Dùng đúng tên bảng payment_milestones và cột status
+    const { data: payments } = await supabase
         .from('payment_milestones')
         .select(`
-            amount,
+            amount, 
+            status, 
+            due_date,
             contracts!inner(project_id) 
         `)
-        .eq('status', 'paid')
-        .eq('contracts.project_id', projectId); // Lọc theo project_id thông qua quan hệ join
+        .eq('contracts.project_id', projectId);
 
-    // 3. Tính Tổng Thực Chi (Từ các giao dịch chi phí nhập tay)
-    const { data: expenses, error: expenseError } = await supabase
+    // --- C. THỰC CHI (Expenses) ---
+    // 1. Chi phí từ giao dịch tài chính (Phiếu chi tiền mặt/CK)
+    const { data: expenses } = await supabase
         .from('finance_transactions')
         .select('amount')
         .eq('project_id', projectId)
         .eq('type', 'expense');
 
-    if (contractError || paymentError || expenseError) {
-        console.error("Lỗi lấy tài chính dự án:", { contractError, paymentError, expenseError });
-        return { totalRevenue: 0, totalCost: 0, actualReceived: 0, profit: 0, profitMargin: 0 };
+    // 2. Chi phí vật tư (Inventory Issues - Xuất kho)
+    let inventoryCost = 0;
+    try {
+        const { data: materialItems, error: invError } = await supabase
+            .from('goods_issue_items')
+            .select(`
+                quantity, 
+                unit_price,
+                goods_issues!inner(project_id)
+            `)
+            .eq('goods_issues.project_id', projectId);
+
+        if (!invError && materialItems) {
+            inventoryCost = materialItems.reduce((sum, item) => {
+                const qty = Number(item.quantity) || 0;
+                const price = Number(item.unit_price) || 0;
+                return sum + (qty * price);
+            }, 0);
+        }
+    } catch (e) {
+        console.warn("Lỗi query kho:", e);
     }
 
-    // Tính toán số liệu
+    // --- TÍNH TOÁN ---
+    // Doanh thu dự kiến
     const totalRevenue = contracts?.reduce((sum, item) => sum + (Number(item.value) || 0), 0) || 0;
-    const actualReceived = payments?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
-    const totalCost = expenses?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
 
-    const profit = totalRevenue - totalCost;
+    // Thực thu (Chỉ tính status = 'paid')
+    const actualReceived = payments?.reduce((sum, item) => {
+        return item.status === 'paid' ? sum + (Number(item.amount) || 0) : sum;
+    }, 0) || 0;
+
+    // Thực chi
+    const cashCost = expenses?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
+    const totalCost = cashCost + inventoryCost;
+
+    // Lợi nhuận & Tỷ suất
+    const profit = actualReceived - totalCost;
     const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
 
+    // Công nợ
+    const remainingDebt = totalRevenue - actualReceived;
+
+    // Số đợt quá hạn
+    const today = new Date();
+    const overdueCount = payments?.filter(p =>
+        p.status !== 'paid' && p.due_date && new Date(p.due_date) < today
+    ).length || 0;
+
     return {
-        totalRevenue,     // Doanh thu theo hợp đồng
-        actualReceived,   // Tiền mặt thực tế đã thu về
-        totalCost,        // Chi phí dự án
-        profit,           // Lợi nhuận gộp
-        profitMargin: parseFloat(profitMargin.toFixed(2))
+        totalRevenue,
+        actualReceived,
+        totalCost,
+        profit,
+        profitMargin: parseFloat(profitMargin.toFixed(2)),
+        remainingDebt,
+        overdueCount
     };
+}
+
+// 7. THANH TOÁN ĐƠN MUA HÀNG (PO) - Tạo phiếu chi tự động
+export async function createPaymentForPO(poId: string, amount: number, paymentMethod: string, notes: string) {
+    const supabase = await createClient();
+
+    // 1. Lấy thông tin PO
+    const { data: po, error: poError } = await supabase
+        .from('purchase_orders')
+        .select('id, code, project_id, supplier_id, total_amount')
+        .eq('id', poId)
+        .single();
+
+    if (poError || !po) return { success: false, error: "Không tìm thấy đơn hàng" };
+
+    // 2. Tạo Phiếu Chi (Transaction)
+    // Lưu ý: Cần tìm category_id phù hợp cho "Thanh toán NCC"
+    // Ở đây tạm thời để null hoặc bạn có thể query lấy ID mặc định
+    const { error: transError } = await supabase.from('finance_transactions').insert({
+        amount: amount,
+        type: 'expense',
+        transaction_date: new Date().toISOString(),
+        description: `Thanh toán đơn hàng ${po.code}. ${notes}`,
+        project_id: po.project_id,
+        po_id: po.id, // Link với PO
+        payment_method: paymentMethod,
+        created_at: new Date().toISOString()
+    });
+
+    if (transError) return { success: false, error: "Lỗi tạo phiếu chi: " + transError.message };
+
+    // 3. Cập nhật trạng thái thanh toán PO (nếu cần logic phức tạp hơn thì xử lý sau)
+    // Ví dụ: Nếu trả hết thì đánh dấu đã thanh toán xong
+    // await supabase.from('purchase_orders').update({ payment_status: 'paid' }).eq('id', poId);
+
+    revalidatePath(`/procurement/orders/${poId}`);
+    revalidatePath('/finance');
+
+    return { success: true, message: "Đã thanh toán thành công!" };
 }

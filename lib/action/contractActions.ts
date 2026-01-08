@@ -8,7 +8,7 @@ export async function getContracts(projectId: string) {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from('contracts')
-        .select('*')
+        .select('*, customers(name)') // Join thêm tên khách nếu cần
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
@@ -16,11 +16,11 @@ export async function getContracts(projectId: string) {
     return { success: true, data };
 }
 
-// 2. Tự động tạo Hợp đồng từ Báo giá (Đã điều chỉnh theo Schema có sẵn)
+// 2. Tự động tạo Hợp đồng từ Báo giá (Fix mapping dữ liệu)
 export async function createContractFromQuotation(quotationId: string, projectId: string) {
     const supabase = await createSupabaseServerClient();
 
-    // A. Lấy thông tin báo giá
+    // A. Lấy thông tin báo giá nguồn
     const { data: quote, error: quoteError } = await supabase
         .from('quotations')
         .select('*')
@@ -29,28 +29,27 @@ export async function createContractFromQuotation(quotationId: string, projectId
 
     if (quoteError || !quote) return { success: false, error: "Không tìm thấy báo giá gốc" };
 
-    // B. Chuẩn bị dữ liệu hợp đồng (Khớp với constraints của bạn)
+    // B. Chuẩn bị dữ liệu hợp đồng
     const contractData = {
         project_id: projectId,
-        quotation_id: quotationId, // Cột vừa thêm
-        customer_id: quote.client_id,
+        quotation_id: quotationId,
 
-        // Sinh số HĐ: Thay BG thành HĐ
-        contract_number: quote.quotation_number.replace('BG', 'HD'),
+        // ✅ FIX 1: Map đúng cột customer_id (thay vì client_id)
+        customer_id: quote.customer_id || quote.client_id,
+
+        // Sinh số HĐ: Thay BG thành HD
+        contract_number: quote.quotation_number ? quote.quotation_number.replace('BG', 'HD') : `HD-${Date.now()}`,
 
         title: `Hợp đồng thi công (Theo BG ${quote.quotation_number})`,
-        value: quote.quoted_amount,
-        status: 'draft', // Khớp với check constraint ['draft', 'signed'...]
 
-        // Các trường bắt buộc khác theo Schema của bạn
-        contract_type: 'service', // Giá trị hợp lệ: 'service', 'supply', 'maintenance', 'consulting'
-        contract_category: 'standard', // Giá trị hợp lệ: 'standard', 'vip', 'internal', 'external'
+        // ✅ FIX 2: Lấy đúng cột total_amount (thay vì quoted_amount) -> Fix lỗi giá trị = 0
+        value: quote.total_amount || 0,
 
+        status: 'draft',
+        contract_type: 'service',
+        contract_category: 'standard',
         content: quote.notes || "Các điều khoản theo quy định...",
         signing_date: new Date().toISOString().split('T')[0],
-
-        // created_by sẽ được Supabase tự xử lý nếu có trigger hoặc default, 
-        // nhưng nếu cần thiết có thể lấy từ session user.
     };
 
     // C. Insert vào DB
@@ -58,7 +57,6 @@ export async function createContractFromQuotation(quotationId: string, projectId
 
     if (error) {
         console.error("Create Contract Error:", error);
-        // Xử lý lỗi trùng số hợp đồng (nếu bấm tạo 2 lần)
         if (error.code === '23505') { // Unique violation
             return { success: false, error: "Hợp đồng từ báo giá này đã tồn tại!" };
         }
@@ -91,7 +89,7 @@ export type ContractInput = {
     signing_date?: string;
     status: string;
     value: number;
-    payment_terms?: string; // Điều khoản thanh toán
+    payment_terms?: string;
 };
 
 // 5. Hàm cập nhật hợp đồng

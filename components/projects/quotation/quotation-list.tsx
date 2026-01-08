@@ -16,7 +16,6 @@ interface QuotationListProps {
     quotations: any[]
     projectId: string
     onEdit: (quotation: any) => void
-    // ✅ Prop mới nhận hàm tạo hợp đồng từ cha
     onCreateContract?: (quotationId: string) => void
 }
 
@@ -69,7 +68,6 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
         }
     }
 
-    // Kiểm tra an toàn: Nếu không có dữ liệu
     if (!quotations || quotations.length === 0) {
         return (
             <Card className="border-dashed border-2 shadow-none">
@@ -127,13 +125,12 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
                                     {q.issue_date ? new Date(q.issue_date).toLocaleDateString('vi-VN') : '---'}
                                 </TableCell>
                                 <TableCell className="font-bold text-slate-700">
-                                    {formatCurrency(q.quoted_amount || 0)}
+                                    {/* ✅ FIX: Đổi quoted_amount -> total_amount để khớp với DB */}
+                                    {formatCurrency(q.total_amount || 0)}
                                 </TableCell>
                                 <TableCell>{getStatusBadge(q.status)}</TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1">
-
-                                        {/* 1. Nút Sửa (Chỉ hiện khi chưa chốt) */}
                                         {q.status !== 'accepted' && (
                                             <Button
                                                 variant="ghost"
@@ -147,7 +144,6 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
                                             </Button>
                                         )}
 
-                                        {/* 2. Nút Xóa (Luôn hiện để quản lý) */}
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -159,7 +155,6 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
                                             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                         </Button>
 
-                                        {/* 3. Nút Duyệt (Hiện khi chưa chốt) */}
                                         {q.status !== 'accepted' && (
                                             <Button
                                                 variant="ghost"
@@ -173,7 +168,6 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
                                             </Button>
                                         )}
 
-                                        {/* 4. ✅ NÚT TẠO HỢP ĐỒNG (QUAN TRỌNG: Chỉ hiện khi ĐÃ CHỐT & có hàm onCreateContract) */}
                                         {q.status === 'accepted' && onCreateContract && (
                                             <Button
                                                 variant="ghost"
@@ -186,7 +180,6 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
                                                 <FileSignature className="w-4 h-4" />
                                             </Button>
                                         )}
-
                                     </div>
                                 </TableCell>
                             </TableRow>

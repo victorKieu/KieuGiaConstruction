@@ -7,25 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LocateFixed, Loader2 } from "lucide-react";
-// ✅ FIX: Import Server Actions
 import { createProject, updateProject } from "@/lib/action/projectActions";
 
-const PROJECT_TYPES = [
-    { value: "building", label: "Công trình dân dụng" },
-    { value: "industrial", label: "Công trình công nghiệp" },
-    { value: "infrastructure", label: "Hạ tầng kỹ thuật" },
-    { value: "transport", label: "Giao thông" },
-    { value: "urban", label: "Đô thị" },
-    { value: "agriculture", label: "Nông nghiệp/Nông thôn" },
-    { value: "other", label: "Khác" },
-];
-
-const CONSTRUCTION_TYPES = [
-    { value: "new", label: "Xây mới" },
-    { value: "repair", label: "Sửa chữa" },
-    { value: "renovation", label: "Cải tiến" },
-    { value: "expansion", label: "Mở rộng" },
-];
+// ✅ INTERFACE: Thêm props projectTypes và constructionTypes
+interface ProjectFormProps {
+    initialData?: any;
+    customers: { id: string; name: string }[];
+    managers: { id: string; name: string }[];
+    projectTypes: { id: string; name: string }[];        // <-- MỚI
+    constructionTypes: { id: string; name: string }[];   // <-- MỚI
+    onSuccess?: () => void;
+}
 
 interface ProjectFormData {
     id?: string;
@@ -38,21 +30,22 @@ interface ProjectFormData {
     start_date: string;
     end_date: string;
     budget: string;
-    project_type: string;
-    construction_type: string;
+    type_id: string;                // <-- Dùng type_id thay vì project_type cũ
+    construction_type_id: string;   // <-- Dùng construction_type_id thay vì construction_type cũ
     description: string;
 }
 
-interface ProjectFormProps {
-    initialData?: any;
-    customers: { id: string; name: string }[];
-    managers: { id: string; name: string }[];
-    onSuccess?: () => void;
-}
-
-export default function ProjectForm({ initialData, customers, managers, onSuccess }: ProjectFormProps) {
+export default function ProjectForm({
+    initialData,
+    customers = [],
+    managers = [],
+    projectTypes = [],       // Nhận dữ liệu từ cha
+    constructionTypes = [],  // Nhận dữ liệu từ cha
+    onSuccess
+}: ProjectFormProps) {
 
     const router = useRouter();
+
     const [form, setForm] = useState<ProjectFormData>({
         name: "",
         code: "",
@@ -63,19 +56,25 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
         start_date: "",
         end_date: "",
         budget: "",
-        project_type: "",
-        construction_type: "",
+        // Ưu tiên lấy *_id nếu có, fallback về field cũ để tương thích ngược
+        type_id: initialData?.type_id || initialData?.project_type || "",
+        construction_type_id: initialData?.construction_type_id || initialData?.construction_type || "",
         description: "",
         ...initialData,
     });
 
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const initialDataRef = useRef<Partial<ProjectFormData>>(initialData);
+    const initialDataRef = useRef<any>(initialData);
 
     useEffect(() => {
-        if (JSON.stringify(initialData) !== JSON.stringify(initialDataRef.current)) {
-            setForm(f => ({ ...f, ...initialData }));
+        if (initialData && JSON.stringify(initialData) !== JSON.stringify(initialDataRef.current)) {
+            setForm(f => ({
+                ...f,
+                ...initialData,
+                type_id: initialData.type_id || initialData.project_type || "",
+                construction_type_id: initialData.construction_type_id || initialData.construction_type || ""
+            }));
             initialDataRef.current = initialData;
         }
     }, [initialData]);
@@ -95,7 +94,7 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
         }
     };
 
-    const parseNumber = (value: string) => value.replace(/,/g, "");
+    const parseNumber = (value: string) => value.toString().replace(/,/g, "");
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -103,15 +102,9 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
         setLoading(true);
 
         try {
-            // ✅ FIX: Chuyển đổi sang FormData để tương thích với Server Action
             const formData = new FormData();
+            if (form.id) formData.append("id", form.id);
 
-            // Append ID nếu đang ở chế độ Edit
-            if (form.id) {
-                formData.append("id", form.id);
-            }
-
-            // Append các trường dữ liệu
             formData.append("name", form.name);
             formData.append("code", form.code);
             formData.append("customer_id", form.customer_id || "");
@@ -120,13 +113,14 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
             formData.append("geocode", form.geocode || "");
             formData.append("start_date", form.start_date || "");
             formData.append("end_date", form.end_date || "");
-            // Xử lý budget: Xóa dấu phẩy trước khi gửi
             formData.append("budget", form.budget ? parseNumber(form.budget) : "0");
-            formData.append("project_type", form.project_type);
-            formData.append("construction_type", form.construction_type || "");
+
+            // Gửi ID của Dictionary
+            formData.append("type_id", form.type_id);
+            formData.append("construction_type_id", form.construction_type_id);
+
             formData.append("description", form.description || "");
 
-            // ✅ FIX: Gọi Server Action thay vì fetch API
             let result;
             if (form.id) {
                 result = await updateProject(formData);
@@ -135,16 +129,13 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
             }
 
             if (!result.success) {
-                throw new Error(result.error || "Có lỗi xảy ra khi lưu dự án");
+                throw new Error(result.error || "Có lỗi xảy ra");
             }
 
-            // Thành công
-            if (onSuccess) {
-                onSuccess();
-            } else {
-                // Redirect nếu không có callback onSuccess
+            if (onSuccess) onSuccess();
+            else {
                 router.push(form.id ? `/projects/${form.id}` : "/projects");
-                router.refresh(); // Refresh để cập nhật dữ liệu mới nhất
+                router.refresh();
             }
 
         } catch (err: any) {
@@ -158,7 +149,7 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
     return (
         <form onSubmit={handleSubmit} className="max-w-6xl mx-auto px-6 py-8 space-y-6 bg-white rounded-lg shadow-sm border">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Phần form bên trái */}
+                {/* CỘT TRÁI */}
                 <div className="flex flex-col gap-4">
                     <div>
                         <Label htmlFor="name">Tên dự án <span className="text-red-500">*</span></Label>
@@ -179,9 +170,7 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
                         >
                             <option value="">-- Chọn quản lý --</option>
                             {managers.map(m => (
-                                <option key={m.id} value={m.id}>
-                                    {m.name}
-                                </option>
+                                <option key={m.id} value={m.id}>{m.name}</option>
                             ))}
                         </select>
                     </div>
@@ -203,26 +192,30 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
                             placeholder="0"
                         />
                     </div>
+
+                    {/* ✅ DROPDOWN LOẠI HÌNH XÂY DỰNG TỪ PROPS */}
                     <div>
-                        <Label htmlFor="construction_type">Loại hình xây dựng</Label>
+                        <Label htmlFor="construction_type_id">Loại hình xây dựng</Label>
                         <select
-                            id="construction_type"
-                            name="construction_type"
-                            value={form.construction_type}
+                            id="construction_type_id"
+                            name="construction_type_id"
+                            value={form.construction_type_id}
                             onChange={handleChange}
                             className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <option value="">-- Chọn loại hình --</option>
-                            {CONSTRUCTION_TYPES.map(type => (
-                                <option key={type.value} value={type.value}>
-                                    {type.label}
-                                </option>
-                            ))}
+                            {constructionTypes.length > 0 ? (
+                                constructionTypes.map(type => (
+                                    <option key={type.id} value={type.id}>{type.name}</option>
+                                ))
+                            ) : (
+                                <option disabled>Không có dữ liệu</option>
+                            )}
                         </select>
                     </div>
                 </div>
 
-                {/* Phần form bên phải */}
+                {/* CỘT PHẢI */}
                 <div className="flex flex-col gap-4">
                     <div>
                         <Label htmlFor="code">Mã dự án <span className="text-red-500">*</span></Label>
@@ -248,9 +241,7 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
                         >
                             <option value="">-- Chọn chủ đầu tư --</option>
                             {customers.map(c => (
-                                <option key={c.id} value={c.id}>
-                                    {c.name}
-                                </option>
+                                <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
                     </div>
@@ -258,21 +249,25 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
                         <Label htmlFor="end_date">Ngày kết thúc</Label>
                         <Input id="end_date" name="end_date" type="date" value={form.end_date?.slice(0, 10) || ""} onChange={handleChange} />
                     </div>
+
+                    {/* ✅ DROPDOWN LOẠI DỰ ÁN TỪ PROPS */}
                     <div>
-                        <Label htmlFor="project_type">Loại dự án</Label>
+                        <Label htmlFor="type_id">Loại dự án</Label>
                         <select
-                            id="project_type"
-                            name="project_type"
-                            value={form.project_type}
+                            id="type_id"
+                            name="type_id"
+                            value={form.type_id}
                             onChange={handleChange}
                             className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <option value="">-- Chọn loại dự án --</option>
-                            {PROJECT_TYPES.map(type => (
-                                <option key={type.value} value={type.value}>
-                                    {type.label}
-                                </option>
-                            ))}
+                            {projectTypes.length > 0 ? (
+                                projectTypes.map(type => (
+                                    <option key={type.id} value={type.id}>{type.name}</option>
+                                ))
+                            ) : (
+                                <option disabled>Không có dữ liệu</option>
+                            )}
                         </select>
                     </div>
                 </div>
@@ -282,16 +277,10 @@ export default function ProjectForm({ initialData, customers, managers, onSucces
                 <Textarea id="description" name="description" value={form.description} onChange={handleChange} rows={4} placeholder="Thông tin chi tiết về dự án..." />
             </div>
 
-            {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center">
-                    {error}
-                </div>
-            )}
+            {error && <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm text-center">{error}</div>}
 
             <div className="flex justify-end gap-4 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => router.back()}>
-                    Hủy bỏ
-                </Button>
+                <Button type="button" variant="outline" onClick={() => router.back()}>Hủy bỏ</Button>
                 <Button type="submit" disabled={loading} className="min-w-[120px]">
                     {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     {form.id ? "Lưu thay đổi" : "Tạo dự án"}

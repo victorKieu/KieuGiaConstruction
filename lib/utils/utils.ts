@@ -18,14 +18,18 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
     });
     return formatter.format(amount);
 }
-
 export function formatDate(date: string | Date): string {
     if (!date) return "Không xác định";
     return new Date(date).toLocaleDateString("vi-VN", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
     })
+}
+export function formatDateVN(date: string | Date): string {
+    if (!date) return "Ngày ... tháng ... năm ...";
+    const d = new Date(date);
+    return `Ngày ${d.getDate()} tháng ${d.getMonth() + 1} năm ${d.getFullYear()}`;
 }
 
 export function getStatusColor(status: string): string {

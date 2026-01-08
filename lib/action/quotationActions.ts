@@ -2,50 +2,128 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { getCurrentSession } from "@/lib/supabase/session";
 
+// --- 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU (TYPE DEFINITIONS) ---
+// Khớp hoàn toàn với Form và Database schema mới
 export type QuotationInput = {
     id?: string;
     project_id: string;
-    client_id?: string; // Có thể null từ form gửi lên
+    customer_id?: string;
     quotation_number: string;
+    title: string;          // Tên công trình / Tiêu đề
     issue_date: string;
-    valid_until?: string;
-    notes?: string;
     status: string;
+    notes?: string;         // Ghi chú chung của báo giá
+    total_amount: number;   // Tổng tiền (Sau thuế)
     items: {
         id?: string;
+        item_type: string;  // 'section' (Mục) hoặc 'item' (Công việc)
         work_item_name: string;
-        unit: string;
+        details?: string;   // Diễn giải khối lượng (VD: 5x5...)
+        unit?: string;
         quantity: number;
         unit_price: number;
-        notes?: string;
+        vat_rate: number;   // Thuế VAT từng dòng (0, 5, 8, 10...)
+        notes?: string;     // Ghi chú riêng từng dòng
     }[];
 }
 
-/**
- * Lấy danh sách Báo giá của một Dự án
- */
-export async function getQuotations(projectId: string) {
+// --- 2. HÀM LƯU BÁO GIÁ (SAVE) ---
+export async function saveQuotation(payload: QuotationInput) {
     const supabase = await createSupabaseServerClient();
 
-    // Query kèm thông tin người tạo (nếu cần)
+    // A. Chuẩn bị dữ liệu Header
+    const quotationData = {
+        project_id: payload.project_id,
+
+        // ✅ Map dữ liệu khách hàng vào cột customer_id trong DB
+        customer_id: payload.customer_id,
+
+        quotation_number: payload.quotation_number,
+        title: payload.title,
+        issue_date: payload.issue_date,
+        status: payload.status,
+        notes: payload.notes,
+        total_amount: payload.total_amount,
+        //address: payload.address,
+        updated_at: new Date().toISOString()
+    };
+
+    let quotationId = payload.id;
+
+    // B. Thực hiện Lưu Header (Upsert)
+    if (quotationId) {
+        // Update
+        const { error } = await supabase
+            .from('quotations')
+            .update(quotationData)
+            .eq('id', quotationId);
+
+        if (error) return { success: false, error: "Lỗi cập nhật thông tin chung: " + error.message };
+    } else {
+        // Insert
+        const { data, error } = await supabase
+            .from('quotations')
+            .insert(quotationData)
+            .select('id')
+            .single();
+
+        if (error) return { success: false, error: "Lỗi tạo báo giá mới: " + error.message };
+        quotationId = data.id;
+    }
+
+    // C. Xử lý Chi tiết (Items)
+    if (quotationId) {
+        // Xóa hết items cũ
+        const { error: deleteError } = await supabase
+            .from('quotation_items')
+            .delete()
+            .eq('quotation_id', quotationId);
+
+        if (deleteError) return { success: false, error: "Lỗi xóa chi tiết cũ: " + deleteError.message };
+
+        // Insert items mới
+        if (payload.items && payload.items.length > 0) {
+            const itemsToInsert = payload.items.map(item => ({
+                quotation_id: quotationId,
+                item_type: item.item_type || 'item',
+                work_item_name: item.work_item_name,
+                details: item.details,
+                unit: item.unit,
+                quantity: item.quantity || 0,
+                unit_price: item.unit_price || 0,
+                vat_rate: item.vat_rate || 0,
+                notes: item.notes
+            }));
+
+            const { error: insertError } = await supabase
+                .from('quotation_items')
+                .insert(itemsToInsert);
+
+            if (insertError) return { success: false, error: "Lỗi lưu chi tiết hạng mục: " + insertError.message };
+        }
+    }
+
+    revalidatePath(`/projects/${payload.project_id}`);
+    return { success: true, message: "Đã lưu báo giá thành công!" };
+}
+
+// --- 3. CÁC HÀM GET DATA ---
+
+// Lấy danh sách báo giá của dự án
+export async function getQuotations(projectId: string) {
+    const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from('quotations')
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error("Error fetching quotations:", error);
-        return { success: false, error: error.message };
-    }
+    if (error) return { success: false, error: error.message };
     return { success: true, data };
 }
 
-/**
- * Lấy chi tiết một Báo giá (kèm Items)
- */
+// Lấy chi tiết 1 báo giá (kèm items) để sửa
 export async function getQuotationById(id: string) {
     const supabase = await createSupabaseServerClient();
 
@@ -60,174 +138,67 @@ export async function getQuotationById(id: string) {
 
     if (error) return { success: false, error: error.message };
 
-    // Sắp xếp items (nếu cần)
-    if (data.items) {
-        data.items.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    // Sắp xếp items theo ID tăng dần để giữ thứ tự nhập liệu
+    if (data.items && Array.isArray(data.items)) {
+        data.items.sort((a: any, b: any) => (a.id > b.id ? 1 : -1));
     }
 
     return { success: true, data };
 }
 
-/**
- * Lưu Báo Giá (Xử lý cả Tạo mới & Cập nhật)
- */
-export async function saveQuotation(input: QuotationInput) {
-    const supabase = await createSupabaseServerClient();
-    const session = await getCurrentSession();
+// --- 4. CÁC HÀM TƯƠNG TÁC (DELETE, APPROVE) ---
 
-    if (!session.isAuthenticated) {
-        return { success: false, error: "Bạn chưa đăng nhập" };
-    }
-
-    // 1. Tự động lấy Client ID từ Dự án (Logic sửa lỗi)
-    let clientId = input.client_id;
-
-    if (!clientId) {
-        // Nếu form không gửi client_id, ta lấy từ project
-        const { data: project } = await supabase
-            .from('projects')
-            .select('customer_id')
-            .eq('id', input.project_id)
-            .single();
-
-        if (project && project.customer_id) {
-            clientId = project.customer_id;
-        } else {
-            // Trường hợp dự án chưa gán khách hàng -> Báo lỗi chặn lại
-            return {
-                success: false,
-                error: "Dự án này chưa có Khách hàng. Vui lòng cập nhật Khách hàng cho dự án trước khi tạo báo giá."
-            };
-        }
-    }
-
-    // 2. Tính toán tổng tiền
-    const totalAmount = input.items.reduce((sum, item) => {
-        return sum + (item.quantity * item.unit_price);
-    }, 0);
-
-    const quotationData = {
-        project_id: input.project_id,
-        client_id: clientId, // ✅ Đã có dữ liệu chắc chắn
-        quotation_number: input.quotation_number,
-        issue_date: input.issue_date,
-        valid_until: input.valid_until,
-        notes: input.notes,
-        status: input.status,
-        quoted_amount: totalAmount,
-    };
-
-    let quotationId = input.id;
-
-    try {
-        if (quotationId) {
-            // === UPDATE ===
-            const { error: updateError } = await supabase
-                .from('quotations')
-                .update({ ...quotationData, updated_at: new Date().toISOString() })
-                .eq('id', quotationId);
-
-            if (updateError) throw updateError;
-
-            // Xóa items cũ để insert lại (Strategy đơn giản)
-            await supabase.from('quotation_items').delete().eq('quotation_id', quotationId);
-
-        } else {
-            // === CREATE ===
-            const { data: newQuotation, error: createError } = await supabase
-                .from('quotations')
-                .insert(quotationData)
-                .select('id')
-                .single();
-
-            if (createError) throw createError;
-            quotationId = newQuotation.id;
-        }
-
-        // 3. Insert Items
-        if (input.items.length > 0) {
-            const itemsToInsert = input.items.map(item => ({
-                quotation_id: quotationId,
-                work_item_name: item.work_item_name,
-                unit: item.unit,
-                quantity: item.quantity,
-                unit_price: item.unit_price,
-                notes: item.notes,
-            }));
-
-            const { error: itemsError } = await supabase
-                .from('quotation_items')
-                .insert(itemsToInsert);
-
-            if (itemsError) throw itemsError;
-        }
-
-        revalidatePath(`/projects/${input.project_id}`);
-        return { success: true, message: "Lưu báo giá thành công!", id: quotationId };
-
-    } catch (error: any) {
-        console.error("Save Quotation Error:", error);
-        return { success: false, error: error.message || "Lỗi khi lưu báo giá" };
-    }
-}
-
-/**
- * Xóa Báo Giá
- */
+// Xóa báo giá
 export async function deleteQuotation(id: string, projectId: string) {
     const supabase = await createSupabaseServerClient();
-    const session = await getCurrentSession();
-
-    // Check quyền (chỉ admin/manager được xóa) - Giả định logic check role
-    if (session.role !== 'admin' && session.role !== 'manager') {
-        return { success: false, error: "Bạn không có quyền xóa báo giá" };
-    }
-
     const { error } = await supabase.from('quotations').delete().eq('id', id);
 
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã xóa báo giá" };
+    return { success: true, message: "Đã xóa thành công" };
 }
 
-/**
- * Chốt Báo Giá (Duyệt) -> Tự động update Ngân sách Dự án
- * Đây là logic "Chặt chẽ" chúng ta cần
- */
+// ✅ [BỔ SUNG] Hàm Duyệt Báo Giá (Fix lỗi build)
 export async function approveQuotation(id: string, projectId: string) {
     const supabase = await createSupabaseServerClient();
 
-    // 1. Lấy thông tin báo giá
-    const { data: quotation } = await supabase.from('quotations').select('quoted_amount').eq('id', id).single();
-    if (!quotation) return { success: false, error: "Không tìm thấy báo giá" };
-
-    // 2. Cập nhật trạng thái Báo giá -> Accepted
-    const { error: quoteError } = await supabase
+    // 1. Cập nhật trạng thái
+    const { error } = await supabase
         .from('quotations')
-        .update({ status: 'accepted' }) // Hoặc lấy ID từ sys_dictionaries nếu đã migrate
+        .update({
+            status: 'accepted', // Hoặc 'approved' tùy quy ước DB
+            updated_at: new Date().toISOString()
+        })
         .eq('id', id);
-    if (quoteError) return { success: false, error: quoteError.message };
 
-    // 3. Tự động cập nhật Ngân sách dự án (quoted_amount_total)
-    // Logic: Cộng dồn tất cả báo giá 'accepted' của dự án này
-    // (Hoặc chỉ lấy cái này làm ngân sách chính - tùy quy trình. Ở đây chọn cách cộng dồn an toàn)
+    if (error) return { success: false, error: error.message };
 
-    // Query lại tổng tiền các báo giá đã duyệt
+    // 2. (Tùy chọn) Tính tổng ngân sách đã duyệt để update ngược vào Project
+    // Logic: Lấy tất cả báo giá 'accepted' của dự án -> Cộng dồn -> Update bảng projects
     const { data: allAccepted } = await supabase
         .from('quotations')
-        .select('quoted_amount')
+        .select('total_amount') // Sử dụng cột total_amount mới
         .eq('project_id', projectId)
-        .eq('status', 'accepted'); // Lưu ý: map với code trong sys_dictionaries
+        .eq('status', 'accepted');
 
-    const totalApproved = allAccepted?.reduce((sum, q) => sum + (q.quoted_amount || 0), 0) || 0;
+    const totalApproved = allAccepted?.reduce((sum, q) => sum + (q.total_amount || 0), 0) || 0;
 
-    // Update Project
+    // Update vào bảng Project (Giả sử có cột quoted_amount_total)
     await supabase
         .from('projects')
         .update({ quoted_amount_total: totalApproved })
         .eq('id', projectId);
 
     revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã duyệt báo giá và cập nhật ngân sách dự án" };
+    return { success: true, message: "Đã duyệt báo giá thành công!" };
+}
+
+// --- 5. ALIAS CHO TƯƠNG THÍCH CODE CŨ ---
+export async function createQuotation(data: QuotationInput, projectId: string) {
+    return saveQuotation({ ...data, project_id: projectId });
+}
+
+export async function updateQuotation(data: QuotationInput, projectId: string) {
+    return saveQuotation({ ...data, project_id: projectId });
 }

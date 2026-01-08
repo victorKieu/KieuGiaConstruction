@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Plus, ArrowLeft, FileSignature, FileText } from "lucide-react"
 import QuotationList from "@/components/projects/quotation/quotation-list"
 import { QuotationForm } from "@/components/projects/quotation/quotation-form"
-// ✅ Import Contract Form mới
 import { ContractForm } from "@/components/projects/contract/contract-form"
 import { getQuotationById } from "@/lib/action/quotationActions"
 import { createContractFromQuotation } from "@/lib/action/contractActions"
@@ -15,6 +14,7 @@ import { useRouter } from "next/navigation"
 
 interface Props {
     projectId: string,
+    project: any, // ✅ THÊM: Nhận object project để lấy tên & địa chỉ
     quotations: any[],
     contracts?: any[]
 }
@@ -22,10 +22,9 @@ interface Props {
 // Định nghĩa các chế độ view
 type ViewMode = 'list' | 'quotation-form' | 'contract-form';
 
-export default function QuotationPageClient({ projectId, quotations, contracts = [] }: Props) {
+export default function QuotationPageClient({ projectId, project, quotations, contracts = [] }: Props) {
     const router = useRouter();
 
-    // Đổi state view đơn giản thành ViewMode
     const [view, setView] = useState<ViewMode>('list')
     const [editingData, setEditingData] = useState<any>(null)
 
@@ -46,7 +45,6 @@ export default function QuotationPageClient({ projectId, quotations, contracts =
     }
 
     // --- LOGIC HỢP ĐỒNG ---
-    // ✅ Hàm xử lý khi bấm "Xem chi tiết" trên ContractList
     const handleEditContract = (contract: any) => {
         setEditingData(contract)
         setView('contract-form')
@@ -81,6 +79,7 @@ export default function QuotationPageClient({ projectId, quotations, contracts =
                     </h2>
                     <QuotationForm
                         projectId={projectId}
+                        project={project} // ✅ TRUYỀN PROJECT XUỐNG FORM
                         initialData={editingData}
                         onSuccess={() => setView('list')}
                         onCancel={() => setView('list')}
@@ -90,7 +89,7 @@ export default function QuotationPageClient({ projectId, quotations, contracts =
         )
     }
 
-    // --- ✅ RENDER VIEW: CONTRACT FORM ---
+    // --- RENDER VIEW: CONTRACT FORM ---
     if (view === 'contract-form') {
         return (
             <div className="animate-in slide-in-from-right duration-300">
@@ -125,7 +124,6 @@ export default function QuotationPageClient({ projectId, quotations, contracts =
                     <h3 className="text-lg font-bold text-slate-800">Hợp đồng Dự án</h3>
                 </div>
 
-                {/* ✅ Truyền hàm handleEditContract xuống */}
                 <ContractList
                     contracts={contracts}
                     projectId={projectId}

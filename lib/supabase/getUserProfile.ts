@@ -80,3 +80,10 @@ export const getUserProfile = cache(async () => {
         avatar_url: profile.avatar_url || null
     };
 });
+
+// ✅ THÊM HÀM NÀY VÀO CUỐI FILE
+export const checkIsAdmin = async () => {
+    const profile = await getUserProfile();
+    // Kiểm tra role code là 'ADMIN' (Hoặc mã bạn quy định trong sys_dictionaries)
+    return profile?.isAuthenticated && profile.role === 'ADMIN';
+};
