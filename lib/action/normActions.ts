@@ -39,51 +39,69 @@ export async function saveNorm(data: any) {
 
     const supabase = await createClient();
 
-    // Validate cơ bản
-    if (!data.code || !data.name) return { success: false, error: "Thiếu thông tin bắt buộc" };
+    // 1. Validate dữ liệu cơ bản
+    if (!data.code || !data.name) return { success: false, error: "Mã và Tên định mức là bắt buộc" };
 
-    const normData = {
-        code: data.code,
-        name: data.name,
-        unit: data.unit,
-        type: data.type || "company",
-        group_id: data.group_id || null // ✅ Lưu nhóm
-    };
+    try {
+        const normData = {
+            code: data.code.trim(),
+            name: data.name.trim(),
+            unit: data.unit?.trim() || "",
+            type: data.type || "company",
+            // Quan trọng: Chuyển chuỗi rỗng thành null để tránh lỗi UUID invalid
+            group_id: data.group_id && data.group_id !== "" ? data.group_id : null
+        };
 
-    let normId = data.id;
+        let normId = data.id;
 
-    // Check trùng mã (nếu tạo mới)
-    if (!normId) {
-        const { data: exist } = await supabase.from("norm_definitions").select("id").eq("code", normData.code).single();
-        if (exist) return { success: false, error: "Mã định mức đã tồn tại!" };
-    }
-
-    if (normId) {
-        await supabase.from("norm_definitions").update(normData).eq("id", normId);
-    } else {
-        const { data: newNorm, error } = await supabase.from("norm_definitions").insert(normData).select("id").single();
-        if (error) return { success: false, error: error.message };
-        normId = newNorm.id;
-    }
-
-    // Lưu Details (Giữ nguyên logic cũ)
-    if (normId) {
-        await supabase.from("norm_analysis").delete().eq("norm_id", normId);
-        if (data.details && data.details.length > 0) {
-            const detailsData = data.details.map((item: any) => ({
-                norm_id: normId,
-                material_code: item.material_code || "N/A",
-                material_name: item.material_name,
-                unit: item.unit,
-                quantity: item.quantity
-            }));
-            const { error: dtError } = await supabase.from("norm_analysis").insert(detailsData);
-            if (dtError) return { success: false, error: "Lỗi lưu chi tiết: " + dtError.message };
+        // 2. Check trùng mã (nếu tạo mới)
+        if (!normId) {
+            const { data: exist } = await supabase.from("norm_definitions").select("id").eq("code", normData.code).single();
+            if (exist) return { success: false, error: `Mã định mức "${normData.code}" đã tồn tại!` };
         }
-    }
 
-    revalidatePath("/admin/dictionaries/norms");
-    return { success: true, message: "Đã lưu định mức!" };
+        // 3. Insert / Update Header
+        if (normId) {
+            const { error } = await supabase.from("norm_definitions").update(normData).eq("id", normId);
+            if (error) throw new Error("Lỗi cập nhật header: " + error.message);
+        } else {
+            const { data: newNorm, error } = await supabase.from("norm_definitions").insert(normData).select("id").single();
+            if (error) throw new Error("Lỗi tạo mới: " + error.message);
+            normId = newNorm.id;
+        }
+
+        // 4. Lưu Details (Hao phí)
+        if (normId) {
+            // Xóa cũ
+            await supabase.from("norm_analysis").delete().eq("norm_id", normId);
+
+            if (data.details && data.details.length > 0) {
+                // Lọc bỏ các dòng rỗng (không có mã VT)
+                const validDetails = data.details.filter((d: any) => d.material_code && d.material_code !== "");
+
+                if (validDetails.length > 0) {
+                    const detailsData = validDetails.map((item: any) => ({
+                        norm_id: normId,
+                        material_code: item.material_code,
+                        material_name: item.material_name || "Vật tư",
+                        unit: item.unit || "",
+                        // Quan trọng: Ép kiểu số, nếu lỗi hoặc rỗng thì về 0
+                        quantity: Number(item.quantity) || 0
+                    }));
+
+                    const { error: dtError } = await supabase.from("norm_analysis").insert(detailsData);
+                    if (dtError) throw new Error("Lỗi lưu chi tiết vật tư: " + dtError.message);
+                }
+            }
+        }
+
+        revalidatePath("/admin/dictionaries/norms");
+        return { success: true, message: "Đã lưu định mức thành công!" };
+
+    } catch (e: any) {
+        console.error("Save Norm Error:", e);
+        return { success: false, error: e.message };
+    }
 }
 
 // --- 4. XÓA ĐỊNH MỨC ---

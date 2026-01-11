@@ -80,62 +80,73 @@ export async function getPurchaseOrderById(id: string) {
     return data;
 }
 
-// Tạo mới Đơn hàng
+// --- 4. TẠO PO THỦ CÔNG (MANUAL) ---
 export async function createPurchaseOrderAction(data: PurchaseOrderFormValues) {
     const supabase = await createClient();
 
-    const validated = purchaseOrderSchema.safeParse(data);
-    if (!validated.success) return { success: false, error: "Dữ liệu đơn hàng lỗi" };
+    try {
+        // ... (Giữ nguyên các đoạn validate đầu hàm) ...
+        if (!data.project_id) return { success: false, error: "Vui lòng chọn Dự án" };
+        if (!data.supplier_id) return { success: false, error: "Vui lòng chọn Nhà cung cấp" };
+        if (!data.items || data.items.length === 0) return { success: false, error: "Đơn hàng phải có ít nhất 1 sản phẩm" };
 
-    const { items, ...poData } = validated.data;
+        const { data: { user } } = await supabase.auth.getUser();
 
-    // Tính tổng tiền (đã gồm VAT)
-    const totalAmount = items.reduce((sum, item) => {
-        const preTaxTotal = item.quantity * item.unit_price;
-        const vatAmount = preTaxTotal * (item.vat_rate / 100);
-        return sum + preTaxTotal + vatAmount;
-    }, 0);
+        // ✅ FIX: Tính tổng tiền trước khi tạo Header
+        // Công thức: Tổng = SL * Đơn giá * (1 + VAT%)
+        const calculatedTotal = data.items.reduce((sum, item) => {
+            const qty = Number(item.quantity) || 0;
+            const price = Number(item.unit_price) || 0;
+            const vat = Number(item.vat_rate) || 0;
+            const lineTotal = qty * price * (1 + vat / 100);
+            return sum + lineTotal;
+        }, 0);
 
-    // 1. Tạo Header
-    const { data: po, error: poError } = await supabase
-        .from("purchase_orders")
-        .insert({
-            code: poData.code,
-            project_id: poData.project_id,
-            supplier_id: poData.supplier_id,
-            order_date: poData.order_date.toISOString(),
-            expected_delivery_date: poData.expected_delivery_date?.toISOString(),
-            notes: poData.notes,
-            total_amount: totalAmount,
-            status: 'ordered',
-            created_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
+        // A. Tạo Header PO
+        const { data: po, error: poError } = await supabase
+            .from('purchase_orders')
+            .insert({
+                code: data.code,
+                project_id: data.project_id,
+                request_id: null,
+                supplier_id: data.supplier_id,
+                created_by: user?.id,
+                order_date: data.order_date ? new Date(data.order_date).toISOString() : new Date().toISOString(),
+                notes: data.notes || "",
+                status: 'ordered',
+                total_amount: calculatedTotal // ✅ LƯU TỔNG TIỀN ĐÃ TÍNH
+            })
+            .select()
+            .single();
 
-    if (poError || !po) {
-        return { success: false, error: "Lỗi khi tạo đơn hàng: " + poError?.message };
+        if (poError) throw new Error("Lỗi tạo PO: " + poError.message);
+
+        // B. Tạo PO Items (Giữ nguyên logic cũ)
+        const poItemsData = data.items.map(item => ({
+            po_id: po.id,
+            item_name: item.item_name,
+            unit: item.unit,
+            quantity: Number(item.quantity),
+            unit_price: Number(item.unit_price || 0),
+            vat_rate: Number(item.vat_rate || 0),
+            // Lưu thêm total_price cho từng dòng để sau này dễ đối chiếu
+            // total_price: Number(item.quantity) * Number(item.unit_price) * (1 + (item.vat_rate || 0) / 100)
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('purchase_order_items')
+            .insert(poItemsData);
+
+        if (itemsError) throw new Error("Lỗi lưu chi tiết PO: " + itemsError.message);
+
+        revalidatePath("/procurement/orders");
+        revalidatePath("/procurement");
+
+        return { success: true, message: "Đã tạo đơn hàng thành công!" };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
     }
-
-    // 2. Tạo Items
-    const itemsToInsert = items.map(item => ({
-        po_id: po.id,
-        item_name: item.item_name,
-        unit: item.unit,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        vat_rate: item.vat_rate
-    }));
-
-    const { error: itemsError } = await supabase.from("purchase_order_items").insert(itemsToInsert);
-
-    if (itemsError) {
-        await supabase.from("purchase_orders").delete().eq("id", po.id);
-        return { success: false, error: "Lỗi khi lưu chi tiết vật tư" };
-    }
-
-    revalidatePath("/procurement/orders");
-    return { success: true, message: "Tạo đơn mua hàng thành công!" };
 }
 
 // Cập nhật Đơn hàng (Edit)
@@ -387,4 +398,247 @@ export async function createPaymentForPOAction(
     revalidatePath("/finance");
 
     return { success: true, message: "Đã lập phiếu chi thành công!" };
+}
+
+// ==========================================
+// [MỚI] LOGIC XỬ LÝ YÊU CẦU -> PO (SPLIT PO)
+// ==========================================
+
+// 1. Lấy danh sách Yêu cầu vật tư cần xử lý (Pending/Approved) của Dự án
+export async function getProjectProcurementRequests(projectId: string) {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from('material_requests')
+        .select(`*, items:material_request_items(*), requester:requester_id(name)`) // requester link user_profiles
+        .eq('project_id', projectId)
+        .in('status', ['approved', 'processing']) // Chỉ lấy đơn đã duyệt hoặc đang xử lý dở
+        .order('created_at', { ascending: false });
+
+    if (error) return [];
+    return data || [];
+}
+
+// 2. Tính toán trạng thái từng món trong Yêu cầu (Đã đặt bao nhiêu / Còn lại bao nhiêu)
+export async function getRequestItemsWithStatus(requestId: string) {
+    const supabase = await createClient();
+
+    // A. Lấy items gốc của Request
+    const { data: requestItems } = await supabase
+        .from('material_request_items')
+        .select('*')
+        .eq('request_id', requestId);
+
+    if (!requestItems) return [];
+
+    // B. Lấy các PO Items đã tạo từ Request này
+    const { data: existingPos } = await supabase
+        .from('purchase_orders')
+        .select('id, items:purchase_order_items(item_name, quantity)')
+        .eq('request_id', requestId);
+
+    // C. Tính tổng đã đặt
+    const orderedMap = new Map<string, number>();
+    existingPos?.forEach(po => {
+        po.items.forEach((poItem: any) => {
+            const current = orderedMap.get(poItem.item_name) || 0;
+            orderedMap.set(poItem.item_name, current + Number(poItem.quantity));
+        });
+    });
+
+    // D. Merge dữ liệu
+    return requestItems.map(item => {
+        const ordered = orderedMap.get(item.item_name) || 0;
+        const requested = Number(item.quantity);
+        const remaining = Math.max(0, requested - ordered);
+
+        return {
+            ...item,
+            ordered_quantity: ordered,
+            remaining_quantity: remaining,
+            is_fully_ordered: remaining === 0
+        };
+    });
+}
+
+// 3. Tạo PO từ các món được chọn (Split PO)
+export async function getWarehouses() {
+    const supabase = await createClient();
+    const { data } = await supabase.from('warehouses').select('*').eq('status', 'active');
+    return data || [];
+}
+
+// [CẬP NHẬT] Tạo PO có chỉ định KHO NHẬP (warehouseId)
+export async function createSplitPOAction(
+    projectId: string,
+    requestId: string,
+    supplierId: string,
+    warehouseId: string, // <-- THAM SỐ MỚI QUAN TRỌNG
+    deliveryDate: string,
+    itemsToOrder: any[]
+) {
+    const supabase = await createClient();
+    if (!projectId) {
+        const { data: req } = await supabase.from('material_requests').select('project_id').eq('id', requestId).single();
+        if (req) projectId = req.project_id;
+    }
+    if (!warehouseId) return { success: false, error: "Vui lòng chọn Kho nhận hàng!" };
+    if (itemsToOrder.length === 0) return { success: false, error: "Chưa chọn vật tư nào!" };
+
+    try {
+        // A. Tạo Header PO
+        const code = `PO-${Date.now().toString().slice(-6)}`;
+
+        const { data: po, error: poError } = await supabase
+            .from('purchase_orders')
+            .insert({
+                project_id: projectId,
+                request_id: requestId,
+                supplier_id: supplierId,
+
+                // ✅ LƯU KHO NHẬN HÀNG VÀO PO
+                warehouse_id: warehouseId, // Cần đảm bảo bảng purchase_orders có cột này
+
+                code: code,
+                order_date: new Date().toISOString(),
+                expected_delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null,
+                status: 'draft', // ✅ Tạo ở trạng thái Draft để còn sửa/duyệt như quy trình cũ
+                total_amount: 0
+            })
+            .select()
+            .single();
+
+        if (poError) throw new Error("Lỗi tạo PO: " + poError.message);
+
+        // B. Tạo PO Items
+        const poItemsData = itemsToOrder.map(item => ({
+            po_id: po.id,
+            item_name: item.item_name,
+            unit: item.unit,
+            quantity: Number(item.quantity),
+            unit_price: 0, // Giá tạm = 0, Kế toán sẽ vào Edit để nhập giá
+            vat_rate: 0
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('purchase_order_items')
+            .insert(poItemsData);
+
+        if (itemsError) throw new Error("Lỗi lưu chi tiết: " + itemsError.message);
+
+        // C. Update trạng thái Request -> 'processing'
+        await supabase.from('material_requests').update({ status: 'processing' }).eq('id', requestId);
+
+        revalidatePath(`/procurement`);
+
+        // Trả về ID của PO để redirect sang trang Edit
+        return { success: true, message: "Đã tạo PO Nháp!", poId: po.id };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+// ==========================================
+// [MỚI] CENTRAL PROCUREMENT (XỬ LÝ TRUNG TÂM)
+// ==========================================
+
+// 1. Lấy TẤT CẢ yêu cầu đã duyệt từ MỌI dự án
+export async function getAllPendingRequests() {
+    const supabase = await createClient();
+
+    // Lấy các request có status là 'approved' (đã duyệt) hoặc 'processing' (đang mua dở)
+    // Join thêm bảng projects để biết của dự án nào
+    const { data, error } = await supabase
+        .from('material_requests')
+        .select(`
+            *,
+            items:material_request_items(*),
+            project:projects(id, name, code),
+            requester:requester_id(name)
+        `)
+        .in('status', ['approved', 'processing'])
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Lỗi getAllPendingRequests:", error);
+        return [];
+    }
+    return data || [];
+}
+
+// 2. Hàm thống kê nhanh (Dashboard)
+export async function getProcurementStats() {
+    const supabase = await createClient();
+
+    // Đếm số lượng request chờ xử lý
+    const { count: pendingCount } = await supabase
+        .from('material_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'approved');
+
+    // Đếm số PO đang chờ hàng
+    const { count: orderedCount } = await supabase
+        .from('purchase_orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'ordered');
+
+    return {
+        pendingRequests: pendingCount || 0,
+        activePOs: orderedCount || 0
+    };
+}
+
+// --- 5. LẤY CHI TIẾT REQUEST ĐỂ FILL VÀO FORM PO ---
+export async function getMaterialRequestForPO(requestId: string) {
+    const supabase = await createClient();
+
+    // 1. Lấy thông tin Header (để biết Project nào)
+    const { data: req, error } = await supabase
+        .from('material_requests')
+        .select('id, project_id, code')
+        .eq('id', requestId)
+        .single();
+
+    if (error || !req) return null;
+
+    // 2. Lấy danh sách vật tư gốc
+    const { data: requestItems } = await supabase
+        .from('material_request_items')
+        .select('*')
+        .eq('request_id', requestId);
+
+    if (!requestItems) return { projectId: req.project_id, items: [] };
+
+    // 3. Tính toán số lượng đã đặt (để trừ ra số còn lại)
+    const { data: existingPos } = await supabase
+        .from('purchase_orders')
+        .select('id, items:purchase_order_items(item_name, quantity)')
+        .eq('request_id', requestId);
+
+    const orderedMap = new Map<string, number>();
+    existingPos?.forEach(po => {
+        po.items.forEach((poItem: any) => {
+            const current = orderedMap.get(poItem.item_name) || 0;
+            orderedMap.set(poItem.item_name, current + Number(poItem.quantity));
+        });
+    });
+
+    // 4. Lọc ra các món chưa mua hết
+    const itemsToOrder = requestItems
+        .map(item => {
+            const ordered = orderedMap.get(item.item_name) || 0;
+            const remaining = Math.max(0, Number(item.quantity) - ordered);
+            return {
+                item_name: item.item_name,
+                unit: item.unit,
+                quantity: remaining, // Gợi ý số lượng là số còn lại
+                unit_price: 0,
+                vat_rate: 0
+            };
+        })
+        .filter(item => item.quantity > 0); // Chỉ lấy món còn cần mua
+
+    return {
+        projectId: req.project_id,
+        items: itemsToOrder
+    };
 }

@@ -1,12 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import Link from "next/link";
 import ProjectList from "@/components/projects/project-list";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "@/lib/supabase/session";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
 
 export default async function ProjectsPage() {
     const supabase = await createSupabaseServerClient();

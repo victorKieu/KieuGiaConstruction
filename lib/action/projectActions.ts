@@ -885,3 +885,15 @@ export async function getProjectById(id: string) {
     }
     return { success: true, data: result.data };
 }
+
+// Hàm lấy danh sách dự án (id, name, code) để sử dụng trong dropdown hoặc liên kết
+export async function getProjectsList() {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, code')
+        .order('created_at', { ascending: false });
+
+    if (error) return [];
+    return data || [];
+}

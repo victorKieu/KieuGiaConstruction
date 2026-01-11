@@ -18,26 +18,23 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 
-// Định nghĩa kiểu dữ liệu khớp với bảng materials
 interface Material {
     id: string;
     code: string;
     name: string;
     unit: string;
-    group?: { name: string }; // Nếu có join với group
+    group?: { name: string };
 }
 
 interface Props {
-    value?: string; // Giá trị hiện tại (Mã Code)
-    onChange: (material: Material) => void; // Trả về cả object để điền form
+    value?: string;
+    onChange: (material: Material) => void;
     materials: Material[];
     disabled?: boolean;
 }
 
 export function MaterialCombobox({ value, onChange, materials = [], disabled }: Props) {
     const [open, setOpen] = React.useState(false);
-
-    // Tìm vật tư đang được chọn để hiển thị tên
     const selectedMaterial = materials.find((m) => m.code === value);
 
     return (
@@ -69,10 +66,9 @@ export function MaterialCombobox({ value, onChange, materials = [], disabled }: 
                             {materials.map((mat) => (
                                 <CommandItem
                                     key={mat.id}
-                                    // Value search kết hợp cả tên và mã để tìm kiếm linh hoạt
                                     value={`${mat.name} ${mat.code}`}
                                     onSelect={() => {
-                                        onChange(mat); // Trả về object mat
+                                        onChange(mat);
                                         setOpen(false);
                                     }}
                                     className="cursor-pointer border-b last:border-0"

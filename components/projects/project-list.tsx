@@ -5,8 +5,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
     MoreVertical, Calendar, Briefcase, DollarSign, ArrowUpRight, ArrowDownRight,
-    AlertTriangle, Eye, Edit, Trash2, ListMinus, ScrollText, ReceiptText, Plus, Loader2,
-    Banknote // ✅ Đã import Banknote
+    AlertTriangle, Eye, Edit, Trash2, ReceiptText, Plus, Loader2,
+    Banknote, ScrollText // ✅ Đã thêm import ScrollText
 } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
@@ -125,15 +125,12 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
             )}
 
             {projects.map((projectItem) => {
-                // ✅ Ép kiểu any để truy cập các trường mở rộng (tránh lỗi TS nếu Type chưa update)
                 const project = projectItem as any;
 
                 const planProgress = project.progress || 0
-                const actualProgress = (project.progress || 0) * 0.8 // Giả lập logic
+                const actualProgress = (project.progress || 0) * 0.8
                 const kpiProgress = Math.min(100, Math.max(0, planProgress))
                 const kpiDeviation = Math.min(100, Math.max(0, Math.abs(planProgress - actualProgress)))
-                const kpiActualForecast = Math.min(100, Math.max(0, actualProgress * 1.2))
-                const kpiPlanForecast = Math.min(100, Math.max(0, planProgress * 1.1))
 
                 return (
                     <Card key={project.id} className="overflow-hidden hover:shadow-md transition-shadow duration-300 border-slate-200">
@@ -150,7 +147,6 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                     <div className="text-sm text-slate-500 mt-1.5 flex flex-wrap gap-2 items-center">
                                         <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-xs">#{project.code}</span>
                                         <span className="text-slate-300">•</span>
-                                        {/* ✅ Fix hiển thị người tạo: Ưu tiên manager -> creator -> employees (legacy) */}
                                         <span>Quản lý: <span className="font-medium text-slate-700">{project.manager?.name || project.employees?.name || '---'}</span></span>
 
                                         {project.customers?.name && (
@@ -162,6 +158,7 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                     </div>
                                 </div>
 
+                                {/* MENU RÚT GỌN (Tối ưu) */}
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -169,12 +166,15 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-56">
+
+                                        {/* Hành động chính */}
                                         <DropdownMenuItem asChild>
                                             <Link href={`/projects/${project.id}`}>
                                                 <Eye className="h-4 w-4 mr-2 text-slate-500" />
                                                 Xem chi tiết
                                             </Link>
                                         </DropdownMenuItem>
+
                                         <DropdownMenuItem asChild>
                                             <Link href={`/projects/${project.id}/edit`}>
                                                 <Edit className="h-4 w-4 mr-2 text-slate-500" />
@@ -182,36 +182,7 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                             </Link>
                                         </DropdownMenuItem>
 
-                                        <DropdownMenuSeparator />
-
-                                        <DropdownMenuItem asChild>
-                                            <Link href={`/projects/${project.id}?tab=survey`}>
-                                                <ListMinus className="h-4 w-4 mr-2 text-slate-500" />
-                                                Khảo sát công trình
-                                            </Link>
-                                        </DropdownMenuItem>
-
-                                        <DropdownMenuItem asChild>
-                                            <Link href={`/projects/${project.id}?tab=qto`}>
-                                                <ListMinus className="h-4 w-4 mr-2 text-slate-500" />
-                                                Bóc tách khối lượng
-                                            </Link>
-                                        </DropdownMenuItem>
-
-                                        <DropdownMenuItem asChild>
-                                            <Link href={`/projects/${project.id}?tab=estimation`}>
-                                                <ScrollText className="h-4 w-4 mr-2 text-slate-500" />
-                                                Dự toán
-                                            </Link>
-                                        </DropdownMenuItem>
-
-                                        <DropdownMenuItem asChild>
-                                            <Link href={`/projects/${project.id}/quotation`}>
-                                                <ReceiptText className="h-4 w-4 mr-2 text-slate-500" />
-                                                Báo giá
-                                            </Link>
-                                        </DropdownMenuItem>
-
+                                        {/* Nhật ký công trình */}
                                         <DropdownMenuItem asChild>
                                             <Link href={`/projects/${project.id}/logs`}>
                                                 <ReceiptText className="h-4 w-4 mr-2 text-slate-500" />
@@ -219,9 +190,14 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                             </Link>
                                         </DropdownMenuItem>
 
-                                        <DropdownMenuSeparator />
+                                        {/* Xóa dự án (Chỉ Admin) */}
+                                        {canDelete && (
+                                            <>
+                                                <DropdownMenuSeparator />
+                                                <DeleteActionItem project={project} />
+                                            </>
+                                        )}
 
-                                        {canDelete && <DeleteActionItem project={project} />}
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             </div>
@@ -230,9 +206,8 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                         {/* BODY */}
                         <div className="p-5">
                             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                                {/* CỘT TRÁI: TIẾN ĐỘ & KPI */}
+                                {/* CỘT TRÁI: TIẾN ĐỘ */}
                                 <div className="xl:col-span-2 space-y-6">
-                                    {/* Ngày tháng & Rủi ro */}
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 bg-white rounded-full shadow-sm"><Calendar className="h-4 w-4 text-blue-500" /></div>
@@ -279,7 +254,7 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                         </div>
                                     </div>
 
-                                    {/* KPI Grid (Giữ nguyên UI) */}
+                                    {/* KPI Grid */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div className="bg-white border border-slate-100 rounded p-3">
                                             <div className="flex justify-between mb-2">
@@ -299,11 +274,10 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                                 <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${kpiDeviation}%` }}></div>
                                             </div>
                                         </div>
-                                        {/* ... Thêm các KPI khác nếu cần ... */}
                                     </div>
                                 </div>
 
-                                {/* CỘT PHẢI: TÀI CHÍNH & TỔNG QUAN */}
+                                {/* CỘT PHẢI: TÀI CHÍNH */}
                                 <div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
@@ -314,7 +288,6 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                                     <div className="font-bold text-lg text-slate-800">{project.total_tasks ?? "0"}</div>
                                                 </div>
                                             </div>
-                                            {/* Mini Pie Chart Placeholder */}
                                             <div className="relative w-12 h-12">
                                                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
                                                     <circle cx="50" cy="50" r="40" fill="none" stroke="#e2e8f0" strokeWidth="12" />
@@ -333,6 +306,7 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
 
                                         <div className="p-3 border border-slate-100 rounded-lg bg-slate-50/50">
                                             <div className="flex items-center gap-2 mb-1">
+                                                {/* ✅ ĐÃ SỬA: Dùng đúng icon ScrollText */}
                                                 <ScrollText className="h-3.5 w-3.5 text-purple-500" />
                                                 <span className="text-[10px] uppercase text-slate-500 font-semibold">Dự toán</span>
                                             </div>
@@ -364,7 +338,6 @@ export default function ProjectList({ projects, currentUserRole }: ProjectListPr
                                         </div>
                                     </div>
 
-                                    {/* ✅ PHẦN HIỂN THỊ HỢP ĐỒNG (MỚI THÊM) */}
                                     <div className="mt-4 pt-4 border-t border-slate-100">
                                         <div className="flex items-center gap-2 mt-2 text-sm text-slate-600">
                                             <Banknote className="w-4 h-4 text-green-600" />

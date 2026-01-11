@@ -99,21 +99,32 @@ export default function TaskCommentSection({ taskId, projectId, members, current
     const createCommentBound = createComment.bind(null, projectId, taskId);
     const [createState, createAction, isCreatePending] = useActionState(createCommentBound, initialState);
     const triggerRefresh = useCallback(() => setRefreshKey(prev => prev + 1), []);
- 
+    //const commentIds = comments.map((c: any) => c.id);
     useEffect(() => {
         const fetchCurrentUserProfile = async () => {
-            if (!currentUserId) return;
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
             const { data, error } = await supabase
                 .from('user_profiles')
                 .select('name, avatar_url')
-                .eq('id', currentUserId)
-                .single();
+                .eq('id', user.id)
+                .maybeSingle();
 
-            if (data) {
+            if (error) {
+                console.error("Lỗi fetch profile:", error.message);
+                // Fallback nếu lỗi hệ thống
+                setCurrentUserProfile({ name: user.email?.split('@')[0] || 'Người dùng', avatar_url: undefined });
+            } else if (data) {
+                // Có profile
                 setCurrentUserProfile(data);
             } else {
-                console.error("không thể lấy user profile:", error?.message);
-                setCurrentUserProfile({ name: 'Bạn', avatar_url: undefined });
+                // ✅ Trường hợp không có dòng nào (User mới chưa có profile)
+                // Fallback lấy tên từ email để không bị lỗi
+                setCurrentUserProfile({
+                    name: user.email?.split('@')[0] || 'Người dùng',
+                    avatar_url: undefined
+                });
             }
         };
         fetchCurrentUserProfile();
@@ -123,41 +134,76 @@ export default function TaskCommentSection({ taskId, projectId, members, current
         setIsLoading(true);
         setFetchError(null);
         try {
+            // 1. Lấy dữ liệu comment
+            // Lưu ý: data được gán tên alias là commentsData để tránh trùng tên
             const { data: commentsData, error: commentsError, count } = await supabase
                 .from('project_comments')
                 .select(`id, project_id, content, created_at, updated_at, parent_comment_id, likes_count, created_by:user_profiles!created_by (id, name, avatar_url)`, { count: 'exact' })
                 .eq('task_id', taskId)
                 .order('created_at', { ascending: true });
+
             if (commentsError) throw commentsError;
             setTotalCommentCount(count || 0);
 
-            const commentIds = commentsData.map(c => c.id);
+            // 2. Lấy danh sách ID để query like
+            // ✅ FIX TS2552: Đảm bảo commentsData tồn tại bằng (commentsData || [])
+            // ✅ FIX TS7006: Gán kiểu (c: any) cho biến trong map
+            const safeCommentsData = commentsData || [];
+            const commentIds = safeCommentsData.map((c: any) => c.id);
+
             if (commentIds.length > 0) {
-                const { data: commentLikesData } = await supabase.from('comment_likes').select('comment_id').eq('user_id', currentUserId).in('comment_id', commentIds);
-                setLikedComments(new Set(commentLikesData?.map(l => l.comment_id) || []));
+                const { data: commentLikesData } = await supabase
+                    .from('comment_likes')
+                    .select('comment_id')
+                    .eq('user_id', currentUserId)
+                    .in('comment_id', commentIds);
+
+                setLikedComments(new Set(commentLikesData?.map((l: any) => l.comment_id) || []));
             }
 
-            const { data: taskData, error: taskError } = await supabase.from('project_tasks').select('likes_count').eq('id', taskId).single();
+            // 3. Lấy thông tin like của Task
+            const { data: taskData, error: taskError } = await supabase
+                .from('project_tasks')
+                .select('likes_count')
+                .eq('id', taskId)
+                .single();
+
             if (taskError) throw taskError;
-            const { data: taskLikeData, error: taskLikeError } = await supabase.from('task_likes').select('task_id').eq('user_id', currentUserId).eq('task_id', taskId).maybeSingle();
+
+            const { data: taskLikeData, error: taskLikeError } = await supabase
+                .from('task_likes')
+                .select('task_id')
+                .eq('user_id', currentUserId)
+                .eq('task_id', taskId)
+                .maybeSingle();
+
             if (taskLikeError) throw taskLikeError;
+
             setTaskLikeState({ isLiked: !!taskLikeData, count: taskData.likes_count || 0 });
 
+            // 4. Xử lý phân cấp comment (Cha - Con)
             const commentMap = new Map<string, CommentData>();
             const rootComments: CommentData[] = [];
-            commentsData.forEach(comment => {
-                commentMap.set(comment.id, { ...comment, replies: [] } as unknown as CommentData);
+
+            // Duyệt mảng an toàn (đã xử lý null ở trên)
+            safeCommentsData.forEach((comment: any) => {
+                // Ép kiểu dữ liệu về CommentData để khớp với state
+                const formattedComment = { ...comment, replies: [] } as unknown as CommentData;
+                commentMap.set(comment.id, formattedComment);
             });
+
             commentMap.forEach(commentNode => {
                 if (commentNode.parent_comment_id && commentMap.has(commentNode.parent_comment_id)) {
                     commentMap.get(commentNode.parent_comment_id)!.replies!.push(commentNode);
                 } else {
-                    rootComments.push(commentNode as unknown as CommentData);
+                    rootComments.push(commentNode);
                 }
             });
+
             setComments(rootComments);
 
         } catch (err: any) {
+            console.error("Error fetching comments:", err);
             setFetchError(err.message || "Could not fetch data.");
         } finally {
             setIsLoading(false);
@@ -370,7 +416,7 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                         {fetchError && <Alert variant="destructive"><AlertTitle>Lỗi</AlertTitle><AlertDescription>{fetchError}</AlertDescription></Alert>}
                         {isLoading && <div className="text-center py-4 text-gray-500">Đang tải...</div>}
                         {!isLoading && !fetchError && comments.length === 0 && <p className="text-sm text-center py-4 text-gray-400">Chưa có bình luận nào.</p>}
-                        {!isLoading && !fetchError && comments.map(c => <CommentItem key={c.id} comment={c} onActionSuccess={triggerRefresh} />)}
+                        {!isLoading && !fetchError && comments.map((c: CommentData) => <CommentItem key={c.id} comment={c} onActionSuccess={triggerRefresh} />)}
                     </div>
                 </>
             )}

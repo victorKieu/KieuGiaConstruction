@@ -61,7 +61,7 @@ const navItems = [
         permission: "finance:view",
         children: [
             { title: "Thu/ Chi", href: "/finance/accounting" },
-            { title: "Công nợ", href: "/finance/debts" },
+            { title: "QL Thanh Toán NCC", href: "/finance/payables" },
         ],
     },
     {
@@ -98,6 +98,7 @@ const navItems = [
         //permission: "procurement:view",
         children: [
             { title: "Danh sách nhà cung cấp", href: "/procurement/suppliers" },
+            { title: "Kế hoạch mua vật tư", href: "/procurement" },
             { title: "QL Nhu Cầu Mua Hàng", href: "/procurement/orders" },
         ],
     },

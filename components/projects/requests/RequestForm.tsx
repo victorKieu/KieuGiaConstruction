@@ -1,84 +1,103 @@
-﻿"use client"
+﻿"use client";
 
-import { useState, useTransition } from "react"
-import { useForm, useFieldArray } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { format } from "date-fns"
-import { Calendar as CalendarIcon, Save, Loader2, Plus, Trash2, Box } from "lucide-react"
+import { useState } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { CalendarIcon, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
+import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Calendar } from "@/components/ui/calendar"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Calendar } from "@/components/ui/calendar";
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from "@/components/ui/form";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils/utils";
 
-import { materialRequestSchema, MaterialRequestFormValues } from "@/lib/schemas/request"
-import { saveMaterialRequest } from "@/lib/action/request"
-import { cn } from "@/lib/utils/utils"
+// Import Schema & Server Action
+import { MaterialRequestFormValues, materialRequestSchema } from "@/lib/schemas/request";
+import { saveMaterialRequest } from "@/lib/action/request";
 
 interface RequestFormProps {
-    projectId: string
-    initialData?: any
-    warehouses?: { id: string; name: string }[]
-    onSuccess?: () => void
-    onCancel?: () => void
+    initialData?: any;
+    projectId: string;
+    warehouses: any[];
+    onSuccess?: () => void;
 }
 
-export function RequestForm({ projectId, initialData, warehouses = [], onSuccess, onCancel }: RequestFormProps) {
-    const [isPending, startTransition] = useTransition()
+export default function RequestForm({ initialData, projectId, warehouses, onSuccess }: RequestFormProps) {
+    const [loading, setLoading] = useState(false);
 
-    // Sinh mã phiếu mặc định: PR-YYMMDD-XXXX
-    const defaultCode = `PR-${format(new Date(), 'yyMMdd')}-${Math.floor(1000 + Math.random() * 9000)}`;
-
+    // ✅ [FIX QUAN TRỌNG]: Thêm <MaterialRequestFormValues> vào sau useForm
+    // Điều này báo cho TypeScript biết cấu trúc chính xác của Form
     const form = useForm<MaterialRequestFormValues>({
         resolver: zodResolver(materialRequestSchema),
-        defaultValues: initialData ? {
-            ...initialData,
+        defaultValues: initialData || {
+            code: `REQ-${format(new Date(), "yyMMdd")}-${Math.floor(Math.random() * 1000)}`,
             project_id: projectId,
-            deadline_date: initialData.deadline_date ? new Date(initialData.deadline_date) : new Date(),
-            items: initialData.items || []
-        } : {
-            project_id: projectId,
-            code: defaultCode,
-            priority: "normal",
+            destination_warehouse_id: "",
             deadline_date: new Date(),
-            items: [{ item_name: "", unit: "", quantity: 1, notes: "" }]
-        }
-    })
+            priority: "normal",
+            notes: "",
+            items: [
+                { item_name: "", unit: "", quantity: 0, notes: "" }
+            ]
+        },
+    });
 
     const { fields, append, remove } = useFieldArray({
         control: form.control,
-        name: "items"
-    })
+        name: "items",
+    });
 
-    const onSubmit = (data: MaterialRequestFormValues) => {
-        startTransition(async () => {
-            // Fix: Truyền đúng warehouse_id (nếu rỗng thì gửi null)
-            const payload = {
-                ...data,
-                destination_warehouse_id: data.destination_warehouse_id || null
-            };
+    // Hàm Submit
+    // Lúc này TypeScript đã hiểu 'data' chính là MaterialRequestFormValues nhờ dòng useForm ở trên
+    const onSubmit = async (data: MaterialRequestFormValues) => {
+        setLoading(true);
 
-            const res = await saveMaterialRequest(payload);
-            if (res.success) {
-                alert(res.message);
-                if (onSuccess) onSuccess();
-            } else {
-                alert("Lỗi: " + res.error);
-            }
-        })
-    }
+        const payload = initialData?.id ? { ...data, id: initialData.id } : data;
+
+        const res = await saveMaterialRequest(payload);
+
+        setLoading(false);
+
+        if (res.success) {
+            toast.success(res.message);
+            if (onSuccess) onSuccess();
+        } else {
+            toast.error(res.error);
+        }
+    };
 
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
-                {/* 1. THÔNG TIN CHUNG */}
+                {/* --- PHẦN 1: THÔNG TIN CHUNG --- */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
                     <FormField
                         control={form.control}
                         name="code"
@@ -86,7 +105,7 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
                             <FormItem>
                                 <FormLabel>Mã phiếu <span className="text-red-500">*</span></FormLabel>
                                 <FormControl>
-                                    <Input {...field} className="font-bold bg-slate-50" />
+                                    <Input {...field} placeholder="REQ-..." readOnly className="bg-slate-50 font-mono" />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -97,16 +116,23 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
                         control={form.control}
                         name="deadline_date"
                         render={({ field }) => (
-                            <FormItem className="flex flex-col">
+                            <FormItem>
                                 <FormLabel>Ngày cần hàng <span className="text-red-500">*</span></FormLabel>
                                 <Popover>
                                     <PopoverTrigger asChild>
                                         <FormControl>
                                             <Button
                                                 variant={"outline"}
-                                                className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                                                className={cn(
+                                                    "w-full pl-3 text-left font-normal",
+                                                    !field.value && "text-muted-foreground"
+                                                )}
                                             >
-                                                {field.value ? format(field.value, "dd/MM/yyyy") : <span>Chọn ngày</span>}
+                                                {field.value ? (
+                                                    format(field.value, "dd/MM/yyyy", { locale: vi })
+                                                ) : (
+                                                    <span>Chọn ngày</span>
+                                                )}
                                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                             </Button>
                                         </FormControl>
@@ -116,6 +142,7 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
                                             mode="single"
                                             selected={field.value}
                                             onSelect={field.onChange}
+                                            disabled={(date) => date < new Date("1900-01-01")}
                                             initialFocus
                                         />
                                     </PopoverContent>
@@ -127,21 +154,22 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
 
                     <FormField
                         control={form.control}
-                        name="priority"
+                        name="destination_warehouse_id"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Độ ưu tiên</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormLabel>Kho nhận (Tại dự án)</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
                                     <FormControl>
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Chọn độ ưu tiên" />
+                                            <SelectValue placeholder="-- Chọn kho --" />
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        <SelectItem value="low">Thấp</SelectItem>
-                                        <SelectItem value="normal">Bình thường</SelectItem>
-                                        <SelectItem value="high">Cao</SelectItem>
-                                        <SelectItem value="urgent">Khẩn cấp</SelectItem>
+                                        {warehouses.map((w) => (
+                                            <SelectItem key={w.id} value={w.id}>
+                                                {w.name}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -149,23 +177,23 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
                         )}
                     />
 
-                    {/* Chọn kho nhập (Optional) */}
                     <FormField
                         control={form.control}
-                        name="destination_warehouse_id"
+                        name="priority"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Nhập về kho (Tùy chọn)</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value || undefined}>
+                                <FormLabel>Mức độ ưu tiên</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
                                     <FormControl>
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Chọn kho..." />
+                                            <SelectValue placeholder="Chọn mức độ" />
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        {warehouses.length > 0 ? warehouses.map(w => (
-                                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                                        )) : <div className="p-2 text-sm text-gray-500">Chưa có kho nào</div>}
+                                        <SelectItem value="low">Thấp</SelectItem>
+                                        <SelectItem value="normal">Bình thường</SelectItem>
+                                        <SelectItem value="high">Cao</SelectItem>
+                                        <SelectItem value="urgent" className="text-red-600 font-medium">Khẩn cấp</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -179,98 +207,92 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
                     name="notes"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Ghi chú / Diễn giải</FormLabel>
+                            <FormLabel>Ghi chú chung</FormLabel>
                             <FormControl>
-                                <Textarea placeholder="VD: Cần gấp để đổ bê tông sàn tầng 2..." {...field} />
+                                {/* Fix lỗi null value */}
+                                <Textarea {...field} value={field.value ?? ""} placeholder="Lý do, địa điểm giao hàng cụ thể..." />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
 
-                {/* 2. DANH SÁCH VẬT TƯ */}
-                <Card className="border-indigo-100 shadow-sm">
-                    <CardHeader className="py-3 bg-indigo-50/30 border-b border-indigo-100 flex flex-row justify-between items-center">
-                        <CardTitle className="text-sm font-bold text-indigo-700 flex items-center gap-2">
-                            <Box className="w-4 h-4" /> Chi tiết vật tư
-                        </CardTitle>
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => append({ item_name: "", unit: "", quantity: 1, notes: "" })}
-                            className="bg-white hover:bg-indigo-50 text-indigo-600 border-indigo-200 h-8"
-                        >
-                            <Plus className="w-3 h-3 mr-1" /> Thêm dòng
-                        </Button>
-                    </CardHeader>
+                {/* --- PHẦN 2: DANH SÁCH VẬT TƯ --- */}
+                <Card className="border-slate-200 shadow-sm">
                     <CardContent className="p-0">
                         <Table>
-                            <TableHeader>
+                            <TableHeader className="bg-slate-50">
                                 <TableRow>
-                                    <TableHead className="w-[40%]">Tên vật tư / Quy cách <span className="text-red-500">*</span></TableHead>
-                                    <TableHead className="w-[15%]">ĐVT <span className="text-red-500">*</span></TableHead>
+                                    <TableHead className="w-[40%] pl-4">Tên vật tư / Quy cách <span className="text-red-500">*</span></TableHead>
+                                    <TableHead className="w-[15%]">ĐVT</TableHead>
                                     <TableHead className="w-[15%] text-right">Số lượng <span className="text-red-500">*</span></TableHead>
-                                    <TableHead>Ghi chú</TableHead>
-                                    <TableHead className="w-[50px]"></TableHead>
+                                    <TableHead className="w-[25%]">Ghi chú</TableHead>
+                                    <TableHead className="w-[5%]"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {fields.map((item, index) => (
                                     <TableRow key={item.id}>
-                                        <TableCell className="p-2">
+                                        <TableCell className="pl-4 py-2">
                                             <FormField
                                                 control={form.control}
                                                 name={`items.${index}.item_name`}
                                                 render={({ field }) => (
-                                                    <FormItem className="space-y-0">
+                                                    <FormItem className="mb-0">
                                                         <FormControl>
-                                                            <Input {...field} placeholder="VD: Xi măng Hà Tiên" className="h-9" />
+                                                            <Input {...field} placeholder="VD: Xi măng PCB40" className="h-9" />
                                                         </FormControl>
                                                     </FormItem>
                                                 )}
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2">
+                                        <TableCell className="py-2">
                                             <FormField
                                                 control={form.control}
                                                 name={`items.${index}.unit`}
                                                 render={({ field }) => (
-                                                    <FormItem className="space-y-0">
+                                                    <FormItem className="mb-0">
                                                         <FormControl>
-                                                            <Input {...field} placeholder="Bao" className="h-9" />
+                                                            <Input {...field} placeholder="Bao" className="h-9 text-center" />
                                                         </FormControl>
                                                     </FormItem>
                                                 )}
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2">
+                                        <TableCell className="py-2">
                                             <FormField
                                                 control={form.control}
                                                 name={`items.${index}.quantity`}
                                                 render={({ field }) => (
-                                                    <FormItem className="space-y-0">
+                                                    <FormItem className="mb-0">
                                                         <FormControl>
-                                                            <Input type="number" {...field} className="h-9 text-right font-semibold" />
+                                                            <Input
+                                                                {...field}
+                                                                type="number"
+                                                                className="h-9 text-right font-semibold"
+                                                                // Ép kiểu số khi nhập
+                                                                onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                                            />
                                                         </FormControl>
                                                     </FormItem>
                                                 )}
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2">
+                                        <TableCell className="py-2">
                                             <FormField
                                                 control={form.control}
                                                 name={`items.${index}.notes`}
                                                 render={({ field }) => (
-                                                    <FormItem className="space-y-0">
+                                                    <FormItem className="mb-0">
                                                         <FormControl>
-                                                            <Input {...field} placeholder="..." className="h-9" />
+                                                            {/* Fix lỗi null value */}
+                                                            <Input {...field} value={field.value ?? ""} placeholder="..." className="h-9 text-slate-500" />
                                                         </FormControl>
                                                     </FormItem>
                                                 )}
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2 text-center">
+                                        <TableCell className="py-2 text-center">
                                             <Button
                                                 type="button"
                                                 variant="ghost"
@@ -285,22 +307,32 @@ export function RequestForm({ projectId, initialData, warehouses = [], onSuccess
                                 ))}
                             </TableBody>
                         </Table>
-                        {form.formState.errors.items && (
-                            <div className="p-2 text-red-500 text-sm text-center bg-red-50">
-                                {form.formState.errors.items.message}
-                            </div>
-                        )}
+
+                        <div className="p-2 border-t bg-slate-50 flex justify-center">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => append({ item_name: "", unit: "", quantity: 0, notes: "" })}
+                                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                            >
+                                <Plus className="w-4 h-4 mr-1" /> Thêm dòng vật tư
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
 
-                <div className="flex justify-end gap-3 pt-4 border-t">
-                    <Button type="button" variant="ghost" onClick={onCancel}>Hủy</Button>
-                    <Button type="submit" disabled={isPending} className="bg-blue-600 hover:bg-blue-700 min-w-[120px]">
-                        {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                        {initialData ? "Lưu thay đổi" : "Gửi yêu cầu"}
+                {/* Footer Buttons */}
+                <div className="flex justify-end gap-3 pt-2">
+                    {onSuccess && (
+                        <Button type="button" variant="ghost" onClick={onSuccess}>Hủy bỏ</Button>
+                    )}
+                    <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 min-w-[120px]">
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                        {initialData ? "Cập nhật phiếu" : "Tạo phiếu yêu cầu"}
                     </Button>
                 </div>
             </form>
         </Form>
-    )
+    );
 }

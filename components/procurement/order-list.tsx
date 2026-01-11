@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
-import { Eye, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Eye, Pencil, Trash2, Loader2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -50,12 +50,8 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
 
     const getStatusBadge = (status: string) => {
         switch (status) {
-            // 👇 ĐỔI TÊN HIỂN THỊ DRAFT -> CHỜ XỬ LÝ (Màu cam)
             case 'draft': return <Badge className="bg-orange-500 hover:bg-orange-600 text-white border-none">Chờ xử lý</Badge>;
-
-            // 👇 ĐỔI TÊN HIỂN THỊ ORDERED -> ĐÃ ĐẶT HÀNG (Màu xanh)
             case 'ordered': return <Badge className="bg-blue-600 hover:bg-blue-700">Đã đặt hàng</Badge>;
-
             case 'received': return <Badge className="bg-green-600 hover:bg-green-700">Đã nhận hàng</Badge>;
             case 'completed': return <Badge className="bg-gray-600">Hoàn thành</Badge>;
             case 'cancelled': return <Badge variant="destructive">Đã hủy</Badge>;
@@ -86,13 +82,18 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Mã đơn</TableHead>
-                                <TableHead>Ngày đặt</TableHead>
-                                <TableHead>Nhà cung cấp</TableHead>
-                                <TableHead>Dự án</TableHead>
-                                <TableHead className="text-right">Tổng tiền (Có VAT)</TableHead>
-                                <TableHead className="text-center">Trạng thái</TableHead>
-                                <TableHead className="w-[120px] text-right">Thao tác</TableHead>
+                                <TableHead className="w-[100px]">Mã đơn</TableHead>
+                                <TableHead className="w-[100px]">Ngày đặt</TableHead>
+
+                                {/* 👇 FIX: Dùng min-w để đảm bảo không bị bóp nghẹt, nhưng không giới hạn max */}
+                                <TableHead className="min-w-[180px]">Nhà cung cấp</TableHead>
+
+                                {/* 👇 FIX: Dành không gian rộng rãi cho Dự án */}
+                                <TableHead className="min-w-[250px]">Dự án</TableHead>
+
+                                <TableHead className="text-right whitespace-nowrap">Tổng tiền</TableHead>
+                                <TableHead className="text-center w-[120px]">Trạng thái</TableHead>
+                                <TableHead className="w-[100px] text-right">Thao tác</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -105,32 +106,49 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                             ) : (
                                 data.map((po) => (
                                     <TableRow key={po.id}>
-                                        <TableCell className="font-bold">{po.code}</TableCell>
-                                        <TableCell>
+                                        <TableCell className="font-bold align-top py-4">
+                                            {po.code}
+                                        </TableCell>
+                                        <TableCell className="align-top py-4">
                                             {format(new Date(po.order_date), "dd/MM/yyyy", { locale: vi })}
                                         </TableCell>
-                                        <TableCell className="font-medium">{po.supplier?.name || "---"}</TableCell>
-                                        <TableCell className="max-w-[200px] truncate" title={po.project?.name}>
-                                            {po.project?.code && <span className="text-blue-600 mr-1">[{po.project.code}]</span>}
-                                            {po.project?.name || "---"}
+
+                                        {/* 👇 FIX: Bỏ truncate, cho phép xuống dòng (whitespace-normal) */}
+                                        <TableCell className="align-top py-4">
+                                            <div className="font-medium whitespace-normal leading-snug">
+                                                {po.supplier?.name || "---"}
+                                            </div>
                                         </TableCell>
-                                        <TableCell className="text-right font-bold text-slate-700">
+
+                                        {/* 👇 FIX: Bỏ line-clamp, cho phép hiển thị hết tên dự án */}
+                                        <TableCell className="align-top py-4">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="font-semibold text-slate-800 whitespace-normal leading-snug">
+                                                    {po.project?.name || "---"}
+                                                </span>
+                                                {po.project?.code && (
+                                                    <div className="flex items-center text-xs text-muted-foreground mt-0.5">
+                                                        <Building2 className="w-3 h-3 mr-1 shrink-0" />
+                                                        <span className="font-mono">{po.project.code}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </TableCell>
+
+                                        <TableCell className="text-right font-bold text-slate-700 align-top py-4 whitespace-nowrap">
                                             {formatMoney(po.total_amount)}
                                         </TableCell>
-                                        <TableCell className="text-center">
+                                        <TableCell className="text-center align-top py-4">
                                             {getStatusBadge(po.status)}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="align-top py-4">
                                             <div className="flex justify-end gap-1">
-                                                {/* Nút Xem */}
                                                 <Button variant="ghost" size="icon" asChild title="Xem chi tiết">
                                                     <Link href={`/procurement/orders/${po.id}`}>
                                                         <Eye className="h-4 w-4 text-muted-foreground" />
                                                     </Link>
                                                 </Button>
 
-                                                {/* Nút Sửa & Xóa (Chỉ hiện khi chưa Nhập kho) */}
-                                                {/* Draft (Chờ xử lý) và Ordered (Đã đặt hàng) đều sửa được */}
                                                 {(po.status === 'draft' || po.status === 'ordered') && (
                                                     <>
                                                         <Button variant="ghost" size="icon" asChild title="Chỉnh sửa">
@@ -160,7 +178,6 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                 </CardContent>
             </Card>
 
-            {/* DIALOG XÁC NHẬN XÓA */}
             <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>

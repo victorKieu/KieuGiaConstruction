@@ -58,3 +58,36 @@ export async function createMaterialAction(data: any) {
     revalidatePath("/inventory/catalog");
     return { success: true, message: "Tạo vật tư thành công" };
 }
+
+// --- 3. UPDATE (MỚI) ---
+export async function updateMaterialAction(id: string, data: any) {
+    const supabase = await createClient();
+    const { error } = await supabase
+        .from("materials")
+        .update(data)
+        .eq("id", id);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath("/inventory/catalog");
+    return { success: true, message: "Cập nhật thành công!" };
+}
+
+// --- 4. DELETE (MỚI) ---
+export async function deleteMaterialAction(id: string) {
+    const supabase = await createClient();
+
+    // (Tùy chọn) Kiểm tra xem vật tư này đã được dùng trong dự án nào chưa trước khi xóa
+    // const { count } = await supabase.from("estimation_items").select("*", { count: 'exact', head: true }).eq("material_code", code);
+    // if (count > 0) return { success: false, error: "Vật tư này đang được sử dụng, không thể xóa!" };
+
+    const { error } = await supabase
+        .from("materials")
+        .delete()
+        .eq("id", id);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath("/inventory/catalog");
+    return { success: true, message: "Đã xóa vật tư!" };
+}

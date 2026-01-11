@@ -15,9 +15,18 @@ import {
 
 import { getProjectFinanceStats } from "@/lib/action/finance";
 import { getEmployees } from "@/lib/action/employeeActions";
-import { getMaterialRequests } from "@/lib/action/request";
+// import { getMaterialRequests } from "@/lib/action/request"; // (Có thể bỏ nếu thay thế bằng logic mới)
 import { getQuotations } from "@/lib/action/quotationActions";
 import { getContracts } from "@/lib/action/contractActions";
+
+// ✅ 1. Import Action cho Vật tư & Chi phí
+import { getProjectQTO, getMaterialBudget } from "@/lib/action/qtoActions";
+import { getNorms } from "@/lib/action/normActions";
+import { getEstimationItems, getCostTemplates } from "@/lib/action/estimationActions";
+
+// ✅ 2. Import Action & Component cho Yêu cầu Vật tư (Phương án B)
+import { getProjectRequests } from "@/lib/action/requestActions";
+import MaterialRequestManager from "@/components/projects/requests/MaterialRequestManager";
 
 import { formatDate, formatCurrency } from "@/lib/utils/utils";
 import { getCurrentSession } from "@/lib/supabase/session";
@@ -31,17 +40,18 @@ import DebtWidget from "@/components/projects/finance/DebtWidget";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { Badge } from "@/components/ui/badge";
 
+import CostManager from "@/components/projects/cost/CostManager";
+import QuotationPageClient from "./quotation/page-client";
+
 import {
     Clock, Banknote, TrendingUp, Briefcase, FileText, Activity, Wallet,
-    Building2, Layers, MapPin, Phone, Mail, CalendarDays, AlertCircle, CircleCheck
+    Building2, Layers, MapPin, Phone, Mail, Coins, Package // ✅ Import icon Package
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import QuotationPageClient from "./quotation/page-client";
-
 import { ProjectData } from "@/types/project";
 
-// --- HELPER FUNCTIONS ---
+// ... (Giữ nguyên Helper Functions & Types) ...
 function getStatusLabel(status: string | null) {
     switch (status) {
         case "in_progress": return "Đang tiến hành";
@@ -63,7 +73,6 @@ function getBadgeClass(status: string | null) {
     }
 }
 
-// --- TYPES ---
 type ProjectWithExtras = ProjectData & {
     risk_data?: { name: string; color: string; code?: string } | null;
     status_data?: { name: string; color: string; code?: string } | null;
@@ -73,9 +82,8 @@ type ProjectWithExtras = ProjectData & {
     customer?: { name: string; phone?: string; email?: string; avatar_url?: string } | null;
     manager?: { id: string; name: string; email?: string; avatar_url?: string } | null;
     employees?: { name: string; email?: string; avatar_url?: string } | null;
-
-    // ✅ THÊM TRƯỜNG NÀY ĐỂ FIX LỖI TYPE
     total_contract_value?: number;
+    geocode?: string | null;
 };
 
 interface FinanceStats {
@@ -107,23 +115,17 @@ export default async function ProjectPage({ params }: PageProps) {
         canDelete: session.role === "admin",
         canAddMember: ["MANAGER", "SUPERVISOR"].includes(projectRoleCode || "") || session.role === "admin",
         canDeleteTask: projectRoleCode === "MANAGER" || session.role === "admin",
+        canEditEstimate: ["MANAGER"].includes(projectRoleCode || "") || session.role === "admin",
     };
 
     const [
-        projectRes,
-        membersRes,
-        docsRes,
-        financeRes,
-        milestonesRes,
-        tasksRes,
-        surveysRes,
-        surveyTemplatesRes,
-        surveyTaskTemplatesRes,
-        requestsRes,
-        rolesRes,
-        employeesRes,
-        quotationsRes,
-        contractsRes
+        projectRes, membersRes, docsRes, financeRes, milestonesRes,
+        tasksRes, surveysRes, surveyTemplatesRes, surveyTaskTemplatesRes,
+        // requestsRes, // (Dùng biến mới bên dưới để tránh nhầm lẫn)
+        rolesRes, employeesRes, quotationsRes, contractsRes,
+        qtoItems, norms, estimateRes, costTemplatesRes,
+        budgetRes, // ✅ Budget Data
+        materialRequestsRes // ✅ Material Request Data (Mới)
     ] = await Promise.all([
         getProject(id),
         getProjectMembers(id),
@@ -134,23 +136,28 @@ export default async function ProjectPage({ params }: PageProps) {
         getProjectSurveys(id),
         getSurveyTemplates(),
         getSurveyTaskTemplates(),
-        getMaterialRequests(id),
+        // getMaterialRequests(id), // (Old action)
         getProjectRoles(),
         getEmployees({ limit: 1000, page: 1 }),
         getQuotations(id),
-        getContracts(id)
+        getContracts(id),
+        getProjectQTO(id),
+        getNorms(),
+        getEstimationItems(id),
+        getCostTemplates(),
+        getMaterialBudget(id), // ✅ Lấy Budget
+        getProjectRequests(id) // ✅ Lấy Material Requests
     ]);
 
     let project = (projectRes as any)?.data as ProjectWithExtras;
 
-    // Logic Admin fallback
+    // --- Logic Admin Fallback ---
     if (!project && session.role === 'admin') {
         const supabaseAdmin = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!,
             { auth: { autoRefreshToken: false, persistSession: false } }
         );
-
         const { data: adminProject } = await supabaseAdmin
             .from("projects")
             .select(`
@@ -169,8 +176,6 @@ export default async function ProjectPage({ params }: PageProps) {
 
         if (adminProject) {
             const raw = adminProject as any;
-
-            // ✅ Tính tổng tiền hợp đồng (Admin Mode)
             const totalContractValue = raw.contracts?.reduce((sum: number, c: any) => {
                 return c.status !== 'cancelled' ? sum + (c.value || 0) : sum;
             }, 0) || 0;
@@ -195,21 +200,40 @@ export default async function ProjectPage({ params }: PageProps) {
     const financeStats = (financeRes as unknown as FinanceStats) || {
         totalRevenue: 0, totalCost: 0, actualReceived: 0, remainingDebt: 0, overdueCount: 0, profit: 0, profitMargin: 0
     };
-
     const members = (membersRes as any)?.data || [];
     const documents = (docsRes as any)?.data || [];
     const milestones = (milestonesRes as any)?.data || [];
     const tasks = (tasksRes as any)?.data || [];
-    const requests = Array.isArray(requestsRes) ? requestsRes : ((requestsRes as any)?.data || []);
+    // const requests = Array.isArray(requestsRes) ? requestsRes : ((requestsRes as any)?.data || []);
     const quotations = (quotationsRes as any)?.success ? (quotationsRes as any).data : [];
     const contracts = (contractsRes as any)?.success ? (contractsRes as any).data : [];
     const surveys = (surveysRes as any)?.data || [];
     const surveyTemplates = (surveyTemplatesRes as any)?.data || [];
     const surveyTaskTemplates = (surveyTaskTemplatesRes as any)?.data || [];
-    const qtoItems: any[] = [];
-    const qtoTemplates: any[] = [];
     const roles = Array.isArray(rolesRes) ? rolesRes : ((rolesRes as any)?.data || []);
     const allEmployees = (employeesRes as any)?.employees || [];
+    const estimates = (estimateRes as any)?.data || [];
+    const costTemplates = (costTemplatesRes as any)?.data || [];
+
+    const actualProgress = project.progress || 0;
+    const today = new Date();
+    const startDate = project.start_date ? new Date(project.start_date) : new Date();
+    const endDate = project.end_date ? new Date(project.end_date) : new Date();
+    let plannedProgress = 0;
+    if (today < startDate) plannedProgress = 0;
+    else if (today > endDate) plannedProgress = 100;
+    else {
+        const totalDuration = endDate.getTime() - startDate.getTime();
+        const elapsed = today.getTime() - startDate.getTime();
+        plannedProgress = totalDuration > 0 ? Math.round((elapsed / totalDuration) * 100) : 0;
+    }
+    const kpiProgress = actualProgress - plannedProgress;
+    const kpiProgressStatus = kpiProgress >= 0 ? "Đúng/Vượt tiến độ" : "Chậm tiến độ";
+    const kpiProgressColor = kpiProgress >= 0 ? "text-green-600" : "text-red-600";
+    const daysRemaining = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+    const gmapsQuery = project.geocode || (project.address ? encodeURIComponent(project.address) : null);
+    const googleMapsUrl = gmapsQuery ? `http://googleusercontent.com/maps.google.com/maps?q=${gmapsQuery}` : null;
 
     const taskFeedOutput = tasks.map((task: any) => (
         <TaskItemServerWrapper
@@ -221,35 +245,10 @@ export default async function ProjectPage({ params }: PageProps) {
         />
     ));
 
-    // --- TÍNH TOÁN TIẾN ĐỘ ---
-    const actualProgress = project.progress || 0;
-    const today = new Date();
-    const startDate = project.start_date ? new Date(project.start_date) : new Date();
-    const endDate = project.end_date ? new Date(project.end_date) : new Date();
-
-    let plannedProgress = 0;
-    if (today < startDate) {
-        plannedProgress = 0;
-    } else if (today > endDate) {
-        plannedProgress = 100;
-    } else {
-        const totalDuration = endDate.getTime() - startDate.getTime();
-        const elapsed = today.getTime() - startDate.getTime();
-        plannedProgress = totalDuration > 0 ? Math.round((elapsed / totalDuration) * 100) : 0;
-    }
-
-    const kpiProgress = actualProgress - plannedProgress;
-    const kpiProgressStatus = kpiProgress >= 0 ? "Đúng/Vượt tiến độ" : "Chậm tiến độ";
-    const kpiProgressColor = kpiProgress >= 0 ? "text-green-600" : "text-red-600";
-    const daysRemaining = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-    const gmapsQuery = project.geocode || (project.address ? encodeURIComponent(project.address) : null);
-    const googleMapsUrl = gmapsQuery ? `http://googleusercontent.com/maps.google.com/maps?q=${gmapsQuery}` : null;
-
     return (
         <div className="container mx-auto px-2 md:px-6 py-4 md:py-8 space-y-4 md:space-y-6 bg-gray-50 min-h-screen">
             <ProjectHeaderWrapper project={project} permissions={permissions} />
 
-            {/* STATS ROW */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 animate-in fade-in duration-500">
                 <StatCard
                     icon={<Clock size={18} className="text-blue-500" />}
@@ -263,11 +262,10 @@ export default async function ProjectPage({ params }: PageProps) {
                         </div>
                     }
                 />
-                {/* ✅ SỬA: Hiển thị Tổng giá trị HĐ (thay vì budget hay revenue cũ nếu chưa đúng ý) */}
                 <StatCard
                     icon={<Banknote size={18} className="text-emerald-500" />}
                     title="Giá trị Hợp đồng"
-                    value={formatCurrency(project.total_contract_value || 0)} // Fix hiển thị
+                    value={formatCurrency(project.total_contract_value || 0)}
                 />
                 <StatCard icon={<Wallet size={18} className="text-blue-600" />} title="Thực thu (Tiền mặt)" value={formatCurrency(financeStats.actualReceived)} />
                 <StatCard icon={<TrendingUp size={18} className="text-orange-500" />} title="Thực chi" value={formatCurrency(financeStats.totalCost)} />
@@ -277,16 +275,16 @@ export default async function ProjectPage({ params }: PageProps) {
                 <TabsList className="bg-white p-1 border rounded-lg w-full md:w-auto flex justify-start overflow-x-auto">
                     <TabsTrigger value="overview"><Activity className="w-4 h-4 mr-2" />Tổng quan</TabsTrigger>
                     <TabsTrigger value="execution"><Briefcase className="w-4 h-4 mr-2" />Thi công & Nhiệm vụ</TabsTrigger>
+                    <TabsTrigger value="cost_management"><Coins className="w-4 h-4 mr-2 text-yellow-600" />Chi phí & Vật tư</TabsTrigger>
+                    {/* ✅ TAB MỚI: YÊU CẦU VẬT TƯ */}
+                    <TabsTrigger value="material_request"><Package className="w-4 h-4 mr-2" />Yêu cầu Vật tư</TabsTrigger>
                     <TabsTrigger value="quotation"><FileText className="w-4 h-4 mr-2" />Báo giá & Hợp đồng</TabsTrigger>
                 </TabsList>
 
-                {/* --- TAB 1: TỔNG QUAN (MERGED DASHBOARD) --- */}
+                {/* --- 1. TAB TỔNG QUAN --- */}
                 <TabsContent value="overview" className="space-y-4 animate-in slide-in-from-bottom-2 duration-500">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-                        {/* CỘT TRÁI: THÔNG TIN CHI TIẾT & TIẾN ĐỘ */}
                         <div className="lg:col-span-2 space-y-6">
-                            {/* 1. THÔNG TIN DỰ ÁN */}
                             <Card className="shadow-sm border-none">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                                     <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -298,24 +296,13 @@ export default async function ProjectPage({ params }: PageProps) {
                                 </CardHeader>
                                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
                                     <div className="space-y-3">
+                                        <div><span className="text-slate-400 block uppercase text-[10px] font-bold">Khách hàng</span><span className="font-semibold text-slate-700">{project.customer?.name || 'Chưa xác định'}</span></div>
+                                        <div><span className="text-slate-400 block uppercase text-[10px] font-bold">Quản lý (PM)</span><span className="font-semibold text-slate-700">{project.manager?.name || 'Chưa phân công'}</span></div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div><span className="text-slate-400 block uppercase text-[10px] font-bold">Loại hình</span><span className="font-semibold text-slate-700">{project.construction_type_data?.name || 'Không xác định'}</span></div>
                                         <div>
-                                            <span className="text-slate-400 block uppercase text-[10px] font-bold">Khách hàng</span>
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-semibold text-slate-700">{project.customer?.name || 'Chưa xác định'}</span>
-                                                {project.customer?.phone && (
-                                                    <div className="flex gap-2">
-                                                        <a href={`tel:${project.customer.phone}`} title="Gọi điện" className="p-1 bg-green-50 text-green-600 rounded hover:bg-green-100"><Phone size={14} /></a>
-                                                        {project.customer?.email && <a href={`mailto:${project.customer.email}`} title="Email" className="p-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"><Mail size={14} /></a>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-400 block uppercase text-[10px] font-bold">Quản lý (PM)</span>
-                                            <span className="font-semibold text-slate-700">{project.manager?.name || 'Chưa phân công'}</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-400 block uppercase text-[10px] font-bold mb-1 flex items-center gap-1">
+                                            <span className="text-slate-400 block uppercase text-[10px] font-bold flex items-center gap-1">
                                                 <MapPin className="w-3 h-3" /> Địa điểm
                                             </span>
                                             {googleMapsUrl ? (
@@ -325,102 +312,34 @@ export default async function ProjectPage({ params }: PageProps) {
                                             ) : <span className="text-slate-500">Chưa có địa chỉ</span>}
                                         </div>
                                     </div>
-                                    <div className="space-y-3">
-                                        <div>
-                                            <span className="text-slate-400 block uppercase text-[10px] font-bold mb-1 flex items-center gap-1">
-                                                <Layers className="w-3 h-3" /> Loại dự án
-                                            </span>
-                                            <span className="font-semibold text-slate-700">{project.type_data?.name || 'Khác'}</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-400 block uppercase text-[10px] font-bold mb-1 flex items-center gap-1">
-                                                <Building2 className="w-3 h-3" /> Loại hình xây dựng
-                                            </span>
-                                            <span className="font-semibold text-slate-700">{project.construction_type_data?.name || 'Không xác định'}</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-400 block uppercase text-[10px] font-bold mb-1">Mô tả</span>
-                                            <p className="text-slate-600 italic line-clamp-2" title={project.description || ""}>
-                                                {project.description || 'Không có mô tả.'}
-                                            </p>
-                                        </div>
-                                    </div>
                                 </CardContent>
                             </Card>
 
-                            {/* 2. TIẾN ĐỘ & KPI */}
                             <Card className="shadow-sm border-none">
                                 <CardHeader className="pb-2">
-                                    <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                        <Activity className="w-4 h-4 text-orange-500" /> Tiến độ & KPI
-                                    </CardTitle>
+                                    <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2"><Activity className="w-4 h-4 text-orange-500" /> Tiến độ & KPI</CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div>
-                                            <div className="flex justify-between items-center mb-1 text-sm">
-                                                <span className="font-medium text-gray-600">Kế hoạch (Thời gian)</span>
-                                                <span className="font-bold text-blue-600">{plannedProgress}%</span>
-                                            </div>
+                                            <div className="flex justify-between mb-1 text-sm"><span className="text-gray-600">Kế hoạch</span><span className="font-bold text-blue-600">{plannedProgress}%</span></div>
                                             <ProgressBar value={plannedProgress} colorClass="bg-blue-500" />
                                         </div>
                                         <div>
-                                            <div className="flex justify-between items-center mb-1 text-sm">
-                                                <span className="font-medium text-gray-600">Thực tế (Khối lượng)</span>
-                                                <span className="font-bold text-green-600">{actualProgress}%</span>
-                                            </div>
+                                            <div className="flex justify-between mb-1 text-sm"><span className="text-gray-600">Thực tế</span><span className="font-bold text-green-600">{actualProgress}%</span></div>
                                             <ProgressBar value={actualProgress} colorClass="bg-green-500" />
                                         </div>
                                     </div>
-                                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 flex justify-between items-center">
-                                        <span className="text-sm font-semibold text-slate-700">Đánh giá KPI Tiến độ:</span>
-                                        <span className={`text-sm font-bold ${kpiProgressColor}`}>
-                                            {kpiProgress > 0 ? `+${kpiProgress}%` : `${kpiProgress}%`} ({kpiProgressStatus})
-                                        </span>
+                                    <div className="p-3 bg-slate-50 rounded-lg flex justify-between items-center">
+                                        <span className="text-sm font-semibold text-slate-700">Đánh giá KPI:</span>
+                                        <span className={`text-sm font-bold ${kpiProgressColor}`}>{kpiProgress > 0 ? `+${kpiProgress}%` : `${kpiProgress}%`} ({kpiProgressStatus})</span>
                                     </div>
-                                </CardContent>
-                            </Card>
-
-                            {/* 3. MỐC QUAN TRỌNG */}
-                            <Card className="shadow-sm border-none">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                        <CalendarDays className="w-4 h-4 text-purple-500" /> Mốc quan trọng sắp tới
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    {milestones?.length === 0 ? (
-                                        <div className="text-center py-6 text-gray-400 italic text-sm">Chưa có mốc quan trọng nào.</div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            {milestones.slice(0, 3).map((milestone: any, index: number) => (
-                                                <div key={index} className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                                                    <div className="mt-1">
-                                                        {milestone.status === 'completed'
-                                                            ? <CircleCheck className="w-4 h-4 text-green-500" />
-                                                            : <AlertCircle className="w-4 h-4 text-blue-500" />
-                                                        }
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-semibold text-gray-800 text-sm line-clamp-1" title={milestone.milestone}>
-                                                            {milestone.milestone}
-                                                        </div>
-                                                        <div className="text-xs text-gray-500 mt-1">
-                                                            Hạn: {formatDate(milestone.planned_end_date)}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                 </CardContent>
                             </Card>
                         </div>
 
-                        {/* CỘT PHẢI: TÀI CHÍNH & CÔNG NỢ */}
                         <div className="space-y-6">
                             <DebtWidget debtData={{ remaining_debt: financeStats.remainingDebt, overdue_count: financeStats.overdueCount }} />
-
                             <Card className="shadow-sm border-none">
                                 <CardHeader><CardTitle className="text-base">Tài chính dự án</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
@@ -428,27 +347,14 @@ export default async function ProjectPage({ params }: PageProps) {
                                         <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-lg text-green-800 shadow-sm">
                                             <Banknote className="w-4 h-4" />
                                             <span className="text-sm font-medium">Giá trị HĐ:</span>
-                                            <span className="text-lg font-bold">
-                                                {/* ✅ HIỂN THỊ TỔNG GIÁ TRỊ HỢP ĐỒNG */}
-                                                {formatCurrency(project.total_contract_value || 0)}
-                                            </span>
+                                            <span className="text-lg font-bold">{formatCurrency(project.total_contract_value || 0)}</span>
                                         </div>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-slate-500">Đã thu (Tiền mặt)</span>
-                                        <span className="font-bold text-emerald-600">{formatCurrency(financeStats.actualReceived)}</span>
-                                    </div>
-                                    <div className="pt-2 border-t space-y-2">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-slate-500">Thực chi vật tư/CP</span>
-                                            <span className="font-bold text-red-500">-{formatCurrency(financeStats.totalCost)}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center mt-2 font-bold pt-2 border-t-2 border-double">
-                                            <span className="text-slate-800 text-sm">Lợi nhuận gộp</span>
-                                            <span className={financeStats.profit >= 0 ? "text-blue-600" : "text-red-600"}>
-                                                {formatCurrency(financeStats.profit)}
-                                            </span>
-                                        </div>
+                                    <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Thực thu</span><span className="font-bold text-emerald-600">{formatCurrency(financeStats.actualReceived)}</span></div>
+                                    <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Thực chi</span><span className="font-bold text-red-500">-{formatCurrency(financeStats.totalCost)}</span></div>
+                                    <div className="flex justify-between items-center mt-2 font-bold pt-2 border-t-2 border-double">
+                                        <span className="text-slate-800 text-sm">Lợi nhuận gộp</span>
+                                        <span className={financeStats.profit >= 0 ? "text-blue-600" : "text-red-600"}>{formatCurrency(financeStats.profit)}</span>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -456,7 +362,7 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
-                {/* --- TAB 2: THI CÔNG (ProjectTabs) --- */}
+                {/* --- 2. TAB THI CÔNG --- */}
                 <TabsContent value="execution">
                     <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <ProjectTabs
@@ -470,9 +376,9 @@ export default async function ProjectPage({ params }: PageProps) {
                             surveys={surveys}
                             surveyTemplates={surveyTemplates}
                             surveyTaskTemplates={surveyTaskTemplates}
-                            qtoItems={qtoItems}
-                            qtoTemplates={qtoTemplates}
-                            requests={requests}
+                            qtoItems={[]}
+                            qtoTemplates={[]}
+                            requests={[]} // Tạm thời để trống ở tab này vì đã có tab riêng
                             allEmployees={allEmployees}
                             roles={roles}
                             isManager={permissions.canAddMember}
@@ -484,6 +390,31 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
+                {/* --- 3. TAB CHI PHÍ & VẬT TƯ --- */}
+                <TabsContent value="cost_management">
+                    <CostManager
+                        projectId={id}
+                        qtoItems={qtoItems || []}
+                        norms={norms || []}
+                        initialEstimates={estimates}
+                        costTemplates={costTemplates}
+                        canEdit={permissions.canEditEstimate}
+                        // ✅ Truyền dữ liệu Budget xuống Component
+                        budgetItems={budgetRes || []}
+                    />
+                </TabsContent>
+
+                {/* ✅ 4. TAB MỚI: YÊU CẦU VẬT TƯ --- */}
+                <TabsContent value="material_request">
+                    <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
+                        <MaterialRequestManager
+                            projectId={id}
+                            requests={Array.isArray(materialRequestsRes) ? materialRequestsRes : []}
+                        />
+                    </div>
+                </TabsContent>
+
+                {/* --- 5. TAB BÁO GIÁ & HỢP ĐỒNG --- */}
                 <TabsContent value="quotation">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <QuotationPageClient

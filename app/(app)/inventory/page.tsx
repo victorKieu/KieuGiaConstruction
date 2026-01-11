@@ -12,8 +12,7 @@ import {
     Plus,
     Lock,
     Unlock,
-    Search,
-    Archive
+    Search
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +30,7 @@ import {
 } from "@/components/ui/dialog";
 
 // Import Server Actions
-import { getAllWarehouses } from "@/lib/action/inventory";
+import { getMyAuthorizedWarehouses } from "@/lib/action/inventory";
 import { createWarehouseAction, updateWarehouseStatusAction } from "@/lib/action/catalog";
 
 export default function InventoryPage() {
@@ -46,11 +45,10 @@ export default function InventoryPage() {
     }, []);
 
     const loadWarehouses = async () => {
-        const data = await getAllWarehouses();
+        const data = await getMyAuthorizedWarehouses();
         setWarehouses(data);
     };
 
-    // Hàm tạo kho mới (Kho thủ công/Kho tổng)
     const handleCreateWarehouse = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
@@ -73,12 +71,10 @@ export default function InventoryPage() {
         }
     };
 
-    // Hàm Đóng/Mở kho
     const toggleStatus = async (id: string, currentStatus: string, name: string) => {
         const newStatus = currentStatus === 'active' ? 'closed' : 'active';
         const actionName = newStatus === 'closed' ? 'Đóng' : 'Mở lại';
 
-        // Xác nhận đơn giản
         if (!confirm(`Bạn có chắc muốn ${actionName} kho "${name}" không?`)) return;
 
         const res = await updateWarehouseStatusAction(id, newStatus);
@@ -90,10 +86,9 @@ export default function InventoryPage() {
         }
     };
 
-    // Filter tìm kiếm
     const filtered = warehouses.filter(w =>
         w.name.toLowerCase().includes(search.toLowerCase()) ||
-        w.project?.name.toLowerCase().includes(search.toLowerCase()) ||
+        w.project?.name?.toLowerCase().includes(search.toLowerCase()) ||
         w.project?.code?.toLowerCase().includes(search.toLowerCase())
     );
 
@@ -103,22 +98,14 @@ export default function InventoryPage() {
             {/* HEADER */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Quản lý Kho bãi</h2>
-                    <p className="text-muted-foreground">Theo dõi tồn kho, điều chuyển vật tư giữa các công trình.</p>
+                    <h2 className="text-3xl font-bold tracking-tight text-slate-800">Quản lý Kho bãi</h2>
+                    <p className="text-muted-foreground">Theo dõi tồn kho, nhập xuất vật tư tại các dự án được phân công.</p>
                 </div>
 
                 <div className="flex gap-2">
-                    {/* Nút sang trang Danh mục (Catalog) */}
-                    <Button variant="outline" asChild>
-                        <Link href="/inventory/catalog">
-                            <Archive className="mr-2 h-4 w-4 text-orange-600" /> Danh mục Vật tư
-                        </Link>
-                    </Button>
-
-                    {/* Nút Tạo Kho Mới */}
                     <Dialog open={openCreate} onOpenChange={setOpenCreate}>
                         <DialogTrigger asChild>
-                            <Button className="bg-blue-600 hover:bg-blue-700">
+                            <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm">
                                 <Plus className="mr-2 h-4 w-4" /> Tạo Kho Mới
                             </Button>
                         </DialogTrigger>
@@ -149,10 +136,10 @@ export default function InventoryPage() {
             </div>
 
             {/* SEARCH BAR */}
-            <div className="flex items-center gap-2 bg-white p-2 rounded-md border w-fit">
+            <div className="flex items-center gap-2 bg-white p-2 rounded-md border w-fit shadow-sm">
                 <Search className="h-4 w-4 text-muted-foreground ml-2" />
                 <Input
-                    placeholder="Tìm theo tên kho, tên dự án..."
+                    placeholder="Tìm kho của bạn..."
                     className="border-none shadow-none focus-visible:ring-0 w-[300px]"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -160,10 +147,12 @@ export default function InventoryPage() {
             </div>
 
             {/* LIST WAREHOUSES */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filtered.length === 0 ? (
-                    <div className="col-span-full text-center py-10 text-muted-foreground">
-                        Không tìm thấy kho nào.
+                    <div className="col-span-full flex flex-col items-center justify-center py-16 bg-slate-50 border border-dashed rounded-xl">
+                        <Warehouse className="w-12 h-12 text-slate-300 mb-3" />
+                        <h3 className="text-lg font-medium text-slate-900">Không tìm thấy kho nào</h3>
+                        <p className="text-slate-500 text-sm mt-1">Bạn chưa được gán vào dự án nào hoặc chưa có kho được tạo.</p>
                     </div>
                 ) : (
                     filtered.map((w) => {
@@ -171,7 +160,7 @@ export default function InventoryPage() {
                         return (
                             <Card
                                 key={w.id}
-                                className={`hover:shadow-md transition-all duration-200 group relative overflow-hidden ${isClosed ? 'opacity-70 bg-gray-50' : 'bg-white'}`}
+                                className={`hover:shadow-md transition-all duration-200 group relative overflow-hidden border-slate-200 flex flex-col ${isClosed ? 'opacity-70 bg-gray-50' : 'bg-white'}`}
                             >
                                 {/* Thanh màu trạng thái bên trái */}
                                 <div className={`absolute left-0 top-0 bottom-0 w-1 ${isClosed ? 'bg-gray-400' : (w.project_id ? 'bg-blue-600' : 'bg-purple-600')}`} />
@@ -182,13 +171,13 @@ export default function InventoryPage() {
                                         {isClosed && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">ĐÃ ĐÓNG</Badge>}
                                     </CardTitle>
 
-                                    {/* Nút Đóng/Mở kho - Đã sửa lỗi TypeScript tại đây */}
+                                    {/* Nút Đóng/Mở kho */}
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-6 w-6"
+                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                         onClick={() => toggleStatus(w.id, w.status, w.name)}
-                                        title={isClosed ? "Mở lại kho" : "Đóng kho này"} // Chuyển title ra đây
+                                        title={isClosed ? "Mở lại kho" : "Đóng kho này"}
                                     >
                                         {isClosed ? (
                                             <Lock className="h-3.5 w-3.5 text-gray-400 group-hover:text-green-600" />
@@ -198,30 +187,31 @@ export default function InventoryPage() {
                                     </Button>
                                 </CardHeader>
 
-                                <CardContent className="pl-6">
-                                    <div className="text-lg font-bold mb-1 truncate text-slate-800 group-hover:text-blue-700 transition-colors" title={w.name}>
+                                <CardContent className="pl-6 flex-1 flex flex-col">
+                                    {/* ✅ SỬA Ở ĐÂY: Bỏ truncate, dùng break-words để hiện hết tên */}
+                                    <div className="text-lg font-bold mb-1 text-slate-800 group-hover:text-blue-700 transition-colors break-words leading-tight">
                                         {w.name}
                                     </div>
 
                                     {w.project ? (
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1 mb-4 h-5">
-                                            <Building2 className="h-3 w-3" />
-                                            <span className="truncate">{w.project.code} - {w.project.name}</span>
+                                        <div className="text-xs text-muted-foreground flex items-start gap-1.5 mb-4">
+                                            <Building2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                            <span className="font-medium break-words">{w.project.code} - {w.project.name}</span>
                                         </div>
                                     ) : (
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1 mb-4 h-5">
-                                            <Warehouse className="h-3 w-3" /> Kho trung tâm
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mb-4">
+                                            <Warehouse className="h-3.5 w-3.5" /> Kho trung tâm
                                         </div>
                                     )}
 
-                                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-dashed">
-                                        <Badge variant="secondary" className="font-normal">
-                                            <Package className="h-3 w-3 mr-1" /> {w.items_count || 0} loại vật tư
+                                    <div className="mt-auto flex items-center justify-between pt-4 border-t border-dashed border-slate-100">
+                                        <Badge variant="secondary" className="font-normal bg-slate-100 text-slate-600 hover:bg-slate-200">
+                                            <Package className="h-3 w-3 mr-1.5" /> {w.items_count || 0} loại vật tư
                                         </Badge>
 
-                                        <Button size="sm" variant={isClosed ? "outline" : "default"} asChild className={isClosed ? "" : "bg-slate-900 hover:bg-blue-700"}>
+                                        <Button size="sm" variant={isClosed ? "outline" : "default"} asChild className={isClosed ? "" : "bg-slate-900 hover:bg-blue-700 shadow-sm"}>
                                             <Link href={`/inventory/${w.id}`}>
-                                                Chi tiết <ArrowRight className="ml-1 h-3 w-3" />
+                                                Truy cập <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                                             </Link>
                                         </Button>
                                     </div>

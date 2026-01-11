@@ -1,51 +1,67 @@
-// components/auth/AutoLogoutProvider.tsx
 "use client";
 
-import { useEffect, useCallback, ReactNode } from "react"; // Thêm ReactNode
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { useEffect, useRef, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client"; // Đảm bảo đường dẫn đúng tới supabase client của bạn
+import { toast } from "sonner";
 
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000;
+// Thời gian chờ: 5 phút = 5 * 60 * 1000 ms
+const LOGOUT_TIMER = 10 * 60 * 1000;
 
-// Định nghĩa Interface cho Props
-interface AutoLogoutProviderProps {
-    children: ReactNode;
-}
-
-export default function AutoLogoutProvider({ children }: AutoLogoutProviderProps) {
+export default function AutoLogoutProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
+    const pathname = usePathname();
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const supabase = createClient();
 
+    // Hàm thực hiện đăng xuất
     const handleLogout = useCallback(async () => {
-        console.log("Đăng xuất tự động do không hoạt động.");
-        await supabase.auth.signOut();
-        router.push("/login");
-        router.refresh();
-    }, [router]);
+        // Chỉ logout nếu user đang không ở trang login
+        if (pathname !== '/login') {
+            await supabase.auth.signOut();
+            toast.warning("Phiên làm việc hết hạn do không thao tác.", {
+                description: "Vui lòng đăng nhập lại."
+            });
+            router.push('/login');
+            router.refresh();
+        }
+    }, [pathname, router, supabase]);
+
+    // Hàm reset đồng hồ đếm ngược
+    const resetTimer = useCallback(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+
+        // Nếu đang ở trang login thì không cần đếm ngược
+        if (pathname === '/login') return;
+
+        timerRef.current = setTimeout(handleLogout, LOGOUT_TIMER);
+    }, [handleLogout, pathname]);
 
     useEffect(() => {
-        let timeoutId: NodeJS.Timeout;
+        // Danh sách các sự kiện cần bắt (bao gồm cả Touch cho Mobile)
+        const events = [
+            "mousedown", "mousemove", "keydown", "scroll", "touchstart", "click"
+        ];
 
-        const resetTimer = () => {
-            if (timeoutId) clearTimeout(timeoutId);
-            timeoutId = setTimeout(handleLogout, INACTIVITY_TIMEOUT);
-        };
+        // Gán sự kiện reset timer khi người dùng tương tác
+        const handleActivity = () => resetTimer();
 
-        const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
-
-        events.forEach((event) => {
-            window.addEventListener(event, resetTimer);
-        });
-
+        // Khởi động timer lần đầu
         resetTimer();
 
+        // Add Event Listeners
+        events.forEach(event => {
+            window.addEventListener(event, handleActivity);
+        });
+
+        // Cleanup khi unmount
         return () => {
-            if (timeoutId) clearTimeout(timeoutId);
-            events.forEach((event) => {
-                window.removeEventListener(event, resetTimer);
+            if (timerRef.current) clearTimeout(timerRef.current);
+            events.forEach(event => {
+                window.removeEventListener(event, handleActivity);
             });
         };
-    }, [handleLogout]);
+    }, [resetTimer]);
 
-    // ✅ TRẢ VỀ CHILDREN thay vì null để không làm mất giao diện ứng dụng
     return <>{children}</>;
 }
