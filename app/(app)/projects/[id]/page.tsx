@@ -12,26 +12,27 @@ import {
     getSurveyTemplates,
     getSurveyTaskTemplates
 } from "@/lib/action/surveyActions";
-
 import { getProjectFinanceStats } from "@/lib/action/finance";
 import { getEmployees } from "@/lib/action/employeeActions";
-// import { getMaterialRequests } from "@/lib/action/request"; // (Có thể bỏ nếu thay thế bằng logic mới)
 import { getQuotations } from "@/lib/action/quotationActions";
 import { getContracts } from "@/lib/action/contractActions";
 
-// ✅ 1. Import Action cho Vật tư & Chi phí
+// --- Import Action cho Vật tư & Chi phí ---
 import { getProjectQTO, getMaterialBudget } from "@/lib/action/qtoActions";
 import { getNorms } from "@/lib/action/normActions";
 import { getEstimationItems, getCostTemplates } from "@/lib/action/estimationActions";
 
-// ✅ 2. Import Action & Component cho Yêu cầu Vật tư (Phương án B)
+// --- Import Action cho Yêu cầu Vật tư ---
 import { getProjectRequests } from "@/lib/action/requestActions";
-import MaterialRequestManager from "@/components/projects/requests/MaterialRequestManager";
+
+// --- Import Action cho Pháp lý (MỚI) ---
+import { getProjectLegalDocs } from "@/lib/action/legal-actions";
 
 import { formatDate, formatCurrency } from "@/lib/utils/utils";
 import { getCurrentSession } from "@/lib/supabase/session";
 import { createClient } from "@supabase/supabase-js";
 
+// --- Components ---
 import ProjectTabs from "@/components/projects/ProjectTabs";
 import ProjectHeaderWrapper from "@/components/projects/ProjectHeaderWrapper";
 import StatCard from "@/components/projects/StatCard";
@@ -39,19 +40,21 @@ import TaskItemServerWrapper from '@/components/tasks/TaskItemServerWrapper';
 import DebtWidget from "@/components/projects/finance/DebtWidget";
 import ProgressBar from "@/components/ui/ProgressBar";
 import { Badge } from "@/components/ui/badge";
-
-import CostManager from "@/components/projects/cost/CostManager";
+import MaterialRequestManager from "@/components/projects/requests/MaterialRequestManager";
 import QuotationPageClient from "./quotation/page-client";
+import BOQMapper from "@/components/estimation/BOQMapper";
+import ProjectLegalTab from "@/components/projects/tab/ProjectLegalTab"; // (MỚI)
+import { getConstructionLogs } from "@/lib/action/log-actions";
 
 import {
     Clock, Banknote, TrendingUp, Briefcase, FileText, Activity, Wallet,
-    Building2, Layers, MapPin, Phone, Mail, Coins, Package // ✅ Import icon Package
+    MapPin, Coins, Package, Scale
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProjectData } from "@/types/project";
 
-// ... (Giữ nguyên Helper Functions & Types) ...
+// --- Helper Functions ---
 function getStatusLabel(status: string | null) {
     switch (status) {
         case "in_progress": return "Đang tiến hành";
@@ -73,6 +76,7 @@ function getBadgeClass(status: string | null) {
     }
 }
 
+// --- Types Mở rộng ---
 type ProjectWithExtras = ProjectData & {
     risk_data?: { name: string; color: string; code?: string } | null;
     status_data?: { name: string; color: string; code?: string } | null;
@@ -84,6 +88,14 @@ type ProjectWithExtras = ProjectData & {
     employees?: { name: string; email?: string; avatar_url?: string } | null;
     total_contract_value?: number;
     geocode?: string | null;
+
+    // Bổ sung các trường pháp lý nếu ProjectData gốc chưa có (đề phòng)
+    land_lot_number?: string | null;
+    land_parcel_number?: string | null;
+    construction_permit_code?: string | null;
+    permit_issue_date?: string | null;
+    total_floor_area?: number | null;
+    num_floors?: number | null;
 };
 
 interface FinanceStats {
@@ -118,14 +130,16 @@ export default async function ProjectPage({ params }: PageProps) {
         canEditEstimate: ["MANAGER"].includes(projectRoleCode || "") || session.role === "admin",
     };
 
+    // Load Data Parallel
     const [
         projectRes, membersRes, docsRes, financeRes, milestonesRes,
         tasksRes, surveysRes, surveyTemplatesRes, surveyTaskTemplatesRes,
-        // requestsRes, // (Dùng biến mới bên dưới để tránh nhầm lẫn)
         rolesRes, employeesRes, quotationsRes, contractsRes,
         qtoItems, norms, estimateRes, costTemplatesRes,
-        budgetRes, // ✅ Budget Data
-        materialRequestsRes // ✅ Material Request Data (Mới)
+        budgetRes,
+        materialRequestsRes,
+        legalDocsRes,
+        constructionLogsRes
     ] = await Promise.all([
         getProject(id),
         getProjectMembers(id),
@@ -136,7 +150,6 @@ export default async function ProjectPage({ params }: PageProps) {
         getProjectSurveys(id),
         getSurveyTemplates(),
         getSurveyTaskTemplates(),
-        // getMaterialRequests(id), // (Old action)
         getProjectRoles(),
         getEmployees({ limit: 1000, page: 1 }),
         getQuotations(id),
@@ -145,8 +158,10 @@ export default async function ProjectPage({ params }: PageProps) {
         getNorms(),
         getEstimationItems(id),
         getCostTemplates(),
-        getMaterialBudget(id), // ✅ Lấy Budget
-        getProjectRequests(id) // ✅ Lấy Material Requests
+        getMaterialBudget(id),
+        getProjectRequests(id),
+        getProjectLegalDocs(id), // Gọi hàm này
+        getConstructionLogs(id)
     ]);
 
     let project = (projectRes as any)?.data as ProjectWithExtras;
@@ -197,6 +212,7 @@ export default async function ProjectPage({ params }: PageProps) {
         return <div className="p-20 text-center">Dự án không tồn tại hoặc bạn không có quyền truy cập.</div>;
     }
 
+    // --- Normalize Data ---
     const financeStats = (financeRes as unknown as FinanceStats) || {
         totalRevenue: 0, totalCost: 0, actualReceived: 0, remainingDebt: 0, overdueCount: 0, profit: 0, profitMargin: 0
     };
@@ -204,7 +220,6 @@ export default async function ProjectPage({ params }: PageProps) {
     const documents = (docsRes as any)?.data || [];
     const milestones = (milestonesRes as any)?.data || [];
     const tasks = (tasksRes as any)?.data || [];
-    // const requests = Array.isArray(requestsRes) ? requestsRes : ((requestsRes as any)?.data || []);
     const quotations = (quotationsRes as any)?.success ? (quotationsRes as any).data : [];
     const contracts = (contractsRes as any)?.success ? (contractsRes as any).data : [];
     const surveys = (surveysRes as any)?.data || [];
@@ -214,7 +229,10 @@ export default async function ProjectPage({ params }: PageProps) {
     const allEmployees = (employeesRes as any)?.employees || [];
     const estimates = (estimateRes as any)?.data || [];
     const costTemplates = (costTemplatesRes as any)?.data || [];
+    const legalDocs = Array.isArray(legalDocsRes) ? legalDocsRes : []; // Data pháp lý
+    const constructionLogs = Array.isArray(constructionLogsRes) ? constructionLogsRes : [];
 
+    // --- Calculations ---
     const actualProgress = project.progress || 0;
     const today = new Date();
     const startDate = project.start_date ? new Date(project.start_date) : new Date();
@@ -249,6 +267,7 @@ export default async function ProjectPage({ params }: PageProps) {
         <div className="container mx-auto px-2 md:px-6 py-4 md:py-8 space-y-4 md:space-y-6 bg-gray-50 min-h-screen">
             <ProjectHeaderWrapper project={project} permissions={permissions} />
 
+            {/* --- Stats Cards --- */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 animate-in fade-in duration-500">
                 <StatCard
                     icon={<Clock size={18} className="text-blue-500" />}
@@ -271,12 +290,16 @@ export default async function ProjectPage({ params }: PageProps) {
                 <StatCard icon={<TrendingUp size={18} className="text-orange-500" />} title="Thực chi" value={formatCurrency(financeStats.totalCost)} />
             </div>
 
+            {/* --- Main Tabs --- */}
             <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList className="bg-white p-1 border rounded-lg w-full md:w-auto flex justify-start overflow-x-auto">
                     <TabsTrigger value="overview"><Activity className="w-4 h-4 mr-2" />Tổng quan</TabsTrigger>
+
+                    {/* --- TAB PHÁP LÝ (MỚI) --- */}
+                    <TabsTrigger value="legal"><Scale className="w-4 h-4 mr-2 text-purple-600" />Hồ sơ Pháp lý</TabsTrigger>
+
                     <TabsTrigger value="execution"><Briefcase className="w-4 h-4 mr-2" />Thi công & Nhiệm vụ</TabsTrigger>
                     <TabsTrigger value="cost_management"><Coins className="w-4 h-4 mr-2 text-yellow-600" />Chi phí & Vật tư</TabsTrigger>
-                    {/* ✅ TAB MỚI: YÊU CẦU VẬT TƯ */}
                     <TabsTrigger value="material_request"><Package className="w-4 h-4 mr-2" />Yêu cầu Vật tư</TabsTrigger>
                     <TabsTrigger value="quotation"><FileText className="w-4 h-4 mr-2" />Báo giá & Hợp đồng</TabsTrigger>
                 </TabsList>
@@ -362,7 +385,17 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
-                {/* --- 2. TAB THI CÔNG --- */}
+                {/* --- 2. TAB PHÁP LÝ (MỚI) --- */}
+                <TabsContent value="legal">
+                    <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
+                        <ProjectLegalTab
+                            project={project}
+                            docs={legalDocs}
+                        />
+                    </div>
+                </TabsContent>
+
+                {/* --- 3. TAB THI CÔNG --- */}
                 <TabsContent value="execution">
                     <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <ProjectTabs
@@ -376,9 +409,6 @@ export default async function ProjectPage({ params }: PageProps) {
                             surveys={surveys}
                             surveyTemplates={surveyTemplates}
                             surveyTaskTemplates={surveyTaskTemplates}
-                            qtoItems={[]}
-                            qtoTemplates={[]}
-                            requests={[]} // Tạm thời để trống ở tab này vì đã có tab riêng
                             allEmployees={allEmployees}
                             roles={roles}
                             isManager={permissions.canAddMember}
@@ -386,25 +416,20 @@ export default async function ProjectPage({ params }: PageProps) {
                             taskFeed={taskFeedOutput}
                             membersCount={members.length}
                             documentsCount={documents.length}
+                            logs={constructionLogs}
                         />
                     </div>
                 </TabsContent>
 
-                {/* --- 3. TAB CHI PHÍ & VẬT TƯ --- */}
+                {/* --- 4. TAB CHI PHÍ & VẬT TƯ --- */}
                 <TabsContent value="cost_management">
-                    <CostManager
+                    <BOQMapper
                         projectId={id}
-                        qtoItems={qtoItems || []}
-                        norms={norms || []}
-                        initialEstimates={estimates}
-                        costTemplates={costTemplates}
-                        canEdit={permissions.canEditEstimate}
-                        // ✅ Truyền dữ liệu Budget xuống Component
-                        budgetItems={budgetRes || []}
+                        items={estimates}
                     />
                 </TabsContent>
 
-                {/* ✅ 4. TAB MỚI: YÊU CẦU VẬT TƯ --- */}
+                {/* --- 5. TAB YÊU CẦU VẬT TƯ --- */}
                 <TabsContent value="material_request">
                     <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <MaterialRequestManager
@@ -414,7 +439,7 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
-                {/* --- 5. TAB BÁO GIÁ & HỢP ĐỒNG --- */}
+                {/* --- 6. TAB BÁO GIÁ & HỢP ĐỒNG --- */}
                 <TabsContent value="quotation">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <QuotationPageClient

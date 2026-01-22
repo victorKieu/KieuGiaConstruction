@@ -28,7 +28,7 @@ import {
 import { cn } from "@/lib/utils/utils";
 
 import { materialRequestSchema, MaterialRequestFormValues } from "@/lib/schemas/request";
-import { createMaterialRequestAction, getProjectWarehouses } from "@/lib/action/request";
+import { createMaterialRequestAction, getProjectWarehouses } from "@/lib/action/requestActions";
 import { getMaterials } from "@/lib/action/catalog"; // <--- Import hàm lấy danh mục
 
 export default function CreateRequestPage({ params }: { params: Promise<{ id: string }> }) {

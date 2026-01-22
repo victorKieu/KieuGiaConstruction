@@ -9,9 +9,7 @@ import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectMilestoneTab from "./tab/ProjectMilestoneTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
-import ProjectRequestsTab from "./tab/ProjectRequestsTab";
-
-// ❌ Đã xóa ProjectEstimationTab vì đã chuyển sang CostManager
+import ConstructionLogManager from "@/components/projects/execution/ConstructionLogManager"; // ✅ Component Nhật ký
 
 import {
     ProjectData, MilestoneData, MemberData, DocumentData, TaskData,
@@ -30,27 +28,31 @@ interface ProjectTabsProps {
     surveyTemplates: SurveyTemplate[];
     surveyTaskTemplates: SurveyTaskTemplate[];
     taskFeed: React.ReactNode;
-    // ❌ Đã xóa qtoItems, qtoTemplates vì không còn dùng ở đây
     membersCount: number;
     documentsCount: number;
-    requests: any[];
+
+    // ✅ Prop mới: Danh sách nhật ký thi công
+    logs?: any[];
+
     allEmployees?: any[];
     roles?: any[];
     isManager?: boolean;
     currentUserId?: string;
 }
 
+// Định nghĩa các Tab con trong phần Thi công
 const TABS = {
-    TASKS: "Công việc & Mốc thời gian",
+    TASKS: "Công việc & Mốc",
     SURVEY: "Khảo sát",
     MEMBERS: "Nhân sự",
-    REQUESTS: "Yêu cầu vật tư",
+    LOGS: "Nhật ký thi công", // ✅ Tab Mới
     DOCUMENTS: "Tài liệu",
-    FINANCE: "Tài chính" // Giữ lại để xem chi phí thực tế thi công
+    FINANCE: "Tài chính"
 };
 
 const tabs = Object.values(TABS);
 
+// Helper: Lấy Tab mặc định từ URL
 function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
     if (!searchParams) return TABS.TASKS;
     const tabParam = searchParams.get("tab");
@@ -58,22 +60,23 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
         case "survey": return TABS.SURVEY;
         case "tasks": return TABS.TASKS;
         case "members": return TABS.MEMBERS;
+        case "logs": return TABS.LOGS; // ✅ Case mới
         case "documents": return TABS.DOCUMENTS;
         case "finance": return TABS.FINANCE;
-        case "requests": return TABS.REQUESTS;
-        // Các case qto/estimation cũ sẽ fallback về tasks hoặc xử lý ở parent
         default: return TABS.TASKS;
     }
 }
 
+// Helper: Lấy param URL từ tên Tab
 function getUrlParamFromTabName(tabName: string): string {
     switch (tabName) {
+        
         case TABS.SURVEY: return "survey";
         case TABS.TASKS: return "tasks";
         case TABS.MEMBERS: return "members";
+        case TABS.LOGS: return "logs"; // ✅ Case mới
         case TABS.DOCUMENTS: return "documents";
         case TABS.FINANCE: return "finance";
-        case TABS.REQUESTS: return "requests";
         default: return "tasks";
     }
 }
@@ -81,7 +84,7 @@ function getUrlParamFromTabName(tabName: string): string {
 export default function ProjectTabs({
     projectId, project, milestones, members, documents, financeStats, tasks,
     surveys, surveyTemplates, surveyTaskTemplates, taskFeed, membersCount, documentsCount,
-    requests,
+    logs = [], // ✅ Mặc định rỗng nếu chưa có dữ liệu
     allEmployees = [], roles = [], isManager = false, currentUserId = "",
 }: ProjectTabsProps) {
 
@@ -110,41 +113,58 @@ export default function ProjectTabs({
                     <button
                         key={tab}
                         onClick={() => handleTabClick(tab)}
-                        className={`pb-2 border-b-2 whitespace-nowrap transition-colors px-1 ${activeTab === tab
-                            ? "border-blue-600 font-semibold text-blue-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700"
+                        className={`pb-2 border-b-2 whitespace-nowrap transition-colors px-1 text-sm font-medium ${activeTab === tab
+                            ? "border-blue-600 text-blue-600"
+                            : "border-transparent text-slate-500 hover:text-slate-700"
                             }`}
                     >
                         {tab}
-                        {tab === TABS.MEMBERS && <span className="ml-1 text-xs opacity-60">({membersCount})</span>}
-                        {tab === TABS.DOCUMENTS && <span className="ml-1 text-xs opacity-60">({documentsCount})</span>}
-                        {tab === TABS.REQUESTS && <span className="ml-1 text-xs opacity-60">({requests.length})</span>}
+                        {/* Badges số lượng */}
+                        {tab === TABS.MEMBERS && <span className="ml-1 text-xs opacity-60 bg-slate-100 px-1.5 py-0.5 rounded-full">({membersCount})</span>}
+                        {tab === TABS.DOCUMENTS && <span className="ml-1 text-xs opacity-60 bg-slate-100 px-1.5 py-0.5 rounded-full">({documentsCount})</span>}
+                        {tab === TABS.LOGS && <span className="ml-1 text-xs opacity-60 bg-slate-100 px-1.5 py-0.5 rounded-full">({logs.length})</span>}
                     </button>
                 ))}
             </div>
 
             {/* Nội dung Tab */}
-            <div className="mt-4">
+            <div className="mt-4 min-h-[400px]">
+                {/* 1. Tab Công việc */}
                 {activeTab === TABS.TASKS && (
                     <ProjectMilestoneTab
                         projectId={project.id} milestones={milestones} tasks={tasks}
                         members={members} taskFeed={taskFeed}
                     />
                 )}
+
+
+                {/* 3. Tab Khảo sát */}
                 {activeTab === TABS.SURVEY && (
                     <ProjectSurveyTab
                         projectId={projectId} surveys={surveys} members={members}
                         surveyTemplates={surveyTemplates} surveyTaskTemplates={surveyTaskTemplates}
                     />
                 )}
+
+                {/* 4. Tab Nhân sự */}
                 {activeTab === TABS.MEMBERS && (
                     <ProjectMembersTab
                         projectId={projectId} members={members} allEmployees={allEmployees}
                         roles={roles} isManager={isManager} currentUserId={currentUserId}
                     />
                 )}
-                {activeTab === TABS.REQUESTS && <ProjectRequestsTab projectId={projectId} requests={requests} />}
+
+                {/* 2. Tab Nhật ký (MỚI) */}
+                {activeTab === TABS.LOGS && (
+                    <div className="animate-in fade-in duration-300">
+                        <ConstructionLogManager projectId={projectId} logs={logs} />
+                    </div>
+                )}
+
+                {/* 5. Tab Tài liệu */}
                 {activeTab === TABS.DOCUMENTS && <ProjectDocumentsTab projectId={projectId} documents={documents} />}
+
+                {/* 6. Tab Tài chính */}
                 {activeTab === TABS.FINANCE && <ProjectFinanceTab stats={financeStats} />}
             </div>
         </div>

@@ -1,420 +1,590 @@
 ﻿"use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
+import { useState, useEffect } from "react";
+import {
+    Card, CardContent, CardHeader, CardTitle
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+    Plus, Trash2, FileText, Calendar, User, ShoppingCart, X, Package,
+    ArrowRight, AlertTriangle, CheckSquare, Truck, Loader2, Check, ChevronsUpDown
+} from "lucide-react";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils/utils";
-
-// Icons
-import {
-    Plus, Send, Clock, XCircle, Package, ShoppingCart,
-    Pencil, Trash2, Check, X, CalendarIcon, MapPin
-} from "lucide-react";
 import { toast } from "sonner";
-
-// Server Actions
+// ✅ Import đúng Server Actions đã sửa
 import {
-    getAvailableMaterials,
     createMaterialRequest,
-    updateMaterialRequest,
     deleteMaterialRequest,
-    updateRequestStatus
-} from "@/lib/action/requestActions";
+    getMaterialRequests,
+    getProjectMembers,
+    checkRequestFeasibility,
+    approveAndProcessRequest,
+    getProjectStandardizedMaterials
+} from "@/lib/action/procurement";
+import { formatDate, cn } from "@/lib/utils/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-interface Props {
-    projectId: string;
-    requests: any[];
-    isManager?: boolean; // Phân quyền hiển thị nút duyệt
+// --- SHADCN UI IMPORTS ---
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command"
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"
+
+// --- COMPONENT COMBOBOX (Customized cho Vật tư) ---
+function MaterialCombobox({
+    value,
+    onChange,
+    onUnitChange,
+    options
+}: {
+    value: string,
+    onChange: (val: string) => void,
+    onUnitChange?: (unit: string) => void,
+    options: any[]
+}) {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className={cn(
+                        "w-full justify-between font-normal text-left px-3",
+                        !value && "text-muted-foreground"
+                    )}
+                >
+                    <span className="truncate">{value || "Chọn vật tư (Theo dự toán)..."}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[450px] p-0" align="start">
+                <Command>
+                    <CommandInput placeholder="Tìm tên vật tư..." />
+                    <CommandList>
+                        <CommandEmpty>
+                            <p className="py-2 text-sm text-slate-500 text-center">
+                                Không tìm thấy trong dự toán. <br />
+                                <span className="text-xs italic">Bạn hãy nhập tên trực tiếp vào ô bên ngoài nếu là vật tư phát sinh.</span>
+                            </p>
+                        </CommandEmpty>
+                        <CommandGroup className="max-h-[300px] overflow-y-auto">
+                            {options.map((item) => (
+                                <CommandItem
+                                    key={item.name}
+                                    value={item.name}
+                                    onSelect={(currentValue) => {
+                                        // Fix lỗi lowercase của shadcn command
+                                        const original = options.find(o => o.name.toLowerCase() === currentValue.toLowerCase());
+                                        const finalName = original ? original.name : currentValue;
+
+                                        onChange(finalName);
+                                        if (original && original.unit && onUnitChange) {
+                                            onUnitChange(original.unit);
+                                        }
+                                        setOpen(false);
+                                    }}
+                                >
+                                    <Check
+                                        className={cn(
+                                            "mr-2 h-4 w-4",
+                                            value === item.name ? "opacity-100" : "opacity-0"
+                                        )}
+                                    />
+                                    <div className="flex flex-col w-full">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-medium">{item.name}</span>
+                                            {/* ✅ Hiển thị Định mức để tham khảo */}
+                                            {item.budget > 0 && (
+                                                <span className="text-[10px] font-mono bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
+                                                    Max: {item.budget}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-slate-400">ĐVT: {item.unit}</span>
+                                    </div>
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
 }
 
-export default function MaterialRequestManager({ projectId, requests, isManager = true }: Props) {
-    const router = useRouter();
-    const [isOpen, setIsOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
+// --- MAIN MANAGER COMPONENT ---
+export default function MaterialRequestManager({ projectId }: { projectId: string }) {
+    const [requests, setRequests] = useState<any[]>([]);
+    const [employees, setEmployees] = useState<any[]>([]);
+    const [standardMaterials, setStandardMaterials] = useState<any[]>([]); // Dữ liệu từ project_material_budget
+    const [loading, setLoading] = useState(true);
 
-    // --- FORM STATE ---
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [note, setNote] = useState("");
-    const [deliveryDate, setDeliveryDate] = useState<Date | undefined>(undefined);
-    const [requestItems, setRequestItems] = useState<any[]>([]); // Danh sách vật tư đang chọn
+    // State UI
+    const [open, setOpen] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [processOpen, setProcessOpen] = useState(false);
+    const [selectedRequest, setSelectedRequest] = useState<any>(null);
+    const [analysis, setAnalysis] = useState<any>(null);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [processing, setProcessing] = useState(false);
 
-    // --- DATA LISTS ---
-    const [availableMaterials, setAvailableMaterials] = useState<any[]>([]);
+    // Form Data
+    const [formData, setFormData] = useState({
+        code: `MR-${Date.now().toString().slice(-6)}`,
+        request_date: new Date().toISOString().split('T')[0],
+        deadline_date: "",
+        requester_id: "",
+        priority: "normal",
+        notes: ""
+    });
 
-    // --- EFFECTS ---
+    const [items, setItems] = useState<any[]>([
+        { item_name: "", unit: "", quantity: 1, notes: "" }
+    ]);
+
     useEffect(() => {
-        if (isOpen) {
-            loadData();
-        } else {
-            // Reset form khi đóng
-            setEditingId(null);
-            setNote("");
-            setRequestItems([]);
-            setDeliveryDate(undefined);
-        }
-    }, [isOpen]);
+        loadData();
+    }, [projectId]);
 
     const loadData = async () => {
-        // Lấy ngân sách (BOQ/QTO) để hiển thị gợi ý
-        const mats = await getAvailableMaterials(projectId);
-        setAvailableMaterials(mats);
-    };
-
-    // --- HANDLERS ---
-
-    // 1. Thêm vật tư vào bảng
-    const handleAddMaterial = (mat: any) => {
-        const exists = requestItems.find(i => (i.material_name === mat.material_name) || (i.item_name === mat.material_name));
-        if (exists) return toast.warning("Vật tư này đã chọn rồi");
-
-        setRequestItems([...requestItems, {
-            material_name: mat.material_name,
-            unit: mat.unit,
-            quantity: 0,
-            note: ""
-        }]);
-    };
-
-    // 2. Xóa dòng vật tư
-    const handleRemoveItem = (index: number) => {
-        const newItems = [...requestItems];
-        newItems.splice(index, 1);
-        setRequestItems(newItems);
-    };
-
-    // 3. Sửa số lượng
-    const handleItemChange = (index: number, value: string) => {
-        const newItems = [...requestItems];
-        newItems[index].quantity = value;
-        setRequestItems(newItems);
-    };
-
-    // 4. Mở form Edit (Load dữ liệu cũ)
-    const handleEdit = (req: any) => {
-        if (req.status !== 'pending') return toast.error("Chỉ có thể sửa phiếu đang chờ duyệt.");
-
-        setEditingId(req.id);
-        setNote(req.notes || "");
-
-        // Map field từ DB (deadline_date)
-        setDeliveryDate(req.deadline_date ? new Date(req.deadline_date) : undefined);
-
-        const itemsForForm = req.items.map((i: any) => ({
-            material_name: i.item_name,
-            unit: i.unit,
-            quantity: i.quantity,
-            note: i.notes
-        }));
-        setRequestItems(itemsForForm);
-        setIsOpen(true);
-    };
-
-    // 5. Xóa phiếu
-    const handleDelete = async (reqId: string, status: string) => {
-        if (status !== 'pending') return toast.error("Chỉ xóa được phiếu chờ duyệt.");
-        if (!confirm("Bạn có chắc chắn muốn xóa phiếu này?")) return;
-
-        const res = await deleteMaterialRequest(reqId, projectId);
-        if (res.success) {
-            toast.success("Đã xóa phiếu.");
-            router.refresh();
-        } else {
-            toast.error(res.error);
+        try {
+            const [reqs, emps, budgetMats] = await Promise.all([
+                getMaterialRequests(projectId),
+                getProjectMembers(projectId),
+                getProjectStandardizedMaterials(projectId) // ✅ Lấy danh mục chuẩn
+            ]);
+            setRequests(reqs);
+            setEmployees(emps);
+            setStandardMaterials(budgetMats);
+        } catch (error) {
+            console.error(error);
+            toast.error("Lỗi tải dữ liệu");
+        } finally {
+            setLoading(false);
         }
     };
 
-    // 6. SUBMIT FORM
+    // --- FORM HANDLERS ---
+    const updateItem = (index: number, field: string, value: any) => {
+        const newItems = [...items];
+        newItems[index] = { ...newItems[index], [field]: value };
+        setItems(newItems);
+    };
+
+    const addItem = () => {
+        setItems([...items, { item_name: "", unit: "", quantity: 1, notes: "" }]);
+    };
+
+    const removeItem = (index: number) => {
+        if (items.length === 1) return;
+        setItems(items.filter((_, i) => i !== index));
+    };
+
     const handleSubmit = async () => {
-        if (requestItems.length === 0) return toast.error("Chưa chọn vật tư nào");
-        if (!deliveryDate) return toast.error("Vui lòng chọn Ngày cần hàng");
-
-        setLoading(true);
-        let res;
-
-        // Lưu ý: Không cần gửi warehouseId, Server sẽ tự lấy kho của Project
-        if (editingId) {
-            res = await updateMaterialRequest(editingId, projectId, note, requestItems, deliveryDate);
-        } else {
-            res = await createMaterialRequest(projectId, note, requestItems, deliveryDate);
+        if (!formData.code || !formData.request_date || !formData.requester_id) {
+            toast.error("Vui lòng điền đầy đủ thông tin chung");
+            return;
+        }
+        const validItems = items.filter(i => i.item_name.trim() !== "");
+        if (validItems.length === 0) {
+            toast.error("Phải có ít nhất 1 vật tư");
+            return;
         }
 
-        setLoading(false);
+        setSubmitting(true);
+        const res = await createMaterialRequest({ ...formData, project_id: projectId }, validItems);
 
         if (res.success) {
-            toast.success(res.message);
-            setIsOpen(false);
-            router.refresh();
+            toast.success("Đã tạo phiếu đề xuất!");
+            setOpen(false);
+            // Reset Form
+            setFormData({
+                code: `MR-${Date.now().toString().slice(-6)}`,
+                request_date: new Date().toISOString().split('T')[0],
+                deadline_date: "",
+                requester_id: "",
+                priority: "normal",
+                notes: ""
+            });
+            setItems([{ item_name: "", unit: "", quantity: 1, notes: "" }]);
+            loadData();
         } else {
             toast.error(res.error);
         }
+        setSubmitting(false);
     };
 
-    // 7. DUYỆT / TỪ CHỐI
-    const handleApproval = async (reqId: string, status: 'approved' | 'rejected') => {
-        const actionText = status === 'approved' ? 'DUYỆT' : 'TỪ CHỐI';
-        if (!confirm(`Bạn có chắc chắn muốn ${actionText} phiếu yêu cầu này?`)) return;
+    const handleDelete = async (id: string) => {
+        if (!confirm("Bạn có chắc muốn xóa phiếu này?")) return;
+        await deleteMaterialRequest(id, projectId);
+        loadData();
+    };
 
-        const res = await updateRequestStatus(reqId, projectId, status);
+    // --- PROCESS HANDLERS (Duyệt & Tách phiếu) ---
+    const handleOpenProcess = async (req: any) => {
+        setSelectedRequest(req);
+        setProcessOpen(true);
+        setAnalyzing(true);
+        setAnalysis(null);
+
+        const res = await checkRequestFeasibility(req.id, projectId);
+        if (res.success) {
+            setAnalysis(res);
+        } else {
+            toast.error("Lỗi phân tích: " + res.error);
+            setProcessOpen(false);
+        }
+        setAnalyzing(false);
+    };
+
+    const handleApprove = async () => {
+        if (!analysis) return;
+        setProcessing(true);
+        const res = await approveAndProcessRequest(
+            selectedRequest.id,
+            projectId,
+            analysis.data,
+            analysis.warehouseId
+        );
 
         if (res.success) {
             toast.success(res.message);
-            router.refresh();
+            setProcessOpen(false);
+            loadData();
         } else {
-            toast.error(res.error);
+            toast.error("Lỗi: " + res.error);
         }
+        setProcessing(false);
     };
 
-    // Helper: Badge trạng thái
-    const getStatusBadge = (status: string) => {
-        const styles: Record<string, string> = {
-            'pending': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-            'approved': 'bg-green-100 text-green-700 border-green-200',
-            'rejected': 'bg-red-100 text-red-700 border-red-200',
-            'ordered': 'bg-purple-100 text-purple-700 border-purple-200'
+    // --- UI HELPERS ---
+    const PriorityBadge = ({ p }: { p: string }) => {
+        const map: any = {
+            low: { label: "Thấp", color: "bg-slate-100 text-slate-600 border-slate-200" },
+            normal: { label: "Thường", color: "bg-blue-100 text-blue-700 border-blue-200" },
+            high: { label: "Gấp", color: "bg-orange-100 text-orange-700 border-orange-200" },
+            urgent: { label: "Khẩn cấp", color: "bg-red-100 text-red-700 border-red-200 animate-pulse" }
         };
-        const labels: Record<string, string> = {
-            'pending': 'Chờ duyệt',
-            'approved': 'Đã duyệt',
-            'rejected': 'Từ chối',
-            'ordered': 'Đã đặt hàng'
-        };
-        return <Badge className={`border font-normal ${styles[status] || 'bg-gray-100'}`}>{labels[status] || status}</Badge>;
+        const conf = map[p] || map.normal;
+        return <Badge variant="outline" className={`${conf.color} border`}>{conf.label}</Badge>;
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            {/* HEADER */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border shadow-sm">
+        <div className="space-y-6">
+            {/* HEADER LIST */}
+            <div className="flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
                 <div>
                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                        <ShoppingCart className="w-5 h-5 text-blue-600" /> Quản lý Yêu cầu Vật tư
+                        <ShoppingCart className="w-5 h-5 text-blue-600" />
+                        Đề xuất Vật tư
                     </h3>
-                    <p className="text-sm text-slate-500">Đề xuất cấp vật tư từ kho hoặc mua mới.</p>
+                    <p className="text-sm text-slate-500">Quản lý các yêu cầu cấp vật tư từ công trường</p>
                 </div>
 
-                <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
-                        <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={() => setEditingId(null)}>
-                            <Plus className="w-4 h-4 mr-2" /> Tạo Yêu cầu
+                        <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm">
+                            <Plus className="w-4 h-4 mr-2" /> Tạo Đề xuất
                         </Button>
                     </DialogTrigger>
-
-                    <DialogContent className="max-w-5xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
-                        <DialogHeader className="p-4 border-b bg-white">
-                            <DialogTitle>{editingId ? "Chỉnh sửa Phiếu Yêu Cầu" : "Tạo Phiếu Yêu Cầu Mới"}</DialogTitle>
+                    <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Tạo phiếu yêu cầu vật tư mới</DialogTitle>
                         </DialogHeader>
 
-                        <div className="flex flex-1 overflow-hidden">
-                            {/* CỘT TRÁI: NGÂN SÁCH (BUDGET) */}
-                            <div className="w-1/3 border-r bg-slate-50 flex flex-col">
-                                <div className="p-3 bg-white border-b text-sm font-semibold text-slate-700 flex justify-between items-center">
-                                    <span>Nguồn Ngân sách</span>
-                                    <Badge variant="outline" className="text-[10px] font-normal">BOQ / QTO</Badge>
+                        <div className="grid gap-6 py-4">
+                            {/* FORM HEADER */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border">
+                                <div className="space-y-2">
+                                    <Label>Mã phiếu</Label>
+                                    <Input value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} />
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                                    {availableMaterials.length === 0 ? (
-                                        <div className="text-center py-10 text-slate-400 text-xs">
-                                            Chưa có dữ liệu ngân sách.<br />Vui lòng hoàn thành QTO trước.
-                                        </div>
-                                    ) : availableMaterials.map((mat, i) => (
-                                        <div key={i} onClick={() => handleAddMaterial(mat)}
-                                            className="p-3 bg-white border rounded-lg cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className="font-medium text-sm text-slate-700 group-hover:text-blue-700">{mat.material_name}</div>
-                                                    <div className="text-xs text-slate-500 mt-1">
-                                                        Dư: <b>{Number(mat.budget_quantity).toLocaleString()}</b> {mat.unit}
-                                                    </div>
-                                                </div>
-                                                <Plus className="w-4 h-4 text-slate-300 group-hover:text-blue-500" />
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div className="space-y-2">
+                                    <Label>Ngày yêu cầu</Label>
+                                    <Input type="date" value={formData.request_date} onChange={e => setFormData({ ...formData, request_date: e.target.value })} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Cần hàng trước ngày</Label>
+                                    <Input type="date" value={formData.deadline_date} onChange={e => setFormData({ ...formData, deadline_date: e.target.value })} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Người yêu cầu</Label>
+                                    <Select onValueChange={(val) => setFormData({ ...formData, requester_id: val })}>
+                                        <SelectTrigger className="bg-white">
+                                            <SelectValue placeholder="Chọn nhân viên" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {employees.map(emp => (
+                                                <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Độ ưu tiên</Label>
+                                    <Select defaultValue="normal" onValueChange={(val) => setFormData({ ...formData, priority: val })}>
+                                        <SelectTrigger className="bg-white">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="low">Thấp</SelectItem>
+                                            <SelectItem value="normal">Bình thường</SelectItem>
+                                            <SelectItem value="high">Cao (Cần sớm)</SelectItem>
+                                            <SelectItem value="urgent">Khẩn cấp</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Ghi chú chung</Label>
+                                    <Input value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} placeholder="VD: Giao tới cổng B..." />
                                 </div>
                             </div>
 
-                            {/* CỘT PHẢI: FORM NHẬP LIỆU */}
-                            <div className="w-2/3 flex flex-col bg-white">
-                                <div className="flex-1 overflow-y-auto p-6 space-y-4">
-
-                                    {/* Form Gọn gàng: Chỉ chọn Ngày cần hàng */}
-                                    <div className="p-4 bg-slate-50 rounded-lg border">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700">Ngày cần hàng (Deadline) <span className="text-red-500">*</span></label>
-                                            <Popover>
-                                                <PopoverTrigger asChild>
-                                                    <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-300", !deliveryDate && "text-muted-foreground")}>
-                                                        <CalendarIcon className="mr-2 h-4 w-4 text-slate-500" />
-                                                        {deliveryDate ? format(deliveryDate, "dd/MM/yyyy", { locale: vi }) : <span>Chọn ngày...</span>}
-                                                    </Button>
-                                                </PopoverTrigger>
-                                                <PopoverContent className="w-auto p-0" align="start">
-                                                    <Calendar mode="single" selected={deliveryDate} onSelect={setDeliveryDate} initialFocus />
-                                                </PopoverContent>
-                                            </Popover>
-                                            <p className="text-[11px] text-slate-500 mt-1">Kho nhận hàng sẽ được hệ thống tự động gán theo Dự án.</p>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-sm font-medium text-slate-700">Ghi chú phiếu</label>
-                                        <Textarea
-                                            placeholder="Ghi chú thêm về yêu cầu này (VD: Cần gấp cho hạng mục móng)..."
-                                            value={note}
-                                            onChange={e => setNote(e.target.value)}
-                                            className="min-h-[60px]"
-                                        />
-                                    </div>
-
-                                    <div className="border rounded-lg overflow-hidden">
-                                        <div className="bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-500 uppercase">Danh sách vật tư</div>
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                                    <TableHead>Vật tư</TableHead>
-                                                    <TableHead className="w-[80px]">ĐVT</TableHead>
-                                                    <TableHead className="w-[120px]">SL Yêu cầu</TableHead>
-                                                    <TableHead className="w-[50px]"></TableHead>
+                            {/* ITEMS TABLE */}
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <Label className="font-bold flex items-center gap-2">
+                                        <Package className="w-4 h-4" /> Danh sách vật tư chi tiết
+                                    </Label>
+                                    <Button variant="outline" size="sm" onClick={addItem}><Plus className="w-3 h-3 mr-1" /> Thêm dòng</Button>
+                                </div>
+                                <div className="border rounded-lg overflow-hidden shadow-sm">
+                                    <Table>
+                                        <TableHeader className="bg-slate-100">
+                                            <TableRow>
+                                                <TableHead className="w-[40%]">Tên vật tư (Theo Dự toán)</TableHead>
+                                                <TableHead className="w-[15%]">ĐVT</TableHead>
+                                                <TableHead className="w-[15%]">Số lượng</TableHead>
+                                                <TableHead>Ghi chú</TableHead>
+                                                <TableHead className="w-[50px]"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {items.map((item, idx) => (
+                                                <TableRow key={idx}>
+                                                    <TableCell className="p-2">
+                                                        {/* ✅ COMBOBOX VỚI DỮ LIỆU CHUẨN TỪ BUDGET */}
+                                                        <MaterialCombobox
+                                                            value={item.item_name}
+                                                            onChange={(val) => updateItem(idx, 'item_name', val)}
+                                                            onUnitChange={(unit) => updateItem(idx, 'unit', unit)}
+                                                            options={standardMaterials}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="p-2">
+                                                        <Input
+                                                            value={item.unit}
+                                                            onChange={e => updateItem(idx, 'unit', e.target.value)}
+                                                            placeholder="ĐVT"
+                                                            className="border-transparent bg-slate-50 focus:border-blue-500"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="p-2">
+                                                        <Input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={e => updateItem(idx, 'quantity', e.target.value)}
+                                                            className="border-transparent focus:border-blue-500 text-center font-bold"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="p-2">
+                                                        <Input
+                                                            value={item.notes}
+                                                            onChange={e => updateItem(idx, 'notes', e.target.value)}
+                                                            className="border-transparent focus:border-blue-500"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="p-2 text-center">
+                                                        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="h-8 w-8 text-red-400">
+                                                            <X className="w-4 h-4" />
+                                                        </Button>
+                                                    </TableCell>
                                                 </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {requestItems.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-slate-400">Vui lòng chọn vật tư từ danh sách bên trái.</TableCell></TableRow>
-                                                ) : requestItems.map((item, idx) => (
-                                                    <TableRow key={idx}>
-                                                        <TableCell className="font-medium">{item.material_name || item.item_name}</TableCell>
-                                                        <TableCell className="text-slate-500">{item.unit}</TableCell>
-                                                        <TableCell>
-                                                            <Input
-                                                                type="number"
-                                                                value={item.quantity}
-                                                                onChange={e => handleItemChange(idx, e.target.value)}
-                                                                className="h-8 w-24 text-right font-bold focus:ring-blue-500"
-                                                                autoFocus={item.quantity === 0}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(idx)} className="text-slate-400 hover:text-red-500 hover:bg-red-50">
-                                                                <XCircle className="w-4 h-4" />
-                                                            </Button>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                </div>
-                                <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
-                                    <Button variant="outline" onClick={() => setIsOpen(false)}>Hủy bỏ</Button>
-                                    <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700 min-w-[140px]">
-                                        {loading ? "Đang xử lý..." : <>{editingId ? <Pencil className="w-4 h-4 mr-2" /> : <Send className="w-4 h-4 mr-2" />} {editingId ? "Cập nhật" : "Gửi Yêu Cầu"}</>}
-                                    </Button>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
                                 </div>
                             </div>
+
+                            <Button onClick={handleSubmit} disabled={submitting} className="w-full bg-blue-600 hover:bg-blue-700 h-10">
+                                {submitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang lưu...</> : "Gửi Đề xuất"}
+                            </Button>
                         </div>
                     </DialogContent>
                 </Dialog>
             </div>
 
-            {/* DANH SÁCH PHIẾU */}
-            <div className="space-y-4">
-                {requests.length === 0 ? (
-                    <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
-                        <Package className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                        <h3 className="text-slate-900 font-medium">Chưa có phiếu yêu cầu nào</h3>
-                        <p className="text-slate-500 text-sm mt-1">Hãy tạo phiếu mới để bắt đầu quy trình mua sắm.</p>
-                    </div>
-                ) : requests.map(req => (
-                    <Card key={req.id} className="overflow-hidden hover:shadow-md transition-shadow border-slate-200">
-                        <div className="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <span className="font-mono font-bold text-blue-700 bg-white border border-blue-100 px-2 py-1 rounded text-xs shadow-sm">
-                                    {req.code}
-                                </span>
-                                <span className="text-xs text-slate-500 flex items-center gap-1">
-                                    <Clock className="w-3 h-3" /> Tạo: {new Date(req.created_at).toLocaleDateString('vi-VN')}
-                                </span>
-
-                                {req.deadline_date && (
-                                    <span className="text-xs text-orange-700 bg-orange-50 border border-orange-100 px-2 py-1 rounded-full flex items-center gap-1 font-medium">
-                                        <CalendarIcon className="w-3 h-3" /> Deadline: {new Date(req.deadline_date).toLocaleDateString('vi-VN')}
-                                    </span>
-                                )}
-
-                                {getStatusBadge(req.status)}
+            {/* REQUEST LIST GRID */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {requests.map((req) => (
+                    <Card key={req.id} className={`hover:shadow-md transition-all border-l-4 ${req.status === 'approved' ? 'border-l-green-500 bg-green-50/20' : 'border-l-blue-500'}`}>
+                        <CardHeader className="pb-2 flex flex-row items-start justify-between">
+                            <div>
+                                <CardTitle className="text-sm font-bold text-blue-700 flex items-center gap-2">
+                                    <FileText className="w-4 h-4" /> {req.code}
+                                </CardTitle>
+                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" /> {formatDate(req.request_date)}
+                                </div>
+                            </div>
+                            <PriorityBadge p={req.priority} />
+                        </CardHeader>
+                        <CardContent className="text-sm space-y-3">
+                            <div className="flex items-center gap-2 text-slate-600">
+                                <User className="w-4 h-4 text-slate-400" />
+                                <span className="font-medium">{req.requester?.name || "Không rõ"}</span>
                             </div>
 
-                            {/* Nút thao tác */}
-                            <div className="flex items-center gap-1">
-                                {req.status === 'pending' && isManager && (
-                                    <>
-                                        <Button size="sm" className="h-7 bg-green-600 hover:bg-green-700 text-white shadow-sm" onClick={() => handleApproval(req.id, 'approved')}>
-                                            <Check className="w-3.5 h-3.5 mr-1" /> Duyệt
-                                        </Button>
-                                        <Button size="sm" variant="outline" className="h-7 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => handleApproval(req.id, 'rejected')}>
-                                            <X className="w-3.5 h-3.5 mr-1" /> Từ chối
-                                        </Button>
-                                        <div className="w-px h-5 bg-slate-300 mx-2"></div>
-                                    </>
+                            <div className="bg-white p-2 rounded text-xs space-y-1 border shadow-sm">
+                                <div className="font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                                    <Package className="w-3 h-3" /> Danh sách ({req.items?.length || 0}):
+                                </div>
+                                {req.items?.slice(0, 3).map((item: any) => (
+                                    <div key={item.id} className="flex justify-between border-b border-dashed border-slate-100 last:border-0 pb-1 last:pb-0">
+                                        <span className="truncate max-w-[150px]">{item.item_name}</span>
+                                        <span className="font-bold">{item.quantity} {item.unit}</span>
+                                    </div>
+                                ))}
+                                {req.items?.length > 3 && (
+                                    <div className="text-center text-blue-500 italic pt-1">
+                                        + {req.items.length - 3} mặt hàng khác...
+                                    </div>
                                 )}
+                            </div>
+
+                            <div className="pt-2 flex justify-between items-center border-t mt-3">
+                                <span className={`text-xs font-bold flex items-center gap-1 ${req.status === 'approved' ? 'text-green-600' : 'text-orange-500'}`}>
+                                    {req.status === 'pending' ? <><Loader2 className="w-3 h-3 animate-spin" /> Chờ xử lý</> : <><CheckSquare className="w-3 h-3" /> Đã duyệt</>}
+                                </span>
 
                                 {req.status === 'pending' && (
-                                    <>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-full" onClick={() => handleEdit(req)} title="Chỉnh sửa">
-                                            <Pencil className="w-4 h-4" />
+                                    <div className="flex gap-1">
+                                        <Button
+                                            size="sm"
+                                            className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm"
+                                            onClick={() => handleOpenProcess(req)}
+                                        >
+                                            Duyệt & Điều phối
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:bg-red-50 rounded-full" onClick={() => handleDelete(req.id, req.status)} title="Xóa phiếu">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(req.id)}>
                                             <Trash2 className="w-4 h-4" />
                                         </Button>
-                                    </>
+                                    </div>
                                 )}
                             </div>
-                        </div>
-
-                        {/* Body Card */}
-                        <div className="p-0">
-                            {req.notes && (
-                                <div className="px-4 py-2 text-sm text-slate-600 bg-white border-b border-slate-50 italic">
-                                    "{req.notes}"
-                                </div>
-                            )}
-
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="h-8 hover:bg-transparent border-b-slate-100 bg-slate-50/50">
-                                        <TableHead className="h-8 text-xs font-semibold pl-4">Tên Vật tư / Thiết bị</TableHead>
-                                        <TableHead className="h-8 text-xs font-semibold text-right pr-6">Số lượng</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {req.items?.map((item: any) => (
-                                        <TableRow key={item.id} className="h-10 hover:bg-slate-50 border-b-slate-50">
-                                            <TableCell className="text-sm font-medium text-slate-700 pl-4">
-                                                {item.item_name} <span className="text-xs text-slate-400 font-normal ml-1">({item.unit})</span>
-                                            </TableCell>
-                                            <TableCell className="text-sm text-right font-bold pr-6 text-slate-800">
-                                                {Number(item.quantity).toLocaleString()}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
+                        </CardContent>
                     </Card>
                 ))}
+
+                {requests.length === 0 && !loading && (
+                    <div className="col-span-full py-12 text-center text-slate-400 border-2 border-dashed rounded-xl bg-slate-50">
+                        Chưa có đề xuất vật tư nào.
+                    </div>
+                )}
             </div>
+
+            {/* PROCESS DIALOG (DUYỆT & ĐIỀU PHỐI) */}
+            <Dialog open={processOpen} onOpenChange={setProcessOpen}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <CheckSquare className="w-5 h-5 text-indigo-600" />
+                            Phân tích & Điều phối Vật tư
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {analyzing ? (
+                        <div className="py-12 flex flex-col items-center justify-center text-slate-500 space-y-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                            <p>Đang kiểm tra tồn kho & định mức...</p>
+                        </div>
+                    ) : analysis ? (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="bg-slate-50 p-3 rounded border text-sm grid grid-cols-2 gap-4">
+                                <div><span className="font-bold text-slate-500">Mã phiếu:</span> {selectedRequest?.code}</div>
+                                <div><span className="font-bold text-slate-500">Người yêu cầu:</span> {selectedRequest?.requester?.name}</div>
+                            </div>
+
+                            <div className="border rounded-lg overflow-hidden">
+                                <Table>
+                                    <TableHeader className="bg-indigo-50">
+                                        <TableRow>
+                                            <TableHead className="font-bold text-indigo-900">Vật tư</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900">Yêu cầu</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900">Tồn kho</TableHead>
+                                            <TableHead className="text-right font-bold text-indigo-900">Giải pháp</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {analysis.data.map((item: any, idx: number) => (
+                                            <TableRow key={idx}>
+                                                <TableCell className="font-medium">{item.item_name}</TableCell>
+                                                <TableCell className="text-center bg-slate-50 font-medium">{item.quantity} {item.unit}</TableCell>
+                                                <TableCell className="text-center">
+                                                    <span className={item.stock_available >= item.quantity ? "text-green-600 font-bold" : "text-red-500 font-bold"}>
+                                                        {item.stock_available}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        {item.action_issue > 0 && (
+                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 shadow-sm">
+                                                                <Truck className="w-3 h-3 mr-1" /> Xuất kho: {item.action_issue}
+                                                            </Badge>
+                                                        )}
+                                                        {item.action_purchase > 0 && (
+                                                            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 shadow-sm">
+                                                                <ShoppingCart className="w-3 h-3 mr-1" /> Mua mới: {item.action_purchase}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <div className="bg-amber-50 p-3 rounded border border-amber-200 text-xs text-amber-800 flex gap-2 items-start">
+                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                                <div>
+                                    <span className="font-bold">Hành động tự động:</span>
+                                    <ul className="list-disc pl-4 mt-1 space-y-1">
+                                        <li>Tạo <b>Phiếu Xuất Kho</b> (Goods Issue) cho các mặt hàng có sẵn & trừ kho ngay lập tức.</li>
+                                        <li>Tạo <b>Đơn Mua Hàng Nháp</b> (PO Draft) cho các mặt hàng thiếu.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <Button onClick={handleApprove} disabled={processing} className="w-full bg-green-600 hover:bg-green-700 h-10 shadow-md">
+                                {processing ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang xử lý...</> : "✅ Xác nhận Duyệt & Thực thi"}
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="text-red-500 py-4 text-center">Lỗi không tải được dữ liệu phân tích.</div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

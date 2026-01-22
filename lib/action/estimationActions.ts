@@ -103,3 +103,30 @@ export async function updateEstimationPrice(itemId: string, projectId: string, p
 export async function getCostTemplates() {
     return { success: true, data: [] };
 }
+// ✅ HÀM MỚI: TẠO DỰ TOÁN TỰ ĐỘNG TỪ MẪU
+export async function createEstimationFromMacro(projectId: string, items: any[]) {
+    const supabase = await createClient();
+
+    try {
+        // Chuẩn bị dữ liệu insert hàng loạt
+        const insertData = items.map(item => ({
+            project_id: projectId,
+            material_code: item.code, // Map đúng cột trong DB
+            material_name: item.name,
+            unit: item.unit,
+            quantity: 0, // Mặc định là 0 để người dùng nhập sau
+            unit_price: 0, // Sẽ lấy từ bảng giá chuẩn sau (nếu có)
+            // status: 'active' // Bỏ nếu bảng estimation_items không có cột này
+        }));
+
+        const { error } = await supabase.from('estimation_items').insert(insertData);
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath(`/projects/${projectId}`);
+        return { success: true, message: `Đã thêm ${items.length} công tác vào dự toán!` };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}

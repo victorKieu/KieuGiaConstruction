@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { MaterialRequestFormValues } from "@/lib/schemas/request";
 
 // Heplper
 async function getProjectWarehouseId(projectId: string, supabase: any) {
@@ -208,4 +209,82 @@ export async function updateRequestStatus(requestId: string, projectId: string, 
     revalidatePath(`/procurement`);
 
     return { success: true, message: `Đã cập nhật trạng thái thành: ${status === 'approved' ? 'Đã duyệt' : 'Từ chối'}` };
+}
+
+// 1. Hàm lấy danh sách Kho (Warehouses) của Dự án
+export async function getProjectWarehouses(projectId: string) {
+    const supabase = await createClient();
+
+    // Giả sử bạn có bảng warehouses, nếu chưa có logic kho phức tạp 
+    // thì có thể trả về mảng rỗng hoặc query bảng warehouses nếu đã tạo
+    const { data, error } = await supabase
+        .from('warehouses')
+        .select('id, name')
+        .eq('project_id', projectId);
+
+    if (error) {
+        console.error("Lỗi lấy kho:", error);
+        return [];
+    }
+
+    return data || [];
+}
+
+// 2. Hàm Tạo Yêu cầu Vật tư (Create Request)
+export async function createMaterialRequestAction(
+    projectId: string,
+    data: MaterialRequestFormValues
+) {
+    const supabase = await createClient();
+
+    try {
+        // A. Tạo phiếu yêu cầu (Header)
+        const { data: requestData, error: requestError } = await supabase
+            .from('material_requests')
+            .insert({
+                project_id: projectId,
+                warehouse_id: data.warehouse_id || null,
+                delivery_date: data.delivery_date.toISOString(),
+                status: 'pending', // Trạng thái chờ duyệt
+                notes: data.notes,
+                created_by: (await supabase.auth.getUser()).data.user?.id
+            })
+            .select('id')
+            .single();
+
+        if (requestError || !requestData) {
+            throw new Error("Không thể tạo phiếu yêu cầu: " + requestError?.message);
+        }
+
+        const requestId = requestData.id;
+
+        // B. Tạo chi tiết vật tư (Items)
+        const itemsToInsert = data.items.map((item) => ({
+            request_id: requestId,
+            material_code: item.material_code,
+            material_name: item.material_name,
+            unit: item.unit,
+            quantity: item.quantity,
+            notes: item.note
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('material_request_items')
+            .insert(itemsToInsert);
+
+        if (itemsError) {
+            // Nếu lỗi insert chi tiết, nên xóa header đi (Rollback thủ công)
+            await supabase.from('material_requests').delete().eq('id', requestId);
+            throw new Error("Lỗi lưu chi tiết vật tư: " + itemsError.message);
+        }
+
+        // C. Thành công -> Revalidate
+        revalidatePath(`/projects/${projectId}/requests`);
+
+        return { success: true, message: "Đã gửi yêu cầu vật tư thành công!" };
+
+    } catch (e: any) {
+        console.error(e);
+        return { success: false, error: e.message };
+    }
 }

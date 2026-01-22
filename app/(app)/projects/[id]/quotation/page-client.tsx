@@ -14,12 +14,11 @@ import { useRouter } from "next/navigation"
 
 interface Props {
     projectId: string,
-    project: any, // ✅ THÊM: Nhận object project để lấy tên & địa chỉ
+    project: any,
     quotations: any[],
-    contracts?: any[]
+    contracts?: any[] // Biến này chứa danh sách hợp đồng
 }
 
-// Định nghĩa các chế độ view
 type ViewMode = 'list' | 'quotation-form' | 'contract-form';
 
 export default function QuotationPageClient({ projectId, project, quotations, contracts = [] }: Props) {
@@ -79,7 +78,7 @@ export default function QuotationPageClient({ projectId, project, quotations, co
                     </h2>
                     <QuotationForm
                         projectId={projectId}
-                        project={project} // ✅ TRUYỀN PROJECT XUỐNG FORM
+                        project={project}
                         initialData={editingData}
                         onSuccess={() => setView('list')}
                         onCancel={() => setView('list')}
@@ -108,6 +107,8 @@ export default function QuotationPageClient({ projectId, project, quotations, co
                         initialData={editingData}
                         onSuccess={() => setView('list')}
                         onCancel={() => setView('list')}
+                        // ✅ ĐÃ SỬA: Truyền danh sách hợp đồng vào đây để chọn Phụ lục
+                        existingContracts={contracts}
                     />
                 </div>
             </div>

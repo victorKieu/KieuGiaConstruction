@@ -1,80 +1,110 @@
 "use client";
 
-import React from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
-import { ListChecks, Calculator, Boxes } from "lucide-react"; // Import thêm Boxes
+import { useState } from "react";
+import {
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Coins, Save, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
+import { formatCurrency } from "@/lib/utils/utils";
 
-import QTOClient from "@/components/projects/qto/QTOClient";
-import ProjectEstimationTab from "@/components/projects/tab/ProjectEstimationTab";
-import BudgetTable from "./BudgetTable"; // ✅ Import Component mới
-
-interface CostManagerProps {
-    projectId: string;
-    qtoItems: any[];
-    norms: any[];
-    initialEstimates?: any[];
-    costTemplates?: any[];
-    canEdit?: boolean;
-    budgetItems?: any[]; // ✅ Thêm prop này
+// Định nghĩa kiểu dữ liệu (Khớp với DB)
+interface EstimateItem {
+    id: string;
+    material_code: string;
+    material_name: string;
+    unit: string;
+    quantity: number;
+    unit_price: number;
 }
 
-export default function CostManager({
-    projectId,
-    qtoItems,
-    norms,
-    initialEstimates,
-    costTemplates,
-    canEdit,
-    budgetItems = [] // ✅ Default empty array
-}: CostManagerProps) {
+interface Props {
+    projectId: string;
+    initialEstimates: EstimateItem[]; // Dữ liệu từ Server
+    // Các props khác nếu cần...
+    [key: string]: any;
+}
+
+export default function CostManager({ projectId, initialEstimates }: Props) {
+    const [items, setItems] = useState<EstimateItem[]>(initialEstimates);
+    const [loading, setLoading] = useState(false);
+
+    // Tính tổng chi phí dự kiến
+    const totalCost = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+
     return (
-        <Card className="border-none shadow-none bg-transparent">
-            <Tabs defaultValue="qto" className="w-full">
-
-                <div className="flex items-center justify-between mb-4">
-                    <TabsList className="bg-white border border-slate-200">
-                        <TabsTrigger value="qto" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
-                            <ListChecks className="w-4 h-4 mr-2" />
-                            1. Bóc tách khối lượng
-                        </TabsTrigger>
-
-                        {/* ✅ THÊM TAB KẾT QUẢ TÍNH TOÁN */}
-                        <TabsTrigger value="budget" className="data-[state=active]:bg-green-50 data-[state=active]:text-green-700">
-                            <Boxes className="w-4 h-4 mr-2" />
-                            2. Tổng hợp Vật tư (Result)
-                        </TabsTrigger>
-
-                        <TabsTrigger value="estimation" className="data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700">
-                            <Calculator className="w-4 h-4 mr-2" />
-                            3. Dự toán chi phí (Cost)
-                        </TabsTrigger>
-                    </TabsList>
+        <Card className="border-t-4 border-t-blue-600 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between bg-slate-50/50 pb-2">
+                <div>
+                    <CardTitle className="flex items-center gap-2 text-lg text-slate-800">
+                        <Coins className="w-5 h-5 text-yellow-600" />
+                        Bảng Chi tiết Dự toán
+                    </CardTitle>
+                    <p className="text-sm text-slate-500 mt-1">
+                        Kết quả bóc tách khối lượng và đơn giá dự kiến
+                    </p>
                 </div>
+                <div className="text-right">
+                    <p className="text-xs text-slate-500 font-semibold uppercase">Tổng cộng</p>
+                    <p className="text-2xl font-bold text-blue-700">{formatCurrency(totalCost)}</p>
+                </div>
+            </CardHeader>
 
-                <TabsContent value="qto" className="mt-0">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1 min-h-[600px]">
-                        <QTOClient projectId={projectId} items={qtoItems} norms={norms} />
-                    </div>
-                </TabsContent>
-
-                {/* ✅ NỘI DUNG TAB BUDGET */}
-                <TabsContent value="budget" className="mt-0">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[600px] p-6">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
-                            <Boxes className="w-5 h-5 mr-2 text-green-600" />
-                            Bảng Tổng hợp Nhu cầu Vật tư & Tài nguyên
-                        </h3>
-                        <BudgetTable budgetItems={budgetItems} />
-                    </div>
-                </TabsContent>
-
-                <TabsContent value="estimation" className="mt-0">
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 min-h-[600px] p-4">
-                        <ProjectEstimationTab projectId={projectId} />
-                    </div>
-                </TabsContent>
-            </Tabs>
+            <CardContent className="p-0">
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-slate-100 hover:bg-slate-100">
+                            <TableHead className="w-[50px] text-center">STT</TableHead>
+                            <TableHead className="w-[100px]">Mã hiệu</TableHead>
+                            <TableHead>Tên công tác / Vật tư</TableHead>
+                            <TableHead className="w-[80px] text-center">ĐVT</TableHead>
+                            <TableHead className="w-[120px] text-right">Khối lượng</TableHead>
+                            <TableHead className="w-[150px] text-right">Đơn giá (TB)</TableHead>
+                            <TableHead className="w-[150px] text-right">Thành tiền</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {items.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={7} className="h-32 text-center text-slate-400">
+                                    Chưa có dữ liệu. <br />
+                                    Hãy bấm nút <strong>"Lập Dự toán (Wizard)"</strong> ở trên để tạo tự động.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            items.map((item, index) => (
+                                <TableRow key={item.id || index} className="hover:bg-blue-50/30 transition-colors">
+                                    <TableCell className="text-center text-slate-500">{index + 1}</TableCell>
+                                    <TableCell className="font-mono text-xs font-semibold text-slate-600">
+                                        {item.material_code}
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="font-medium text-slate-800">{item.material_name}</div>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge variant="outline" className="font-normal text-slate-600 bg-slate-50">
+                                            {item.unit}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-blue-700">
+                                        {item.quantity.toLocaleString('vi-VN')}
+                                    </TableCell>
+                                    <TableCell className="text-right text-slate-600">
+                                        {formatCurrency(item.unit_price)}
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-slate-900">
+                                        {formatCurrency(item.quantity * item.unit_price)}
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
         </Card>
     );
 }

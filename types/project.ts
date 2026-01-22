@@ -1,52 +1,85 @@
 ﻿// types/project.ts
 import { Database } from '@/types/supabase';
 
+// --- ENUMS & BASIC TYPES ---
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "on_hold" | "done" | "todo";
 export type PriorityLevel = "low" | "medium" | "high" | "critical";
+export type ConstructionPhase = 'setup' | 'legal' | 'execution' | 'handing_over' | 'closing';
+
+// Type alias cho row gốc từ Supabase (nếu cần dùng raw)
 export type project = Database['public']['Tables']['projects']['Row'];
 
-type ProjectManager = {
-    name: string;
-} | null;
-
-type ProjectManagerFK = string | null;
+// --- PROJECT DATA CORE ---
 export interface ProjectData {
+    // 1. Thông tin cơ bản
     id: string;
     name: string;
     code: string;
+    project_code?: string | null; // Alias cho code nếu DB dùng tên khác
     description: string | null;
     address: string | null;
+    geocode?: string | null;
+
+    // 2. Phân loại & Trạng thái
     status: string;
     project_type: string;
     construction_type: string | null;
     risk_level: string | null;
+    construction_phase?: ConstructionPhase; // Giai đoạn thi công (Mới)
+
+    // 3. Nhân sự & Khách hàng
     customer_id: string | null;
-    progress: number | null;
-    budget: number;
-    actual_cost: number | null;
+    project_manager?: string | null; // ID quản lý
+    created_by: string | null;
+
+    // 4. Thời gian & Tiến độ
     start_date: string;
     end_date: string;
-    created_at: string; // Ensure this is not null if DB requires it
+    created_at: string;
     updated_at: string | null;
-    project_manager: ProjectManagerFK;
-    customers: { name: string } | null;
-    employees: ProjectManager;
-    created_by: string | null; // Sửa type cho khớp supabase.ts
-    created?: { name: string } | null; // Có thể bỏ nếu không dùng JOIN này
+    progress: number | null;
     progress_percent?: number;
+
+    // 5. Tài chính (Cơ bản từ DB)
+    budget: number;
+    actual_cost: number | null;
+    contract_value?: number | null;
+
+    // 6. THÔNG TIN PHÁP LÝ & KỸ THUẬT (MỚI BỔ SUNG)
+    land_lot_number?: string | null;       // Số tờ
+    land_parcel_number?: string | null;    // Số thửa
+    construction_permit_code?: string | null; // Số GPXD
+    permit_issue_date?: string | null;     // Ngày cấp GPXD
+    total_floor_area?: number | null;      // Tổng diện tích sàn
+    num_floors?: number | null;            // Số tầng
+
+    // 7. CÁC TRƯỜNG JOIN/COMPUTED (Dùng cho UI hiển thị)
+    customers?: { name: string; phone?: string; email?: string; avatar_url?: string } | null;
+    manager?: { id: string; name: string; email?: string; avatar_url?: string } | null; // Thông tin PM đầy đủ
+    created?: { name: string } | null;
+
+    // Dữ liệu từ bảng sys_dictionaries (Join)
+    status_data?: { name: string; color: string; code?: string } | null;
+    priority_data?: { name: string; color: string; code?: string } | null;
+    type_data?: { name: string; code?: string } | null;
+    construction_type_data?: { name: string; code?: string } | null;
+
+    // Số liệu tổng hợp (Dashboard)
     member_count?: number;
     document_count?: number;
     total_tasks?: number | null;
+
+    // Tài chính tổng hợp (Dashboard)
+    total_contract_value?: number; // Tổng giá trị hợp đồng
+    total_income?: number;         // Tổng thực thu
+    total_expenses?: number;       // Tổng thực chi
     estimated_cost_total?: number | null;
     quoted_amount_total?: number | null;
-    total_income?: number | null;
-    total_expenses?: number | null;
-    contract_value?: number | null;
-    manager?: { name: string } | null;
-    geocode?: string | null;
+    is_permit_required?: boolean;
 }
 
-export interface ProjectMember { 
+// --- MEMBERS ---
+export interface ProjectMember {
     id: string;
     project_id: string;
     user_id: string;
@@ -60,25 +93,8 @@ export interface ProjectMember {
         position: string;
         avatar_url?: string;
     };
-}   
-
-export interface MilestoneData {
-    id: string;
-    // name: string;
-    milestone: string;
-    description: string;
-    planned_start_date: string;
-    planned_end_date: string;
-    actual_start_date: string;
-    actual_end_date: string;
-    status: string; // Tạm giữ string
-    created_at: string;
-    updated_at: string;
-    completion_percentage: number;
-    project_id?: string;
 }
 
-// --- MEMBER DATA ---
 export interface MemberData {
     project_id: string;
     employee_id: string;
@@ -91,16 +107,31 @@ export interface MemberData {
         name: string;
         email: string;
         phone?: string;
-        // Chỉnh sửa đoạn này:
         position?: string | { name: string } | null;
         avatar_url?: string | null;
-        // Thêm trường này để khớp với dữ liệu Join từ Supabase
         user_profiles?: {
             avatar_url: string | null;
         } | null;
     };
 }
-// --- DOCUMENT DATA ---
+
+// --- MILESTONES ---
+export interface MilestoneData {
+    id: string;
+    milestone: string; // Tên mốc
+    description: string;
+    planned_start_date: string;
+    planned_end_date: string;
+    actual_start_date: string;
+    actual_end_date: string;
+    status: string;
+    created_at: string;
+    updated_at: string;
+    completion_percentage: number;
+    project_id?: string;
+}
+
+// --- DOCUMENTS & LEGAL ---
 export interface DocumentData {
     id: string;
     name: string;
@@ -113,29 +144,43 @@ export interface DocumentData {
     category: string | null;
 }
 
-// --- FINANCE DATA ---
-export interface FinanceData {
+// (MỚI) Hồ sơ pháp lý
+export interface LegalDoc {
     id: string;
-    budget: number;
-    spent: number;
-    remaining: number | null;
-    allocation: {
-        materials: number;
-        labor: number;
-        equipment: number;
-        others: number;
-    } | null;
-    updated_at: string | null;
+    project_id: string;
+    doc_type: string; // GPXD, BAN_VE, TB_KHOI_CONG...
+    doc_code?: string;
+    issue_date?: string;
+    issuing_authority?: string;
+    file_url?: string;
+    status: 'pending' | 'approved' | 'rejected';
+    notes?: string;
+    created_at: string;
 }
 
-// --- TASK DATA ---
+// --- CONSTRUCTION LOGS (MỚI) ---
+// Nhật ký thi công
+export interface ConstructionLog {
+    id: string;
+    project_id: string;
+    log_date: string;
+    weather?: string;
+    manpower_count?: number;
+    work_description?: string;
+    issues?: string;
+    images?: string[];
+    created_by?: string;
+    created_at: string;
+}
+
+// --- TASKS & COMMENTS ---
 export interface TaskData {
     id: string;
     project_id: string;
     name: string;
     description?: string;
-    status: TaskStatus; // Dùng TaskStatus type đã định nghĩa
-    priority?: PriorityLevel; // Dùng PriorityLevel type đã định nghĩa
+    status: TaskStatus;
+    priority?: PriorityLevel;
     progress?: number;
     start_date?: string;
     completed_at?: string;
@@ -143,13 +188,12 @@ export interface TaskData {
         id: string;
         name: string;
         avatar_url?: string;
-    } | null; // Sửa: Cho phép null
+    } | null;
     due_date?: string;
     created_at: string;
     updated_at: string;
 }
 
-// --- COMMENT DATA ---
 export interface CommentData {
     id: string;
     project_id: string;
@@ -157,16 +201,15 @@ export interface CommentData {
     content: string;
     created_at: string;
     update_at: string;
-    parent_comment_id?: string; // <-- ID của bình luận cha
+    parent_comment_id?: string;
     created_by: {
         id: string;
         name: string;
         avatar_url?: string;
     };
-    replies?: CommentData[]; // <-- Mảng các bình luận trả lời (cho Tree View)
+    replies?: CommentData[];
 }
 
-// --- TASK FEED ITEM (Dành cho Activity Log) ---
 export interface TaskFeedItem {
     id: string;
     type: 'task_status_change' | 'comment' | 'milestone_update';
@@ -175,7 +218,7 @@ export interface TaskFeedItem {
     details: string;
 }
 
-// Định nghĩa Đợt Khảo sát (Lấy từ project_surveys + JOIN)
+// --- SURVEYS ---
 export interface Survey {
     id: string;
     name: string;
@@ -214,22 +257,25 @@ export interface SurveyTaskTemplate {
     title: string;
     category: string | null;
     description: string | null;
+    estimated_cost: number | null;
 }
 
-// Định nghĩa Mẫu Công việc Khảo sát (Lấy từ survey_task_templates)
-export interface SurveyTaskTemplate {
+// --- FINANCE & ESTIMATION (BOQ) ---
+export interface FinanceData {
     id: string;
-    title: string;
-    category: string | null;
-    description: string | null;
-    estimated_cost: number | null; // Đã fix (File 215, 216)
+    budget: number;
+    spent: number;
+    remaining: number | null;
+    allocation: {
+        materials: number;
+        labor: number;
+        equipment: number;
+        others: number;
+    } | null;
+    updated_at: string | null;
 }
 
-// --- PHẦN FIX: THÊM 2 TYPE MỚI VÀO CUỐI FILE ---
-
-/**
- * Định nghĩa Mẫu Công tác (Lấy từ CSDL 'qto_templates' - File 215)
- */
+// Mẫu định mức (Từ bảng qto_templates)
 export interface QtoTemplate {
     id: string;
     code: string;
@@ -240,9 +286,7 @@ export interface QtoTemplate {
     created_at: string | null;
 }
 
-/**
- * Định nghĩa Công tác Bóc tách (Lấy từ CSDL 'qto_items' - File 190)
- */
+// Công tác bóc tách (Từ bảng qto_items)
 export interface QtoItem {
     id: string;
     created_at: string | null;
@@ -256,7 +300,7 @@ export interface QtoItem {
     unit_price: number;
     updated_at: string | null;
 
-    // Trường JOIN (từ qtoActions.ts - File 216)
+    // Join
     template?: {
         code: string;
         name: string;
@@ -272,29 +316,20 @@ export interface QtoItem {
     }[];
 }
 
-// Định nghĩa Mẫu Công việc Khảo sát
-export interface SurveyTaskTemplate {
-    id: string;
-    title: string;
-    category: string | null;
-    description: string | null;
-    estimated_cost: number | null;
-}
-
-// --- PHẦN FIX: THÊM TYPE MỚI VÀO CUỐI FILE ---
-
-/**
- * Định nghĩa Dòng Dự toán Chi tiết (Lấy từ CSDL 'estimation_items' - File 229)
- * Đây là kết quả sau khi "nổ" (explode) QTO qua Định mức (Norms).
- */
+// Dự toán chi tiết (Từ bảng estimation_items)
 export interface EstimationItem {
     id: string;
     project_id: string;
-    qto_item_id: string | null; // (Liên kết với QTO)
-    material_code: string; // (Mã Vật tư/Nhân công/Máy)
-    material_name: string; // (Tên Vật tư/Nhân công/Máy)
-    unit: string; // (Đơn vị: kg, m3, công...)
-    quantity: number; // (Khối lượng đã phân tích)
-    unit_price: number; // (Đơn giá)
-    total_cost: number; // (Thành tiền: quantity * unit_price)
+    qto_item_id: string | null;
+    material_code: string;
+    material_name: string;
+    unit: string;
+    quantity: number;
+    unit_price: number;
+    total_cost: number;
+
+    // Support cho giao diện BOQ Mapper
+    original_name?: string;
+    is_mapped?: boolean;
+    section_name?: string;
 }

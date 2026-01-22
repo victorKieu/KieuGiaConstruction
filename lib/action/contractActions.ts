@@ -8,7 +8,7 @@ export async function getContracts(projectId: string) {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
         .from('contracts')
-        .select('*, customers(name)') // Join thêm tên khách nếu cần
+        .select('*, customers(name)')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
@@ -16,11 +16,10 @@ export async function getContracts(projectId: string) {
     return { success: true, data };
 }
 
-// 2. Tự động tạo Hợp đồng từ Báo giá (Fix mapping dữ liệu)
+// 2. Tự động tạo Hợp đồng từ Báo giá
 export async function createContractFromQuotation(quotationId: string, projectId: string) {
     const supabase = await createSupabaseServerClient();
 
-    // A. Lấy thông tin báo giá nguồn
     const { data: quote, error: quoteError } = await supabase
         .from('quotations')
         .select('*')
@@ -29,22 +28,13 @@ export async function createContractFromQuotation(quotationId: string, projectId
 
     if (quoteError || !quote) return { success: false, error: "Không tìm thấy báo giá gốc" };
 
-    // B. Chuẩn bị dữ liệu hợp đồng
     const contractData = {
         project_id: projectId,
         quotation_id: quotationId,
-
-        // ✅ FIX 1: Map đúng cột customer_id (thay vì client_id)
         customer_id: quote.customer_id || quote.client_id,
-
-        // Sinh số HĐ: Thay BG thành HD
         contract_number: quote.quotation_number ? quote.quotation_number.replace('BG', 'HD') : `HD-${Date.now()}`,
-
         title: `Hợp đồng thi công (Theo BG ${quote.quotation_number})`,
-
-        // ✅ FIX 2: Lấy đúng cột total_amount (thay vì quoted_amount) -> Fix lỗi giá trị = 0
         value: quote.total_amount || 0,
-
         status: 'draft',
         contract_type: 'service',
         contract_category: 'standard',
@@ -52,14 +42,10 @@ export async function createContractFromQuotation(quotationId: string, projectId
         signing_date: new Date().toISOString().split('T')[0],
     };
 
-    // C. Insert vào DB
     const { error } = await supabase.from('contracts').insert(contractData);
 
     if (error) {
         console.error("Create Contract Error:", error);
-        if (error.code === '23505') { // Unique violation
-            return { success: false, error: "Hợp đồng từ báo giá này đã tồn tại!" };
-        }
         return { success: false, error: error.message };
     }
 
@@ -78,9 +64,9 @@ export async function deleteContract(id: string, projectId: string) {
     return { success: true, message: "Đã xóa hợp đồng" };
 }
 
-// 4. Định nghĩa kiểu dữ liệu Input
+// 4. ĐỊNH NGHĨA LẠI KIỂU DỮ LIỆU INPUT (Bổ sung is_addendum, parent_id)
 export type ContractInput = {
-    id: string;
+    id?: string; // Cho phép null khi tạo mới
     contract_number: string;
     title: string;
     content?: string;
@@ -90,30 +76,51 @@ export type ContractInput = {
     status: string;
     value: number;
     payment_terms?: string;
+
+    // ✅ CÁC TRƯỜNG MỚI CHO PHỤ LỤC
+    is_addendum?: boolean;
+    parent_id?: string | null;
+    customer_name?: string; // Trường ảo, không lưu DB
 };
 
-// 5. Hàm cập nhật hợp đồng
+// 5. HÀM CẬP NHẬT / TẠO MỚI (Sử dụng Upsert để linh hoạt)
 export async function updateContract(data: ContractInput, projectId: string) {
     const supabase = await createSupabaseServerClient();
 
+    // Chuẩn bị payload
+    const payload: any = {
+        project_id: projectId, // Đảm bảo luôn có project_id
+        contract_number: data.contract_number,
+        title: data.title,
+        content: data.content,
+        start_date: data.start_date || null,
+        end_date: data.end_date || null,
+        signing_date: data.signing_date || null,
+        status: data.status,
+        value: data.value,
+        payment_terms: data.payment_terms,
+        updated_at: new Date().toISOString(),
+
+        // ✅ QUAN TRỌNG: Lưu thông tin phụ lục
+        is_addendum: data.is_addendum || false,
+        parent_id: data.parent_id || null
+    };
+
+    // Nếu có ID -> Update, Nếu không -> Insert (Dùng Upsert cho gọn)
+    if (data.id) {
+        payload.id = data.id;
+    }
+
     const { error } = await supabase
         .from('contracts')
-        .update({
-            contract_number: data.contract_number,
-            title: data.title,
-            content: data.content,
-            start_date: data.start_date || null,
-            end_date: data.end_date || null,
-            signing_date: data.signing_date || null,
-            status: data.status,
-            value: data.value,
-            payment_terms: data.payment_terms,
-            updated_at: new Date().toISOString()
-        })
-        .eq('id', data.id);
+        .upsert(payload) // Dùng upsert thay vì update để hỗ trợ cả tạo mới
+        .select();
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+        console.error("Save Contract Error:", error);
+        return { success: false, error: error.message };
+    }
 
     revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Cập nhật hợp đồng thành công!" };
+    return { success: true, message: "Đã lưu hợp đồng thành công!" };
 }

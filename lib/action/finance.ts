@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { transactionSchema, TransactionFormValues } from "@/lib/schemas/finance";
 import { startOfMonth, subMonths, format } from "date-fns";
 
+// ... (Giữ nguyên các hàm từ 1 đến 5: getFinanceCategories, createTransactionAction, getTransactions, getMonthlyStats, getProjectsForSelect) ...
+
 // 1. Lấy danh sách danh mục
 export async function getFinanceCategories() {
     const supabase = await createClient();
@@ -92,38 +94,56 @@ export async function getProjectsForSelect() {
     return data || [];
 }
 
-// 6. Lấy thống kê tài chính dự án
+// 6. Lấy thống kê tài chính dự án (CẬP NHẬT ĐỂ DÙNG BẢNG ĐÚNG)
 export async function getProjectFinanceStats(projectId: string) {
     const supabase = await createClient();
 
-    // Doanh thu (Hợp đồng)
-    const { data: contracts } = await supabase.from('contracts').select('value').eq('project_id', projectId).neq('status', 'cancelled');
-    // Thực thu (Milestones đã trả)
-    const { data: payments } = await supabase.from('payment_milestones').select(`amount, status, due_date, contracts!inner(project_id)`).eq('contracts.project_id', projectId);
-    // Thực chi (Cash Flow)
-    const { data: expenses } = await supabase.from('finance_transactions').select('amount').eq('project_id', projectId).eq('type', 'expense');
+    // 1. Doanh thu (Hợp đồng)
+    const { data: contracts } = await supabase
+        .from('contracts')
+        .select('value')
+        .eq('project_id', projectId)
+        .neq('status', 'cancelled');
 
-    // Chi phí vật tư (Xuất kho)
-    let inventoryCost = 0;
-    const { data: materialItems } = await supabase.from('goods_issue_items').select(`quantity, unit_price, goods_issues!inner(project_id)`).eq('goods_issues.project_id', projectId);
-    if (materialItems) {
-        inventoryCost = materialItems.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.unit_price || 0)), 0);
-    }
+    // 2. Thực thu (Dùng bảng GỐC payment_milestones)
+    const { data: payments } = await supabase
+        .from('payment_milestones')
+        .select(`amount, status, due_date, contracts!inner(project_id)`)
+        .eq('contracts.project_id', projectId);
 
+    // 3. Thực chi
+    const { data: expenses } = await supabase
+        .from('finance_transactions')
+        .select('amount')
+        .eq('project_id', projectId)
+        .eq('type', 'expense');
+
+    // 4. Tính toán
     const totalRevenue = contracts?.reduce((sum, item) => sum + (Number(item.value) || 0), 0) || 0;
+
     const actualReceived = payments?.reduce((sum, item) => item.status === 'paid' ? sum + (Number(item.amount) || 0) : sum, 0) || 0;
+
     const cashCost = expenses?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
-    const totalCost = cashCost + inventoryCost;
-    const profit = actualReceived - totalCost;
+    const profit = actualReceived - cashCost;
     const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
     const remainingDebt = totalRevenue - actualReceived;
+
     const today = new Date();
     const overdueCount = payments?.filter(p => p.status !== 'paid' && p.due_date && new Date(p.due_date) < today).length || 0;
 
-    return { totalRevenue, actualReceived, totalCost, profit, profitMargin: parseFloat(profitMargin.toFixed(2)), remainingDebt, overdueCount };
+    return {
+        totalRevenue,
+        actualReceived,
+        totalCost: cashCost,
+        profit,
+        profitMargin: parseFloat(profitMargin.toFixed(2)),
+        remainingDebt,
+        overdueCount,
+        contractValue: totalRevenue
+    };
 }
 
-// 7. Thanh toán nhanh đơn PO (Tạo phiếu chi)
+// 7. Thanh toán nhanh đơn PO
 export async function createPaymentForPO(poId: string, amount: number, paymentMethod: string, notes: string) {
     const supabase = await createClient();
     const { data: po } = await supabase.from('purchase_orders').select('id, code, project_id').eq('id', poId).single();
@@ -141,11 +161,7 @@ export async function createPaymentForPO(poId: string, amount: number, paymentMe
     return { success: true, message: "Đã thanh toán thành công!" };
 }
 
-// =========================================================
-// PHẦN BỔ SUNG: QUẢN LÝ CÔNG NỢ PHẢI TRẢ (ACCOUNTS PAYABLE)
-// =========================================================
-
-// 8. Lấy danh sách PO đã nhập kho nhưng CHƯA CÓ HÓA ĐƠN (hoặc chưa đủ)
+// 8. Lấy danh sách PO chờ hóa đơn
 export async function getPOsPendingInvoice() {
     const supabase = await createClient();
     const { data: pos } = await supabase
@@ -155,7 +171,6 @@ export async function getPOsPendingInvoice() {
         .order('created_at', { ascending: false });
 
     if (!pos) return [];
-    // Lọc PO chưa xuất đủ hóa đơn
     return pos.filter(po => {
         const invoicedTotal = po.invoices?.reduce((sum: any, inv: any) => sum + (Number(inv.total_amount) || 0), 0) || 0;
         return invoicedTotal < (Number(po.total_amount) || 0);
@@ -172,7 +187,7 @@ export async function getPayableInvoices() {
     return data || [];
 }
 
-// 10. TẠO HÓA ĐƠN ĐẦU VÀO (Ghi nhận nợ)
+// 10. Tạo hóa đơn đầu vào
 export async function createSupplierInvoiceAction(data: {
     po_id: string; invoice_number: string; invoice_date: Date;
     invoice_type: 'VAT' | 'RETAIL'; subtotal: number; vat_percent: number;
@@ -188,7 +203,7 @@ export async function createSupplierInvoiceAction(data: {
         vat_percent: data.vat_percent,
         vat_amount: data.vat_amount,
         total_amount: data.total_amount,
-        paid_amount: 0, // Mới tạo -> Chưa trả đồng nào -> Nợ 100%
+        paid_amount: 0,
         payment_status: 'pending',
         attachment_url: data.attachment_url
     });
@@ -198,7 +213,7 @@ export async function createSupplierInvoiceAction(data: {
     return { success: true, message: "Đã ghi nhận hóa đơn công nợ!" };
 }
 
-// 11. THANH TOÁN HÓA ĐƠN (Tạo phiếu chi & Trừ nợ)
+// 11. Thanh toán hóa đơn
 export async function createPaymentToSupplierAction(data: {
     invoice_id: string; amount: number; payment_method: string;
     payment_date: Date; notes?: string;
@@ -206,7 +221,6 @@ export async function createPaymentToSupplierAction(data: {
     const supabase = await createClient();
 
     try {
-        // A. Lấy thông tin hóa đơn & Dự án từ PO liên quan
         const { data: invoice } = await supabase
             .from('procurement_invoices')
             .select(`id, po_id, total_amount, paid_amount, po:purchase_orders(project_id)`)
@@ -219,11 +233,9 @@ export async function createPaymentToSupplierAction(data: {
         const newPaidAmount = currentPaid + data.amount;
         if (newPaidAmount > Number(invoice.total_amount)) throw new Error("Số tiền trả vượt quá giá trị hóa đơn");
 
-        // ✅ FIX LỖI TS2339: Xử lý an toàn khi lấy project_id từ quan hệ PO
         const poData: any = invoice.po;
         const projectId = Array.isArray(poData) ? poData[0]?.project_id : poData?.project_id;
 
-        // B. Tạo giao dịch chi tiền (Cash Flow)
         const { error: transError } = await supabase.from('finance_transactions').insert({
             type: 'expense',
             amount: data.amount,
@@ -231,14 +243,13 @@ export async function createPaymentToSupplierAction(data: {
             transaction_date: data.payment_date.toISOString(),
             payment_method: data.payment_method,
             po_id: invoice.po_id,
-            project_id: projectId, // Gán đúng dự án
+            project_id: projectId,
             invoice_id: invoice.id,
             created_at: new Date().toISOString()
         });
 
         if (transError) throw new Error("Lỗi tạo giao dịch: " + transError.message);
 
-        // C. Cập nhật trạng thái Hóa đơn
         let newStatus = 'partial';
         if (newPaidAmount >= Number(invoice.total_amount)) newStatus = 'paid';
 
@@ -252,4 +263,97 @@ export async function createPaymentToSupplierAction(data: {
     } catch (e: any) {
         return { success: false, error: e.message };
     }
+}
+
+// =========================================================
+// PHẦN BỔ SUNG: QUẢN LÝ TIẾN ĐỘ THANH TOÁN (ĐÃ FIX: DÙNG CONTRACT_PAYMENT_MILESTONES)
+// =========================================================
+
+// 12. Lấy Danh sách Hợp đồng & Milestones
+export async function getProjectContracts(projectId: string) {
+    const supabase = await createClient();
+
+    const { data: contracts, error } = await supabase
+        .from('contracts')
+        .select(`
+            id, 
+            contract_number, 
+            title,
+            value, 
+            signed_at,
+            is_addendum,
+            parent_id,
+            payment_milestones (
+                id,
+                name,
+                percentage,
+                amount,
+                due_date,
+                status,
+                paid_date,
+                note
+            )
+        `)
+        .eq('project_id', projectId)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error("Lỗi lấy hợp đồng:", error);
+        return [];
+    }
+
+    return contracts || [];
+}
+
+// 13. Upsert Milestone (Vào bảng payment_milestones)
+export async function upsertPaymentMilestone(data: any, projectId: string) {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('payment_milestones')
+        .upsert({
+            id: data.id || undefined,
+            contract_id: data.contract_id,
+            name: data.name,
+            percentage: data.percentage,
+            amount: data.amount,
+            due_date: data.due_date,
+            status: data.status,
+            paid_date: data.paid_date
+        });
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true };
+}
+
+// 14. Xóa Milestone
+export async function deletePaymentMilestone(id: string, projectId: string) {
+    const supabase = await createClient();
+    const { error } = await supabase.from('payment_milestones').delete().eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true };
+}
+
+// 15. Đổi trạng thái thanh toán (Toggle status string)
+export async function toggleMilestoneStatus(id: string, projectId: string, newStatus: string) {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('payment_milestones')
+        .update({
+            status: newStatus,
+            paid_date: newStatus === 'paid' ? new Date().toISOString() : null
+        })
+        .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true };
 }
