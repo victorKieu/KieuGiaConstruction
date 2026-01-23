@@ -3,7 +3,6 @@ import { cache } from "react";
 
 /**
  * Hàm trung tâm lấy thông tin danh tính và phiên làm việc.
- * Giữ nguyên tên getUserProfile để tránh lỗi Build ở layout/header/sidebar.
  */
 export const getUserProfile = cache(async () => {
     const supabase = await createSupabaseServerClient();

@@ -1,237 +1,133 @@
-"use client";
-
-import { useEffect, useState, use } from "react";
-import { useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
-import { toast } from "sonner";
+import { vi } from "date-fns/locale";
 import {
-    ArrowLeft, Printer, Pencil, PackageCheck, Loader2,
-    Building2, Calendar, FileText, Truck, MapPin
+    ArrowLeft, Printer, Building2, User, Phone, MapPin,
+    Calendar, Package, Truck, CreditCard
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-    DialogFooter,
-    DialogDescription,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-// 👇 IMPORT THÊM SELECT
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { getPurchaseOrderById, createGoodsReceiptAction } from "@/lib/action/procurement";
-import { getAllWarehouses } from "@/lib/action/inventory"; // <--- Import hàm lấy kho
+// Import Server Actions
+import { getPurchaseOrderById, getPOTransactions } from "@/lib/action/procurement";
 
-export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = use(params);
-    const router = useRouter();
+// ✅ Import Component Dialog (Tái sử dụng code)
+import GoodsReceiptDialog from "@/components/inventory/GoodsReceiptDialog";
+import { PaymentDialog } from "@/components/procurement/payment-dialog";
 
-    const [po, setPo] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+    // 1. Lấy ID (Next.js 15)
+    const { id } = await params;
 
-    // State Dialog
-    const [openReceipt, setOpenReceipt] = useState(false);
-    const [receiptNotes, setReceiptNotes] = useState("");
-    const [receiving, setReceiving] = useState(false);
+    // 2. Fetch dữ liệu
+    const [po, transactions] = await Promise.all([
+        getPurchaseOrderById(id),
+        getPOTransactions(id)
+    ]);
 
-    // 👇 STATE MỚI: DANH SÁCH KHO & KHO ĐƯỢC CHỌN
-    const [warehouses, setWarehouses] = useState<any[]>([]);
-    const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
+    if (!po) notFound();
 
-    useEffect(() => {
-        loadData();
-        // Load danh sách kho để chọn
-        getAllWarehouses().then(setWarehouses);
-    }, [id]);
+    // 3. Tính toán
+    const totalPaid = transactions.reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+    const remainingAmount = po.total_amount - totalPaid;
 
-    const loadData = async () => {
-        setLoading(true);
-        const data = await getPurchaseOrderById(id);
-        if (data) {
-            setPo(data);
-            // Nếu đơn hàng có link tới request và request đã chọn kho -> Tự chọn kho đó
-            if (data.request?.destination_warehouse_id) {
-                setSelectedWarehouseId(data.request.destination_warehouse_id);
-            }
-        } else {
-            toast.error("Không tìm thấy đơn hàng");
-            router.push("/procurement/orders");
-        }
-        setLoading(false);
+    const money = (val: number) => new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(val);
+
+    const StatusBadge = ({ status }: { status: string }) => {
+        const map: any = {
+            draft: { label: "Nháp / Chờ duyệt", color: "bg-slate-100 text-slate-600" },
+            ordered: { label: "Đang đặt hàng", color: "bg-blue-100 text-blue-700" },
+            received: { label: "Đã nhập kho", color: "bg-green-100 text-green-700" },
+            completed: { label: "Hoàn thành", color: "bg-slate-800 text-white" },
+            cancelled: { label: "Đã hủy", color: "bg-red-100 text-red-700" }
+        };
+        const conf = map[status] || map.draft;
+        return <Badge variant="outline" className={`${conf.color} border-0 px-3 py-1`}>{conf.label}</Badge>;
     };
-
-    const handleCreateReceipt = async () => {
-        if (!selectedWarehouseId) {
-            toast.error("Vui lòng chọn kho để nhập hàng!");
-            return;
-        }
-
-        setReceiving(true);
-        // 👇 Gửi thêm selectedWarehouseId xuống Server Action
-        const res = await createGoodsReceiptAction(id, receiptNotes || "Nhập hàng đủ theo đơn", selectedWarehouseId);
-        setReceiving(false);
-
-        if (res.success) {
-            toast.success(res.message);
-            setOpenReceipt(false);
-            loadData();
-        } else {
-            toast.error(res.error);
-        }
-    };
-
-    const formatMoney = (val: number) =>
-        new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(val);
-
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'draft': return <Badge className="bg-orange-500 hover:bg-orange-600 border-none">Chờ xử lý</Badge>;
-            case 'ordered': return <Badge className="bg-blue-600 hover:bg-blue-700 border-none">Đã chốt đơn</Badge>;
-            case 'received': return <Badge className="bg-green-600 hover:bg-green-700 border-none">Đã nhập kho</Badge>;
-            case 'completed': return <Badge className="bg-gray-600">Hoàn thành</Badge>;
-            case 'cancelled': return <Badge variant="destructive">Đã hủy</Badge>;
-            default: return <Badge variant="secondary">{status}</Badge>;
-        }
-    };
-
-    if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>;
-    if (!po) return null;
 
     return (
-        <div className="flex-1 space-y-6 p-8 pt-6 max-w-5xl mx-auto">
-            {/* HEADER */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                        <ArrowLeft className="h-5 w-5" />
+        <div className="flex-1 p-8 pt-6 max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4">
+
+            {/* TOOLBAR */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 print:hidden">
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" size="icon" asChild>
+                        <Link href="/procurement/orders"><ArrowLeft className="w-4 h-4" /></Link>
                     </Button>
                     <div>
-                        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-                            {po.code} {getStatusBadge(po.status)}
+                        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                            Đơn hàng #{po.code}
+                            <StatusBadge status={po.status} />
                         </h2>
-                        <div className="text-muted-foreground text-sm mt-1 flex items-center gap-4">
-                            <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Ngày đặt: {format(new Date(po.order_date), "dd/MM/yyyy")}</span>
-                        </div>
+                        <p className="text-sm text-slate-500">Tạo ngày {format(new Date(po.order_date), "dd 'tháng' MM, yyyy", { locale: vi })}</p>
                     </div>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline"><Printer className="w-4 h-4 mr-2" /> In phiếu</Button>
 
-                <div className="flex gap-2">
-                    <Button variant="outline"><Printer className="mr-2 h-4 w-4" /> In đơn hàng</Button>
-
+                    {/* NÚT SỬA */}
                     {(po.status === 'draft' || po.status === 'ordered') && (
-                        <Button variant="outline" asChild>
-                            <Link href={`/procurement/orders/${id}/edit`}>
-                                <Pencil className="mr-2 h-4 w-4" /> Chỉnh sửa
-                            </Link>
+                        <Button variant="secondary" asChild>
+                            <Link href={`/procurement/orders/${po.id}/edit`}>Chỉnh sửa</Link>
                         </Button>
                     )}
 
+                    {/* ✅ COMPONENT NHẬP KHO */}
                     {po.status === 'ordered' && (
-                        <Dialog open={openReceipt} onOpenChange={setOpenReceipt}>
-                            <DialogTrigger asChild>
-                                <Button className="bg-green-600 hover:bg-green-700 shadow-md">
-                                    <PackageCheck className="mr-2 h-4 w-4" /> Nhập Kho Ngay
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Xác nhận Nhập kho</DialogTitle>
-                                    <DialogDescription>
-                                        Hành động này sẽ tạo phiếu nhập kho (GRN) và <b>tự động cộng số lượng</b> vào tồn kho.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4 py-2">
-                                    {/* 👇 THÊM Ô CHỌN KHO */}
-                                    <div className="space-y-2">
-                                        <Label>Nhập vào kho nào? <span className="text-red-500">*</span></Label>
-                                        <Select onValueChange={setSelectedWarehouseId} value={selectedWarehouseId}>
-                                            <SelectTrigger><SelectValue placeholder="Chọn kho..." /></SelectTrigger>
-                                            <SelectContent>
-                                                {warehouses.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                        <GoodsReceiptDialog
+                            po={po}
+                            warehouseId={po.warehouse_id || ""} // Truyền kho mặc định
+                        />
+                    )}
 
-                                    <div className="space-y-2">
-                                        <Label>Ghi chú nhập hàng</Label>
-                                        <Textarea
-                                            placeholder="VD: Hàng về đủ, chất lượng tốt..."
-                                            value={receiptNotes}
-                                            onChange={(e) => setReceiptNotes(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setOpenReceipt(false)} disabled={receiving}>Hủy</Button>
-                                    <Button onClick={handleCreateReceipt} className="bg-green-600 hover:bg-green-700" disabled={receiving}>
-                                        {receiving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
-                                        Xác nhận Nhập
-                                    </Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                    {/* ✅ COMPONENT THANH TOÁN */}
+                    {remainingAmount > 0 && po.status !== 'cancelled' && (
+                        <PaymentDialog
+                            poId={po.id}
+                            poCode={po.code}
+                            projectId={po.project_id}
+                            remainingAmount={remainingAmount}
+                        />
                     )}
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-6">
-                    <Card>
-                        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Truck className="h-4 w-4 text-blue-600" /> Nhà cung cấp</CardTitle></CardHeader>
-                        <CardContent className="text-sm space-y-3">
-                            <div>
-                                <div className="font-semibold text-lg">{po.supplier?.name || "Chưa chọn NCC"}</div>
-                                <div className="text-muted-foreground">{po.supplier?.address}</div>
-                                <div className="text-muted-foreground">MST: {po.supplier?.tax_code}</div>
-                            </div>
-                        </CardContent>
-                    </Card>
 
-                    <Card>
-                        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4 text-blue-600" /> Dự án / Kho dự kiến</CardTitle></CardHeader>
-                        <CardContent className="text-sm space-y-3">
-                            <div>
-                                <div className="font-medium text-blue-700">{po.project?.name || "Kho chung"}</div>
-                                {po.project?.code && <Badge variant="outline" className="mt-1">{po.project.code}</Badge>}
-                            </div>
-                            {po.request?.destination_warehouse_id && (
-                                <div className="flex items-start gap-2 text-muted-foreground border-t pt-2">
-                                    <MapPin className="h-4 w-4 mt-0.5" />
-                                    <span>Theo yêu cầu: Kho công trình</span>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {po.notes && (
-                        <Card>
-                            <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-blue-600" /> Ghi chú đơn hàng</CardTitle></CardHeader>
-                            <CardContent className="text-sm text-muted-foreground italic">
-                                "{po.notes}"
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
-
+                {/* CỘT TRÁI: THÔNG TIN CHÍNH */}
                 <div className="md:col-span-2 space-y-6">
-                    <Card className="overflow-hidden">
-                        <CardHeader className="bg-muted/40 pb-4"><CardTitle>Chi tiết hàng hóa</CardTitle></CardHeader>
+                    {/* THÔNG TIN NCC */}
+                    <Card>
+                        <CardHeader className="bg-slate-50 py-3 border-b"><CardTitle className="text-sm font-bold text-slate-700">Thông tin chung</CardTitle></CardHeader>
+                        <CardContent className="p-4 grid grid-cols-2 gap-6">
+                            <div className="space-y-1">
+                                <div className="text-xs font-bold text-slate-400 uppercase">Nhà cung cấp</div>
+                                <div className="font-bold text-lg text-blue-700">{po.supplier?.name}</div>
+                                <div className="text-sm text-slate-600 flex items-center gap-2"><User className="w-3 h-3" /> {po.supplier?.contact_person || "---"}</div>
+                                <div className="text-sm text-slate-600 flex items-center gap-2"><Phone className="w-3 h-3" /> {po.supplier?.phone || "---"}</div>
+                            </div>
+                            <div className="space-y-1">
+                                <div className="text-xs font-bold text-slate-400 uppercase">Dự án</div>
+                                <div className="font-bold text-slate-800">{po.project?.name}</div>
+                                <div className="text-sm text-slate-500 flex items-center gap-2"><Building2 className="w-3 h-3" /> {po.project?.code}</div>
+                                <div className="text-sm text-slate-500 flex items-center gap-2"><MapPin className="w-3 h-3" /> {po.project?.address || "---"}</div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* CHI TIẾT VẬT TƯ */}
+                    <Card>
+                        <CardHeader className="bg-slate-50 py-3 border-b"><CardTitle className="text-sm font-bold text-slate-700">Chi tiết vật tư</CardTitle></CardHeader>
                         <CardContent className="p-0">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="w-[50px]">STT</TableHead>
-                                        <TableHead>Tên hàng hóa / Quy cách</TableHead>
+                                        <TableHead>Tên hàng</TableHead>
                                         <TableHead className="text-center">ĐVT</TableHead>
                                         <TableHead className="text-right">SL</TableHead>
                                         <TableHead className="text-right">Đơn giá</TableHead>
@@ -239,36 +135,83 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {po.items.map((item: any, index: number) => {
-                                        const total = Number(item.quantity) * Number(item.unit_price) * (1 + (item.vat_rate || 0) / 100);
-                                        return (
-                                            <TableRow key={item.id}>
-                                                <TableCell className="text-center text-muted-foreground">{index + 1}</TableCell>
-                                                <TableCell>
-                                                    <div className="font-medium">{item.item_name}</div>
-                                                    {item.vat_rate > 0 && <span className="text-[10px] bg-red-100 text-red-700 px-1 rounded">VAT {item.vat_rate}%</span>}
-                                                </TableCell>
-                                                <TableCell className="text-center">{item.unit}</TableCell>
-                                                <TableCell className="text-right font-bold">{item.quantity}</TableCell>
-                                                <TableCell className="text-right text-muted-foreground">{formatMoney(item.unit_price)}</TableCell>
-                                                <TableCell className="text-right font-medium">{formatMoney(total)}</TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
+                                    {po.items.map((item: any) => (
+                                        <TableRow key={item.id}>
+                                            <TableCell className="font-medium">{item.item_name}</TableCell>
+                                            <TableCell className="text-center text-slate-500">{item.unit}</TableCell>
+                                            <TableCell className="text-right font-bold">{item.quantity}</TableCell>
+                                            <TableCell className="text-right text-slate-600">{money(item.unit_price)}</TableCell>
+                                            <TableCell className="text-right font-bold text-slate-800">
+                                                {money(item.quantity * item.unit_price * (1 + (item.vat_rate || 0) / 100))}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
                                 </TableBody>
                             </Table>
-
-                            <div className="p-6 bg-slate-50 flex justify-end">
-                                <div className="w-full md:w-1/2 space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Tổng cộng:</span>
-                                        <span className="text-xl font-bold text-blue-700">{formatMoney(po.total_amount)}</span>
+                            <div className="p-4 flex justify-end border-t bg-slate-50/50">
+                                <div className="w-1/2 space-y-2">
+                                    <div className="flex justify-between text-lg font-bold text-blue-700">
+                                        <span>TỔNG CỘNG:</span>
+                                        <span>{money(po.total_amount)}</span>
                                     </div>
-                                    <Separator />
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
+                </div>
+
+                {/* CỘT PHẢI: TÀI CHÍNH */}
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader className="bg-slate-50 py-3 border-b"><CardTitle className="text-sm font-bold text-slate-700">Tài chính</CardTitle></CardHeader>
+                        <CardContent className="p-4 space-y-4">
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Đã thanh toán:</span>
+                                    <span className="font-bold text-green-600">{money(totalPaid)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Còn nợ:</span>
+                                    <span className="font-bold text-red-600">{money(remainingAmount)}</span>
+                                </div>
+                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mt-2">
+                                    <div
+                                        className="h-full bg-green-500 transition-all"
+                                        style={{ width: `${Math.min(100, (totalPaid / po.total_amount) * 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            <Separator />
+
+                            {/* Lịch sử giao dịch */}
+                            <div className="space-y-2">
+                                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Lịch sử giao dịch</div>
+                                {transactions.length === 0 ? (
+                                    <p className="text-xs text-slate-400 italic">Chưa có giao dịch nào.</p>
+                                ) : (
+                                    transactions.map((t: any) => (
+                                        <div key={t.id} className="flex justify-between text-xs border-b border-dashed pb-1 last:border-0">
+                                            <div>
+                                                <div className="font-medium text-slate-700">{format(new Date(t.transaction_date), "dd/MM/yy")}</div>
+                                                <div className="text-[10px] text-slate-400">{t.payment_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</div>
+                                            </div>
+                                            <div className="font-bold text-slate-800">{money(t.amount)}</div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {po.notes && (
+                        <Card>
+                            <CardHeader className="bg-slate-50 py-3 border-b"><CardTitle className="text-sm font-bold text-slate-700">Ghi chú</CardTitle></CardHeader>
+                            <CardContent className="p-4">
+                                <p className="text-sm text-slate-600 whitespace-pre-line">{po.notes}</p>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             </div>
         </div>
