@@ -52,20 +52,27 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
         const loadData = async () => {
             const data = await getMaterialRequestById(requestId);
             if (data) {
-                // Map dữ liệu từ DB vào Form
                 form.reset({
                     id: data.id,
                     project_id: data.project_id,
                     code: data.code,
-                    priority: data.priority as any, // Cast type nếu DB lưu text
+                    priority: data.priority as any,
+
+                    // ✅ FIX 1: Map đúng deadline_date
                     deadline_date: data.deadline_date ? new Date(data.deadline_date) : new Date(),
+
+                    // ✅ FIX 2: Map đúng destination_warehouse_id
+                    destination_warehouse_id: data.destination_warehouse_id || "",
+
                     notes: data.notes || "",
+
+                    // ✅ FIX 3: Map đúng item_name và notes trong mảng items
                     items: data.items.map((i: any) => ({
                         id: i.id,
-                        item_name: i.item_name,
+                        item_name: i.item_name, // Không dùng material_name
                         unit: i.unit,
                         quantity: Number(i.quantity),
-                        notes: i.notes || ""
+                        notes: i.notes || ""    // Không dùng note
                     }))
                 });
             } else {

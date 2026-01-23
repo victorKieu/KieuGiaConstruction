@@ -2,203 +2,221 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { MaterialRequestFormValues } from "@/lib/schemas/request";
+import { materialRequestSchema, MaterialRequestFormValues } from "@/lib/schemas/request";
 
-// Heplper
-async function getProjectWarehouseId(projectId: string, supabase: any) {
-    // Cách 1: Tìm trong bảng warehouses xem kho nào thuộc project này
-    const { data, error } = await supabase
-        .from('warehouses')
-        .select('id')
-        .eq('project_id', projectId) // Đảm bảo bảng warehouses có cột project_id
-        .single();
+// ==============================================================================
+// PHẦN 1: CÁC HÀM GET (LẤY DỮ LIỆU)
+// ==============================================================================
 
-    if (error || !data) {
-        console.error("Không tìm thấy kho cho dự án này:", projectId);
-        return null;
-    }
-    return data.id;
-}
-
-// --- 1. LẤY NGUỒN VẬT TƯ TỪ NGÂN SÁCH ---
-export async function getAvailableMaterials(projectId: string) {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-        .from('project_material_budget')
-        .select('material_name, unit, budget_quantity')
-        .eq('project_id', projectId)
-        .order('material_name');
-
-    if (error) {
-        console.error("Lỗi getAvailableMaterials:", error.message);
-        return [];
-    }
-    return data || [];
-}
-
-// --- 2. TẠO PHIẾU YÊU CẦU MỚI ---
-export async function createMaterialRequest(
-    projectId: string,
-    note: string,
-    items: any[],
-    deliveryDate: Date | undefined
-    // ❌ Bỏ tham số warehouseId ở đây
-) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    // ✅ TỰ ĐỘNG LẤY KHO CỦA DỰ ÁN
-    const warehouseId = await getProjectWarehouseId(projectId, supabase);
-
-    if (!warehouseId) {
-        return { success: false, error: "Dự án này chưa được gán Kho (Site Warehouse). Vui lòng kiểm tra lại cấu hình Dự án." };
-    }
-
-    // 1. Tạo Header
-    const code = `MR-${Date.now().toString().slice(-6)}`;
-
-    const { data: req, error: reqError } = await supabase
-        .from('material_requests')
-        .insert({
-            project_id: projectId,
-            requester_id: user?.id,
-            code: code,
-            status: 'pending',
-            notes: note,
-            deadline_date: deliveryDate ? deliveryDate.toISOString() : null,
-            destination_warehouse_id: warehouseId // ✅ Tự động điền
-        })
-        .select()
-        .single();
-
-    if (reqError) return { success: false, error: reqError.message };
-
-    // 2. Tạo Items (Giữ nguyên)
-    if (items.length > 0) {
-        const itemsData = items.map(item => ({
-            request_id: req.id,
-            item_name: item.material_name || item.item_name,
-            unit: item.unit,
-            quantity: Number(item.quantity),
-            notes: item.note
-        }));
-
-        const { error: itemsError } = await supabase.from('material_request_items').insert(itemsData);
-        if (itemsError) return { success: false, error: itemsError.message };
-    }
-
-    revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã tạo yêu cầu thành công!" };
-}
-
-// --- 3. LẤY LỊCH SỬ YÊU CẦU ---
+// 1. Lấy danh sách Yêu cầu của Dự án (Lịch sử)
 export async function getProjectRequests(projectId: string) {
     const supabase = await createClient();
-
     const { data, error } = await supabase
         .from('material_requests')
         .select(`
             *,
-            items:material_request_items (*)
+            requester:employees!requester_id(name),
+            items:material_request_items(*)
         `)
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error("Lỗi getProjectRequests:", error.message);
-        return [];
-    }
+    if (error) return [];
     return data || [];
 }
 
-// --- 4. CẬP NHẬT PHIẾU YÊU CẦU (Đã có updated_at) ---
-export async function updateMaterialRequest(
-    requestId: string,
-    projectId: string,
-    note: string,
-    items: any[],
-    deliveryDate: Date | undefined
-    // ❌ Bỏ tham số warehouseId
-) {
+// 2. Lấy chi tiết một Yêu cầu (Cho trang Edit/Detail)
+export async function getMaterialRequestById(id: string) {
     const supabase = await createClient();
-
-    // 1. Update Header (Không cần update kho vì kho gắn liền dự án, không đổi được)
-    const { error: reqError } = await supabase
+    const { data, error } = await supabase
         .from('material_requests')
-        .update({
-            notes: note,
-            deadline_date: deliveryDate ? deliveryDate.toISOString() : null,
-            updated_at: new Date().toISOString()
-        })
-        .eq('id', requestId);
+        .select(`
+            *,
+            requester:employees!requester_id(id, name),
+            items:material_request_items(*)
+        `)
+        .eq('id', id)
+        .single();
 
-    if (reqError) return { success: false, error: reqError.message };
-
-    // 2. Xử lý Items (Giữ nguyên)
-    await supabase.from('material_request_items').delete().eq('request_id', requestId);
-
-    if (items.length > 0) {
-        const itemsData = items.map(item => ({
-            request_id: requestId,
-            item_name: item.material_name || item.item_name,
-            unit: item.unit,
-            quantity: Number(item.quantity),
-            notes: item.note
-        }));
-        const { error: itemsError } = await supabase.from('material_request_items').insert(itemsData);
-        if (itemsError) return { success: false, error: itemsError.message };
-    }
-
-    revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã cập nhật yêu cầu!" };
+    if (error) return null;
+    return data;
 }
 
-// --- 5. XÓA PHIẾU YÊU CẦU ---
-export async function deleteMaterialRequest(requestId: string, projectId: string) {
+// 3. Lấy nguồn vật tư khả dụng (Từ ngân sách/Dự toán) - Helper cho dropdown chọn vật tư
+export async function getAvailableMaterials(projectId: string) {
     const supabase = await createClient();
+    // Ưu tiên lấy từ Budget, nếu không có thì lấy list trống hoặc list vật tư chuẩn
+    const { data } = await supabase
+        .from('project_material_budget')
+        .select('material_name, unit')
+        .eq('project_id', projectId)
+        .order('material_name');
+    return data || [];
+}
+
+// 4. Lấy danh sách Kho của Dự án (Để chọn kho nhận)
+export async function getProjectWarehouses(projectId: string) {
+    const supabase = await createClient();
+    const { data } = await supabase
+        .from('warehouses')
+        .select('id, name')
+        .eq('project_id', projectId);
+    return data || [];
+}
+
+// ==============================================================================
+// PHẦN 2: CÁC HÀM ACTION (TẠO, SỬA, XÓA, DUYỆT)
+// ==============================================================================
+
+// 5. TẠO YÊU CẦU MỚI (Action chuẩn dùng Zod)
+export async function createMaterialRequestAction(
+    projectId: string,
+    data: MaterialRequestFormValues
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
     try {
-        // A. Kiểm tra trạng thái
-        const { data: currentReq } = await supabase
+        // Validate lại lần nữa ở Server
+        const validated = materialRequestSchema.safeParse(data);
+        if (!validated.success) return { success: false, error: "Dữ liệu lỗi: " + validated.error.message };
+
+        const payload = validated.data;
+
+        // A. Tạo Header
+        const code = `MR-${Date.now().toString().slice(-6)}`;
+        const { data: req, error: reqError } = await supabase
             .from('material_requests')
-            .select('status')
-            .eq('id', requestId)
+            .insert({
+                project_id: projectId,
+                code: code,
+                requester_id: user?.id, // ID người tạo (cần map với employee nếu bảng yêu cầu FK employee)
+                created_by: user?.id,
+                status: 'pending',
+
+                // --- MAP FIELD CHUẨN ---
+                priority: payload.priority,
+                deadline_date: payload.deadline_date.toISOString(),
+                destination_warehouse_id: payload.destination_warehouse_id || null,
+                notes: payload.notes
+            })
+            .select('id')
             .single();
 
-        if (currentReq?.status !== 'pending') {
-            return { success: false, error: "Không thể xóa phiếu đã được xử lý." };
+        if (reqError) throw new Error("Lỗi tạo phiếu: " + reqError.message);
+
+        // B. Tạo Items
+        if (payload.items && payload.items.length > 0) {
+            const itemsData = payload.items.map(item => ({
+                request_id: req.id,
+                // --- MAP FIELD CHUẨN ---
+                item_name: item.item_name,
+                unit: item.unit,
+                quantity: item.quantity,
+                notes: item.notes
+            }));
+
+            const { error: itemsError } = await supabase.from('material_request_items').insert(itemsData);
+            if (itemsError) {
+                // Rollback: Xóa header nếu lỗi item
+                await supabase.from('material_requests').delete().eq('id', req.id);
+                throw new Error("Lỗi lưu chi tiết: " + itemsError.message);
+            }
         }
 
-        // B. Xóa Items trước
-        await supabase.from('material_request_items').delete().eq('request_id', requestId);
-
-        // C. Xóa Header
-        const { error } = await supabase.from('material_requests').delete().eq('id', requestId);
-
-        if (error) throw new Error(error.message);
-
         revalidatePath(`/projects/${projectId}`);
-        return { success: true, message: "Đã xóa phiếu yêu cầu." };
+        return { success: true, message: "Tạo yêu cầu thành công!" };
 
     } catch (e: any) {
         return { success: false, error: e.message };
     }
 }
 
-// --- 6. DUYỆT / TỪ CHỐI (Dùng cho role Manager) ---
-export async function updateRequestStatus(requestId: string, projectId: string, status: 'approved' | 'rejected') {
+// 6. CẬP NHẬT YÊU CẦU (Action chuẩn dùng Zod)
+export async function updateMaterialRequestAction(id: string, data: any) {
     const supabase = await createClient();
 
-    // Check quyền (Tạm thời bỏ qua, sau này bạn có thể check role ở đây)
-    // const { data: { user } } = await supabase.auth.getUser();
+    const validated = materialRequestSchema.safeParse(data);
+    if (!validated.success) return { success: false, error: "Dữ liệu lỗi: " + validated.error.message };
+
+    const payload = validated.data;
+
+    try {
+        // A. Update Header
+        const { error: headerErr } = await supabase
+            .from('material_requests')
+            .update({
+                deadline_date: payload.deadline_date.toISOString(),
+                priority: payload.priority,
+                notes: payload.notes,
+                destination_warehouse_id: payload.destination_warehouse_id || null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (headerErr) throw new Error("Lỗi cập nhật phiếu: " + headerErr.message);
+
+        // B. Update Items (Chiến thuật: Xóa hết cũ -> Thêm mới)
+        // Lưu ý: Nếu muốn giữ lịch sử item ID, cần logic phức tạp hơn (update từng dòng), 
+        // nhưng với phiếu 'pending' thì xóa đi tạo lại là an toàn và nhanh nhất.
+        if (payload.items && payload.items.length > 0) {
+            await supabase.from('material_request_items').delete().eq('request_id', id);
+
+            const items = payload.items.map((i: any) => ({
+                request_id: id,
+                item_name: i.item_name,
+                unit: i.unit,
+                quantity: i.quantity,
+                notes: i.notes
+            }));
+
+            const { error: itemsErr } = await supabase.from('material_request_items').insert(items);
+            if (itemsErr) throw new Error("Lỗi cập nhật chi tiết: " + itemsErr.message);
+        }
+
+        revalidatePath(`/projects/${payload.project_id}/requests/${id}`);
+        return { success: true, message: "Cập nhật thành công!" };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+// 7. XÓA YÊU CẦU
+export async function deleteMaterialRequest(requestId: string, projectId: string) {
+    const supabase = await createClient();
+
+    try {
+        // Check trạng thái
+        const { data: currentReq } = await supabase.from('material_requests').select('status').eq('id', requestId).single();
+        if (currentReq?.status !== 'pending') {
+            return { success: false, error: "Chỉ được xóa phiếu đang chờ xử lý." };
+        }
+
+        // Xóa Items trước (Cascade delete thường tự xử lý, nhưng xóa tay cho chắc chắn)
+        await supabase.from('material_request_items').delete().eq('request_id', requestId);
+
+        // Xóa Header
+        const { error } = await supabase.from('material_requests').delete().eq('id', requestId);
+        if (error) throw new Error(error.message);
+
+        revalidatePath(`/projects/${projectId}`);
+        return { success: true, message: "Đã xóa phiếu yêu cầu." };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+// 8. DUYỆT / TỪ CHỐI (Cho Quản lý)
+export async function updateRequestStatus(requestId: string, projectId: string, status: 'approved' | 'rejected') {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
     const { error } = await supabase
         .from('material_requests')
         .update({
             status: status,
-            // approver_id: user?.id, // Nếu muốn lưu người duyệt
-            // approved_at: new Date().toISOString(), // Nếu muốn lưu ngày duyệt
+            // approved_by: user?.id, // Uncomment nếu DB có cột này
             updated_at: new Date().toISOString()
         })
         .eq('id', requestId);
@@ -206,123 +224,5 @@ export async function updateRequestStatus(requestId: string, projectId: string, 
     if (error) return { success: false, error: error.message };
 
     revalidatePath(`/projects/${projectId}`);
-    revalidatePath(`/procurement`);
-
-    return { success: true, message: `Đã cập nhật trạng thái thành: ${status === 'approved' ? 'Đã duyệt' : 'Từ chối'}` };
-}
-
-// 1. Hàm lấy danh sách Kho (Warehouses) của Dự án
-export async function getProjectWarehouses(projectId: string) {
-    const supabase = await createClient();
-
-    // Giả sử bạn có bảng warehouses, nếu chưa có logic kho phức tạp 
-    // thì có thể trả về mảng rỗng hoặc query bảng warehouses nếu đã tạo
-    const { data, error } = await supabase
-        .from('warehouses')
-        .select('id, name')
-        .eq('project_id', projectId);
-
-    if (error) {
-        console.error("Lỗi lấy kho:", error);
-        return [];
-    }
-
-    return data || [];
-}
-
-// 2. Hàm Tạo Yêu cầu Vật tư (Create Request)
-export async function createMaterialRequestAction(
-    projectId: string,
-    data: MaterialRequestFormValues
-) {
-    const supabase = await createClient();
-
-    try {
-        // A. Tạo phiếu yêu cầu (Header)
-        const { data: requestData, error: requestError } = await supabase
-            .from('material_requests')
-            .insert({
-                project_id: projectId,
-                warehouse_id: data.warehouse_id || null,
-                delivery_date: data.delivery_date.toISOString(),
-                status: 'pending', // Trạng thái chờ duyệt
-                notes: data.notes,
-                created_by: (await supabase.auth.getUser()).data.user?.id
-            })
-            .select('id')
-            .single();
-
-        if (requestError || !requestData) {
-            throw new Error("Không thể tạo phiếu yêu cầu: " + requestError?.message);
-        }
-
-        const requestId = requestData.id;
-
-        // B. Tạo chi tiết vật tư (Items)
-        const itemsToInsert = data.items.map((item) => ({
-            request_id: requestId,
-            material_code: item.material_code,
-            material_name: item.material_name,
-            unit: item.unit,
-            quantity: item.quantity,
-            notes: item.note
-        }));
-
-        const { error: itemsError } = await supabase
-            .from('material_request_items')
-            .insert(itemsToInsert);
-
-        if (itemsError) {
-            // Nếu lỗi insert chi tiết, nên xóa header đi (Rollback thủ công)
-            await supabase.from('material_requests').delete().eq('id', requestId);
-            throw new Error("Lỗi lưu chi tiết vật tư: " + itemsError.message);
-        }
-
-        // C. Thành công -> Revalidate
-        revalidatePath(`/projects/${projectId}/requests`);
-
-        return { success: true, message: "Đã gửi yêu cầu vật tư thành công!" };
-
-    } catch (e: any) {
-        console.error(e);
-        return { success: false, error: e.message };
-    }
-}
-
-// 1. Lấy chi tiết yêu cầu
-export async function getMaterialRequestById(id: string) {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-        .from('material_requests')
-        .select(`*, requester:employees!requester_id(id, name), items:material_request_items(*)`)
-        .eq('id', id)
-        .single();
-    if (error) return null;
-    return data;
-}
-
-// 2. Cập nhật yêu cầu
-export async function updateMaterialRequestAction(id: string, data: any) {
-    const supabase = await createClient();
-    try {
-        // Update Header
-        const { error: headerErr } = await supabase.from('material_requests').update({
-            request_date: data.request_date,
-            deadline_date: data.deadline_date,
-            notes: data.notes,
-            priority: data.priority
-        }).eq('id', id);
-        if (headerErr) throw new Error(headerErr.message);
-
-        // Update Items (Xóa đi tạo lại cho nhanh)
-        if (data.items && data.items.length > 0) {
-            await supabase.from('material_request_items').delete().eq('request_id', id);
-            const items = data.items.map((i: any) => ({
-                request_id: id, item_name: i.item_name, unit: i.unit, quantity: i.quantity, notes: i.notes
-            }));
-            await supabase.from('material_request_items').insert(items);
-        }
-        revalidatePath(`/projects/${data.project_id}/requests/${id}`);
-        return { success: true, message: "Cập nhật thành công!" };
-    } catch (e: any) { return { success: false, error: e.message }; }
+    return { success: true, message: `Đã ${status === 'approved' ? 'duyệt' : 'từ chối'} phiếu yêu cầu.` };
 }

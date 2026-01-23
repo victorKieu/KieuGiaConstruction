@@ -1,4 +1,4 @@
-import { getMaterialRequestById } from "@/lib/action/request";
+import { getMaterialRequestById } from "@/lib/action/requestActions";
 // Import component Client đã tách ra
 import RequestDetailClient from "@/components/projects/requests/request-detail-client";
 
