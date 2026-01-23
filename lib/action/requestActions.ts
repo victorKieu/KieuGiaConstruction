@@ -288,3 +288,41 @@ export async function createMaterialRequestAction(
         return { success: false, error: e.message };
     }
 }
+
+// 1. Lấy chi tiết yêu cầu
+export async function getMaterialRequestById(id: string) {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from('material_requests')
+        .select(`*, requester:employees!requester_id(id, name), items:material_request_items(*)`)
+        .eq('id', id)
+        .single();
+    if (error) return null;
+    return data;
+}
+
+// 2. Cập nhật yêu cầu
+export async function updateMaterialRequestAction(id: string, data: any) {
+    const supabase = await createClient();
+    try {
+        // Update Header
+        const { error: headerErr } = await supabase.from('material_requests').update({
+            request_date: data.request_date,
+            deadline_date: data.deadline_date,
+            notes: data.notes,
+            priority: data.priority
+        }).eq('id', id);
+        if (headerErr) throw new Error(headerErr.message);
+
+        // Update Items (Xóa đi tạo lại cho nhanh)
+        if (data.items && data.items.length > 0) {
+            await supabase.from('material_request_items').delete().eq('request_id', id);
+            const items = data.items.map((i: any) => ({
+                request_id: id, item_name: i.item_name, unit: i.unit, quantity: i.quantity, notes: i.notes
+            }));
+            await supabase.from('material_request_items').insert(items);
+        }
+        revalidatePath(`/projects/${data.project_id}/requests/${id}`);
+        return { success: true, message: "Cập nhật thành công!" };
+    } catch (e: any) { return { success: false, error: e.message }; }
+}

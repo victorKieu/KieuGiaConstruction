@@ -450,3 +450,27 @@ export async function getProjectStandardizedMaterials(projectId: string) {
     }
     return [];
 }
+
+// --- BỔ SUNG HÀM TẠO NHÀ CUNG CẤP ---
+export async function createSupplierAction(data: any) {
+    const supabase = await createClient();
+    try {
+        const { error } = await supabase.from('suppliers').insert({
+            name: data.name,
+            type: data.type,
+            contact_person: data.contact_person,
+            phone: data.phone,
+            email: data.email,
+            address: data.address,
+            tax_code: data.tax_code,
+            created_at: new Date().toISOString()
+        });
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath('/procurement/suppliers');
+        return { success: true, message: "Thêm nhà cung cấp thành công!" };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}

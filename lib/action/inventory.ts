@@ -4,6 +4,26 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { format } from "date-fns";
 
+// --- HELPER: LẤY EMPLOYEE ID TỪ USER HIỆN TẠI ---
+// (Cần thiết vì Database yêu cầu khóa ngoại tới bảng employees)
+async function getCurrentEmployeeId(supabase: any) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Tìm profile linked với auth_id
+    const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single();
+
+    return profile?.id || null;
+}
+
+// ==============================================================================
+// PHẦN 1: TRUY VẤN DỮ LIỆU (READ)
+// ==============================================================================
+
 // 1. Lấy danh sách tất cả các kho
 export async function getAllWarehouses() {
     const supabase = await createClient();
@@ -27,27 +47,65 @@ export async function getAllWarehouses() {
     return result;
 }
 
-// 2. Lấy chi tiết tồn kho
+// 2. Lấy kho theo phân quyền user (My Warehouses)
+export async function getMyAuthorizedWarehouses() {
+    const supabase = await createClient();
+    const employeeId = await getCurrentEmployeeId(supabase);
+
+    if (!employeeId) return [];
+
+    // Lấy dự án user tham gia
+    const { data: members } = await supabase
+        .from('project_members')
+        .select('project_id')
+        .eq('employee_id', employeeId);
+
+    const projectIds = members?.map(m => m.project_id) || [];
+
+    let query = supabase
+        .from("warehouses")
+        .select(`*, project:projects(code, name)`)
+        .eq("is_active", true)
+        .order("created_at", { ascending: false });
+
+    if (projectIds.length > 0) {
+        // Lấy kho thuộc dự án tham gia OR Kho chung (project_id is null)
+        query = query.or(`project_id.in.(${projectIds.join(',')}),project_id.is.null`);
+    } else {
+        query = query.is('project_id', null);
+    }
+
+    const { data: warehouses } = await query;
+    const result = await Promise.all((warehouses || []).map(async (w) => {
+        const { count } = await supabase
+            .from("project_inventory")
+            .select("*", { count: 'exact', head: true })
+            .eq("warehouse_id", w.id);
+        return { ...w, items_count: count || 0 };
+    }));
+
+    return result;
+}
+
+// 3. Lấy chi tiết tồn kho (Bao gồm tính toán SL đã xuất)
 export async function getInventoryByWarehouse(warehouseId: string) {
     const supabase = await createClient();
 
-    // 1. Lấy danh sách tồn kho (Bỏ điều kiện .gt > 0 để lấy tất cả)
-    const { data: inventory, error } = await supabase
+    // 1. Lấy danh sách tồn kho
+    const { data: inventory } = await supabase
         .from("project_inventory")
         .select("*")
         .eq("warehouse_id", warehouseId)
         .order("item_name");
 
-    if (error || !inventory) return [];
+    if (!inventory) return [];
 
-    // 2. Tính tổng số lượng đã xuất (SL Xuất) từ bảng goods_issue_items
-    // (Logic: Lấy tất cả phiếu xuất của kho này -> sum quantity group by item_name)
+    // 2. Tính tổng số lượng đã xuất từ bảng goods_issue_items (Giữ nguyên logic cũ của bạn)
     const { data: issueItems } = await supabase
         .from("goods_issue_items")
         .select("item_name, quantity, issue:goods_issues!inner(warehouse_id)")
         .eq("issue.warehouse_id", warehouseId);
 
-    // Map để tính tổng xuất
     const issuedMap = new Map<string, number>();
     issueItems?.forEach((item: any) => {
         const current = issuedMap.get(item.item_name) || 0;
@@ -57,277 +115,60 @@ export async function getInventoryByWarehouse(warehouseId: string) {
     // 3. Merge dữ liệu
     const result = inventory.map(item => ({
         ...item,
-        quantity_issued: issuedMap.get(item.item_name) || 0 // Thêm cột SL Xuất
+        quantity_issued: issuedMap.get(item.item_name) || 0
     }));
 
     return result;
 }
 
-// 3. Lấy thông tin 1 kho
+// 4. Lấy thông tin 1 kho
 export async function getWarehouseById(id: string) {
     const supabase = await createClient();
     const { data } = await supabase.from("warehouses").select("*, project:projects(name)").eq("id", id).single();
     return data;
 }
 
-// 4. HÀNH ĐỘNG ĐIỀU CHUYỂN KHO (Transfer)
-export async function createTransferAction(
-    fromId: string,
-    toId: string,
-    items: { item_name: string; unit: string; quantity: number }[],
-    notes: string
-) {
+// 5. Lấy danh sách PO chờ nhập (Incoming)
+export async function getIncomingOrdersByWarehouse(warehouseId: string) {
     const supabase = await createClient();
+    const { data: wh } = await supabase.from('warehouses').select('project_id').eq('id', warehouseId).single();
+    if (!wh?.project_id) return [];
 
-    if (fromId === toId) return { success: false, error: "Kho đi và Kho đến không được trùng nhau" };
+    const { data: orders } = await supabase
+        .from('purchase_orders')
+        .select(`
+            id, code, order_date, status, total_amount, expected_delivery_date,
+            supplier:suppliers(name),
+            items:purchase_order_items(id, item_name, unit, quantity)
+        `)
+        .eq('project_id', wh.project_id)
+        .in('status', ['ordered', 'partial_received'])
+        .order('created_at', { ascending: false });
 
-    const code = `TR-${Date.now().toString().slice(-6)}`;
-    const { data: transfer, error: trError } = await supabase.from("inventory_transfers").insert({
-        code,
-        from_warehouse_id: fromId,
-        to_warehouse_id: toId,
-        notes,
-        status: 'completed',
-        transfer_date: new Date().toISOString()
-    }).select("id").single();
-
-    if (trError || !transfer) return { success: false, error: "Lỗi tạo phiếu: " + trError?.message };
-
-    const transferItems = items.map(i => ({
-        transfer_id: transfer.id,
-        item_name: i.item_name,
-        unit: i.unit,
-        quantity: i.quantity
-    }));
-    await supabase.from("inventory_transfer_items").insert(transferItems);
-
-    for (const item of items) {
-        // Trừ Kho đi
-        const { data: sourceItem } = await supabase.from("project_inventory")
-            .select("*").eq("warehouse_id", fromId).eq("item_name", item.item_name).eq("unit", item.unit).single();
-
-        if (!sourceItem || sourceItem.quantity_on_hand < item.quantity) {
-            return { success: false, error: `Kho nguồn không đủ hàng: ${item.item_name}` };
-        }
-
-        await supabase.from("project_inventory").update({
-            quantity_on_hand: sourceItem.quantity_on_hand - item.quantity,
-            last_updated: new Date().toISOString()
-        }).eq("id", sourceItem.id);
-
-        // Cộng Kho đến
-        const { data: destItem } = await supabase.from("project_inventory")
-            .select("*").eq("warehouse_id", toId).eq("item_name", item.item_name).eq("unit", item.unit).single();
-
-        if (destItem) {
-            const oldVal = destItem.quantity_on_hand * destItem.avg_price;
-            const transferVal = item.quantity * sourceItem.avg_price;
-            const newQty = destItem.quantity_on_hand + item.quantity;
-            const newAvg = (oldVal + transferVal) / newQty;
-
-            await supabase.from("project_inventory").update({
-                quantity_on_hand: newQty,
-                avg_price: newAvg,
-                last_updated: new Date().toISOString()
-            }).eq("id", destItem.id);
-        } else {
-            await supabase.from("project_inventory").insert({
-                warehouse_id: toId,
-                project_id: null,
-                item_name: item.item_name,
-                unit: item.unit,
-                quantity_on_hand: item.quantity,
-                avg_price: sourceItem.avg_price,
-                last_updated: new Date().toISOString()
-            });
-        }
-    }
-
-    revalidatePath(`/inventory/${fromId}`);
-    revalidatePath(`/inventory/${toId}`);
-    return { success: true, message: "Điều chuyển thành công!" };
+    return orders || [];
 }
 
-// 5. TẠO PHIẾU XUẤT KHO (Cập nhật logic tính tiền)
-export async function createGoodsIssueAction(data: {
-    warehouse_id: string;
-    project_id?: string;
-    receiver_name: string;
-    issue_date: Date;
-    notes?: string;
-    items: { item_name: string; unit: string; quantity: number; notes?: string }[]
-}) {
+// 6. Lấy danh sách PO đã nhập (Received)
+export async function getReceivedPOsByWarehouse(warehouseId: string) {
     const supabase = await createClient();
+    const { data: wh } = await supabase.from('warehouses').select('project_id').eq('id', warehouseId).single();
 
-    // ... (Phần validate tồn kho giữ nguyên) ...
+    const query = supabase
+        .from('purchase_orders')
+        .select(`id, code, created_at, supplier:suppliers(name), items:purchase_order_items(item_name, unit)`)
+        .eq('status', 'received')
+        .order('created_at', { ascending: false });
 
-    const code = `PX-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
+    if (wh?.project_id) query.eq('project_id', wh.project_id);
 
-    const { data: issue, error: issueError } = await supabase.from("goods_issues").insert({
-        code,
-        warehouse_id: data.warehouse_id,
-        project_id: data.project_id, // Quan trọng: Phải có cái này để link với Tài chính
-        issue_date: data.issue_date.toISOString(),
-        receiver_name: data.receiver_name,
-        notes: data.notes
-    }).select("id").single();
-
-    if (issueError || !issue) return { success: false, error: "Lỗi tạo phiếu xuất: " + issueError?.message };
-
-    // Biến tính tổng giá trị phiếu xuất
-    let issueTotalValue = 0;
-
-    for (const item of data.items) {
-        // Lấy thông tin tồn kho (bao gồm giá AVG)
-        const { data: currentStock } = await supabase
-            .from("project_inventory")
-            .select("*")
-            .eq("warehouse_id", data.warehouse_id)
-            .eq("item_name", item.item_name)
-            .single();
-
-        // Lấy giá vốn hiện tại (Nếu chưa có thì = 0)
-        const currentPrice = currentStock?.avg_price || 0;
-
-        // Lưu vào chi tiết phiếu xuất (Kèm ĐƠN GIÁ)
-        await supabase.from("goods_issue_items").insert({
-            issue_id: issue.id,
-            item_name: item.item_name,
-            unit: item.unit,
-            quantity: item.quantity,
-            unit_price: currentPrice, // ✅ LƯU GIÁ VỐN
-            notes: item.notes
-        });
-
-        // Cộng dồn tổng tiền
-        issueTotalValue += (item.quantity * currentPrice);
-
-        // Trừ tồn kho (Giữ nguyên)
-        if (currentStock) {
-            await supabase.from("project_inventory").update({
-                quantity_on_hand: Number(currentStock.quantity_on_hand) - Number(item.quantity),
-                last_updated: new Date().toISOString()
-            }).eq("id", currentStock.id);
-        }
-    }
-
-    // (Tùy chọn) Cập nhật tổng tiền ngược lại vào header phiếu xuất để query nhanh
-    await supabase.from("goods_issues")
-        .update({ total_value: issueTotalValue })
-        .eq("id", issue.id);
-
-    revalidatePath(`/inventory/${data.warehouse_id}`);
-    // Revalidate dự án để cập nhật tài chính ngay lập tức
-    if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
-
-    return { success: true, message: "Đã xuất kho thành công!" };
+    const { data: pos } = await query;
+    return pos || [];
 }
 
-// 6. NHẬP TRẢ TỰ DO (Backup cũ - có thể không dùng nếu dùng logic mới)
-export async function createGoodsReturnAction(data: {
-    warehouse_id: string;
-    project_id?: string;
-    returner_name: string;
-    return_date: Date;
-    notes?: string;
-    items: { item_name: string; unit: string; quantity: number; reason?: string }[]
-}) {
-    const supabase = await createClient();
-
-    const code = `TH-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
-    const { data: ret, error } = await supabase.from("goods_returns").insert({
-        code,
-        warehouse_id: data.warehouse_id,
-        project_id: data.project_id,
-        returner_name: data.returner_name,
-        return_date: data.return_date.toISOString(),
-        notes: data.notes
-    }).select("id").single();
-
-    if (error || !ret) return { success: false, error: "Lỗi tạo phiếu trả: " + error?.message };
-
-    for (const item of data.items) {
-        await supabase.from("goods_return_items").insert({
-            return_id: ret.id,
-            item_name: item.item_name,
-            unit: item.unit,
-            quantity: item.quantity,
-            reason: item.reason
-        });
-
-        const { data: currentStock } = await supabase
-            .from("project_inventory")
-            .select("*")
-            .eq("warehouse_id", data.warehouse_id)
-            .eq("item_name", item.item_name)
-            .single();
-
-        if (currentStock) {
-            await supabase.from("project_inventory").update({
-                quantity_on_hand: Number(currentStock.quantity_on_hand) + Number(item.quantity),
-                last_updated: new Date().toISOString()
-            }).eq("id", currentStock.id);
-        } else {
-            await supabase.from("project_inventory").insert({
-                warehouse_id: data.warehouse_id,
-                item_name: item.item_name,
-                unit: item.unit,
-                quantity_on_hand: item.quantity,
-                avg_price: 0,
-                last_updated: new Date().toISOString()
-            });
-        }
-    }
-
-    revalidatePath(`/inventory/${data.warehouse_id}`);
-    return { success: true, message: "Đã nhập trả hàng thành công!" };
-}
-
-// 7. KIỂM KÊ (Check)
-export async function createInventoryCheckAction(
-    warehouseId: string,
-    items: { item_name: string; system_qty: number; actual_qty: number; reason?: string }[]
-) {
-    const supabase = await createClient();
-
-    const { data: check, error } = await supabase.from("inventory_checks").insert({
-        warehouse_id: warehouseId,
-        check_date: new Date().toISOString(),
-        status: 'completed',
-        notes: "Kiểm kê định kỳ / Đột xuất"
-    }).select("id").single();
-
-    if (error || !check) return { success: false, error: error?.message };
-
-    for (const item of items) {
-        await supabase.from("inventory_check_items").insert({
-            check_id: check.id,
-            item_name: item.item_name,
-            system_qty: item.system_qty,
-            actual_qty: item.actual_qty,
-            diff_reason: item.reason
-        });
-
-        if (item.system_qty !== item.actual_qty) {
-            await supabase.from("project_inventory")
-                .update({
-                    quantity_on_hand: item.actual_qty,
-                    last_updated: new Date().toISOString()
-                })
-                .eq("warehouse_id", warehouseId)
-                .eq("item_name", item.item_name);
-        }
-    }
-
-    revalidatePath(`/inventory/${warehouseId}`);
-    return { success: true, message: "Đã cân bằng kho thành công!" };
-}
-
-// 8. LẤY LỊCH SỬ KHO (History) - ĐÃ CÓ LẠI HÀM NÀY
+// 7. Lấy lịch sử kho (Tổng hợp Xuất, Nhập trả)
 export async function getWarehouseHistory(warehouseId: string) {
     const supabase = await createClient();
 
-    // Lấy phiếu xuất
     const { data: issues } = await supabase
         .from("goods_issues")
         .select("id, code, issue_date, receiver_name, notes, created_at")
@@ -335,7 +176,6 @@ export async function getWarehouseHistory(warehouseId: string) {
         .order("created_at", { ascending: false })
         .limit(10);
 
-    // Lấy phiếu trả
     const { data: returns } = await supabase
         .from("goods_returns")
         .select("id, code, return_date, returner_name, notes, created_at")
@@ -343,40 +183,18 @@ export async function getWarehouseHistory(warehouseId: string) {
         .order("created_at", { ascending: false })
         .limit(10);
 
-    // Lấy phiếu nhập (GRN) - Link qua PO
-    const { data: receipts } = await supabase
-        .from("goods_receipts")
-        .select(`
-            id, created_at, received_date, notes, 
-            po:purchase_orders!inner(code, warehouse_id:request(destination_warehouse_id))
-        `)
-        .limit(10);
-    // Lưu ý: Logic lấy receipt chính xác theo kho sẽ phức tạp hơn chút do join sâu, 
-    // tạm thời ta hiển thị Xuất và Trả (quan trọng nhất cho thủ kho)
-
     const history = [
         ...(issues || []).map(i => ({
-            id: i.id,
-            type: 'ISSUE', // Xuất kho
-            code: i.code,
-            date: i.issue_date,
-            partner: i.receiver_name, // Người nhận
-            notes: i.notes
+            id: i.id, type: 'ISSUE', code: i.code, date: i.issue_date, partner: i.receiver_name, notes: i.notes
         })),
         ...(returns || []).map(r => ({
-            id: r.id,
-            type: 'RETURN', // Nhập trả
-            code: r.code,
-            date: r.return_date,
-            partner: r.returner_name, // Người trả
-            notes: r.notes
+            id: r.id, type: 'RETURN', code: r.code, date: r.return_date, partner: r.returner_name, notes: r.notes
         }))
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return history;
 }
 
-// 9. LẤY DANH SÁCH PHIẾU XUẤT GẦN ĐÂY (Để chọn trả hàng)
 export async function getRecentIssues(warehouseId: string) {
     const supabase = await createClient();
     const { data } = await supabase
@@ -388,53 +206,195 @@ export async function getRecentIssues(warehouseId: string) {
     return data || [];
 }
 
-// 10. NHẬP TRẢ TỪ PHIẾU XUẤT (Logic chuẩn)
-export async function createGoodsReturnFromIssueAction(data: {
-    warehouse_id: string;
-    issue_id: string; // Link tới phiếu xuất gốc
-    returner_name: string;
-    return_date: Date;
-    notes?: string;
+// ==============================================================================
+// PHẦN 2: CÁC NGHIỆP VỤ KHO (WRITE ACTIONS)
+// ==============================================================================
+
+// 1. NHẬP KHO (GOODS RECEIPT)
+export async function createGoodsReceiptAction(data: {
+    po_id: string; warehouse_id: string; delivery_note: string; notes?: string;
+    items: { po_item_id: string; item_name: string; unit: string; quantity_ordered: number; quantity_received: number; note?: string }[]
+}) {
+    const supabase = await createClient();
+    const employeeId = await getCurrentEmployeeId(supabase);
+
+    if (!data.warehouse_id) return { success: false, error: "Thiếu thông tin kho nhập." };
+
+    const code = `GR-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
+    const { data: gr, error: grError } = await supabase.from('goods_receipts').insert({
+        code: code, po_id: data.po_id, warehouse_id: data.warehouse_id,
+        receiver_id: employeeId,
+        delivery_note_number: data.delivery_note,
+        notes: data.notes, received_date: new Date().toISOString()
+    }).select('id').single();
+
+    if (grError) return { success: false, error: "Lỗi tạo phiếu nhập: " + grError.message };
+
+    for (const item of data.items) {
+        if (item.quantity_received > 0) {
+            await supabase.from('goods_receipt_items').insert({
+                receipt_id: gr.id, po_item_id: item.po_item_id,
+                item_name: item.item_name, unit: item.unit,
+                quantity_ordered: item.quantity_ordered, quantity_received: item.quantity_received,
+                notes: item.note
+            });
+
+            // Cộng Tồn kho
+            const { data: currentStock } = await supabase.from('project_inventory')
+                .select('*').eq('warehouse_id', data.warehouse_id).eq('item_name', item.item_name).maybeSingle();
+
+            if (currentStock) {
+                await supabase.from('project_inventory').update({
+                    quantity_on_hand: Number(currentStock.quantity_on_hand) + Number(item.quantity_received),
+                    last_updated: new Date().toISOString()
+                }).eq('id', currentStock.id);
+            } else {
+                const { data: wh } = await supabase.from('warehouses').select('project_id').eq('id', data.warehouse_id).single();
+                await supabase.from('project_inventory').insert({
+                    warehouse_id: data.warehouse_id, project_id: wh?.project_id,
+                    item_name: item.item_name, unit: item.unit,
+                    quantity_on_hand: item.quantity_received, avg_price: 0,
+                    last_updated: new Date().toISOString()
+                });
+            }
+        }
+    }
+
+    await supabase.from('purchase_orders').update({ status: 'received' }).eq('id', data.po_id);
+    revalidatePath(`/inventory/${data.warehouse_id}`);
+    return { success: true, message: "Nhập kho thành công!" };
+}
+
+// 2. XUẤT KHO SỬ DỤNG (ISSUE)
+export async function createGoodsIssueAction(data: {
+    warehouse_id: string; project_id?: string; receiver_name: string; issue_date: Date; notes?: string;
+    items: { item_name: string; unit: string; quantity: number; notes?: string }[]
+}) {
+    const supabase = await createClient();
+    const employeeId = await getCurrentEmployeeId(supabase);
+
+    const code = `PX-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
+    const { data: issue, error } = await supabase.from("goods_issues").insert({
+        code, warehouse_id: data.warehouse_id, project_id: data.project_id,
+        issue_date: data.issue_date.toISOString(), receiver_name: data.receiver_name,
+        notes: data.notes, type: 'out', created_by: employeeId
+    }).select("id").single();
+
+    if (error) return { success: false, error: "Lỗi tạo phiếu xuất: " + error.message };
+
+    let issueTotalValue = 0;
+    for (const item of data.items) {
+        // Lấy giá vốn hiện tại
+        const { data: currentStock } = await supabase.from("project_inventory")
+            .select("*").eq("warehouse_id", data.warehouse_id).eq("item_name", item.item_name).single();
+
+        const currentPrice = currentStock?.avg_price || 0;
+
+        await supabase.from("goods_issue_items").insert({
+            issue_id: issue.id, item_name: item.item_name, unit: item.unit,
+            quantity: item.quantity, unit_price: currentPrice, notes: item.notes
+        });
+
+        issueTotalValue += (item.quantity * currentPrice);
+
+        if (currentStock) {
+            await supabase.from("project_inventory").update({
+                quantity_on_hand: Number(currentStock.quantity_on_hand) - Number(item.quantity),
+                // quantity_issued: ... (Cập nhật cột này nếu DB đã có, không thì thôi)
+                last_updated: new Date().toISOString()
+            }).eq("id", currentStock.id);
+        }
+    }
+
+    await supabase.from("goods_issues").update({ total_value: issueTotalValue }).eq("id", issue.id);
+
+    revalidatePath(`/inventory/${data.warehouse_id}`);
+    if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
+    return { success: true, message: "Đã xuất kho thành công!" };
+}
+
+// 3. ĐIỀU CHUYỂN KHO (TRANSFER)
+export async function createTransferAction(
+    fromId: string, toId: string, items: { item_name: string; unit: string; quantity: number }[], notes: string
+) {
+    const supabase = await createClient();
+    const employeeId = await getCurrentEmployeeId(supabase);
+
+    if (fromId === toId) return { success: false, error: "Kho đi và Kho đến trùng nhau" };
+
+    const code = `TR-${Date.now().toString().slice(-6)}`;
+    const { data: transfer, error } = await supabase.from("inventory_transfers").insert({
+        code, from_warehouse_id: fromId, to_warehouse_id: toId,
+        notes, status: 'completed', transfer_date: new Date().toISOString(), created_by: employeeId
+    }).select("id").single();
+
+    if (error) return { success: false, error: "Lỗi tạo phiếu: " + error.message };
+
+    for (const item of items) {
+        await supabase.from("inventory_transfer_items").insert({
+            transfer_id: transfer.id, item_name: item.item_name, unit: item.unit, quantity: item.quantity
+        });
+
+        // Trừ Kho đi
+        const { data: source } = await supabase.from("project_inventory")
+            .select("*").eq("warehouse_id", fromId).eq("item_name", item.item_name).single();
+
+        if (!source || source.quantity_on_hand < item.quantity) return { success: false, error: `Kho nguồn thiếu hàng: ${item.item_name}` };
+
+        await supabase.from("project_inventory").update({
+            quantity_on_hand: source.quantity_on_hand - item.quantity, last_updated: new Date().toISOString()
+        }).eq("id", source.id);
+
+        // Cộng Kho đến
+        const { data: dest } = await supabase.from("project_inventory")
+            .select("*").eq("warehouse_id", toId).eq("item_name", item.item_name).maybeSingle();
+
+        if (dest) {
+            const oldVal = dest.quantity_on_hand * (dest.avg_price || 0);
+            const transferVal = item.quantity * (source.avg_price || 0);
+            const newQty = dest.quantity_on_hand + item.quantity;
+            const newAvg = newQty > 0 ? (oldVal + transferVal) / newQty : 0;
+
+            await supabase.from("project_inventory").update({
+                quantity_on_hand: newQty, avg_price: newAvg, last_updated: new Date().toISOString()
+            }).eq("id", dest.id);
+        } else {
+            await supabase.from("project_inventory").insert({
+                warehouse_id: toId, item_name: item.item_name, unit: item.unit,
+                quantity_on_hand: item.quantity, avg_price: source.avg_price, last_updated: new Date().toISOString()
+            });
+        }
+    }
+
+    revalidatePath(`/inventory/${fromId}`);
+    revalidatePath(`/inventory/${toId}`);
+    return { success: true, message: "Điều chuyển thành công!" };
+}
+
+// 4. NHẬP TRẢ TỰ DO / TỪ CÔNG TRƯỜNG
+export async function createGoodsReturnAction(data: {
+    warehouse_id: string; returner_name: string; return_date: Date; notes?: string;
     items: { item_name: string; unit: string; quantity: number; reason?: string }[]
 }) {
     const supabase = await createClient();
+    const employeeId = await getCurrentEmployeeId(supabase);
 
-    // 1. Tạo Phiếu Trả (Có link tới issue_id)
     const code = `TH-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
-
-    // Tìm project_id từ issue gốc nếu cần, hoặc truyền từ client
-    // Ở đây ta đơn giản hóa việc insert
     const { data: ret, error } = await supabase.from("goods_returns").insert({
-        code,
-        warehouse_id: data.warehouse_id,
-        issue_id: data.issue_id,
-        returner_name: data.returner_name,
-        return_date: data.return_date.toISOString(),
-        notes: data.notes
+        code, warehouse_id: data.warehouse_id, returner_name: data.returner_name,
+        return_date: data.return_date.toISOString(), notes: data.notes, created_by: employeeId
     }).select("id").single();
 
-    if (error || !ret) return { success: false, error: "Lỗi tạo phiếu trả: " + error?.message };
+    if (error) return { success: false, error: "Lỗi tạo phiếu trả: " + error.message };
 
-    // 2. Xử lý Items & TĂNG TỒN KHO
     for (const item of data.items) {
-        if (item.quantity <= 0) continue;
-
-        // Lưu chi tiết
         await supabase.from("goods_return_items").insert({
-            return_id: ret.id,
-            item_name: item.item_name,
-            unit: item.unit,
-            quantity: item.quantity,
-            reason: item.reason
+            return_id: ret.id, item_name: item.item_name, unit: item.unit,
+            quantity: item.quantity, reason: item.reason
         });
 
-        // Cộng tồn kho
-        const { data: currentStock } = await supabase
-            .from("project_inventory")
-            .select("*")
-            .eq("warehouse_id", data.warehouse_id)
-            .eq("item_name", item.item_name)
-            .single();
+        const { data: currentStock } = await supabase.from("project_inventory")
+            .select("*").eq("warehouse_id", data.warehouse_id).eq("item_name", item.item_name).maybeSingle();
 
         if (currentStock) {
             await supabase.from("project_inventory").update({
@@ -442,14 +402,9 @@ export async function createGoodsReturnFromIssueAction(data: {
                 last_updated: new Date().toISOString()
             }).eq("id", currentStock.id);
         } else {
-            // Tạo mới nếu chưa có (lấy lại từ kho)
             await supabase.from("project_inventory").insert({
-                warehouse_id: data.warehouse_id,
-                item_name: item.item_name,
-                unit: item.unit,
-                quantity_on_hand: item.quantity,
-                avg_price: 0,
-                last_updated: new Date().toISOString()
+                warehouse_id: data.warehouse_id, item_name: item.item_name, unit: item.unit,
+                quantity_on_hand: item.quantity, avg_price: 0, last_updated: new Date().toISOString()
             });
         }
     }
@@ -458,348 +413,143 @@ export async function createGoodsReturnFromIssueAction(data: {
     return { success: true, message: "Đã nhập trả hàng thành công!" };
 }
 
-// --- [NEW] 9. LẤY DANH SÁCH ĐƠN HÀNG CHỜ NHẬP (INCOMING) THEO KHO ---
-export async function getIncomingOrdersByWarehouse(warehouseId: string) {
-    const supabase = await createClient();
-
-    // 1. Lấy Project ID của kho này
-    const { data: wh } = await supabase.from('warehouses').select('project_id').eq('id', warehouseId).single();
-    if (!wh?.project_id) return [];
-
-    // 2. Lấy PO thuộc Project đó và có trạng thái đang đặt hàng
-    const { data: orders } = await supabase
-        .from('purchase_orders')
-        .select(`
-            id, code, order_date, status, total_amount,
-            supplier:suppliers(name),
-            items:purchase_order_items(id, item_name, unit, quantity)
-        `)
-        .eq('project_id', wh.project_id)
-        .in('status', ['ordered', 'partial_received'])
-        .order('created_at', { ascending: false });
-
-    return orders || [];
-}
-
-// 10. HÀNH ĐỘNG NHẬP KHO (GOODS RECEIPT) ---
-export async function createGoodsReceiptAction(data: {
-    po_id: string;
-    warehouse_id: string;
-    delivery_note: string;
-    notes?: string;
-    items: { po_item_id: string; item_name: string; unit: string; quantity_ordered: number; quantity_received: number; note?: string }[]
+// 5. NHẬP TRẢ TỪ PHIẾU XUẤT CỤ THỂ
+export async function createGoodsReturnFromIssueAction(data: {
+    warehouse_id: string; issue_id: string; returner_name: string; return_date: Date; notes?: string;
+    items: { item_name: string; unit: string; quantity: number; reason?: string }[]
 }) {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const employeeId = await getCurrentEmployeeId(supabase);
 
-    // 1. Validate
-    if (!data.warehouse_id) return { success: false, error: "Thiếu thông tin kho nhập." };
+    const code = `TH-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
+    const { data: ret, error } = await supabase.from("goods_returns").insert({
+        code, warehouse_id: data.warehouse_id, issue_id: data.issue_id,
+        returner_name: data.returner_name, return_date: data.return_date.toISOString(),
+        notes: data.notes, created_by: employeeId
+    }).select("id").single();
 
-    // 2. Tạo Header Goods Receipt
-    const code = `GR-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
+    if (error) return { success: false, error: "Lỗi tạo phiếu trả: " + error.message };
 
-    const { data: gr, error: grError } = await supabase.from('goods_receipts').insert({
-        code: code,
-        po_id: data.po_id,
-        warehouse_id: data.warehouse_id,
-        receiver_id: user?.id, // Dùng receiver_id khớp với supabase.ts
-        delivery_note_number: data.delivery_note,
-        notes: data.notes,
-        received_date: new Date().toISOString()
-    }).select('id').single();
-
-    if (grError || !gr) return { success: false, error: "Lỗi tạo phiếu nhập: " + grError?.message };
-
-    // 3. Xử lý Chi tiết & Tăng Tồn Kho
     for (const item of data.items) {
-        if (item.quantity_received > 0) {
-            // 3a. Lưu vào bảng chi tiết phiếu nhập
-            await supabase.from('goods_receipt_items').insert({
-                receipt_id: gr.id,
-                po_item_id: item.po_item_id,
-                item_name: item.item_name,
-                unit: item.unit,
-                quantity_ordered: item.quantity_ordered,
-                quantity_received: item.quantity_received,
-                notes: item.note
+        if (item.quantity <= 0) continue;
+        await supabase.from("goods_return_items").insert({
+            return_id: ret.id, item_name: item.item_name, unit: item.unit,
+            quantity: item.quantity, reason: item.reason
+        });
+
+        const { data: currentStock } = await supabase.from("project_inventory")
+            .select("*").eq("warehouse_id", data.warehouse_id).eq("item_name", item.item_name).maybeSingle();
+
+        if (currentStock) {
+            await supabase.from("project_inventory").update({
+                quantity_on_hand: Number(currentStock.quantity_on_hand) + Number(item.quantity),
+                last_updated: new Date().toISOString()
+            }).eq("id", currentStock.id);
+        } else {
+            await supabase.from("project_inventory").insert({
+                warehouse_id: data.warehouse_id, item_name: item.item_name, unit: item.unit,
+                quantity_on_hand: item.quantity, avg_price: 0, last_updated: new Date().toISOString()
             });
-
-            // 3b. Cập nhật PROJECT_INVENTORY (Bảng tồn kho hiện tại của bạn)
-            const { data: currentStock } = await supabase
-                .from('project_inventory')
-                .select('*')
-                .eq('warehouse_id', data.warehouse_id)
-                .eq('item_name', item.item_name)
-                .single();
-
-            // Tính giá nhập mới (Giả sử lấy giá từ PO Item nếu cần, ở đây tạm thời giữ nguyên giá avg cũ hoặc = 0 nếu mới)
-            // Để chính xác, cần query purchase_order_items để lấy unit_price, rồi tính lại avg_price.
-            // Tạm thời chỉ cộng số lượng để chạy quy trình.
-
-            if (currentStock) {
-                await supabase.from('project_inventory').update({
-                    quantity_on_hand: Number(currentStock.quantity_on_hand) + Number(item.quantity_received),
-                    last_updated: new Date().toISOString()
-                }).eq('id', currentStock.id);
-            } else {
-                // Lấy project_id từ warehouse
-                const { data: wh } = await supabase.from('warehouses').select('project_id').eq('id', data.warehouse_id).single();
-
-                await supabase.from('project_inventory').insert({
-                    warehouse_id: data.warehouse_id,
-                    project_id: wh?.project_id,
-                    item_name: item.item_name,
-                    unit: item.unit,
-                    quantity_on_hand: item.quantity_received,
-                    avg_price: 0, // Cần update logic giá sau
-                    last_updated: new Date().toISOString()
-                });
-            }
         }
     }
 
-    // 4. Cập nhật trạng thái PO -> received
-    await supabase.from('purchase_orders').update({ status: 'received' }).eq('id', data.po_id);
-
     revalidatePath(`/inventory/${data.warehouse_id}`);
-    return { success: true, message: "Nhập kho thành công!" };
+    return { success: true, message: "Đã nhập trả hàng thành công!" };
 }
 
-// LẤY DANH SÁCH KHO ĐƯỢC PHÂN QUYỀN (MY WAREHOUSES) ---
-export async function getMyAuthorizedWarehouses() {
+// 6. KIỂM KÊ KHO (CHECK)
+export async function createInventoryCheckAction(
+    warehouseId: string, items: { item_name: string; system_qty: number; actual_qty: number; reason?: string }[]
+) {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const employeeId = await getCurrentEmployeeId(supabase);
 
-    if (!user) return [];
+    const { data: check, error } = await supabase.from("inventory_checks").insert({
+        warehouse_id: warehouseId, check_date: new Date().toISOString(),
+        status: 'completed', notes: "Kiểm kê định kỳ / Đột xuất", checked_by: employeeId // ✅ Dùng checked_by
+    }).select("id").single();
 
-    // 1. Lấy Profile từ Auth ID
-    const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('id, role_id')
-        .eq('auth_id', user.id)
-        .single();
+    if (error) return { success: false, error: error.message };
 
-    if (!profile) return [];
+    for (const item of items) {
+        await supabase.from("inventory_check_items").insert({
+            check_id: check.id, item_name: item.item_name,
+            system_qty: item.system_qty, actual_qty: item.actual_qty, diff_reason: item.reason
+        });
 
-    // 2. Xác định Employee ID
-    // Theo Schema supabase.ts: employees.id LINK 1-1 với user_profiles.id
-    // Do đó: Employee ID chính là Profile ID
-    const employeeId = profile.id;
-
-    // (Optional) Kiểm tra xem nhân viên này có tồn tại trong bảng employees không
-    // để tránh lỗi FK nếu profile có mà employee chưa tạo
-    const { count } = await supabase
-        .from('employees')
-        .select('*', { count: 'exact', head: true })
-        .eq('id', employeeId);
-
-    if (count === 0) {
-        // Nếu không phải nhân viên, có thể return kho chung hoặc rỗng
-        // return []; 
+        if (item.system_qty !== item.actual_qty) {
+            await supabase.from("project_inventory").update({
+                quantity_on_hand: item.actual_qty, last_updated: new Date().toISOString()
+            }).eq("warehouse_id", warehouseId).eq("item_name", item.item_name);
+        }
     }
 
-    // 3. Lấy danh sách dự án mà nhân viên này tham gia
-    const { data: members } = await supabase
-        .from('project_members')
-        .select('project_id')
-        .eq('employee_id', employeeId); // ✅ Dùng profile.id làm employee_id
-
-    const projectIds = members?.map(m => m.project_id) || [];
-
-    // 4. Query Kho (Kho của dự án tham gia HOẶC Kho chung)
-    let query = supabase
-        .from("warehouses")
-        .select(`*, project:projects(code, name)`)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
-
-    if (projectIds.length > 0) {
-        // Lấy kho thuộc dự án tham gia OR Kho chung (project_id is null)
-        query = query.or(`project_id.in.(${projectIds.join(',')}),project_id.is.null`);
-    } else {
-        // Nếu không tham gia dự án nào, chỉ thấy Kho chung
-        query = query.is('project_id', null);
-    }
-
-    const { data: warehouses, error } = await query;
-
-    if (error) {
-        console.error("Lỗi lấy danh sách kho:", error);
-        return [];
-    }
-
-    // 5. Đếm số lượng vật tư
-    const result = await Promise.all((warehouses || []).map(async (w) => {
-        const { count } = await supabase
-            .from("project_inventory")
-            .select("*", { count: 'exact', head: true })
-            .eq("warehouse_id", w.id);
-
-        return { ...w, items_count: count || 0 };
-    }));
-
-    return result;
+    revalidatePath(`/inventory/${warehouseId}`);
+    return { success: true, message: "Đã cân bằng kho thành công!" };
 }
-// ... (Các hàm cũ giữ nguyên)
 
-// 11. ACTION: XUẤT KHÁC (TRẢ NCC / HỦY / THANH LÝ)
+// 7. XUẤT HỦY / TRẢ NCC (OTHER ISSUE)
 export async function createOtherIssueAction(data: {
-    warehouse_id: string;
-    type: 'RETURN_VENDOR' | 'DISPOSAL'; // Loại nghiệp vụ
-    partner_name: string; // Tên NCC hoặc Lý do hủy
-    issue_date: Date;
-    notes?: string;
+    warehouse_id: string; type: 'RETURN_VENDOR' | 'DISPOSAL'; partner_name: string; issue_date: Date; notes?: string;
     items: { item_name: string; unit: string; quantity: number; notes?: string }[]
 }) {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const employeeId = await getCurrentEmployeeId(supabase);
 
-    try {
-        // Tạo mã phiếu tùy theo loại
-        const prefix = data.type === 'RETURN_VENDOR' ? 'XT' : 'XH'; // XT: Xuất Trả, XH: Xuất Hủy
-        const code = `${prefix}-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
+    const prefix = data.type === 'RETURN_VENDOR' ? 'XT' : 'XH';
+    const code = `${prefix}-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000)}`;
 
-        // Tạo Header (Lưu vào bảng goods_issues nhưng project_id để null)
-        const { data: issue, error } = await supabase.from("goods_issues").insert({
-            code,
-            warehouse_id: data.warehouse_id,
-            project_id: null, // Không gắn vào dự án cụ thể
-            created_by: user?.id,
-            receiver_name: data.partner_name, // Lưu tên NCC hoặc ghi chú hủy
-            issue_date: data.issue_date.toISOString(),
-            notes: data.notes
-        }).select("id").single();
+    const { data: issue, error } = await supabase.from("goods_issues").insert({
+        code, warehouse_id: data.warehouse_id, project_id: null,
+        created_by: employeeId, receiver_name: data.partner_name,
+        issue_date: data.issue_date.toISOString(), notes: data.notes,
+        type: data.type === 'RETURN_VENDOR' ? 'return_vendor' : 'disposal'
+    }).select("id").single();
 
-        if (error) throw new Error("Lỗi tạo phiếu: " + error.message);
+    if (error) return { success: false, error: "Lỗi tạo phiếu: " + error.message };
 
-        // Tạo Items & Trừ Tồn kho
-        for (const item of data.items) {
-            // Lấy giá vốn hiện tại để ghi nhận giá trị hàng hủy/trả
-            const { data: stock } = await supabase.from("project_inventory")
-                .select("id, quantity_on_hand, avg_price")
-                .eq("warehouse_id", data.warehouse_id)
-                .eq("item_name", item.item_name)
-                .single();
+    for (const item of data.items) {
+        const { data: stock } = await supabase.from("project_inventory")
+            .select("id, quantity_on_hand, avg_price").eq("warehouse_id", data.warehouse_id).eq("item_name", item.item_name).single();
 
-            const unitPrice = stock?.avg_price || 0;
+        await supabase.from("goods_issue_items").insert({
+            issue_id: issue.id, item_name: item.item_name, unit: item.unit,
+            quantity: item.quantity, unit_price: stock?.avg_price || 0, notes: item.notes
+        });
 
-            await supabase.from("goods_issue_items").insert({
-                issue_id: issue.id,
-                item_name: item.item_name,
-                unit: item.unit,
-                quantity: item.quantity,
-                unit_price: unitPrice,
-                notes: item.notes
-            });
-
-            // TRỪ TỒN KHO
-            if (stock) {
-                // Kiểm tra lại lần cuối
-                if (stock.quantity_on_hand < item.quantity) {
-                    throw new Error(`Vật tư "${item.item_name}" không đủ tồn để xuất.`);
-                }
-
-                await supabase.from("project_inventory").update({
-                    quantity_on_hand: Number(stock.quantity_on_hand) - Number(item.quantity),
-                    last_updated: new Date().toISOString()
-                }).eq("id", stock.id);
-            }
+        if (stock) {
+            if (stock.quantity_on_hand < item.quantity) return { success: false, error: `Vật tư "${item.item_name}" không đủ tồn.` };
+            await supabase.from("project_inventory").update({
+                quantity_on_hand: Number(stock.quantity_on_hand) - Number(item.quantity),
+                last_updated: new Date().toISOString()
+            }).eq("id", stock.id);
         }
-
-        revalidatePath(`/inventory/${data.warehouse_id}`);
-        return { success: true, message: data.type === 'RETURN_VENDOR' ? "Đã xuất trả NCC thành công!" : "Đã xuất hủy thành công!" };
-    } catch (e: any) { return { success: false, error: e.message }; }
-}
-// 12. [MỚI] LẤY DANH SÁCH PO ĐÃ NHẬP KHO (Để chọn khi xuất trả)
-export async function getReceivedPOsByWarehouse(warehouseId: string) {
-    const supabase = await createClient();
-
-    // 1. Lấy Project ID của kho
-    const { data: wh } = await supabase.from('warehouses').select('project_id').eq('id', warehouseId).single();
-
-    // Nếu kho không thuộc dự án nào (Kho tổng), có thể lấy tất cả PO hoặc PO không thuộc dự án
-    // Ở đây giả định luồng chuẩn là theo dự án
-    const query = supabase
-        .from('purchase_orders')
-        .select(`
-            id, code, created_at,
-            supplier:suppliers(name),
-            items:purchase_order_items(item_name, unit)
-        `)
-        .eq('status', 'received') // Chỉ lấy đơn đã nhập hàng xong mới có cái để trả
-        .order('created_at', { ascending: false });
-
-    if (wh?.project_id) {
-        query.eq('project_id', wh.project_id);
     }
 
-    const { data: pos, error } = await query;
-
-    if (error) {
-        console.error("Lỗi lấy PO đã nhập:", error);
-        return [];
-    }
-    return pos || [];
+    revalidatePath(`/inventory/${data.warehouse_id}`);
+    return { success: true, message: "Xử lý thành công!" };
 }
-// 13. [MỚI] CẬP NHẬT THÔNG TIN VẬT TƯ (Sửa tên, ĐVT)
+
+// 8. CRUD ITEM (Cập nhật / Xóa danh mục)
 export async function updateInventoryItemAction(id: string, newName: string, newUnit: string) {
     const supabase = await createClient();
-
     try {
-        // Kiểm tra xem tên mới có bị trùng với vật tư khác trong cùng kho không
         if (newName) {
-            const { data: existing } = await supabase
-                .from("project_inventory")
-                .select("id, warehouse_id")
-                .eq("item_name", newName)
-                .neq("id", id) // Không tính chính nó
-                .single();
-
-            // Lấy warehouse_id của item đang sửa để check trùng trong cùng kho
+            const { data: existing } = await supabase.from("project_inventory").select("id, warehouse_id").eq("item_name", newName).neq("id", id).single();
             const { data: current } = await supabase.from("project_inventory").select("warehouse_id").eq("id", id).single();
-
-            if (existing && current && existing.warehouse_id === current.warehouse_id) {
-                return { success: false, error: "Tên vật tư này đã tồn tại trong kho!" };
-            }
+            if (existing && current && existing.warehouse_id === current.warehouse_id) return { success: false, error: "Tên vật tư đã tồn tại!" };
         }
-
-        const { error } = await supabase
-            .from("project_inventory")
-            .update({
-                item_name: newName,
-                unit: newUnit,
-                last_updated: new Date().toISOString()
-            })
-            .eq("id", id);
-
-        if (error) throw new Error(error.message);
-
-        // Revalidate lại trang inventory (cần lấy warehouseId để revalidate đúng path)
-        // Tuy nhiên ở đây revalidate path chung hoặc trả về success để client tự refresh
+        await supabase.from("project_inventory").update({ item_name: newName, unit: newUnit, last_updated: new Date().toISOString() }).eq("id", id);
         return { success: true, message: "Cập nhật thành công!" };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
+    } catch (e: any) { return { success: false, error: e.message }; }
 }
 
-// 14. [MỚI] XÓA VẬT TƯ (Chỉ xóa được khi Tồn = 0)
 export async function deleteInventoryItemAction(id: string) {
     const supabase = await createClient();
-
     try {
-        // 1. Kiểm tra tồn kho
         const { data: item } = await supabase.from("project_inventory").select("quantity_on_hand, item_name").eq("id", id).single();
-
-        if (!item) return { success: false, error: "Vật tư không tồn tại" };
-        if (item.quantity_on_hand > 0) return { success: false, error: `Không thể xóa "${item.item_name}" vì vẫn còn tồn kho (${item.quantity_on_hand})` };
-
-        // 2. Thực hiện xóa
-        const { error } = await supabase.from("project_inventory").delete().eq("id", id);
-
-        if (error) throw new Error(error.message);
-
-        return { success: true, message: "Đã xóa vật tư khỏi danh mục!" };
-    } catch (e: any) {
-        return { success: false, error: e.message };
-    }
+        if (item && item.quantity_on_hand > 0) return { success: false, error: `Không thể xóa khi còn tồn (${item.quantity_on_hand})` };
+        await supabase.from("project_inventory").delete().eq("id", id);
+        return { success: true, message: "Đã xóa vật tư!" };
+    } catch (e: any) { return { success: false, error: e.message }; }
 }

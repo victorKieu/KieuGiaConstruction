@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useEffect, useState, use } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -10,34 +10,33 @@ import { CalendarIcon, Plus, Trash2, Save, Loader2, ArrowLeft } from "lucide-rea
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/utils";
 
+// Import Schema & Actions
 import { materialRequestSchema, MaterialRequestFormValues } from "@/lib/schemas/request";
-import { updateMaterialRequestAction, getProjectWarehouses, getMaterialRequestById } from "@/lib/action/request";
+import { updateMaterialRequestAction, getMaterialRequestById } from "@/lib/action/requestActions";
 
 export default function EditRequestPage({ params }: { params: Promise<{ id: string; requestId: string }> }) {
     const { id: projectId, requestId } = use(params);
-
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
-    const [initializing, setInitializing] = useState(true);
-    const [warehouses, setWarehouses] = useState<any[]>([]);
 
+    const [loading, setLoading] = useState(false);
+    const [fetching, setFetching] = useState(true);
+
+    // 1. Khởi tạo Form
     const form = useForm<MaterialRequestFormValues>({
         resolver: zodResolver(materialRequestSchema),
         defaultValues: {
-            code: "",
             project_id: projectId,
-            destination_warehouse_id: "",
-            deadline_date: new Date(),
-            priority: "normal",
+            code: "",
+            priority: "medium",
             notes: "",
             items: []
         }
@@ -48,95 +47,90 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
         name: "items"
     });
 
-    // Load Data
+    // 2. Load dữ liệu cũ
     useEffect(() => {
-        const initData = async () => {
-            try {
-                const [ws, req] = await Promise.all([
-                    getProjectWarehouses(projectId),
-                    getMaterialRequestById(requestId)
-                ]);
-                setWarehouses(ws);
-
-                if (!req) {
-                    toast.error("Không tìm thấy phiếu");
-                    router.back();
-                    return;
-                }
-                if (req.status !== 'pending') {
-                    toast.error("Phiếu đã duyệt hoặc hủy, không thể sửa!");
-                    router.back();
-                    return;
-                }
-
-                // Fill Form
+        const loadData = async () => {
+            const data = await getMaterialRequestById(requestId);
+            if (data) {
+                // Map dữ liệu từ DB vào Form
                 form.reset({
-                    code: req.code,
-                    project_id: req.project_id,
-                    destination_warehouse_id: req.destination_warehouse_id,
-                    deadline_date: new Date(req.deadline_date),
-                    priority: req.priority,
-                    notes: req.notes || "",
-                    items: req.items.map((i: any) => ({
+                    id: data.id,
+                    project_id: data.project_id,
+                    code: data.code,
+                    priority: data.priority as any, // Cast type nếu DB lưu text
+                    deadline_date: data.deadline_date ? new Date(data.deadline_date) : new Date(),
+                    notes: data.notes || "",
+                    items: data.items.map((i: any) => ({
+                        id: i.id,
                         item_name: i.item_name,
                         unit: i.unit,
                         quantity: Number(i.quantity),
                         notes: i.notes || ""
                     }))
                 });
-
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setInitializing(false);
+            } else {
+                toast.error("Không tìm thấy phiếu yêu cầu");
+                router.back();
             }
+            setFetching(false);
         };
-        initData();
-    }, [projectId, requestId, form, router]);
+        loadData();
+    }, [requestId, form, router]);
 
-    async function onSubmit(data: MaterialRequestFormValues) {
+    // 3. Xử lý Submit
+    const onSubmit = async (data: MaterialRequestFormValues) => {
         setLoading(true);
         const res = await updateMaterialRequestAction(requestId, data);
         setLoading(false);
 
         if (res.success) {
             toast.success(res.message);
-            router.push(`/projects/${projectId}/requests/${requestId}`); // Về trang chi tiết
+            router.push(`/projects/${projectId}/requests/${requestId}`);
+            router.refresh();
         } else {
             toast.error(res.error);
         }
-    }
+    };
 
-    if (initializing) return <div className="flex justify-center p-10"><Loader2 className="animate-spin" /></div>;
+    if (fetching) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
-        <div className="flex-1 space-y-4 p-8 pt-6 max-w-5xl mx-auto">
-            <div className="flex items-center gap-2 mb-6">
+        <div className="flex-1 p-8 pt-6 max-w-5xl mx-auto">
+            <div className="flex items-center gap-4 mb-6">
                 <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                    <ArrowLeft className="h-5 w-5" />
+                    <ArrowLeft className="w-4 h-4" />
                 </Button>
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Chỉnh sửa Yêu Cầu</h2>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-800">Chỉnh sửa Yêu cầu</h2>
+                    <p className="text-muted-foreground text-sm">Cập nhật thông tin phiếu {form.getValues("code")}</p>
                 </div>
             </div>
 
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
+                    {/* Header Info */}
                     <Card>
-                        <CardHeader><CardTitle>Thông tin phiếu</CardTitle></CardHeader>
-                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CardHeader><CardTitle className="text-base">Thông tin chung</CardTitle></CardHeader>
+                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <FormField control={form.control} name="code" render={({ field }) => (
-                                <FormItem><FormLabel>Mã phiếu</FormLabel><FormControl><Input {...field} readOnly className="bg-muted" /></FormControl><FormMessage /></FormItem>
+                                <FormItem>
+                                    <FormLabel>Mã phiếu</FormLabel>
+                                    <FormControl><Input {...field} disabled className="bg-slate-50" /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )} />
 
-                            <FormField control={form.control} name="destination_warehouse_id" render={({ field }) => (
+                            <FormField control={form.control} name="priority" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Nhập về kho nào?</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                        <FormControl><SelectTrigger><SelectValue placeholder="Chọn kho..." /></SelectTrigger></FormControl>
+                                    <FormLabel>Mức độ ưu tiên</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                                         <SelectContent>
-                                            {warehouses.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                                            <SelectItem value="low">Thấp</SelectItem>
+                                            <SelectItem value="medium">Bình thường</SelectItem>
+                                            <SelectItem value="high">Cao</SelectItem>
+                                            <SelectItem value="urgent">Khẩn cấp</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <FormMessage />
@@ -145,75 +139,78 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
 
                             <FormField control={form.control} name="deadline_date" render={({ field }) => (
                                 <FormItem className="flex flex-col">
-                                    <FormLabel>Cần hàng trước ngày</FormLabel>
+                                    <FormLabel>Ngày cần hàng</FormLabel>
                                     <Popover>
-                                        <PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? format(field.value, "dd/MM/yyyy") : <span>Chọn ngày</span>}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < new Date()} initialFocus /></PopoverContent>
+                                        <PopoverTrigger asChild>
+                                            <FormControl>
+                                                <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                                    {field.value ? format(field.value, "dd/MM/yyyy") : <span>Chọn ngày</span>}
+                                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                </Button>
+                                            </FormControl>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                                        </PopoverContent>
                                     </Popover>
                                     <FormMessage />
                                 </FormItem>
                             )} />
 
-                            <FormField control={form.control} name="priority" render={({ field }) => (
+                            <FormField control={form.control} name="notes" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Độ ưu tiên</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                                        <SelectContent>
-                                            <SelectItem value="normal">Bình thường</SelectItem>
-                                            <SelectItem value="urgent">🔴 Gấp / Khẩn cấp</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <FormLabel>Ghi chú chung</FormLabel>
+                                    <FormControl><Input {...field} value={field.value || ""} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )} />
-
-                            <div className="col-span-1 md:col-span-2">
-                                <FormField control={form.control} name="notes" render={({ field }) => (
-                                    <FormItem><FormLabel>Ghi chú</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                            </div>
                         </CardContent>
                     </Card>
 
+                    {/* Items Table */}
                     <Card>
-                        <CardHeader><CardTitle>Danh sách vật tư</CardTitle></CardHeader>
-                        <CardContent>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <CardTitle className="text-base">Danh sách vật tư</CardTitle>
+                            <Button type="button" variant="outline" size="sm" onClick={() => append({ item_name: "", unit: "", quantity: 1, notes: "" })}>
+                                <Plus className="mr-2 h-4 w-4" /> Thêm dòng
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="p-0">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="w-[35%]">Tên vật tư</TableHead>
+                                        <TableHead className="w-[30%]">Tên vật tư</TableHead>
                                         <TableHead className="w-[15%]">ĐVT</TableHead>
                                         <TableHead className="w-[15%]">Số lượng</TableHead>
-                                        <TableHead className="w-[30%]">Ghi chú</TableHead>
-                                        <TableHead className="w-[5%]"></TableHead>
+                                        <TableHead>Ghi chú</TableHead>
+                                        <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {fields.map((field, index) => (
                                         <TableRow key={field.id}>
-                                            <TableCell>
+                                            <TableCell className="p-2 align-top">
                                                 <FormField control={form.control} name={`items.${index}.item_name`} render={({ field }) => (
-                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormItem><FormControl><Input {...field} placeholder="Tên vật tư..." /></FormControl><FormMessage /></FormItem>
                                                 )} />
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="p-2 align-top">
                                                 <FormField control={form.control} name={`items.${index}.unit`} render={({ field }) => (
-                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormItem><FormControl><Input {...field} placeholder="Cái/Bộ..." /></FormControl><FormMessage /></FormItem>
                                                 )} />
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="p-2 align-top">
                                                 <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
-                                                    <FormControl><Input type="number" {...field} min={0} step={0.1} /></FormControl>
+                                                    <FormItem><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
                                                 )} />
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="p-2 align-top">
                                                 <FormField control={form.control} name={`items.${index}.notes`} render={({ field }) => (
-                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormItem><FormControl><Input {...field} value={field.value || ""} placeholder="..." /></FormControl></FormItem>
                                                 )} />
                                             </TableCell>
-                                            <TableCell>
-                                                <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-500">
+                                            <TableCell className="p-2 align-top">
+                                                <Button variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-500 hover:text-red-700 hover:bg-red-50">
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </TableCell>
@@ -221,18 +218,21 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
                                     ))}
                                 </TableBody>
                             </Table>
-
-                            <Button type="button" variant="outline" size="sm" onClick={() => append({ item_name: "", unit: "", quantity: 1, notes: "" })} className="mt-4">
-                                <Plus className="mr-2 h-4 w-4" /> Thêm dòng
-                            </Button>
+                            {fields.length === 0 && (
+                                <div className="p-8 text-center text-muted-foreground border-t border-dashed">
+                                    Chưa có vật tư nào. Hãy bấm "Thêm dòng".
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
-                    <Button type="submit" size="lg" className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading}>
-                        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                        Lưu thay đổi
-                    </Button>
-
+                    <div className="flex justify-end gap-3">
+                        <Button type="button" variant="outline" onClick={() => router.back()}>Hủy bỏ</Button>
+                        <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 min-w-[150px]">
+                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Lưu thay đổi
+                        </Button>
+                    </div>
                 </form>
             </Form>
         </div>

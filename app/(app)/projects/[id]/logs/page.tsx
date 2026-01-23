@@ -1,11 +1,11 @@
 // app/(app)/projects/[id]/logs/page.tsx
 import ProjectLogsPageClient from "@/components/project-logs/ProjectLogsPageClient";
-import { getLogs } from "@/lib/action/logActions";
+import { getConstructionLogs } from "@/lib/action/log-actions";
 
 
 async function ProjectLogsPageInner({ params }: { params: { id: string } }) {
     const { id: projectId } = await params;
-    const logs = await getLogs(projectId); //Gọi hàm getlogs
+    const logs = await getConstructionLogs(projectId); //Gọi hàm getlogs
     console.log(logs); // Kiểm tra cấu trúc dữ liệu
 
     return (
