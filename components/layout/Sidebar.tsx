@@ -374,7 +374,7 @@ export function Sidebar({ className }: SidebarProps) {
             {/* Chỉ hiện nút Menu nội bộ nếu KHÔNG có className (tức là không dùng Sheet của AppHeader) */}
             {!className && isMobile && !mobileOpen && (
                 <button
-                    className="fixed top-4 left-4 z-50 bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all"
+                    className="fixed top-4 left-4 z-60 bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all"
                     onClick={() => setMobileOpen(true)}
                     aria-label="Mở menu"
                 >
