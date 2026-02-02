@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { updateDocument } from "@/lib/action/projectActions"; // Hoặc projectActions
+import { updateDocument } from "@/lib/action/documentActions"; // Hoặc projectActions
 import { useFormStatus } from "react-dom";
 import { AlertCircle, Loader2, Edit } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";

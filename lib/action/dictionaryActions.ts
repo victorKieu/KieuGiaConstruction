@@ -13,9 +13,6 @@ export interface DictionaryFormData {
     meta_data?: string; // JSON string
 }
 
-// ==========================================
-// 👇 HÀM MỚI CẦN BỔ SUNG (Dùng cho Dropdown)
-// ==========================================
 export async function getDictionaryOptions(category: string) {
     const supabase = await createSupabaseServerClient();
 
@@ -33,9 +30,6 @@ export async function getDictionaryOptions(category: string) {
     return data || [];
 }
 
-// ==========================================
-// 👇 CÁC HÀM CŨ CỦA BẠN (GIỮ NGUYÊN)
-// ==========================================
 
 export async function upsertDictionary(formData: DictionaryFormData) {
     const supabase = await createSupabaseServerClient();
@@ -129,4 +123,77 @@ export async function deleteDictionary(id: string) {
 
     revalidatePath("/admin/dictionaries");
     return { success: true };
+}
+
+export interface DictionaryItem {
+    id: string;
+    category: string;
+    code: string;
+    name: string;
+    color?: string;
+    sort_order?: number;
+    is_active: boolean;
+}
+
+/**
+ * Lấy danh sách từ điển theo Category (Ví dụ: Lấy list trạng thái dự án để đổ vào Dropdown)
+ * @param category Mã nhóm (VD: 'PROJECT_STATUS', 'CONTRACT_TYPE')
+ * @param activeOnly Chỉ lấy các mục đang kích hoạt (Mặc định: true)
+ */
+export async function getDictionaryItems(category: string, activeOnly = true) {
+    const supabase = await createSupabaseServerClient();
+
+    let query = supabase
+        .from('sys_dictionaries')
+        .select('*')
+        .eq('category', category)
+        .order('sort_order', { ascending: true });
+
+    if (activeOnly) {
+        query = query.eq('is_active', true);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error(`❌ [Dictionary] Lỗi lấy category '${category}':`, error.message);
+        return [];
+    }
+
+    return data as DictionaryItem[];
+}
+
+/**
+ * Lấy chi tiết một mục từ điển cụ thể theo Code (Ví dụ: Lấy ID của trạng thái 'PLANNING')
+ * @param category Mã nhóm
+ * @param code Mã code (VD: 'PLANNING', 'DESIGN')
+ */
+export async function getDictionaryByCode(category: string, code: string) {
+    const supabase = await createSupabaseServerClient();
+
+    const { data, error } = await supabase
+        .from('sys_dictionaries')
+        .select('*')
+        .eq('category', category)
+        .eq('code', code) // Đảm bảo query chính xác code
+        .single();
+
+    if (error) {
+        // Không log error đỏ nếu lỗi là "PGRST116" (Không tìm thấy - chuyện bình thường)
+        if (error.code !== 'PGRST116') {
+            console.error(`❌ [Dictionary] Lỗi tìm code '${code}' trong '${category}':`, error.message);
+        }
+        return null;
+    }
+
+    return data as DictionaryItem;
+}
+
+/**
+ * (Tùy chọn) Hàm lấy Label hiển thị từ Code (Dùng cho Client Component nếu cần map nhanh)
+ * Lưu ý: Hàm này gọi DB nên hạn chế dùng trong vòng lặp lớn, nên dùng Map ở Client thì tốt hơn.
+ */
+export async function getLabelFromDictionary(category: string, code: string) {
+    const item = await getDictionaryByCode(category, code);
+    return item?.name || code;
 }

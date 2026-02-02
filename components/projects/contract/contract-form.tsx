@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -10,12 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Save, Loader2, Printer, X, FilePlus } from "lucide-react"
+import { Save, Loader2, Printer, X } from "lucide-react"
 import { updateContract, type ContractInput } from "@/lib/action/contractActions"
 import { useRouter } from "next/navigation"
 import PaymentSchedule from "./PaymentSchedule";
-import { formatCurrency } from "@/lib/utils/utils"
-import { Switch } from "@/components/ui/switch" // Đảm bảo bạn đã có component này
+import { Switch } from "@/components/ui/switch"
 
 const contractSchema = z.object({
     id: z.string(),
@@ -23,14 +22,13 @@ const contractSchema = z.object({
     title: z.string().min(1, "Tiêu đề bắt buộc"),
     value: z.coerce.number().min(0, "Giá trị phải >= 0"),
     status: z.string(),
+    contract_type: z.string().min(1, "Vui lòng chọn loại hợp đồng"),
     signing_date: z.string().optional(),
     start_date: z.string().optional(),
     end_date: z.string().optional(),
     content: z.string().optional(),
     payment_terms: z.string().optional(),
     customer_name: z.string().optional(),
-
-    // ✅ THÊM TRƯỜNG CHO PHỤ LỤC
     is_addendum: z.boolean().default(false),
     parent_id: z.string().nullable().optional(),
 })
@@ -42,7 +40,6 @@ interface Props {
     projectId: string
     onCancel: () => void
     onSuccess: () => void
-    // ✅ THÊM PROPS: Danh sách hợp đồng hiện có để chọn cha
     existingContracts?: any[]
 }
 
@@ -50,7 +47,8 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
 
-    const form = useForm<ContractFormValues>({
+    // ✅ FIX: Bỏ generic <ContractFormValues> để tránh lỗi TS2322 Resolver
+    const form = useForm({
         resolver: zodResolver(contractSchema),
         defaultValues: {
             ...initialData,
@@ -59,33 +57,120 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
             end_date: initialData.end_date?.split('T')[0] || '',
             value: initialData.value || 0,
             customer_name: initialData.customers?.name || '',
-            // ✅ Map giá trị phụ lục
+            contract_type: initialData.contract_type || 'construction',
             is_addendum: initialData.is_addendum || false,
             parent_id: initialData.parent_id || null,
         }
     })
 
-    // Watch giá trị để hiển thị điều kiện
     const isAddendum = form.watch("is_addendum");
-
-    // Lọc danh sách hợp đồng cha (loại bỏ chính nó nếu đang sửa và loại bỏ các phụ lục khác)
     const availableParents = existingContracts.filter(c =>
         c.id !== initialData.id && !c.is_addendum
     );
 
-    // --- 🖨️ HÀM IN HỢP ĐỒNG (THEO MẪU KIỀU GIA) ---
     const handlePrint = () => {
-        // ... (Giữ nguyên logic in ấn của bạn)
-        // Lưu ý: Nếu là phụ lục, bạn có thể muốn sửa tiêu đề in thành "PHỤ LỤC HỢP ĐỒNG"
-        // Logic đó có thể thêm ở đây: const titleDoc = isAddendum ? "PHỤ LỤC HỢP ĐỒNG" : "HỢP ĐỒNG THI CÔNG";
-        const data = form.getValues();
-        alert("Chức năng in đang cập nhật cho Phụ lục.");
+        const values = form.getValues();
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert("Vui lòng cho phép trình duyệt mở Popup để in.");
+            return;
+        }
+
+        let typeName = "HỢP ĐỒNG";
+        // Ép kiểu values.contract_type về string để so sánh an toàn
+        const cType = String(values.contract_type);
+        if (cType === 'design') typeName = "HỢP ĐỒNG THIẾT KẾ";
+        else if (cType === 'construction') typeName = "HỢP ĐỒNG THI CÔNG";
+        else if (cType === 'consulting') typeName = "HỢP ĐỒNG TƯ VẤN";
+
+        if (values.is_addendum) typeName = "PHỤ LỤC HỢP ĐỒNG";
+
+        const formattedValue = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(values.value));
+
+        const content = `
+            <html>
+            <head>
+                <title>In: ${values.contract_number}</title>
+                <style>
+                    body { font-family: 'Times New Roman', serif; padding: 40px; line-height: 1.5; font-size: 13pt; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .nation { font-weight: bold; text-transform: uppercase; }
+                    .motto { font-weight: bold; border-bottom: 1px solid #000; display: inline-block; padding-bottom: 5px; }
+                    .title { font-size: 16pt; font-weight: bold; text-transform: uppercase; margin: 20px 0; text-align: center; }
+                    .meta { font-style: italic; text-align: center; margin-bottom: 30px; }
+                    .section { margin-bottom: 15px; text-align: justify; }
+                    .label { font-weight: bold; }
+                    .footer { margin-top: 50px; display: flex; justify-content: space-between; }
+                    .sign-box { width: 45%; text-align: center; }
+                    .sign-title { font-weight: bold; text-transform: uppercase; }
+                    .sign-space { height: 100px; }
+                    @media print {
+                        @page { margin: 2.5cm 2cm 2cm 2cm; }
+                        body { padding: 0; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="nation">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+                    <div class="motto">Độc lập - Tự do - Hạnh phúc</div>
+                </div>
+
+                <div class="title">${typeName}</div>
+                <div class="meta">
+                    Số: ${values.contract_number} <br/>
+                    Hôm nay, ngày ... tháng ... năm ...
+                </div>
+
+                <div class="section">
+                    <p><span class="label">Về việc:</span> ${values.title}</p>
+                    <p><span class="label">Giá trị:</span> ${formattedValue}</p>
+                    <p><span class="label">Thời gian thực hiện:</span> Từ ${values.start_date || '...'} đến ${values.end_date || '...'}</p>
+                </div>
+
+                <div class="section">
+                    <h3>I. NỘI DUNG VÀ PHẠM VI CÔNG VIỆC:</h3>
+                    <div style="white-space: pre-wrap;">${values.content || "Theo hồ sơ đính kèm..."}</div>
+                </div>
+
+                ${values.payment_terms ? `
+                <div class="section">
+                    <h3>II. ĐIỀU KHOẢN THANH TOÁN:</h3>
+                    <div style="white-space: pre-wrap;">${values.payment_terms}</div>
+                </div>
+                ` : ''}
+
+                <div class="footer">
+                    <div class="sign-box">
+                        <div class="sign-title">ĐẠI DIỆN KHÁCH HÀNG</div>
+                        <div>(Bên A)</div>
+                        <div class="sign-space"></div>
+                        <div>${values.customer_name || "..........................."}</div>
+                    </div>
+                    <div class="sign-box">
+                        <div class="sign-title">ĐẠI DIỆN CÔNG TY</div>
+                        <div>(Bên B)</div>
+                        <div class="sign-space"></div>
+                        <div>GIÁM ĐỐC</div>
+                    </div>
+                </div>
+                
+                <script>
+                    window.onload = function() { window.print(); }
+                </script>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.write(content);
+        printWindow.document.close();
     };
 
-    const onSubmit = async (data: ContractFormValues) => {
+    const onSubmit = async (data: any) => { // Dùng any ở đây cho data submit để tránh lỗi type check khi gọi updateContract
         setIsSubmitting(true)
         try {
-            // Nếu không phải phụ lục, set parent_id về null
             const payload = {
                 ...data,
                 parent_id: data.is_addendum ? data.parent_id : null
@@ -93,7 +178,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
 
             const res = await updateContract(payload as ContractInput, projectId)
             if (res.success) {
-                toastSuccess("Đã lưu thành công!")
+                alert("Đã lưu thành công!")
                 router.refresh()
                 onSuccess()
             } else {
@@ -106,21 +191,13 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
         }
     }
 
-    const toastSuccess = (msg: string) => {
-        // Tùy chỉnh hiển thị thông báo của bạn (dùng alert tạm hoặc sonner)
-        alert(msg);
-    }
-
     return (
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 animate-in slide-in-from-right duration-300">
-
-            {/* 1. THÔNG TIN CHUNG */}
             <Card>
                 <CardHeader className="pb-2 border-b mb-4 flex flex-row items-center justify-between">
                     <CardTitle>
-                        {initialData.id ? "Cập nhật Hợp đồng / Phụ lục" : "Tạo mới Hợp đồng / Phụ lục"}
+                        {initialData.id ? "Cập nhật Văn bản" : "Tạo mới Văn bản"}
                     </CardTitle>
-                    {/* Chỉ hiện nút in nếu đã lưu */}
                     {initialData.id && (
                         <Button type="button" variant="outline" onClick={handlePrint} className="gap-2 text-indigo-700 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 shadow-sm">
                             <Printer className="w-4 h-4" /> In Ấn
@@ -129,10 +206,9 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                 </CardHeader>
                 <CardContent className="space-y-6">
 
-                    {/* ✅ PHẦN CHỌN LOẠI HỢP ĐỒNG (MỚI) */}
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="flex flex-col gap-2">
-                            <Label className="font-bold text-slate-700">Loại văn bản</Label>
+                            <Label className="font-bold text-slate-700">Hình thức văn bản</Label>
                             <div className="flex items-center gap-2 mt-1">
                                 <Switch
                                     id="is-addendum"
@@ -170,9 +246,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                                         )}
                                     </SelectContent>
                                 </Select>
-                                {isAddendum && !form.watch("parent_id") && (
-                                    <p className="text-red-500 text-xs">Vui lòng chọn hợp đồng gốc.</p>
-                                )}
                             </div>
                         )}
                     </div>
@@ -181,18 +254,52 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                         <div className="space-y-2">
                             <Label>Số {isAddendum ? "Phụ lục" : "Hợp đồng"} <span className="text-red-500">*</span></Label>
                             <Input {...form.register("contract_number")} placeholder={isAddendum ? "PL-01/..." : "HĐ-01/..."} />
-                            {form.formState.errors.contract_number && <p className="text-red-500 text-xs">{form.formState.errors.contract_number.message}</p>}
+
+                            {/* ✅ FIX LỖI TS2322: Chuyển message thành String() để React render an toàn */}
+                            {form.formState.errors.contract_number?.message && (
+                                <p className="text-red-500 text-xs">
+                                    {String(form.formState.errors.contract_number.message)}
+                                </p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
+                            <Label>Loại hợp đồng <span className="text-red-500">*</span></Label>
+                            <Select
+                                defaultValue={form.getValues("contract_type")}
+                                onValueChange={(val) => form.setValue("contract_type", val)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Chọn loại hợp đồng" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="construction">Hợp đồng Thi công</SelectItem>
+                                    <SelectItem value="design">Hợp đồng Thiết kế</SelectItem>
+                                    <SelectItem value="consulting">Tư vấn giám sát</SelectItem>
+                                    <SelectItem value="supply">Cung cấp vật tư</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {/* ✅ FIX LỖI TS2322 cho contract_type */}
+                            {form.formState.errors.contract_type?.message && (
+                                <p className="text-red-500 text-xs">
+                                    {String(form.formState.errors.contract_type.message)}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="space-y-2 md:col-span-2">
                             <Label>Tiêu đề <span className="text-red-500">*</span></Label>
-                            <Input {...form.register("title")} placeholder={isAddendum ? "V/v Bổ sung hạng mục..." : "Hợp đồng thi công..."} />
+                            <Input {...form.register("title")} placeholder={isAddendum ? "V/v Bổ sung hạng mục..." : "Hợp đồng thi công trọn gói..."} />
+                            {form.formState.errors.title?.message && (
+                                <p className="text-red-500 text-xs">
+                                    {String(form.formState.errors.title.message)}
+                                </p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
                             <Label>Giá trị {isAddendum ? "Phát sinh" : "Hợp đồng"} (VNĐ)</Label>
                             <Input type="number" {...form.register("value")} className="font-bold" />
-                            <p className="text-xs text-gray-400">Nhập 0 nếu không phát sinh chi phí</p>
                         </div>
 
                         <div className="space-y-2">
@@ -216,7 +323,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                 </CardContent>
             </Card>
 
-            {/* 2. THỜI GIAN */}
             <Card>
                 <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
@@ -234,7 +340,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                 </CardContent>
             </Card>
 
-            {/* 3. NỘI DUNG CHI TIẾT */}
             <Card>
                 <CardHeader><CardTitle>Nội dung & Điều khoản</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
@@ -243,16 +348,13 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                         <Textarea
                             {...form.register("content")}
                             className="min-h-[150px] font-mono text-sm"
-                            placeholder="Mô tả phạm vi công việc hoặc nội dung thay đổi..."
                         />
                     </div>
-
                     <div className="space-y-2">
-                        <Label>Điều khoản thanh toán (Nếu có)</Label>
+                        <Label>Điều khoản thanh toán (Ghi chú)</Label>
                         <Textarea
                             {...form.register("payment_terms")}
                             className="min-h-[80px]"
-                            placeholder="Ghi chú về tiến độ thanh toán cho phần này..."
                         />
                     </div>
                 </CardContent>
@@ -260,16 +362,13 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
 
             <Card className="border-indigo-100 shadow-sm">
                 <CardContent className="pt-6">
-                    {/* Chỉ hiện bảng này khi đã có ID hợp đồng (tức là đang sửa, không phải tạo mới) */}
-                    {initialData?.id && (
+                    {initialData?.id ? (
                         <PaymentSchedule
                             contractId={initialData.id}
-                            contractValue={form.watch('value')}
+                            contractValue={Number(form.watch('value') || 0)}
                             projectId={projectId}
                         />
-                    )}
-
-                    {!initialData?.id && (
+                    ) : (
                         <div className="text-center py-8 text-gray-400 border border-dashed rounded bg-slate-50">
                             Bạn cần lưu {isAddendum ? "Phụ lục" : "Hợp đồng"} trước khi tạo lịch thanh toán.
                         </div>
@@ -277,7 +376,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                 </CardContent>
             </Card>
 
-            {/* ACTIONS */}
             <div className="flex justify-end gap-3 sticky bottom-0 bg-white p-4 border-t shadow-lg md:static md:bg-transparent md:border-0 md:shadow-none z-10">
                 <Button type="button" variant="ghost" onClick={onCancel}>
                     <X className="w-4 h-4 mr-2" /> Đóng

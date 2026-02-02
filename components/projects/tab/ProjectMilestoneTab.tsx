@@ -1,125 +1,71 @@
-"use client"
+"use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { formatDate } from "@/lib/utils/utils"; // ✅ Khôi phục import
-import { MilestoneData, TaskData, MemberData, TaskStatus } from "@/types/project";
+import { useState } from "react";
+import { Card } from "@/components/ui/card";
+import { MilestoneData, TaskData, MemberData } from "@/types/project";
 import TaskCreateModal from "@/components/tasks/TaskCreateModal";
-import TaskEditModal from "@/components/tasks/TaskEditModal";
-import { Button } from "@/components/ui/button";
-// ✅ IMPORT TaskCommentWrapper (Server Component) để dùng cho cơ chế Fallback
-import TaskCommentWrapper from "@/components/tasks/TaskCommentWrapper";
+import WBSTaskTable from "@/components/tasks/WBSTaskTable";
+import { ProjectTaskList } from "@/components/tasks/project-task-list";
+import { LayoutList, ListTree } from "lucide-react";
 
-// ✅ Bổ sung taskFeed vào props để nhận JSX đã được Server render
+interface DictionaryItem { id: string; name: string; code: string; color?: string; }
+
 interface ProjectMilestoneTabProps {
     projectId: string;
     milestones: MilestoneData[];
-    tasks: TaskData[]; // Vẫn nhận để hiển thị tổng số lượng task
+    tasks: TaskData[];
     members: MemberData[];
-    taskFeed?: React.ReactNode; // ✅ Làm cho nó OPTIONAL
+    taskFeed?: React.ReactNode;
+    dictionaries: { statuses: DictionaryItem[]; priorities: DictionaryItem[]; };
+    currentUserId: string; // ✅ Thêm prop này
 }
 
-// Hàm phụ trợ cho Client-side rendering (cần cho Fallback)
-function getStatusLabel(status: TaskStatus) {
-    switch (status) {
-        case "completed":
-        case "done":
-            return "Hoàn thành";
-        case "in_progress":
-            return "Đang thực hiện";
-        case "pending":
-        case "todo":
-            return "Cần làm";
-        case "on_hold":
-            return "Tạm dừng";
-        case "cancelled":
-            return "Đã hủy";
-        default:
-            return "Không xác định";
-    }
-}
+export default function ProjectMilestoneTab({
+    projectId,
+    tasks,
+    members,
+    taskFeed,
+    dictionaries,
+    currentUserId // ✅ Nhận prop
+}: ProjectMilestoneTabProps) {
 
-
-// ✅ Cập nhật destructuring để nhận taskFeed (optional)
-export default function ProjectMilestoneTab({ projectId, tasks, members, taskFeed }: ProjectMilestoneTabProps) {
-
-    // --- LOGIC HIỂN THỊ TASK ---
-    let taskContent;
-
-    // 1. ƯU TIÊN: SỬ DỤNG TASK FEED ĐÃ ĐƯỢC SERVER RENDER (Có bình luận)
-    if (taskFeed) {
-        taskContent = taskFeed;
-    } else {
-        // 2. FALLBACK: TỰ RENDER LẠI TRÊN CLIENT (Không có bình luận tích hợp)
-
-        // === RENDER FALLBACK (KHÔNG BÌNH LUẬN) ===
-        taskContent = tasks.map((task) => (
-            <div
-                key={task.id}
-                className="p-5 border rounded-xl shadow-sm bg-white" // ✅ Thiết kế kiểu post
-            >
-                {/* HEADER CỦA TASK (Thông tin chính, nút chỉnh sửa/xóa) */}
-                <div className="flex justify-between items-start mb-3 border-b pb-3">
-                    <div className="flex flex-col">
-                        <p className="font-bold text-lg text-gray-800">{task.name}</p>
-                        <div className="flex items-center space-x-3 text-xs text-gray-500 mt-1">
-                            <span>Bắt đầu: {task.start_date ? formatDate(task.start_date) : "N/A"}</span>
-                            <span>|</span>
-                            <span>Hạn chót: {task.due_date ? formatDate(task.due_date) : "N/A"}</span>
-                        </div>
-                    </div>
-
-                    {/* Nút Chỉnh sửa/Xóa Task */}
-                    <div className="flex items-center space-x-2 flex-shrink-0">
-                        <TaskEditModal task={task} members={members} />
-                    </div>
-                </div>
-
-                {/* BODY CỦA TASK (Mô tả, Trạng thái, Người được giao) */}
-                <p className="text-sm text-gray-600 whitespace-pre-wrap mb-4">
-                    {task.description || "Không có mô tả chi tiết."}
-                </p>
-
-                <div className="flex items-center justify-between border-b pb-3 mb-3 text-sm">
-                    <div className="flex items-center space-x-4">
-                        <span className="text-gray-600">
-                            Phân công: <span className="font-medium text-gray-800">{task.assigned_to?.name || "Chưa phân công"}</span>
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium 
-                            ${task.status === "completed" ? "bg-green-100 text-green-700" :
-                                task.status === "in_progress" ? "bg-blue-100 text-blue-700" :
-                                    "bg-gray-100 text-gray-700"
-                            }`}
-                        >
-                            {getStatusLabel(task.status)}
-                        </span>
-                    </div>
-                    <span className="text-sm font-semibold text-blue-600">Tiến độ: {task.progress || 0}%</span>
-                </div>
-            </div>
-        ));
-    }
+    const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
 
     return (
         <div className="space-y-6">
+            <Card className="border-none shadow-none bg-transparent">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800">Tiến độ & Công việc</h3>
+                        <p className="text-sm text-slate-500">Quản lý vòng đời dự án theo mô hình WBS</p>
+                    </div>
 
-            {/* 1. Danh sách Công việc (Tasks) VÀ Nút Tạo Công việc */}
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    {/* Sử dụng tasks.length để hiển thị tổng số lượng task */}
-                    <CardTitle className="text-lg font-semibold">Danh sách Công việc ({tasks.length})</CardTitle>
-                    <TaskCreateModal projectId={projectId} members={members} />
-                </CardHeader>
+                    <div className="flex items-center gap-2 bg-white p-1 rounded-lg border shadow-sm">
+                        <button onClick={() => setViewMode("tree")} className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "tree" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-500 hover:bg-slate-50"}`}>
+                            <ListTree className="w-4 h-4" /> Cây WBS
+                        </button>
+                        <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "list" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-500 hover:bg-slate-50"}`}>
+                            <LayoutList className="w-4 h-4" /> Danh sách
+                        </button>
+                    </div>
 
-                <CardContent>
-                    {tasks.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">Chưa có công việc nào được tạo. Hãy nhấn nút để tạo công việc đầu tiên.</p>
-                    ) : (
-                        <div className="grid gap-6">
-                            {/* Hiển thị nội dung đã được xác định ở trên (taskFeed hoặc Fallback) */}
-                            {taskContent}
-                        </div>
-                    )}
-                </CardContent>
+                    <TaskCreateModal projectId={projectId} members={members} tasks={tasks} dictionaries={dictionaries} />
+                </div>
+
+                {viewMode === "tree" ? (
+                    <WBSTaskTable projectId={projectId} initialTasks={tasks} members={members} dictionaries={dictionaries} />
+                ) : (
+                    <div className="space-y-4">
+                        {/* ✅ Truyền đủ props để hiển thị comment */}
+                        <ProjectTaskList
+                            projectId={projectId}
+                            tasks={tasks}
+                            members={members}
+                            currentUserId={currentUserId}
+                        />
+                        {tasks.length === 0 && <p className="text-center py-10 text-slate-500">Chưa có công việc nào.</p>}
+                    </div>
+                )}
             </Card>
         </div>
     );

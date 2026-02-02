@@ -181,9 +181,10 @@ export interface TaskData {
     description?: string;
     status: TaskStatus;
     priority?: PriorityLevel;
-    progress?: number;
+    progress?: number | null;
     start_date?: string;
     completed_at?: string;
+    parent_id?: string | null;
     assigned_to?: {
         id: string;
         name: string;

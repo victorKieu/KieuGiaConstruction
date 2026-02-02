@@ -1,91 +1,55 @@
-export const dynamic = "force-dynamic";
-
 import { Suspense } from "react";
 import ProjectList from "@/components/projects/project-list";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getProjects } from "@/lib/action/projectActions";
+import { getDictionaryItems } from "@/lib/action/dictionaryActions";
 import { getCurrentSession } from "@/lib/supabase/session";
+import { redirect } from "next/navigation";
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function ProjectsPage() {
-    const supabase = await createSupabaseServerClient();
     const session = await getCurrentSession();
+    if (!session.isAuthenticated) redirect("/login");
 
-    // 🔍 DEBUG: Kiểm tra xem ID nhân viên (entityId) đã được load chưa
-    console.log("DEBUG SESSION:", {
-        authId: session.userId, // ✅ Đã sửa
-        entityId: session.entityId,
-        role: session.role
-    });
+    // 1. Lấy danh sách dự án
+    const { data: projects, error } = await getProjects();
 
-    if (!session.isAuthenticated) {
-        return <div className="p-10 text-center">Vui lòng đăng nhập để xem dự án.</div>;
-    }
-
-    // --- LOGIC LẤY DỰ ÁN ---
-    let projectIds: string[] = [];
-
-    // Lấy dự án mà user là thành viên (dựa trên session.entityId)
-    if (session.entityId) {
-        const { data: memberProjects, error: memberError } = await supabase
-            .from("project_members")
-            .select("project_id")
-            .eq("employee_id", session.entityId);
-
-        if (!memberError && memberProjects) {
-            projectIds = memberProjects.map((m: any) => m.project_id);
-        }
-    }
-
-    // Nếu không có dự án nào và không phải admin
-    if (projectIds.length === 0 && session.role !== 'admin') {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-                <p className="text-gray-500">Bạn chưa được tham gia dự án nào.</p>
-            </div>
-        );
-    }
-
-    // Fetch chi tiết dự án
-    let query = supabase
-        .from("projects")
-        .select(`
-            *,
-            customers ( name ),
-            employees!project_manager ( name )
-        `)
-        .order("created_at", { ascending: false });
-
-    // Nếu không phải Admin, chỉ lấy các dự án mình tham gia
-    if (session.role !== 'admin' && projectIds.length > 0) {
-        query = query.in("id", projectIds);
-    } else if (session.role !== 'admin' && projectIds.length === 0) {
-        query = query.in("id", []);
-    }
-
-    const { data: projects, error } = await query;
-
+    // 🔴 LỖI CŨ: if (error) return <div>{error}</div>; (Gây lỗi Object valid)
+    // ✅ FIX: Chỉ render error.message
     if (error) {
         return (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-6">
-                <h2 className="text-lg font-semibold mb-2">Lỗi khi tải dữ liệu</h2>
-                <p className="text-sm">{error.message}</p>
+            <div className="flex w-full h-screen items-center justify-center bg-slate-50">
+                <div className="p-6 text-center text-red-600 bg-white rounded-lg shadow border border-red-100 max-w-md">
+                    <h3 className="font-bold text-lg mb-2">Không thể tải dữ liệu</h3>
+                    {/* Render chuỗi message thay vì object error */}
+                    <p>{error.message || "Đã xảy ra lỗi không xác định."}</p>
+                    <p className="text-xs text-gray-400 mt-4">Code: {error.code}</p>
+                </div>
             </div>
         );
     }
+
+    // 2. Lấy Dictionary (Dùng Promise.all để nhanh hơn)
+    const [projectStatuses, projectTypes] = await Promise.all([
+        getDictionaryItems("PROJECT_STATUS"),
+        getDictionaryItems("PROJECT_TYPE"),
+    ]);
+
+    // Chuẩn hóa dữ liệu dictionary (đảm bảo luôn là mảng)
+    const dictionaries = {
+        statuses: Array.isArray(projectStatuses) ? projectStatuses : [],
+        types: Array.isArray(projectTypes) ? projectTypes : []
+    };
 
     return (
         <div className="flex w-full h-full gap-6 p-4 md:p-8 bg-slate-50 min-h-screen">
-            <div className="flex-1 min-w-0 max-w-7xl mx-auto">
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-900">Dự án của tôi</h1>
-                        <p className="text-sm text-slate-500 mt-1">Quản lý danh sách các dự án đang tham gia</p>
-                    </div>
-                </div>
-
+            <div className="flex-1 min-w-0 max-w-[1600px] mx-auto">
                 <Suspense fallback={<div className="text-center p-10 text-slate-500">Đang tải danh sách dự án...</div>}>
                     <ProjectList
                         projects={projects || []}
                         currentUserRole={session.role}
+                        dictionaries={dictionaries}
                     />
                 </Suspense>
             </div>

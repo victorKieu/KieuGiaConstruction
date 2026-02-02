@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { transactionSchema, TransactionFormValues } from "@/lib/schemas/finance";
 import { startOfMonth, subMonths, format } from "date-fns";
 
-// ... (Giữ nguyên các hàm từ 1 đến 5: getFinanceCategories, createTransactionAction, getTransactions, getMonthlyStats, getProjectsForSelect) ...
 
 // 1. Lấy danh sách danh mục
 export async function getFinanceCategories() {

@@ -7,8 +7,9 @@ import { CalendarIcon, Loader2, Save, Wand2 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { toast } from "sonner";
+import { useEffect, useState } from "react";
 
-import { cn } from "@/lib/utils/utils"; // Hàm cn của bạn
+import { cn } from "@/lib/utils/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
@@ -21,17 +22,20 @@ import {
 } from "@/components/ui/select";
 
 import { contractSchema, ContractFormValues } from "@/lib/schemas/contract";
-import { createContractFromQuotation } from "@/lib/action/contractActions";
-import { getContractTemplates } from "@/lib/action/template"; // Import action mới
-import { ContractGenerator } from "./contract-generator"; // Import Generator
-import { useEffect, useState } from "react"; // Thêm useEffect
+
+// ✅ SỬA IMPORT: Import đúng tên hàm 'createContract' (hoặc tên bạn đã đặt trong file action)
+import { createContract } from "@/lib/action/contractActions";
+
+import { getContractTemplates } from "@/lib/action/template";
+import { ContractGenerator } from "./contract-generator";
+
 export function ContractForm({ customers }: {
     customers: {
         id: string;
         name: string;
         type: string;
-        contact_person?: string | null; // Người đại diện
-        title?: string | null;          // Chức vụ
+        contact_person?: string | null;
+        title?: string | null;
         tax_code?: string | null;
         address?: string | null;
         phone?: string | null;
@@ -56,10 +60,9 @@ export function ContractForm({ customers }: {
         },
     });
 
-    // Hàm tự sinh mã hợp đồng: HĐ-2024/KG-XXXX
     const generateContractNumber = () => {
         const year = new Date().getFullYear();
-        const random = Math.floor(1000 + Math.random() * 9000); // 4 số ngẫu nhiên
+        const random = Math.floor(1000 + Math.random() * 9000);
         const code = `HĐ-${year}/KG-${random}`;
         form.setValue("contract_number", code);
         toast.info(`Đã sinh mã: ${code}`);
@@ -68,21 +71,25 @@ export function ContractForm({ customers }: {
     async function onSubmit(data: ContractFormValues) {
         setLoading(true);
         try {
-            const result = await createContractAction(data);
+            // ✅ SỬA GỌI HÀM: Gọi đúng hàm đã import 'createContract'
+            const result = await createContract(data);
+
             if (result.success) {
-                toast.success(result.message);
+                toast.success(result.message || "Tạo hợp đồng thành công!");
                 router.push("/crm/contracts");
                 router.refresh();
             } else {
                 toast.error(result.error);
             }
         } catch (error) {
+            console.error(error);
             toast.error("Lỗi kết nối máy chủ");
         } finally {
             setLoading(false);
         }
     }
-    const watchedValues = form.watch(); // Watch all fields
+
+    const watchedValues = form.watch();
     const selectedCustomer = customers.find(c => c.id === watchedValues.customer_id);
 
     return (
@@ -90,7 +97,7 @@ export function ContractForm({ customers }: {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
 
                 <div className="grid gap-6 md:grid-cols-2">
-                    {/* Mã Hợp Đồng & Button Tự sinh */}
+                    {/* Mã Hợp Đồng */}
                     <FormField
                         control={form.control}
                         name="contract_number"
@@ -199,13 +206,18 @@ export function ContractForm({ customers }: {
                                     <PopoverTrigger asChild>
                                         <FormControl>
                                             <Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                                                {field.value ? format(field.value, "PPP", { locale: vi }) : <span>Chọn ngày</span>}
+                                                {field.value ? format(new Date(field.value), "PPP", { locale: vi }) : <span>Chọn ngày</span>}
                                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                             </Button>
                                         </FormControl>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                                        <Calendar
+                                            mode="single"
+                                            selected={field.value ? new Date(field.value) : undefined}
+                                            onSelect={(date) => field.onChange(date?.toISOString())}
+                                            initialFocus
+                                        />
                                     </PopoverContent>
                                 </Popover>
                                 <FormMessage />
@@ -213,6 +225,7 @@ export function ContractForm({ customers }: {
                         )}
                     />
                 </div>
+
                 <div className="col-span-2 mt-6">
                     <h3 className="text-lg font-semibold mb-4 border-b pb-2">Soạn thảo nội dung</h3>
                     <ContractGenerator
@@ -225,9 +238,10 @@ export function ContractForm({ customers }: {
                             start_date: watchedValues.start_date,
                             end_date: watchedValues.end_date,
                         }}
-                        onContentGenerated={(content) => form.setValue("content", content)} // Lưu vào form
+                        onContentGenerated={(content) => form.setValue("content", content)}
                     />
                 </div>
+
                 <div className="flex justify-end gap-4">
                     <Button type="button" variant="outline" onClick={() => router.back()}>Hủy bỏ</Button>
                     <Button type="submit" disabled={loading}>

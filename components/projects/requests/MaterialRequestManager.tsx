@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
     Plus, Trash2, FileText, Calendar, User, ShoppingCart, Package,
-    AlertTriangle, CheckSquare, Truck, Loader2, Check, ChevronsUpDown, X
+    AlertTriangle, CheckSquare, Truck, Loader2, Check, ChevronsUpDown, X,
+    Lock, AlertCircle // ✅ Thêm icon mới
 } from "lucide-react";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
@@ -33,7 +34,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-// --- COMPONENT COMBOBOX (Giữ nguyên) ---
+interface MaterialRequestManagerProps {
+    projectId: string;
+    requests: any[];
+    projectStatus: string; // ✅ Đã có
+}
+
 function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
     const [open, setOpen] = useState(false);
     const selectedItem = options.find((item: any) => item.name === value);
@@ -72,8 +78,8 @@ function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
 }
 
 // --- MAIN COMPONENT ---
-export default function MaterialRequestManager({ projectId }: { projectId: string }) {
-    const [requests, setRequests] = useState<any[]>([]);
+export default function MaterialRequestManager({ projectId, requests: initialRequests, projectStatus }: MaterialRequestManagerProps) {
+    const [requests, setRequests] = useState(initialRequests || []);
     const [budgetMaterials, setBudgetMaterials] = useState<any[]>([]);
     const [currentUser, setCurrentUser] = useState({ id: "", name: "" });
     const [loading, setLoading] = useState(true);
@@ -85,7 +91,6 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
 
     // Process States
     const [selectedRequest, setSelectedRequest] = useState<any>(null);
-    // ✅ State lưu các items đang duyệt (cho phép edit)
     const [approvalItems, setApprovalItems] = useState<any[]>([]);
     const [warehouseId, setWarehouseId] = useState<string>("");
 
@@ -102,6 +107,10 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
     });
 
     const [items, setItems] = useState<any[]>([{ item_name: "", unit: "", quantity: 1, notes: "" }]);
+
+    // ✅ LOGIC CHECK TRẠNG THÁI DỰ ÁN
+    const isActive = ['in_progress', 'execution', 'construction'].includes(projectStatus?.toLowerCase());
+    const isPaused = ['paused', 'suspended', 'on_hold'].includes(projectStatus?.toLowerCase());
 
     useEffect(() => {
         if (projectId) loadData();
@@ -174,17 +183,16 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
         loadData();
     };
 
-    // --- APPROVAL HANDLERS (LOGIC MỚI) ---
+    // --- APPROVAL HANDLERS ---
     const handleOpenProcess = async (req: any) => {
         setSelectedRequest(req);
         setProcessOpen(true);
         setAnalyzing(true);
-        setApprovalItems([]); // Reset
+        setApprovalItems([]);
 
         const res = await checkRequestFeasibility(req.id, projectId);
 
         if (res.success) {
-            // ✅ Lưu dữ liệu phân tích vào state để hiển thị và chỉnh sửa
             setApprovalItems(res.data || []);
             setWarehouseId(res.warehouseId || "");
         } else {
@@ -194,19 +202,13 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
         setAnalyzing(false);
     };
 
-    // ✅ Hàm xử lý khi Quản lý sửa số lượng Duyệt
     const handleApprovalQtyChange = (index: number, newQty: number) => {
         setApprovalItems(prev => {
             const newItems = [...prev];
             const item = { ...newItems[index] };
-
-            // Cập nhật số lượng được duyệt
             item.approved_quantity = newQty;
-
-            // Tự động tính lại: Ưu tiên lấy từ kho trước, thiếu bao nhiêu thì mua
             item.action_issue = Math.min(item.stock_available, newQty);
             item.action_purchase = Math.max(0, newQty - item.stock_available);
-
             newItems[index] = item;
             return newItems;
         });
@@ -214,7 +216,6 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
 
     const handleApprove = async () => {
         setProcessing(true);
-        // ✅ Gửi danh sách đã chỉnh sửa (approvalItems) thay vì dùng dữ liệu cũ
         const res = await approveAndProcessRequest(
             selectedRequest.id,
             projectId,
@@ -239,56 +240,87 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
+
+            {/* 1. HEADER & CONTROL */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-lg border shadow-sm">
                 <div>
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-blue-600" /> Đề xuất Vật tư</h3>
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <ShoppingCart className="w-5 h-5 text-blue-600" /> Đề xuất Vật tư
+                    </h3>
                     <p className="text-sm text-slate-500">Quản lý các yêu cầu cấp vật tư từ công trường</p>
                 </div>
-                <Dialog open={open} onOpenChange={setOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={handleOpenCreate}>
-                            <Plus className="w-4 h-4 mr-2" /> Tạo Đề xuất
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
-                        <DialogHeader><DialogTitle>Tạo phiếu yêu cầu vật tư mới</DialogTitle></DialogHeader>
-                        <div className="grid gap-6 py-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border">
-                                <div className="space-y-2"><Label>Mã phiếu <span className="text-red-500">*</span></Label><Input value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} /></div>
-                                <div className="space-y-2"><Label>Ngày yêu cầu <span className="text-red-500">*</span></Label><Input type="date" value={formData.request_date} onChange={e => setFormData({ ...formData, request_date: e.target.value })} /></div>
-                                <div className="space-y-2"><Label>Cần hàng trước ngày</Label><Input type="date" value={formData.deadline_date} onChange={e => setFormData({ ...formData, deadline_date: e.target.value })} /></div>
-                                <div className="space-y-2"><Label>Người yêu cầu</Label><Input value={currentUser.name} readOnly className="bg-slate-100 font-bold text-slate-700 cursor-not-allowed" /></div>
-                                <div className="space-y-2"><Label>Độ ưu tiên</Label><Select defaultValue="normal" onValueChange={(val) => setFormData({ ...formData, priority: val })}><SelectTrigger className="bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Thấp</SelectItem><SelectItem value="normal">Bình thường</SelectItem><SelectItem value="high">Cao</SelectItem><SelectItem value="urgent">Khẩn cấp</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-2"><Label>Ghi chú chung</Label><Input value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} /></div>
-                            </div>
 
-                            <div className="border rounded-lg overflow-hidden shadow-sm">
-                                <Table>
-                                    <TableHeader className="bg-slate-100">
-                                        <TableRow><TableHead className="w-[40%]">Tên vật tư</TableHead><TableHead className="w-[15%]">ĐVT</TableHead><TableHead className="w-[15%]">Số lượng</TableHead><TableHead>Ghi chú</TableHead><TableHead className="w-[50px]"></TableHead></TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {items.map((item, idx) => (
-                                            <TableRow key={idx}>
-                                                <TableCell className="p-2"><MaterialCombobox value={item.item_name} onChange={(val: any) => updateItem(idx, 'item_name', val)} onUnitChange={(unit: any) => updateItem(idx, 'unit', unit)} options={budgetMaterials} /></TableCell>
-                                                <TableCell className="p-2"><Input value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="bg-slate-50" /></TableCell>
-                                                <TableCell className="p-2"><Input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="font-bold text-center" /></TableCell>
-                                                <TableCell className="p-2"><Input value={item.notes} onChange={e => updateItem(idx, 'notes', e.target.value)} /></TableCell>
-                                                <TableCell className="p-2 text-center"><Button variant="ghost" size="icon" onClick={() => removeItem(idx)}><Trash2 className="w-4 h-4 text-red-500" /></Button></TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                                <div className="p-2 border-t bg-slate-50"><Button variant="outline" size="sm" onClick={addItem}><Plus className="w-3 h-3 mr-1" /> Thêm dòng</Button></div>
-                            </div>
-                            <Button onClick={handleSubmit} disabled={submitting} className="w-full bg-blue-600 hover:bg-blue-700 h-10 shadow-md">
-                                {submitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang lưu...</> : "Gửi Đề xuất"}
+                {/* ✅ LOGIC KHÓA NÚT TẠO MỚI */}
+                {isActive ? (
+                    <Dialog open={open} onOpenChange={setOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={handleOpenCreate}>
+                                <Plus className="w-4 h-4 mr-2" /> Tạo Đề xuất
                             </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+                            <DialogHeader><DialogTitle>Tạo phiếu yêu cầu vật tư mới</DialogTitle></DialogHeader>
+                            <div className="grid gap-6 py-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border">
+                                    <div className="space-y-2"><Label>Mã phiếu <span className="text-red-500">*</span></Label><Input value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} /></div>
+                                    <div className="space-y-2"><Label>Ngày yêu cầu <span className="text-red-500">*</span></Label><Input type="date" value={formData.request_date} onChange={e => setFormData({ ...formData, request_date: e.target.value })} /></div>
+                                    <div className="space-y-2"><Label>Cần hàng trước ngày</Label><Input type="date" value={formData.deadline_date} onChange={e => setFormData({ ...formData, deadline_date: e.target.value })} /></div>
+                                    <div className="space-y-2"><Label>Người yêu cầu</Label><Input value={currentUser.name} readOnly className="bg-slate-100 font-bold text-slate-700 cursor-not-allowed" /></div>
+                                    <div className="space-y-2"><Label>Độ ưu tiên</Label><Select defaultValue="normal" onValueChange={(val) => setFormData({ ...formData, priority: val })}><SelectTrigger className="bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Thấp</SelectItem><SelectItem value="normal">Bình thường</SelectItem><SelectItem value="high">Cao</SelectItem><SelectItem value="urgent">Khẩn cấp</SelectItem></SelectContent></Select></div>
+                                    <div className="space-y-2"><Label>Ghi chú chung</Label><Input value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} /></div>
+                                </div>
+
+                                <div className="border rounded-lg overflow-hidden shadow-sm">
+                                    <Table>
+                                        <TableHeader className="bg-slate-100">
+                                            <TableRow><TableHead className="w-[40%]">Tên vật tư</TableHead><TableHead className="w-[15%]">ĐVT</TableHead><TableHead className="w-[15%]">Số lượng</TableHead><TableHead>Ghi chú</TableHead><TableHead className="w-[50px]"></TableHead></TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {items.map((item, idx) => (
+                                                <TableRow key={idx}>
+                                                    <TableCell className="p-2"><MaterialCombobox value={item.item_name} onChange={(val: any) => updateItem(idx, 'item_name', val)} onUnitChange={(unit: any) => updateItem(idx, 'unit', unit)} options={budgetMaterials} /></TableCell>
+                                                    <TableCell className="p-2"><Input value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="bg-slate-50" /></TableCell>
+                                                    <TableCell className="p-2"><Input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="font-bold text-center" /></TableCell>
+                                                    <TableCell className="p-2"><Input value={item.notes} onChange={e => updateItem(idx, 'notes', e.target.value)} /></TableCell>
+                                                    <TableCell className="p-2 text-center"><Button variant="ghost" size="icon" onClick={() => removeItem(idx)}><Trash2 className="w-4 h-4 text-red-500" /></Button></TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                    <div className="p-2 border-t bg-slate-50"><Button variant="outline" size="sm" onClick={addItem}><Plus className="w-3 h-3 mr-1" /> Thêm dòng</Button></div>
+                                </div>
+                                <Button onClick={handleSubmit} disabled={submitting} className="w-full bg-blue-600 hover:bg-blue-700 h-10 shadow-md">
+                                    {submitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang lưu...</> : "Gửi Đề xuất"}
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                ) : (
+                    // ⛔ HIỂN THỊ KHI KHÓA KHO
+                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 border border-slate-200 rounded-md text-slate-500 cursor-not-allowed">
+                        <Lock className="w-4 h-4" />
+                        <span className="font-medium text-sm">
+                            {isPaused ? "Kho đang tạm khóa (Dự án Tạm dừng)" : "Kho đã đóng (Dự án Kết thúc/Hủy)"}
+                        </span>
+                    </div>
+                )}
             </div>
 
+            {/* ✅ BANNER CẢNH BÁO TẠM DỪNG */}
+            {isPaused && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
+                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                    <div>
+                        <h4 className="font-bold text-amber-800">Dự án đang trong trạng thái TẠM DỪNG</h4>
+                        <p className="text-sm text-amber-700">
+                            Mọi hoạt động nhập/xuất vật tư đều bị vô hiệu hóa để phục vụ việc kiểm kê và quyết toán điểm dừng.
+                            Vui lòng liên hệ Ban Giám Đốc nếu cần xuất kho khẩn cấp.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* 2. LIST REQUESTS */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {requests.map((req) => (
                     <Card key={req.id} className={`hover:shadow-md transition-all border-l-4 ${req.status === 'approved' ? 'border-l-green-500 bg-green-50/20' : 'border-l-blue-500'}`}>
@@ -305,14 +337,16 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
                             </div>
                             <div className="pt-2 flex justify-between items-center border-t mt-3">
                                 <span className={`text-xs font-bold flex items-center gap-1 ${req.status === 'approved' ? 'text-green-600' : 'text-orange-500'}`}>{req.status === 'pending' ? <><Loader2 className="w-3 h-3 animate-spin" /> Chờ xử lý</> : <><CheckSquare className="w-3 h-3" /> Đã duyệt</>}</span>
-                                {req.status === 'pending' && (<div className="flex gap-1"><Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm" onClick={() => handleOpenProcess(req)}>Duyệt & Điều phối</Button><Button variant="ghost" size="icon" className="h-7 w-7 text-red-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(req.id)}><Trash2 className="w-4 h-4" /></Button></div>)}
+                                {req.status === 'pending' && isActive && ( // Chỉ cho duyệt/xóa khi Active
+                                    <div className="flex gap-1"><Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm" onClick={() => handleOpenProcess(req)}>Duyệt & Điều phối</Button><Button variant="ghost" size="icon" className="h-7 w-7 text-red-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(req.id)}><Trash2 className="w-4 h-4" /></Button></div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
                 ))}
             </div>
 
-            {/* ✅ PROCESS DIALOG (ĐÃ CẬP NHẬT GIAO DIỆN MỚI) */}
+            {/* PROCESS DIALOG */}
             <Dialog open={processOpen} onOpenChange={setProcessOpen}>
                 <DialogContent className="max-w-4xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckSquare className="w-5 h-5 text-indigo-600" /> Phân tích & Duyệt Đề xuất</DialogTitle></DialogHeader>
@@ -330,10 +364,8 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
                                         <TableRow>
                                             <TableHead className="font-bold text-indigo-900 w-[25%]">Vật tư</TableHead>
                                             <TableHead className="text-center font-bold text-indigo-900 w-[10%]">ĐVT</TableHead>
-                                            {/* ✅ Cột Định mức mới */}
                                             <TableHead className="text-center font-bold text-indigo-900 w-[15%]">Định mức</TableHead>
                                             <TableHead className="text-center font-bold text-indigo-900 w-[10%]">Tồn kho</TableHead>
-                                            {/* ✅ Cột Duyệt số lượng (Editable) */}
                                             <TableHead className="text-center font-bold text-indigo-900 w-[15%]">Duyệt SL</TableHead>
                                             <TableHead className="text-right font-bold text-indigo-900 w-[25%]">Giải pháp</TableHead>
                                         </TableRow>
@@ -343,13 +375,10 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
                                             <TableRow key={idx}>
                                                 <TableCell className="font-medium">{item.item_name}</TableCell>
                                                 <TableCell className="text-center">{item.unit}</TableCell>
-                                                {/* Hiển thị định mức */}
                                                 <TableCell className="text-center font-mono text-slate-500">
                                                     {item.budget_quantity > 0 ? item.budget_quantity : "-"}
                                                 </TableCell>
                                                 <TableCell className="text-center font-bold text-slate-600">{item.stock_available}</TableCell>
-
-                                                {/* ✅ Ô nhập liệu số lượng Duyệt */}
                                                 <TableCell className="p-1">
                                                     <Input
                                                         type="number"
@@ -359,7 +388,6 @@ export default function MaterialRequestManager({ projectId }: { projectId: strin
                                                         className="h-8 text-center font-bold text-blue-700 border-blue-200 focus:border-blue-500"
                                                     />
                                                 </TableCell>
-
                                                 <TableCell className="text-right">
                                                     <div className="flex flex-col items-end gap-1 text-[11px]">
                                                         {item.action_issue > 0 && (

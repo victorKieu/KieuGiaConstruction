@@ -11,7 +11,7 @@ import { useTransition } from "react";
 
 interface Props {
     contracts: any[];
-    projectId: string;
+    projectId?: string;
     // ✅ Định nghĩa prop onViewDetail (có dấu ?)
     onViewDetail?: (contract: any) => void;
 }
@@ -25,22 +25,12 @@ export default function ContractList({ contracts, projectId, onViewDetail }: Pro
         if (!confirm("Bạn có chắc chắn muốn xóa hợp đồng này?")) return;
 
         startTransition(async () => {
-            await deleteContract(id, projectId);
+            // Nếu không có projectId (Trang CRM), ta truyền chuỗi rỗng hoặc xử lý logic xóa riêng
+            // Nhưng action deleteContract hiện tại cần projectId để revalidate.
+            // Tạm thời ta truyền projectId hoặc 'crm' để server không lỗi
+            await deleteContract(id, projectId || 'crm');
             router.refresh();
         });
-    }
-
-    // Nếu chưa có hợp đồng
-    if (!contracts || contracts.length === 0) {
-        return (
-            <div className="text-center p-8 border-2 border-dashed rounded-xl bg-slate-50 text-slate-500">
-                <FileSignature className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                <h3 className="font-medium text-lg">Chưa có hợp đồng nào</h3>
-                <p className="text-sm mt-1 text-slate-400">
-                    Duyệt một báo giá bên dưới và bấm nút "Tạo Hợp đồng" để bắt đầu.
-                </p>
-            </div>
-        );
     }
 
     return (

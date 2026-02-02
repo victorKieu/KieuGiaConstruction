@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
-// import { CustomerFilters } from "./customer-filters"; // Nếu muốn dùng thêm bộ lọc nâng cao
+import { CustomerFilters } from "./customer-filters"; // Nếu muốn dùng thêm bộ lọc nâng cao
 
 export function CustomersToolbar() {
     const searchParams = useSearchParams();

@@ -23,7 +23,8 @@ interface ProjectTabsProps {
     members: MemberData[];
     documents: DocumentData[];
     financeStats: any;
-    tasks: TaskData[];
+    tasks: any[];
+    dictionaries: any;
     surveys: Survey[];
     surveyTemplates: SurveyTemplate[];
     surveyTaskTemplates: SurveyTaskTemplate[];
@@ -78,11 +79,11 @@ function getUrlParamFromTabName(tabName: string): string {
         case TABS.DOCUMENTS: return "documents";
         case TABS.FINANCE: return "finance";
         default: return "tasks";
-    }
+    } 
 }
 
 export default function ProjectTabs({
-    projectId, project, milestones, members, documents, financeStats, tasks,
+    projectId, project, milestones, members, documents, financeStats, tasks, dictionaries,
     surveys, surveyTemplates, surveyTaskTemplates, taskFeed, membersCount, documentsCount,
     logs = [], // ✅ Mặc định rỗng nếu chưa có dữ liệu
     allEmployees = [], roles = [], isManager = false, currentUserId = "",
@@ -132,8 +133,12 @@ export default function ProjectTabs({
                 {/* 1. Tab Công việc */}
                 {activeTab === TABS.TASKS && (
                     <ProjectMilestoneTab
-                        projectId={project.id} milestones={milestones} tasks={tasks}
-                        members={members} taskFeed={taskFeed}
+                        projectId={projectId}
+                        tasks={tasks}
+                        members={members}
+                        milestones={milestones}
+                        dictionaries={dictionaries}
+                        currentUserId={currentUserId}
                     />
                 )}
 

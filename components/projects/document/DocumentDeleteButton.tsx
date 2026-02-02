@@ -14,7 +14,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Trash2, Loader2 } from "lucide-react";
-import { deleteDocument } from "@/lib/action/projectActions"; // ✅ Import action Xóa
+import { deleteDocument } from "@/lib/action/documentActions"; // ✅ Import action Xóa
 import type { ActionResponse } from "@/lib/action/projectActions"; // ✅ Import type
 
 interface DocumentDeleteButtonProps {

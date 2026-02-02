@@ -3,6 +3,31 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
+// --- HÀM MỚI: CẬP NHẬT VĂN BẢN PHÁP LÝ ---
+// --- HÀM MỚI: CẬP NHẬT VĂN BẢN PHÁP LÝ ---
+export async function updateLegalDoc(docId: string, data: any) {
+    //const session = await getCurrentSession();
+    //if (!session.isAuthenticated) return { success: false, error: "Vui lòng đăng nhập." };
+
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('project_legal_docs')
+        .update({
+            doc_code: data.doc_code,
+            issue_date: data.issue_date,
+            issuing_authority: data.issuing_authority,
+            notes: data.notes,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', docId);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath('/projects');
+    return { success: true, message: "Cập nhật văn bản thành công." };
+}
+
 // --- PHẦN 1: QUẢN LÝ THÔNG TIN DỰ ÁN (Pháp lý & Quy mô) ---
 
 // Cập nhật thông tin pháp lý chính (Số tờ, Thửa, GPXD, Diện tích...)
@@ -38,14 +63,19 @@ export async function updateProjectLegalInfo(projectId: string, legalData: any) 
 // Lấy danh sách hồ sơ
 export async function getProjectLegalDocs(projectId: string) {
     const supabase = await createClient();
+
     const { data, error } = await supabase
         .from('project_legal_docs')
         .select('*')
         .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }); // Sắp xếp mới nhất lên đầu
 
-    if (error) return [];
-    return data || [];
+    if (error) {
+        console.error("Error fetching docs:", error);
+        return [];
+    }
+
+    return data;
 }
 
 // Thêm mới hồ sơ (VD: Upload xong thì lưu metadata vào DB)

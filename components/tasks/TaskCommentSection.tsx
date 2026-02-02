@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import supabase from "@/lib/supabase/client";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { MessageSquare, ThumbsUp, Reply } from "lucide-react";
+import { MessageSquare, ThumbsUp } from "lucide-react";
 import { useActionState } from 'react';
-import { createComment, deleteComment, updateComment, toggleCommentLike, toggleTaskLike } from '@/lib/action/projectActions';
+import { createComment, deleteComment, updateComment, toggleCommentLike, toggleTaskLike } from '@/lib/action/taskActions';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
     AlertDialog,
@@ -19,7 +19,6 @@ import {
     AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 
-// --- Type Definitions ---
 export interface CommentData {
     id: string;
     project_id: string;
@@ -67,7 +66,6 @@ const initialState: ActionFormState = {
     error: undefined,
 };
 
-// --- Helper Functions ---
 const formatRelativeTime = (isoString: string) => {
     if (!isoString) return '';
     const date = new Date(isoString);
@@ -82,7 +80,6 @@ const formatRelativeTime = (isoString: string) => {
     return `${Math.floor(seconds)} giây trước`;
 };
 
-// --- Main Component ---
 export default function TaskCommentSection({ taskId, projectId, members, currentUserId }: TaskCommentSectionProps) {
     const [comments, setComments] = useState<CommentData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -98,8 +95,9 @@ export default function TaskCommentSection({ taskId, projectId, members, current
     const [currentUserProfile, setCurrentUserProfile] = useState<CurrentUserProfile | null>(null);
     const createCommentBound = createComment.bind(null, projectId, taskId);
     const [createState, createAction, isCreatePending] = useActionState(createCommentBound, initialState);
+
     const triggerRefresh = useCallback(() => setRefreshKey(prev => prev + 1), []);
-    //const commentIds = comments.map((c: any) => c.id);
+
     useEffect(() => {
         const fetchCurrentUserProfile = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -113,14 +111,10 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
             if (error) {
                 console.error("Lỗi fetch profile:", error.message);
-                // Fallback nếu lỗi hệ thống
                 setCurrentUserProfile({ name: user.email?.split('@')[0] || 'Người dùng', avatar_url: undefined });
             } else if (data) {
-                // Có profile
                 setCurrentUserProfile(data);
             } else {
-                // ✅ Trường hợp không có dòng nào (User mới chưa có profile)
-                // Fallback lấy tên từ email để không bị lỗi
                 setCurrentUserProfile({
                     name: user.email?.split('@')[0] || 'Người dùng',
                     avatar_url: undefined
@@ -134,20 +128,18 @@ export default function TaskCommentSection({ taskId, projectId, members, current
         setIsLoading(true);
         setFetchError(null);
         try {
-            // 1. Lấy dữ liệu comment
-            // Lưu ý: data được gán tên alias là commentsData để tránh trùng tên
             const { data: commentsData, error: commentsError, count } = await supabase
                 .from('project_comments')
-                .select(`id, project_id, content, created_at, updated_at, parent_comment_id, likes_count, created_by:user_profiles!created_by (id, name, avatar_url)`, { count: 'exact' })
+                .select(`
+                    id, project_id, content, created_at, updated_at, parent_comment_id, likes_count, 
+                    created_by:user_profiles (id, name, avatar_url)
+                `, { count: 'exact' })
                 .eq('task_id', taskId)
                 .order('created_at', { ascending: true });
 
             if (commentsError) throw commentsError;
             setTotalCommentCount(count || 0);
 
-            // 2. Lấy danh sách ID để query like
-            // ✅ FIX TS2552: Đảm bảo commentsData tồn tại bằng (commentsData || [])
-            // ✅ FIX TS7006: Gán kiểu (c: any) cho biến trong map
             const safeCommentsData = commentsData || [];
             const commentIds = safeCommentsData.map((c: any) => c.id);
 
@@ -161,34 +153,35 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                 setLikedComments(new Set(commentLikesData?.map((l: any) => l.comment_id) || []));
             }
 
-            // 3. Lấy thông tin like của Task
             const { data: taskData, error: taskError } = await supabase
                 .from('project_tasks')
                 .select('likes_count')
                 .eq('id', taskId)
                 .single();
 
-            if (taskError) throw taskError;
+            if (taskError) {
+                console.warn("Không lấy được like count của task:", taskError.message);
+            }
 
-            const { data: taskLikeData, error: taskLikeError } = await supabase
+            const { data: taskLikeData } = await supabase
                 .from('task_likes')
                 .select('task_id')
                 .eq('user_id', currentUserId)
                 .eq('task_id', taskId)
                 .maybeSingle();
 
-            if (taskLikeError) throw taskLikeError;
+            setTaskLikeState({ isLiked: !!taskLikeData, count: taskData?.likes_count || 0 });
 
-            setTaskLikeState({ isLiked: !!taskLikeData, count: taskData.likes_count || 0 });
-
-            // 4. Xử lý phân cấp comment (Cha - Con)
             const commentMap = new Map<string, CommentData>();
             const rootComments: CommentData[] = [];
 
-            // Duyệt mảng an toàn (đã xử lý null ở trên)
             safeCommentsData.forEach((comment: any) => {
-                // Ép kiểu dữ liệu về CommentData để khớp với state
-                const formattedComment = { ...comment, replies: [] } as unknown as CommentData;
+                const creator = Array.isArray(comment.created_by) ? comment.created_by[0] : comment.created_by;
+                const formattedComment = {
+                    ...comment,
+                    created_by: creator || { id: 'unknown', name: 'Người dùng ẩn', avatar_url: null },
+                    replies: []
+                } as unknown as CommentData;
                 commentMap.set(comment.id, formattedComment);
             });
 
@@ -204,15 +197,17 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
         } catch (err: any) {
             console.error("Error fetching comments:", err);
-            setFetchError(err.message || "Could not fetch data.");
+            setFetchError(err.message || "Lỗi tải bình luận.");
         } finally {
             setIsLoading(false);
         }
     }, [taskId, currentUserId]);
 
     useEffect(() => {
-        fetchCommentsAndLikes();
-    }, [fetchCommentsAndLikes, refreshKey]);
+        if (isCommentsOpen) {
+            fetchCommentsAndLikes();
+        }
+    }, [fetchCommentsAndLikes, refreshKey, isCommentsOpen]);
 
     useEffect(() => {
         if (createState.success) {
@@ -225,7 +220,7 @@ export default function TaskCommentSection({ taskId, projectId, members, current
             }
             triggerRefresh();
         } else if (createState.error) {
-            alert(`Error creating comment: ${createState.error}`);
+            alert(`Lỗi tạo bình luận: ${createState.error}`);
         }
     }, [createState, triggerRefresh, replyingTo]);
 
@@ -246,8 +241,6 @@ export default function TaskCommentSection({ taskId, projectId, members, current
             }
         });
     };
-
-    const commentStatusText = isCommentsOpen ? 'Ẩn bình luận' : `Hiện ${totalCommentCount} bình luận`;
 
     const CommentItem = ({ comment, onActionSuccess }: { comment: CommentData; onActionSuccess: () => void }) => {
         const isOwner = currentUserId === comment.created_by.id;
@@ -306,7 +299,6 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                 if (!result.success) {
                     setIsLiked(!newLikedState);
                     setLikeCount(prev => !newLikedState ? prev + 1 : prev - 1);
-                    console.error("Like failed:", result.error);
                     alert(`Lỗi khi thích bình luận: ${result.error}`);
                 } else {
                     onActionSuccess();
@@ -333,7 +325,10 @@ export default function TaskCommentSection({ taskId, projectId, members, current
 
         return (
             <div className="flex space-x-2 group">
-                <Avatar className="h-8 w-8 flex-shrink-0"><AvatarImage src={comment.created_by.avatar_url} /><AvatarFallback className="text-xs">{comment.created_by.name?.[0]}</AvatarFallback></Avatar>
+                <Avatar className="h-8 w-8 flex-shrink-0">
+                    <AvatarImage src={comment.created_by.avatar_url || undefined} />
+                    <AvatarFallback className="text-xs">{comment.created_by.name?.[0]?.toUpperCase() || "?"}</AvatarFallback>
+                </Avatar>
                 <div className="flex-grow">
                     {!isEditing ? (
                         <>
@@ -365,7 +360,10 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                     )}
                     {replyingTo?.parentId === comment.id && (
                         <div className="flex items-start space-x-2 mt-2">
-                            <Avatar className="h-8 w-8"><AvatarImage src={currentUserProfile?.avatar_url} /><AvatarFallback>{currentUserProfile?.name?.[0]}</AvatarFallback></Avatar>
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={currentUserProfile?.avatar_url || undefined} />
+                                <AvatarFallback>{currentUserProfile?.name?.[0]}</AvatarFallback>
+                            </Avatar>
                             <form action={createAction} id={`comment-form-${comment.id}`} className="flex-grow">
                                 <input type="hidden" name="parent_comment_id" value={comment.id} />
                                 <Textarea name="content" ref={replyTextareaRef} defaultValue={`@${replyingTo.userName} `} className="w-full bg-gray-100 border-none rounded-xl text-sm p-2 h-10" required onKeyDown={handleReplyKeyDown} />
@@ -390,37 +388,46 @@ export default function TaskCommentSection({ taskId, projectId, members, current
     return (
         <div className="space-y-4 pt-4 border-t">
             <div className="flex justify-between items-center">
-                <button onClick={() => setIsCommentsOpen(prev => !prev)} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                    <h3 className="text-base font-semibold text-gray-800 flex items-center"><MessageSquare className="h-5 w-5 mr-2 text-gray-500" /> Tương tác & Bình luận</h3>
-                    <span className="text-sm font-medium text-blue-600 ml-2">{`(${totalCommentCount})`}</span>
-                </button>
-                <div className="flex items-center space-x-2">
-                    <Button onClick={handleTaskLike} variant="outline" size="sm" disabled={isTaskLikePending} className={`${taskLikeState.isLiked ? 'text-blue-600 border-blue-600' : ''}`}>
-                        <ThumbsUp className="h-4 w-4 mr-2" />
-                        {taskLikeState.isLiked ? 'Đã thích' : 'Thích'}
-                        {taskLikeState.count > 0 && <span className="ml-2">{taskLikeState.count}</span>}
-                    </Button>
+                {/* ✅ FIX: Thay button thành div và thêm cursor-pointer */}
+                <div
+                    onClick={() => setIsCommentsOpen(prev => !prev)}
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors w-full cursor-pointer"
+                >
+                    <h3 className="text-base font-semibold text-gray-800 flex items-center"><MessageSquare className="h-5 w-5 mr-2 text-gray-500" /> Bình luận & Tương tác</h3>
+                    <div className="flex items-center">
+                        <span className="text-sm font-medium text-blue-600 mr-4">{`(${totalCommentCount})`}</span>
+                        {/* Nút Like Task - Sử dụng stopPropagation để không kích hoạt accordion */}
+                        <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                            <Button onClick={handleTaskLike} variant="ghost" size="sm" disabled={isTaskLikePending} className={`h-8 ${taskLikeState.isLiked ? 'text-blue-600' : 'text-gray-500'}`}>
+                                <ThumbsUp className={`h-4 w-4 mr-1 ${taskLikeState.isLiked ? 'fill-current' : ''}`} />
+                                {taskLikeState.count > 0 ? taskLikeState.count : 'Thích'}
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {isCommentsOpen && (
-                <>
-                    <div className="flex items-start space-x-2">
-                        <Avatar className="h-8 w-8"><AvatarImage src={currentUserProfile?.avatar_url} /><AvatarFallback>{currentUserProfile?.name?.[0]}</AvatarFallback></Avatar>
+                <div className="animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-start space-x-2 mb-4">
+                        <Avatar className="h-8 w-8">
+                            <AvatarImage src={currentUserProfile?.avatar_url || undefined} />
+                            <AvatarFallback>{currentUserProfile?.name?.[0]}</AvatarFallback>
+                        </Avatar>
                         <form ref={mainCommentFormRef} action={createAction} id="comment-form-root" className="flex-grow">
                             <Textarea name="content" placeholder="Viết bình luận..." className="w-full bg-gray-100 border-none rounded-xl focus:ring-1 focus:ring-blue-500 text-sm p-2 min-h-[40px]" />
                             <div className="flex justify-end mt-2"><Button type="submit" size="sm" disabled={isCreatePending}>{isCreatePending ? 'Đang gửi...' : 'Gửi'}</Button></div>
                         </form>
                     </div>
+
                     <div className="space-y-3 pt-2">
-                        {fetchError && <Alert variant="destructive"><AlertTitle>Lỗi</AlertTitle><AlertDescription>{fetchError}</AlertDescription></Alert>}
-                        {isLoading && <div className="text-center py-4 text-gray-500">Đang tải...</div>}
-                        {!isLoading && !fetchError && comments.length === 0 && <p className="text-sm text-center py-4 text-gray-400">Chưa có bình luận nào.</p>}
+                        {fetchError && <Alert variant="destructive"><AlertTitle>Lỗi tải bình luận</AlertTitle><AlertDescription>{fetchError}</AlertDescription></Alert>}
+                        {isLoading && <div className="text-center py-4 text-gray-500 text-sm">Đang tải bình luận...</div>}
+                        {!isLoading && !fetchError && comments.length === 0 && <p className="text-sm text-center py-4 text-gray-400">Chưa có bình luận nào. Hãy là người đầu tiên!</p>}
                         {!isLoading && !fetchError && comments.map((c: CommentData) => <CommentItem key={c.id} comment={c} onActionSuccess={triggerRefresh} />)}
                     </div>
-                </>
+                </div>
             )}
         </div>
     );
 }
-

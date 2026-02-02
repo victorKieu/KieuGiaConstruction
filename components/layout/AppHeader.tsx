@@ -3,13 +3,12 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Sun, Moon } from "lucide-react"; // ❌ Đã xóa Menu icon
+import { Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 // Components
 import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
 import { NotificationBell } from "@/components/layout/notification-bell";
-// ❌ Đã xóa Sheet, Sidebar imports
 
 interface AppHeaderProps {
     user: {
@@ -45,7 +44,7 @@ export default function AppHeader({ user }: AppHeaderProps) {
                     Nghĩa là: Trên mobile thì cách lề trái 10 đơn vị (để chừa chỗ cho nút Menu), 
                     trên Desktop (md) thì trả về 0. 
                 */}
-                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-10 md:pl-0 transition-all">
+                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-20 md:pl-0 transition-all">
                     Kieu Gia Construction
                 </div>
             </div>
