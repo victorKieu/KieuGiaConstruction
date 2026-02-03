@@ -17,12 +17,11 @@ import {
     Truck,
     Handshake,
     Menu as MenuIcon,
-    X as CloseIcon,
     Database
 } from "lucide-react";
 import Image from "next/image";
 
-// ==== Menu List giữ nguyên ====
+// ==== Menu List (Giữ nguyên không đổi) ====
 const navItems = [
     {
         title: "Tổng quan",
@@ -95,7 +94,6 @@ const navItems = [
         title: "Thu Mua",
         href: "/procurement",
         icon: Truck,
-        //permission: "procurement:view",
         children: [
             { title: "Danh sách nhà cung cấp", href: "/procurement/suppliers" },
             { title: "Kế hoạch mua vật tư", href: "/procurement" },
@@ -135,7 +133,6 @@ const navItems = [
     },
 ];
 
-// Logo fallback
 const LogoFallback = () => (
     <div className="w-12 h-12 bg-gradient-to-tr from-yellow-400 to-orange-500 flex items-center justify-center rounded-md text-white font-bold text-xl shadow-lg">KG</div>
 );
@@ -152,7 +149,7 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
                 {children}
             </div>
             <div
-                className={`pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50 px-3 py-1 rounded bg-black/90 text-white text-xs whitespace-nowrap shadow-xl transition-all duration-300
+                className={`pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-[120] px-3 py-1 rounded bg-black/90 text-white text-xs whitespace-nowrap shadow-xl transition-all duration-300
         ${show ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2"}
         `}
             >
@@ -162,12 +159,10 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
     );
 }
 
-// 👇 1. Thêm Interface Props
 interface SidebarProps {
-    className?: string; // Để nhận class từ Shadcn Sheet
+    className?: string;
 }
 
-// 👇 2. Cập nhật component nhận props
 export function Sidebar({ className }: SidebarProps) {
     const pathname = usePathname();
     const [expanded, setExpanded] = useState(false);
@@ -187,7 +182,6 @@ export function Sidebar({ className }: SidebarProps) {
         setMobileOpen(false);
     }, [pathname]);
 
-    // Nếu có className (tức là đang nằm trong Sheet), ta coi như không collapsed
     const collapsed = !expanded && !mobileOpen && !className;
 
     useEffect(() => {
@@ -216,7 +210,6 @@ export function Sidebar({ className }: SidebarProps) {
         return pathname === href || pathname.startsWith(`${href}/`);
     };
 
-    // Sidebar width
     const sidebarWidth = collapsed ? 64 : 252;
 
     const sidebarContent = (
@@ -226,14 +219,13 @@ export function Sidebar({ className }: SidebarProps) {
         flex flex-col transition-all duration-300
         ${collapsed ? "w-16 min-w-16 max-w-16" : "w-[252px] min-w-[252px] max-w-[252px]"}
         
-        {/* 👇 THAY ĐỔI Ở DÒNG DƯỚI NÀY: Đổi z-50 thành z-[100] */}
+        {/* ✅ FIX: Nâng Z-Index lên 100 để đè lên Header (z-50) */}
         ${!className && isMobile ? "fixed z-[100] left-0 top-0" : ""}
         
         ${!className && isMobile && mobileOpen ? "translate-x-0" : !className && isMobile ? "-translate-x-full" : "translate-x-0"}
         ${className || ""} 
       `}
             style={{
-                // Nếu đang trong Sheet (có className), ta force width 100% để khớp với sheet
                 width: className ? "100%" : sidebarWidth,
                 minWidth: className ? "100%" : sidebarWidth,
                 maxWidth: className ? "100%" : sidebarWidth
@@ -241,7 +233,6 @@ export function Sidebar({ className }: SidebarProps) {
             onMouseEnter={() => !isMobile && !className && setExpanded(true)}
             onMouseLeave={() => !isMobile && !className && setExpanded(false)}
         >
-            {/* Header logo */}
             <div className="flex items-center gap-3 h-20 px-4 border-b border-blue-100 dark:border-neutral-800 relative bg-gradient-to-tr from-blue-50 to-white dark:from-neutral-900 dark:to-neutral-800">
                 <div className="relative w-10 h-10 flex-shrink-0 drop-shadow-md">
                     {logoError ? (
@@ -264,11 +255,12 @@ export function Sidebar({ className }: SidebarProps) {
                         <div className="text-xs text-gray-500 dark:text-gray-300 font-medium">Construction</div>
                     </div>
                 )}
-                {/* Chỉ hiện nút đóng nếu không có className (tức là mode tự quản lý mobile cũ) */}
+
+                {/* Nút đóng Sidebar trên Mobile */}
                 {!className && isMobile && !mobileOpen && (
                     <button
-                        // 👇 THAY ĐỔI: Đổi z-50 thành z-[100]
-                        className="fixed top-3 left-3 z-[100] bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all hover:bg-blue-50"
+                        // ✅ FIX: Z-Index 110 (Cao hơn cả Sidebar)
+                        className="fixed top-3 left-3 z-[110] bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all hover:bg-blue-50"
                         onClick={() => setMobileOpen(true)}
                         aria-label="Mở menu"
                     >
@@ -276,7 +268,7 @@ export function Sidebar({ className }: SidebarProps) {
                     </button>
                 )}
             </div>
-            {/* Menu */}
+
             <nav className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto">
                 {navItems.map((item) =>
                     item.children ? (
@@ -314,7 +306,6 @@ export function Sidebar({ className }: SidebarProps) {
                                     )}
                                 </button>
                             )}
-                            {/* Menu sub */}
                             <div
                                 className={`
                   transition-all duration-300 ease-in-out overflow-hidden
@@ -368,13 +359,13 @@ export function Sidebar({ className }: SidebarProps) {
         </aside>
     );
 
-    // --- MOBILE overlay ---
     return (
         <>
-            {/* Chỉ hiện nút Menu nội bộ nếu KHÔNG có className (tức là không dùng Sheet của AppHeader) */}
+            {/* Nút Menu Mobile Trôi Nổi */}
             {!className && isMobile && !mobileOpen && (
                 <button
-                    className="fixed top-4 left-4 z-60 bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all"
+                    // ✅ FIX: Z-Index 110 (Cao hơn Header z-50)
+                    className="fixed top-3 left-3 z-[110] bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all hover:bg-blue-50"
                     onClick={() => setMobileOpen(true)}
                     aria-label="Mở menu"
                 >
@@ -384,15 +375,15 @@ export function Sidebar({ className }: SidebarProps) {
 
             {sidebarContent}
 
-            {/* Chỉ hiện Overlay nội bộ nếu KHÔNG có className */}
+            {/* Overlay Mobile */}
             {!className && isMobile && mobileOpen && (
                 <div
+                    // ✅ FIX: Z-Index 90 để nằm dưới Sidebar (z-100) nhưng trên Header (z-50)
                     className="fixed inset-0 bg-black/40 z-[90] backdrop-blur-[2px] transition-opacity"
                     onClick={() => setMobileOpen(false)}
                 />
             )}
 
-            {/* Placeholder giữ chỗ cho desktop (Chỉ hiện khi không dùng Sheet) */}
             {!isMobile && !className && (
                 <div
                     style={{ width: sidebarWidth, minWidth: sidebarWidth }}

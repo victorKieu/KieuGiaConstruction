@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { getCurrentSession } from "@/lib/supabase/session";
 
 // 1. LẤY DANH SÁCH DỰ TOÁN
 export async function getEstimationItems(projectId: string) {
@@ -129,4 +130,22 @@ export async function createEstimationFromMacro(projectId: string, items: any[])
     } catch (e: any) {
         return { success: false, error: e.message };
     }
+}
+
+// --- HÀM MỚI: XÓA ĐẦU MỤC DỰ TOÁN ---
+export async function deleteEstimationItem(itemId: string, projectId: string) {
+    const session = await getCurrentSession();
+    if (!session.isAuthenticated) return { success: false, error: "Vui lòng đăng nhập." };
+
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('estimation_items')
+        .delete()
+        .eq('id', itemId);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true, message: "Đã xóa đầu mục thành công." };
 }

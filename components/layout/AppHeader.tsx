@@ -1,4 +1,3 @@
-// components/layout/AppHeader.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -36,20 +35,20 @@ export default function AppHeader({ user }: AppHeaderProps) {
     const displayAvatarUrl = user?.avatar_url || "";
 
     return (
+        // Giữ z-50 cho Header (Thấp hơn z-100 của Sidebar và nút Menu)
         <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900 sticky top-0 z-50 shadow-sm">
-            {/* 1. KHU VỰC TRÁI: Chỉ còn Logo (Nút Menu đã bị xóa) */}
+            {/* 1. KHU VỰC TRÁI */}
             <div className="flex items-center gap-3">
-
-                {/* 👇 THAY ĐỔI: Thêm class 'pl-10 md:pl-0' 
-                    Nghĩa là: Trên mobile thì cách lề trái 10 đơn vị (để chừa chỗ cho nút Menu), 
-                    trên Desktop (md) thì trả về 0. 
+                {/* ✅ GIỮ NGUYÊN pl-12: 
+                   Trên mobile (md:pl-0 sẽ không chạy), ta padding trái 12 đơn vị 
+                   để chữ không bị nút Menu (đang fixed ở góc trái) đè lên.
                 */}
-                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-20 md:pl-0 transition-all">
+                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-12 md:pl-0 transition-all">
                     Kieu Gia Construction
                 </div>
             </div>
 
-            {/* 2. KHU VỰC PHẢI: Giữ nguyên */}
+            {/* 2. KHU VỰC PHẢI */}
             <div className="flex items-center gap-2">
                 <button
                     className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
@@ -65,7 +64,6 @@ export default function AppHeader({ user }: AppHeaderProps) {
                         name: displayName,
                         avatar_url: displayAvatarUrl,
                         email: user?.email || "",
-                        //role: user?.role
                     }}
                     onProfile={() => router.push("/profile")}
                     onSettings={() => router.push("/settings")}
