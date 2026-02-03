@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
     Warehouse,
@@ -12,7 +11,8 @@ import {
     Plus,
     Lock,
     Unlock,
-    Search
+    Search,
+    Filter
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,10 @@ import { createWarehouseAction, updateWarehouseStatusAction } from "@/lib/action
 export default function InventoryPage() {
     const [warehouses, setWarehouses] = useState<any[]>([]);
     const [search, setSearch] = useState("");
+
+    // ✅ 1. Thêm State Filter (Mặc định là 'active')
+    const [statusFilter, setStatusFilter] = useState<string>("active");
+
     const [openCreate, setOpenCreate] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -86,11 +90,22 @@ export default function InventoryPage() {
         }
     };
 
-    const filtered = warehouses.filter(w =>
-        w.name.toLowerCase().includes(search.toLowerCase()) ||
-        w.project?.name?.toLowerCase().includes(search.toLowerCase()) ||
-        w.project?.code?.toLowerCase().includes(search.toLowerCase())
-    );
+    // ✅ 2. Cập nhật logic Filter (Kết hợp Search + Status)
+    const filtered = warehouses.filter(w => {
+        // Lọc theo từ khóa
+        const matchSearch =
+            w.name.toLowerCase().includes(search.toLowerCase()) ||
+            w.project?.name?.toLowerCase().includes(search.toLowerCase()) ||
+            w.project?.code?.toLowerCase().includes(search.toLowerCase());
+
+        // Lọc theo trạng thái
+        let matchStatus = true;
+        if (statusFilter !== 'all') {
+            matchStatus = w.status === statusFilter;
+        }
+
+        return matchSearch && matchStatus;
+    });
 
     return (
         <div className="flex-1 space-y-6 p-8 pt-6">
@@ -135,15 +150,32 @@ export default function InventoryPage() {
                 </div>
             </div>
 
-            {/* SEARCH BAR */}
-            <div className="flex items-center gap-2 bg-white p-2 rounded-md border w-fit shadow-sm">
-                <Search className="h-4 w-4 text-muted-foreground ml-2" />
-                <Input
-                    placeholder="Tìm kho của bạn..."
-                    className="border-none shadow-none focus-visible:ring-0 w-[300px]"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
+            {/* ✅ 3. THANH CÔNG CỤ (SEARCH + FILTER) */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                {/* Search Bar */}
+                <div className="flex items-center gap-2 bg-white p-2 rounded-md border w-full sm:w-fit shadow-sm">
+                    <Search className="h-4 w-4 text-muted-foreground ml-2" />
+                    <Input
+                        placeholder="Tìm theo tên kho, tên dự án..."
+                        className="border-none shadow-none focus-visible:ring-0 w-full sm:w-[300px]"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+
+                {/* Status Filter */}
+                <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-slate-500" />
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="h-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
+                    >
+                        <option value="active">🟢 Đang hoạt động</option>
+                        <option value="closed">🔴 Đã đóng / Ngừng</option>
+                        <option value="all">📂 Tất cả trạng thái</option>
+                    </select>
+                </div>
             </div>
 
             {/* LIST WAREHOUSES */}
@@ -152,7 +184,11 @@ export default function InventoryPage() {
                     <div className="col-span-full flex flex-col items-center justify-center py-16 bg-slate-50 border border-dashed rounded-xl">
                         <Warehouse className="w-12 h-12 text-slate-300 mb-3" />
                         <h3 className="text-lg font-medium text-slate-900">Không tìm thấy kho nào</h3>
-                        <p className="text-slate-500 text-sm mt-1">Bạn chưa được gán vào dự án nào hoặc chưa có kho được tạo.</p>
+                        <p className="text-slate-500 text-sm mt-1">
+                            {statusFilter === 'active'
+                                ? "Không có kho nào đang hoạt động khớp với tìm kiếm."
+                                : "Danh sách trống hoặc không khớp bộ lọc."}
+                        </p>
                     </div>
                 ) : (
                     filtered.map((w) => {
@@ -188,7 +224,6 @@ export default function InventoryPage() {
                                 </CardHeader>
 
                                 <CardContent className="pl-6 flex-1 flex flex-col">
-                                    {/* ✅ SỬA Ở ĐÂY: Bỏ truncate, dùng break-words để hiện hết tên */}
                                     <div className="text-lg font-bold mb-1 text-slate-800 group-hover:text-blue-700 transition-colors break-words leading-tight">
                                         {w.name}
                                     </div>

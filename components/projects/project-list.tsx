@@ -1,15 +1,13 @@
 "use client"
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-    MoreHorizontal, FileText, PiggyBank, Wallet, Coins, X, Trash2, Eye, Edit, Building2, Plus, Calendar
+    MoreHorizontal, FileText, PiggyBank, Wallet, Coins, X, Trash2, Eye, Edit, Building2
 } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button" // Đảm bảo đã import Button
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator
@@ -81,7 +79,7 @@ function ProjectRow({ project }: { project: ProjectWithExtras }) {
     const statusName = project.status_data?.name || "Không xác định";
 
     const actualProgress = project.progress || 0;
-    const planProgress = 88; // Hardcode
+    const planProgress = 88; // Hardcode tạm
     const managerName = project.manager?.name || "Chưa chỉ định";
 
     return (
@@ -89,7 +87,14 @@ function ProjectRow({ project }: { project: ProjectWithExtras }) {
             {/* Action Menu */}
             <div className="absolute top-4 right-4 z-20">
                 <DropdownMenu>
-                    <DropdownMenuTrigger><MoreHorizontal className="h-5 w-5 text-slate-400 hover:text-slate-600" /></DropdownMenuTrigger>
+                    {/* ✅ FIX: Sử dụng asChild và Button để tránh lỗi Hydration ID mismatch */}
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-5 w-5 text-slate-400 hover:text-slate-600" />
+                            <span className="sr-only">Mở menu</span>
+                        </Button>
+                    </DropdownMenuTrigger>
+
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild><Link href={`/projects/${project.id}`}><Eye className="w-4 h-4 mr-2" /> Xem chi tiết</Link></DropdownMenuItem>
                         <DropdownMenuItem asChild><Link href={`/projects/${project.id}/settings`}><Edit className="w-4 h-4 mr-2" /> Chỉnh sửa</Link></DropdownMenuItem>
@@ -197,33 +202,41 @@ function ProjectRow({ project }: { project: ProjectWithExtras }) {
 }
 
 // --- Summary Dashboard ---
-function SummaryDashboard({ projects, statuses }: { projects: ProjectWithExtras[], statuses: any[] }) {
+function SummaryDashboard({ projects }: { projects: ProjectWithExtras[] }) {
     const total = projects.length;
-    const getCount = (codes: string[]) => projects.filter(p => codes.includes(p.status_data?.code?.toLowerCase() || "")).length;
 
-    const planning = getCount(['planning', 'initial', 'concept']);
-    const inProgress = getCount(['in_progress', 'execution', 'construction']);
-    const completed = getCount(['completed', 'finished', 'handed_over']);
-    const paused = getCount(['paused', 'on_hold', 'suspended']);
+    const getCount = (codes: string[]) => projects.filter(p => {
+        const code = (p.status_data?.code || p.status || "").toLowerCase();
+        return codes.includes(code);
+    }).length;
+
+    const planning = getCount(['initial', 'planning', 'concept', 'design', 'bidding', 'pending', 'draft']);
+    const inProgress = getCount(['active', 'in_progress', 'execution', 'construction', 'implementation', 'processing']);
+    const paused = getCount(['paused', 'on_hold', 'suspended', 'delayed', 'warning', 'problem']);
+    const completed = getCount(['completed', 'finished', 'handed_over', 'done', 'closed', 'finalized']);
+    const cancelled = getCount(['cancelled', 'terminated', 'rejected']);
+
+    const calcPercent = (val: number) => total > 0 ? Math.round(val / total * 100) : 0;
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div className="bg-[#009688] text-white p-4 rounded-md shadow flex items-center justify-between">
                 <div className="relative w-24 h-24 flex items-center justify-center border-4 border-white/30 rounded-full text-2xl font-bold">{total}</div>
                 <div className="flex-1 ml-4 space-y-1 text-sm font-medium">
-                    <div className="flex justify-between border-b border-white/10 pb-1"><span>⬜ Kế hoạch</span> <span>{planning} ({total > 0 ? Math.round(planning / total * 100) : 0}%)</span></div>
-                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟦 Đang làm</span> <span>{inProgress} ({total > 0 ? Math.round(inProgress / total * 100) : 0}%)</span></div>
-                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟨 Tạm dừng</span> <span>{paused} ({total > 0 ? Math.round(paused / total * 100) : 0}%)</span></div>
-                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟩 Hoàn thành</span> <span>{completed} ({total > 0 ? Math.round(completed / total * 100) : 0}%)</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>⬜ Kế hoạch</span> <span>{planning} ({calcPercent(planning)}%)</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟦 Đang làm</span> <span>{inProgress} ({calcPercent(inProgress)}%)</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟨 Tạm dừng</span> <span>{paused} ({calcPercent(paused)}%)</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟩 Hoàn thành</span> <span>{completed} ({calcPercent(completed)}%)</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟩 Hủy</span> <span>{cancelled} ({calcPercent(cancelled)}%)</span></div>
                 </div>
             </div>
             <div className="bg-[#009688] text-white p-4 rounded-md shadow flex items-center justify-between">
                 <div className="relative w-24 h-24 flex items-center justify-center border-4 border-white/30 rounded-full text-2xl font-bold">{total}</div>
                 <div className="flex-1 ml-4 space-y-1 text-sm font-medium">
-                    <div className="flex justify-between border-b border-white/10 pb-1"><span>⬜ Bình thường</span> <span>{total - paused}</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>⬜ Bình thường</span> <span>{planning + inProgress + completed}</span></div>
                     <div className="flex justify-between border-b border-white/10 pb-1"><span>🟩 Tăng tốc</span> <span>0</span></div>
                     <div className="flex justify-between border-b border-white/10 pb-1"><span>🟨 Lưu ý</span> <span>{paused}</span></div>
-                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟥 Chậm trễ</span> <span>0</span></div>
+                    <div className="flex justify-between border-b border-white/10 pb-1"><span>🟥 Hủy/Tạm dừng</span> <span>{cancelled}</span></div>
                 </div>
             </div>
         </div>
@@ -244,21 +257,24 @@ export default function ProjectList({ projects, currentUserRole, dictionaries }:
         return uniqueYears.sort((a, b) => b - a);
     }, [projects]);
 
-    const filteredProjects = useMemo(() => {
+    const dashboardProjects = useMemo(() => {
         return projects.filter(project => {
             const projectYear = project.start_date ? new Date(project.start_date).getFullYear().toString() : new Date().getFullYear().toString();
-            const matchYear = filterYear === "all" || projectYear === filterYear;
-            const statusCode = (project.status_data?.code || project.status || "").toLowerCase();
-
-            let matchStatus = true;
-            if (filterStatus === "active") {
-                matchStatus = !["completed", "cancelled", "finished", "done"].includes(statusCode);
-            } else if (filterStatus !== "all") {
-                matchStatus = statusCode === filterStatus;
-            }
-            return matchYear && matchStatus;
+            return filterYear === "all" || projectYear === filterYear;
         });
-    }, [projects, filterStatus, filterYear]);
+    }, [projects, filterYear]);
+
+    const filteredProjects = useMemo(() => {
+        return dashboardProjects.filter(project => {
+            const statusCode = (project.status_data?.code || project.status || "").toLowerCase();
+            if (filterStatus === "active") {
+                return !["completed", "cancelled", "finished", "done", "handed_over", "closed"].includes(statusCode);
+            } else if (filterStatus !== "all") {
+                return statusCode === filterStatus;
+            }
+            return true;
+        });
+    }, [dashboardProjects, filterStatus]);
 
     return (
         <div className="space-y-6 bg-slate-50 min-h-screen">
@@ -288,7 +304,7 @@ export default function ProjectList({ projects, currentUserRole, dictionaries }:
                 </div>
             </div>
 
-            <SummaryDashboard projects={projects} statuses={statusOptions} />
+            <SummaryDashboard projects={dashboardProjects} />
 
             <div>
                 {filteredProjects.length > 0 ? (

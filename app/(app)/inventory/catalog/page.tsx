@@ -31,20 +31,27 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// Import Actions
+// ✅ 1. Import Actions chuẩn
 import {
     getMaterialGroups,
     getMaterials,
     createMaterialGroupAction,
     createMaterialAction,
-    updateMaterialAction, // [MỚI]
-    deleteMaterialAction  // [MỚI]
+    updateMaterialAction,
+    deleteMaterialAction
 } from "@/lib/action/catalog";
+
+// ✅ 2. Import Action lấy từ điển dùng chung
+import { getDictionaryItems } from "@/lib/action/dictionaryActions";
 
 export default function CatalogPage() {
     const [groups, setGroups] = useState<any[]>([]);
     const [materials, setMaterials] = useState<any[]>([]);
+    const [units, setUnits] = useState<any[]>([]);
+
+    // State chọn nhóm lọc (Mặc định all)
     const [selectedGroup, setSelectedGroup] = useState("all");
+
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -55,7 +62,7 @@ export default function CatalogPage() {
     // Edit/Delete states
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [openDeleteAlert, setOpenDeleteAlert] = useState(false);
-    const [selectedItem, setSelectedItem] = useState<any>(null); // Lưu vật tư đang chọn để sửa/xóa
+    const [selectedItem, setSelectedItem] = useState<any>(null);
 
     // Data load
     useEffect(() => {
@@ -63,9 +70,15 @@ export default function CatalogPage() {
     }, []);
 
     const loadData = async () => {
-        const [g, m] = await Promise.all([getMaterialGroups(), getMaterials()]);
+        const [g, m, u] = await Promise.all([
+            getMaterialGroups(),
+            getMaterials(),
+            // ✅ 3. Gọi hàm chuẩn: Lấy danh sách 'UNIT'
+            getDictionaryItems("UNIT")
+        ]);
         setGroups(g);
         setMaterials(m);
+        setUnits(u);
     };
 
     // Filter logic
@@ -91,6 +104,7 @@ export default function CatalogPage() {
     const handleCreateMaterial = async (e: any) => {
         e.preventDefault();
         const form = new FormData(e.target);
+
         const res = await createMaterialAction({
             group_id: form.get("group_id"),
             code: form.get("code"),
@@ -98,7 +112,7 @@ export default function CatalogPage() {
             unit: form.get("unit"),
             specs: form.get("specs"),
             supplier_ref: form.get("supplier_ref"),
-            ref_price: Number(form.get("ref_price"))
+            ref_price: form.get("ref_price")
         });
         if (res.success) { toast.success(res.message); setOpenMatDialog(false); loadData(); }
         else toast.error(res.error);
@@ -122,7 +136,7 @@ export default function CatalogPage() {
             unit: form.get("unit"),
             specs: form.get("specs"),
             supplier_ref: form.get("supplier_ref"),
-            ref_price: Number(form.get("ref_price"))
+            ref_price: form.get("ref_price")
         });
         setLoading(false);
         if (res.success) { toast.success(res.message); setOpenEditDialog(false); loadData(); }
@@ -174,7 +188,13 @@ export default function CatalogPage() {
                             <form onSubmit={handleCreateMaterial} className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <Label>Thuộc nhóm <span className="text-red-500">*</span></Label>
-                                    <Select name="group_id" required>
+
+                                    {/* ✅ UPDATE: Tự động điền nhóm đang chọn */}
+                                    <Select
+                                        name="group_id"
+                                        required
+                                        defaultValue={selectedGroup !== 'all' ? selectedGroup : undefined}
+                                    >
                                         <SelectTrigger><SelectValue placeholder="Chọn nhóm..." /></SelectTrigger>
                                         <SelectContent>
                                             {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.code} - {g.name}</SelectItem>)}
@@ -182,7 +202,22 @@ export default function CatalogPage() {
                                     </Select>
                                 </div>
                                 <div><Label>Mã hàng <span className="text-red-500">*</span></Label><Input name="code" placeholder="VD: XM-HT-40" required /></div>
-                                <div><Label>Đơn vị tính <span className="text-red-500">*</span></Label><Input name="unit" placeholder="VD: Bao / Cái" required /></div>
+
+                                <div>
+                                    <Label>Đơn vị tính <span className="text-red-500">*</span></Label>
+                                    <Select name="unit" required>
+                                        <SelectTrigger><SelectValue placeholder="Chọn ĐVT" /></SelectTrigger>
+                                        <SelectContent>
+                                            {/* Render từ units (lấy từ getDictionaryItems) */}
+                                            {units.length > 0 ? (
+                                                units.map(u => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)
+                                            ) : (
+                                                <SelectItem value="cai">Cái (Mặc định)</SelectItem>
+                                            )}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
                                 <div className="col-span-2"><Label>Tên hàng hóa <span className="text-red-500">*</span></Label><Input name="name" placeholder="VD: Xi măng Hà Tiên PCB40" required /></div>
                                 <div className="col-span-2"><Label>Thông số / Quy cách</Label><Textarea name="specs" placeholder="VD: PCB40, TCVN..." /></div>
                                 <div><Label>NCC ưu tiên (Ref)</Label><Input name="supplier_ref" /></div>
@@ -281,7 +316,21 @@ export default function CatalogPage() {
                                 </Select>
                             </div>
                             <div><Label>Mã hàng</Label><Input name="code" defaultValue={selectedItem.code} required /></div>
-                            <div><Label>Đơn vị tính</Label><Input name="unit" defaultValue={selectedItem.unit} required /></div>
+
+                            <div>
+                                <Label>Đơn vị tính</Label>
+                                <Select name="unit" defaultValue={selectedItem.unit}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {units.length > 0 ? (
+                                            units.map(u => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)
+                                        ) : (
+                                            <SelectItem value={selectedItem.unit}>{selectedItem.unit}</SelectItem>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             <div className="col-span-2"><Label>Tên hàng hóa</Label><Input name="name" defaultValue={selectedItem.name} required /></div>
                             <div className="col-span-2"><Label>Thông số / Quy cách</Label><Textarea name="specs" defaultValue={selectedItem.specs} /></div>
                             <div><Label>NCC ưu tiên (Ref)</Label><Input name="supplier_ref" defaultValue={selectedItem.supplier_ref} /></div>
