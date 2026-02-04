@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Folder, Filter, MoreHorizontal, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Search, Folder, Filter, MoreHorizontal, Pencil, Trash2, Loader2, Settings } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,17 +31,17 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// ✅ 1. Import Actions chuẩn
+// Import Actions
 import {
     getMaterialGroups,
     getMaterials,
     createMaterialGroupAction,
     createMaterialAction,
     updateMaterialAction,
-    deleteMaterialAction
+    deleteMaterialAction,
+    // ✅ Import thêm hàm update group
+    updateMaterialGroupAction
 } from "@/lib/action/catalog";
-
-// ✅ 2. Import Action lấy từ điển dùng chung
 import { getDictionaryItems } from "@/lib/action/dictionaryActions";
 
 export default function CatalogPage() {
@@ -49,9 +49,7 @@ export default function CatalogPage() {
     const [materials, setMaterials] = useState<any[]>([]);
     const [units, setUnits] = useState<any[]>([]);
 
-    // State chọn nhóm lọc (Mặc định all)
     const [selectedGroup, setSelectedGroup] = useState("all");
-
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -59,10 +57,14 @@ export default function CatalogPage() {
     const [openGroupDialog, setOpenGroupDialog] = useState(false);
     const [openMatDialog, setOpenMatDialog] = useState(false);
 
-    // Edit/Delete states
+    // Edit/Delete states Material
     const [openEditDialog, setOpenEditDialog] = useState(false);
     const [openDeleteAlert, setOpenDeleteAlert] = useState(false);
     const [selectedItem, setSelectedItem] = useState<any>(null);
+
+    // ✅ State mới: Edit Group
+    const [editingGroup, setEditingGroup] = useState<any>(null);
+    const [openEditGroupDialog, setOpenEditGroupDialog] = useState(false);
 
     // Data load
     useEffect(() => {
@@ -73,7 +75,6 @@ export default function CatalogPage() {
         const [g, m, u] = await Promise.all([
             getMaterialGroups(),
             getMaterials(),
-            // ✅ 3. Gọi hàm chuẩn: Lấy danh sách 'UNIT'
             getDictionaryItems("UNIT")
         ]);
         setGroups(g);
@@ -88,7 +89,7 @@ export default function CatalogPage() {
         return matchGroup && matchSearch;
     });
 
-    // --- HANDLERS TẠO MỚI ---
+    // --- HANDLERS GROUP ---
     const handleCreateGroup = async (e: any) => {
         e.preventDefault();
         const form = new FormData(e.target);
@@ -101,6 +102,32 @@ export default function CatalogPage() {
         else toast.error(res.error);
     };
 
+    // ✅ Hàm xử lý cập nhật nhóm
+    const handleUpdateGroup = async (e: any) => {
+        e.preventDefault();
+        if (!editingGroup) return;
+        setLoading(true);
+
+        const form = new FormData(e.target);
+        const res = await updateMaterialGroupAction(editingGroup.id, {
+            code: form.get("code") as string,
+            name: form.get("name") as string,
+            description: form.get("description") as string
+        });
+
+        setLoading(false);
+        if (res.success) {
+            toast.success(res.message);
+            setOpenEditGroupDialog(false);
+            setEditingGroup(null);
+            loadData();
+        }
+        else {
+            toast.error(res.error);
+        }
+    };
+
+    // --- HANDLERS MATERIAL ---
     const handleCreateMaterial = async (e: any) => {
         e.preventDefault();
         const form = new FormData(e.target);
@@ -118,7 +145,6 @@ export default function CatalogPage() {
         else toast.error(res.error);
     };
 
-    // --- HANDLERS SỬA / XÓA ---
     const openEdit = (item: any) => {
         setSelectedItem(item);
         setOpenEditDialog(true);
@@ -188,13 +214,7 @@ export default function CatalogPage() {
                             <form onSubmit={handleCreateMaterial} className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <Label>Thuộc nhóm <span className="text-red-500">*</span></Label>
-
-                                    {/* ✅ UPDATE: Tự động điền nhóm đang chọn */}
-                                    <Select
-                                        name="group_id"
-                                        required
-                                        defaultValue={selectedGroup !== 'all' ? selectedGroup : undefined}
-                                    >
+                                    <Select name="group_id" required defaultValue={selectedGroup !== 'all' ? selectedGroup : undefined}>
                                         <SelectTrigger><SelectValue placeholder="Chọn nhóm..." /></SelectTrigger>
                                         <SelectContent>
                                             {groups.map(g => <SelectItem key={g.id} value={g.id}>{g.code} - {g.name}</SelectItem>)}
@@ -208,7 +228,6 @@ export default function CatalogPage() {
                                     <Select name="unit" required>
                                         <SelectTrigger><SelectValue placeholder="Chọn ĐVT" /></SelectTrigger>
                                         <SelectContent>
-                                            {/* Render từ units (lấy từ getDictionaryItems) */}
                                             {units.length > 0 ? (
                                                 units.map(u => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)
                                             ) : (
@@ -237,10 +256,31 @@ export default function CatalogPage() {
                         <Button variant={selectedGroup === 'all' ? "secondary" : "ghost"} className="w-full justify-start font-normal" onClick={() => setSelectedGroup('all')}>
                             <Filter className="mr-2 h-4 w-4" /> Tất cả
                         </Button>
+
                         {groups.map(g => (
-                            <Button key={g.id} variant={selectedGroup === g.id ? "secondary" : "ghost"} className="w-full justify-start font-normal" onClick={() => setSelectedGroup(g.id)}>
-                                <Folder className={`mr-2 h-4 w-4 ${selectedGroup === g.id ? "text-blue-600" : "text-slate-400"}`} /> {g.name}
-                            </Button>
+                            <div key={g.id} className={`group flex items-center justify-between w-full rounded-md hover:bg-slate-100 ${selectedGroup === g.id ? "bg-slate-100" : ""}`}>
+                                <Button
+                                    variant="ghost"
+                                    className={`flex-1 justify-start font-normal hover:bg-transparent ${selectedGroup === g.id ? "bg-transparent text-blue-600" : "text-slate-600"}`}
+                                    onClick={() => setSelectedGroup(g.id)}
+                                >
+                                    <Folder className={`mr-2 h-4 w-4 ${selectedGroup === g.id ? "text-blue-600" : "text-slate-400"}`} />
+                                    <span className="truncate">{g.name}</span>
+                                </Button>
+                                {/* ✅ Nút Sửa Nhóm (Hiện khi hover) */}
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 mr-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => {
+                                        e.stopPropagation(); // Chặn click vào nút cha
+                                        setEditingGroup(g);
+                                        setOpenEditGroupDialog(true);
+                                    }}
+                                >
+                                    <Settings className="h-3.5 w-3.5 text-slate-400 hover:text-blue-600" />
+                                </Button>
+                            </div>
                         ))}
                     </CardContent>
                 </Card>
@@ -339,6 +379,35 @@ export default function CatalogPage() {
                             <div className="col-span-2 flex justify-end gap-2 pt-4">
                                 <Button type="button" variant="outline" onClick={() => setOpenEditDialog(false)}>Hủy</Button>
                                 <Button type="submit" className="bg-blue-600" disabled={loading}>{loading ? <Loader2 className="animate-spin w-4 h-4" /> : "Lưu thay đổi"}</Button>
+                            </div>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* --- ✅ DIALOG SỬA NHÓM VẬT TƯ --- */}
+            <Dialog open={openEditGroupDialog} onOpenChange={setOpenEditGroupDialog}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Chỉnh sửa Nhóm Vật tư</DialogTitle></DialogHeader>
+                    {editingGroup && (
+                        <form onSubmit={handleUpdateGroup} className="space-y-4">
+                            <div>
+                                <Label>Mã nhóm</Label>
+                                <Input name="code" defaultValue={editingGroup.code} required />
+                            </div>
+                            <div>
+                                <Label>Tên nhóm</Label>
+                                <Input name="name" defaultValue={editingGroup.name} required />
+                            </div>
+                            <div>
+                                <Label>Mô tả</Label>
+                                <Textarea name="description" defaultValue={editingGroup.description || ""} />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <Button type="button" variant="outline" onClick={() => setOpenEditGroupDialog(false)}>Hủy</Button>
+                                <Button type="submit" className="bg-blue-600" disabled={loading}>
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu thay đổi"}
+                                </Button>
                             </div>
                         </form>
                     )}

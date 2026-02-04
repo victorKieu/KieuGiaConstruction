@@ -97,3 +97,16 @@ export async function deleteMaterialAction(id: string) {
     revalidatePath("/inventory/catalog");
     return { success: true, message: "Đã xóa vật tư!" };
 }
+
+// ✅ HÀM MỚI: Cập nhật nhóm vật tư
+export async function updateMaterialGroupAction(id: string, data: { code: string; name: string; description?: string }) {
+    const supabase = await createClient();
+    const { error } = await supabase
+        .from("material_groups")
+        .update(data)
+        .eq("id", id);
+
+    if (error) return { success: false, error: "Lỗi cập nhật: " + error.message };
+    revalidatePath("/inventory/catalog");
+    return { success: true, message: "Cập nhật nhóm thành công" };
+}
