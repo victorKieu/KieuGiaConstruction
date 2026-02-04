@@ -44,7 +44,6 @@ import QuotationPageClient from "./quotation/page-client";
 import BOQMapper from "@/components/estimation/BOQMapper";
 import ProjectLegalTab from "@/components/projects/tab/ProjectLegalTab";
 import ProjectEstimationTab from "@/components/projects/tab/ProjectEstimationTab";
-
 import {
     Clock, Banknote, TrendingUp, Briefcase, FileText, Activity, Wallet,
     MapPin, Coins, Package, Scale
@@ -352,7 +351,7 @@ export default async function ProjectPage({ params }: PageProps) {
                 {/* Các Tabs khác giữ nguyên */}
                 <TabsContent value="legal"><div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]"><ProjectLegalTab project={project} docs={legalDocs} /></div></TabsContent>
                 <TabsContent value="execution"><div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]"><ProjectTabs projectId={id} project={project} members={members} documents={documents} financeStats={{ totalRevenue, totalCost, actualReceived, remainingDebt, overdueCount: project.overdue_count || 0, profit, profitMargin: 0 }} milestones={milestones} tasks={tasks} dictionaries={dictionaries} surveys={surveys} surveyTemplates={surveyTemplates} surveyTaskTemplates={surveyTaskTemplates} allEmployees={allEmployees} roles={roles} isManager={permissions.canAddMember} currentUserId={session.entityId || ""} taskFeed={taskFeedOutput} membersCount={members.length} documentsCount={documents.length} logs={constructionLogs} /></div></TabsContent>
-                <TabsContent value="cost_management"><ProjectEstimationTab projectId={id} /> </TabsContent>
+                <TabsContent value="cost_management"><BOQMapper projectId={id} items={estimates} qtoData={qtoData} normData={normData} budgetData={budgetData} /></TabsContent>
                 <TabsContent value="material_request">
                     <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <MaterialRequestManager

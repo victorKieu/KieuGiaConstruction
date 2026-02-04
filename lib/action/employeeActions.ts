@@ -53,24 +53,6 @@ async function deleteOldAvatar(url: string | null) {
     }
 }
 
-export async function uploadAvatar(file: File) {
-    const supabase = await createSupabaseServerClient();
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${uuidv4()}.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, file);
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(fileName);
-
-    return publicUrl;
-}
-
 // --- 2. TRUY VẤN DỮ LIỆU (QUERIES) ---
 
 /**

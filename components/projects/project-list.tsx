@@ -18,17 +18,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { deleteProject } from "@/lib/action/projectActions"
 import { formatCurrency, formatDate } from "@/lib/utils/utils"
-import type { ProjectData } from "@/types/project"
-
-interface ProjectWithExtras extends ProjectData {
-    project_code?: string | null;
-    total_contract_value?: number;
-    total_income?: number;
-    total_expenses?: number;
-    task_count?: number;
-    members_list?: any[];
-    status_data?: { id: string; name: string; color: string; code?: string } | any;
-}
+//import type { ProjectData } from "@/types/project"
+import type { ProjectWithExtras } from "@/types/project";
 
 interface ProjectListProps {
     projects: ProjectWithExtras[];

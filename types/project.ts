@@ -334,3 +334,12 @@ export interface EstimationItem {
     is_mapped?: boolean;
     section_name?: string;
 }
+export interface ProjectWithExtras extends ProjectData {
+    project_code?: string | null;
+    total_contract_value?: number;
+    total_income?: number;
+    total_expenses?: number;
+    task_count?: number;
+    members_list?: any[];
+    status_data?: { id: string; name: string; color: string; code?: string } | any;
+}

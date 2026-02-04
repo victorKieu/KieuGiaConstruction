@@ -256,33 +256,6 @@ export async function removeProjectMember(projectId: string, employeeId: string)
     return { success: true, message: "Đã xóa thành viên" };
 }
 
-export async function getProjectFinance(projectId: string): Promise<ActionFetchResult<FinanceData>> {
-    if (!isValidUUID(projectId)) return { data: null, error: { message: "Invalid ID", code: "400" } };
-    const supabase = await createSupabaseServerClient();
-
-    const { data, error } = await supabase
-        .from("project_finance")
-        .select(`id, budget, spent, remaining, updated_at, allocation:finance_allocation ( * )`)
-        .eq("project_id", projectId)
-        .maybeSingle();
-
-    if (error) return { data: null, error: { message: error.message, code: error.code } };
-    if (!data) return { data: null, error: null };
-
-    const rawAlloc = Array.isArray(data.allocation) ? data.allocation[0] : data.allocation;
-    const allocation = {
-        materials: rawAlloc?.materials || 0,
-        labor: rawAlloc?.labor || 0,
-        equipment: rawAlloc?.equipment || 0,
-        others: rawAlloc?.others || 0,
-    };
-
-    return {
-        data: { ...data, allocation } as FinanceData,
-        error: null
-    };
-}
-
 export async function getProjectMilestones(projectId: string): Promise<ActionFetchResult<MilestoneData[]>> {
     if (!isValidUUID(projectId)) return { data: null, error: { message: "Invalid ID", code: "400" } };
     const supabase = await createSupabaseServerClient();
