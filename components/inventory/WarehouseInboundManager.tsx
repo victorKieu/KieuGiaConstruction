@@ -1,15 +1,15 @@
 "use client";
 
-import React from "react";
+//import React from "react";
 import { format } from "date-fns";
-import { vi } from "date-fns/locale";
+//import { vi } from "date-fns/locale";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Truck, AlertCircle, PackageSearch, ArrowRight } from "lucide-react";
+import { Truck, AlertCircle, PackageSearch } from "lucide-react";
 
 // Import Dialog nhập kho (Xem code ở phần 2 dưới đây)
 import GoodsReceiptDialog from "@/components/inventory/GoodsReceiptDialog";

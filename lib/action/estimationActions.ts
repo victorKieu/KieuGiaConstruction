@@ -149,3 +149,25 @@ export async function deleteEstimationItem(itemId: string, projectId: string) {
     revalidatePath(`/projects/${projectId}`);
     return { success: true, message: "Đã xóa đầu mục thành công." };
 }
+
+// ✅ HÀM MỚI: Thêm dòng thủ công
+export async function createManualEstimationItem(projectId: string, data: any) {
+    const supabase = await createClient();
+
+    const newItem = {
+        project_id: projectId,
+        original_name: data.name,
+        unit: data.unit,
+        quantity: parseFloat(data.quantity) || 0,
+        unit_price: parseFloat(data.unit_price) || 0,
+        // ❌ ĐÃ XÓA: total_cost (DB tự tính)
+        is_mapped: false
+    };
+
+    const { error } = await supabase.from("estimation_items").insert(newItem);
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true, message: "Đã thêm mới thành công!" };
+}

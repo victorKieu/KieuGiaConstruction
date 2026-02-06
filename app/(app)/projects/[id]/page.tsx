@@ -41,9 +41,12 @@ import ProgressBar from "@/components/ui/ProgressBar";
 import { Badge } from "@/components/ui/badge";
 import MaterialRequestManager from "@/components/projects/requests/MaterialRequestManager";
 import QuotationPageClient from "./quotation/page-client";
-import BOQMapper from "@/components/estimation/BOQMapper";
-import ProjectLegalTab from "@/components/projects/tab/ProjectLegalTab";
+
+// ❌ ĐÃ XÓA: import BOQMapper from "@/components/estimation/BOQMapper";
+// ✅ THÊM: Import component mới
 import ProjectEstimationTab from "@/components/projects/tab/ProjectEstimationTab";
+import ProjectLegalTab from "@/components/projects/tab/ProjectLegalTab";
+
 import {
     Clock, Banknote, TrendingUp, Briefcase, FileText, Activity, Wallet,
     MapPin, Coins, Package, Scale
@@ -161,10 +164,12 @@ export default async function ProjectPage({ params }: PageProps) {
     const surveyTaskTemplates = (surveyTaskTemplatesRes as any)?.data || [];
     const roles = Array.isArray(rolesRes) ? rolesRes : ((rolesRes as any)?.data || []);
     const allEmployees = (employeesRes as any)?.employees || [];
-    const estimates = (estimateRes as any)?.data || [];
-    const qtoData = Array.isArray(qtoItems) ? qtoItems : [];
-    const normData = Array.isArray(norms) ? norms : [];
-    const budgetData = Array.isArray(budgetRes) ? budgetRes : [];
+
+    // const estimates = (estimateRes as any)?.data || []; // Không cần truyền nữa
+    // const qtoData = Array.isArray(qtoItems) ? qtoItems : []; // Không cần truyền nữa
+    // const normData = Array.isArray(norms) ? norms : []; // Không cần truyền nữa
+    // const budgetData = Array.isArray(budgetRes) ? budgetRes : []; // Không cần truyền nữa
+
     const legalDocs = Array.isArray(legalDocsRes) ? legalDocsRes : [];
     const constructionLogs = Array.isArray(constructionLogsRes) ? constructionLogsRes : [];
 
@@ -348,10 +353,15 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
-                {/* Các Tabs khác giữ nguyên */}
+                {/* Các Tabs khác */}
                 <TabsContent value="legal"><div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]"><ProjectLegalTab project={project} docs={legalDocs} /></div></TabsContent>
                 <TabsContent value="execution"><div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]"><ProjectTabs projectId={id} project={project} members={members} documents={documents} financeStats={{ totalRevenue, totalCost, actualReceived, remainingDebt, overdueCount: project.overdue_count || 0, profit, profitMargin: 0 }} milestones={milestones} tasks={tasks} dictionaries={dictionaries} surveys={surveys} surveyTemplates={surveyTemplates} surveyTaskTemplates={surveyTaskTemplates} allEmployees={allEmployees} roles={roles} isManager={permissions.canAddMember} currentUserId={session.entityId || ""} taskFeed={taskFeedOutput} membersCount={members.length} documentsCount={documents.length} logs={constructionLogs} /></div></TabsContent>
-                <TabsContent value="cost_management"><BOQMapper projectId={id} items={estimates} qtoData={qtoData} normData={normData} budgetData={budgetData} /></TabsContent>
+
+                {/* ✅ ĐÃ SỬA: Thay thế BOQMapper bằng ProjectEstimationTab */}
+                <TabsContent value="cost_management">
+                    <ProjectEstimationTab projectId={id} />
+                </TabsContent>
+
                 <TabsContent value="material_request">
                     <div className="bg-white p-2 md:p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]">
                         <MaterialRequestManager
@@ -361,7 +371,8 @@ export default async function ProjectPage({ params }: PageProps) {
                             projectStatus={project.status_data?.code || "INITIAL"}
                         />
                     </div>
-                </TabsContent>                <TabsContent value="quotation"><div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]"><QuotationPageClient projectId={id} project={project} quotations={quotations} contracts={contracts} /></div></TabsContent>
+                </TabsContent>
+                <TabsContent value="quotation"><div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 min-h-[500px]"><QuotationPageClient projectId={id} project={project} quotations={quotations} contracts={contracts} /></div></TabsContent>
             </Tabs>
         </div>
     );
