@@ -4,78 +4,90 @@
 
 @layer base {
     :root {
-        --background: 0 0% 100%; /* Màu nền chính - thường là trắng */
-        --foreground: 222.2 47.4% 11.2%; /* Màu chữ chính - thường là đen/xám đậm */
-
-        --card: 0 0% 100%; /* Màu nền của Card */
-        --card-foreground: 222.2 47.4% 11.2%; /* Màu chữ của Card */
-
+        /* --- LIGHT MODE --- */
+        --background: 0 0% 100%; /* Trắng tinh */
+        --foreground: 222.2 84% 4.9%; /* Đen Slate */
+        /* Card & Popover: Nền trắng, chữ đen */
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
         --popover: 0 0% 100%;
-        --popover-foreground: 222.2 47.4% 11.2%;
-        /* === Các biến cần kiểm tra và điều chỉnh === */
-        --primary: 222.2 47.4% 11.2%;
-        --primary-foreground: 210 20% 98%;
+        --popover-foreground: 222.2 84% 4.9%;
+        /* Primary: Màu chủ đạo (Xanh Blue) */
+        --primary: 221.2 83.2% 53.3%;
+        --primary-foreground: 210 40% 98%;
+        /* Secondary: Màu phụ (Xám rất nhạt) */
         --secondary: 210 40% 96.1%;
         --secondary-foreground: 222.2 47.4% 11.2%;
-        --muted: 210 40% 96.1%; /* Màu nền phụ, ví dụ cho thanh tìm kiếm */
-        --muted-foreground: 215.4 16.3% 46.9%; /* Màu chữ/placeholder phụ */
-
+        /* Muted: Màu làm nền cho các thành phần phụ */
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+        /* Accent: Màu khi hover vào dropdown/menu */
         --accent: 210 40% 96.1%;
         --accent-foreground: 222.2 47.4% 11.2%;
+        /* Destructive: Màu đỏ cảnh báo */
         --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 210 20% 98%;
-        --border: 214.3 31.8% 91.4%; /* Màu đường viền */
-        --input: 214.3 31.8% 91.4%; /* MÀU NỀN CỦA INPUT (Cần nhìn thấy) */
-        --ring: 222.2 47.4% 11.2%;
+        --destructive-foreground: 210 40% 98%;
+        /* Border & Input: Màu viền xám nhạt */
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 221.2 83.2% 53.3%;
         --radius: 0.5rem;
-        /* Sidebar colors */
-        --sidebar-background: 222 47% 98%; /* #f8fafc - rất sáng */
-        --sidebar-foreground: 222 47% 13%; /* #1e293b - chữ */
-        --sidebar-border: 213 27% 84%; /* #e2e8f0 - border */
-        --sidebar-accent: 215 20% 96%; /* #e0e7ef - hover/active */
-        /* Sidebar dimensions */
+        /* Sidebar Light */
+        --sidebar-background: 222 47% 98%;
+        --sidebar-foreground: 222 47% 13%;
+        --sidebar-border: 213 27% 84%;
+        --sidebar-accent: 215 20% 96%;
         --sidebar-width: 240px;
         --sidebar-collapsed-width: 64px;
     }
 
     .dark {
-        --background: 222.2 47.4% 11.2%; /* Đảm bảo màu tối hơn cho nền */
-        --foreground: 210 20% 98%;
-        --card: 222.2 47.4% 11.2%;
-        --card-foreground: 210 20% 98%;
-        --popover: 222.2 47.4% 11.2%;
-        --popover-foreground: 210 20% 98%;
-        --primary: 210 20% 98%;
+        /* --- DARK MODE --- */
+        --background: 222.2 84% 4.9%; /* Slate-950 (Nền tối thẫm) */
+        --foreground: 210 40% 98%; /* Slate-50 (Chữ trắng) */
+        /* Card: Nền tối trùng background (để tránh bị khối trắng) */
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222.2 84% 4.9%;
+        --popover-foreground: 210 40% 98%;
+        /* Primary: Xanh sáng hơn để nổi bật trên nền tối */
+        --primary: 217.2 91.2% 59.8%;
         --primary-foreground: 222.2 47.4% 11.2%;
+        /* Secondary: Xám tối (Slate-800) */
         --secondary: 217.2 32.6% 17.5%;
-        --secondary-foreground: 210 20% 98%;
+        --secondary-foreground: 210 40% 98%;
+        /* Muted: Xám tối dùng cho nền phụ */
         --muted: 217.2 32.6% 17.5%;
-        --muted-foreground: 215 20.2% 65.1%; /* Màu chữ/placeholder phụ trong dark mode */
-
+        --muted-foreground: 215 20.2% 65.1%;
+        /* Accent: Màu hover trong dark mode */
         --accent: 217.2 32.6% 17.5%;
-        --accent-foreground: 210 20% 98%;
+        --accent-foreground: 210 40% 98%;
+        /* Destructive: Đỏ tối hơn */
         --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 210 20% 98%;
+        --destructive-foreground: 210 40% 98%;
+        /* Border & Input: Viền tối màu (Slate-800) */
         --border: 217.2 32.6% 17.5%;
-        --input: 217.2 32.6% 17.5%; /* MÀU NỀN CỦA INPUT trong dark mode */
-        --ring: 210 20% 98%;
-        --sidebar-background: 222 47% 11%; /* #181e2a - tối */
-        --sidebar-foreground: 220 13% 91%; /* #f1f5f9 - chữ sáng */
-        --sidebar-border: 222 47% 18%; /* #334155 - border tối */
-        --sidebar-accent: 215 28% 17%; /* #232b39 - hover/active dark */
+        --input: 217.2 32.6% 17.5%;
+        --ring: 212.7 26.8% 83.9%;
+        /* Sidebar Dark */
+        --sidebar-background: 222 47% 11%;
+        --sidebar-foreground: 220 13% 91%;
+        --sidebar-border: 222 47% 18%;
+        --sidebar-accent: 215 28% 17%;
     }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
 }
 
-/* Sidebar styles */
+/* Sidebar styles - Giữ nguyên logic của bạn */
 .bg-sidebar {
     background-color: hsl(var(--sidebar-background));
 }
@@ -92,27 +104,23 @@
     color: hsl(var(--sidebar-foreground));
 }
 
-.bg-gold {
-  background-color: hsl(var(--gold));
-}
-
-/* Scrollbar styles */
+/* Scrollbar styles - Giữ nguyên */
 .scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
+    width: 6px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+    background-color: rgba(156, 163, 175, 0.5); /* Tăng độ rõ của scrollbar */
+    border-radius: 3px;
 }
 
-.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-}
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(156, 163, 175, 0.8);
+    }
 
 /* Ensure full height for app */
 html, body {

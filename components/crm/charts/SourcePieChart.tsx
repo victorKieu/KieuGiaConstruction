@@ -19,10 +19,12 @@ export function SourcePieChart({ data }: SourcePieChartProps) {
     const chartData = data || [];
 
     return (
+        // Card tự động dùng bg-card text-card-foreground nhờ globals.css
         <Card className="flex flex-col h-full shadow-sm">
             <CardHeader className="items-center pb-2">
                 <CardTitle className="text-sm font-medium flex gap-2">
-                    <PieChartIcon className="h-4 w-4 text-blue-600" /> Nguồn Khách hàng
+                    {/* ✅ FIX: Icon màu xanh sáng hơn trong dark mode */}
+                    <PieChartIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Nguồn Khách hàng
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 pb-0">
@@ -45,18 +47,31 @@ export function SourcePieChart({ data }: SourcePieChartProps) {
                                     paddingAngle={2}
                                 >
                                     {chartData.map((entry, index) => (
+                                        // Cell giữ nguyên fill từ props (màu sắc biểu đồ thường không cần đổi theo theme)
                                         <Cell key={`cell-${index}`} fill={entry.fill} strokeWidth={0} />
                                     ))}
                                 </Pie>
+
+                                {/* ✅ FIX: Tooltip dùng biến màu hệ thống để tự đổi màu nền/chữ */}
                                 <Tooltip
                                     formatter={(value: number) => [value, "Khách hàng"]}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                                    contentStyle={{
+                                        backgroundColor: 'hsl(var(--card))',
+                                        borderColor: 'hsl(var(--border))',
+                                        color: 'hsl(var(--foreground))',
+                                        borderRadius: '8px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+                                    }}
+                                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                                 />
+
                                 <Legend
                                     verticalAlign="bottom"
                                     height={36}
                                     iconType="circle"
-                                    formatter={(value) => <span className="text-xs text-slate-600 ml-1">{value}</span>}
+                                    // ✅ FIX: Text chú thích dùng text-muted-foreground thay vì slate-600
+                                    formatter={(value) => <span className="text-xs text-muted-foreground ml-1">{value}</span>}
                                 />
                             </PieChart>
                         </ResponsiveContainer>

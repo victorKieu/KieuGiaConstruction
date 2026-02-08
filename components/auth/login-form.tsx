@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react"; // Thêm AlertCircle cho icon lỗi
+import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { BiometricAuth } from "./biometric-auth";
-import { toast } from "sonner"; // Thêm toast để thông báo nổi
+import { toast } from "sonner";
 
 export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [email, setEmail] = useState("");
@@ -23,7 +23,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const { signIn } = useAuth();
     const router = useRouter();
 
-    // Load email đã lưu
     useEffect(() => {
         const savedEmail = localStorage.getItem("biometric_auth_email");
         if (savedEmail) {
@@ -39,9 +38,8 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        setErrorMessage(null); // Reset lỗi cũ
+        setErrorMessage(null);
 
-        // 1. Validate Client-side
         if (!validateEmail(email)) {
             setErrorMessage("Email không đúng định dạng.");
             setIsLoading(false);
@@ -55,29 +53,24 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
         }
 
         try {
-            // 2. Gọi hàm đăng nhập
             await signIn(email, password);
 
-            // 3. Xử lý Remember Me
             if (rememberMe) {
                 localStorage.setItem("biometric_auth_email", email);
             } else {
                 localStorage.removeItem("biometric_auth_email");
             }
 
-            // 4. Thông báo thành công
             toast.success("Đăng nhập thành công!");
 
-            // 5. Redirect (Thêm delay nhỏ để cookie kịp set)
             setTimeout(() => {
                 router.push("/dashboard");
-                router.refresh(); // Refresh để cập nhật Server Components
+                router.refresh();
             }, 500);
 
         } catch (error: any) {
             console.error("Login Error:", error);
 
-            // 6. ✅ FIX: Dịch lỗi sang tiếng Việt
             let message = "Đăng nhập không thành công. Vui lòng thử lại.";
             const rawMsg = error.message || error.toString();
 
@@ -90,7 +83,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
             }
 
             setErrorMessage(message);
-            toast.error(message); // Hiện popup lỗi luôn cho chắc
+            toast.error(message);
         } finally {
             setIsLoading(false);
         }
@@ -103,9 +96,9 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
     return (
         <div className="space-y-6">
-            {/* Hiển thị lỗi màu đỏ nếu có */}
+            {/* Hiển thị lỗi */}
             {errorMessage && (
-                <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md animate-in fade-in slide-in-from-top-1">
+                <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md animate-in fade-in slide-in-from-top-1 dark:bg-red-900/20 dark:border-red-900 dark:text-red-400">
                     <AlertCircle className="w-4 h-4" />
                     <span>{errorMessage}</span>
                 </div>
@@ -123,7 +116,8 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={isLoading}
-                        className="bg-white"
+                        // ✅ FIX: Đổi bg-white thành bg-background
+                        className="bg-background"
                     />
                 </div>
 
@@ -131,7 +125,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <Label htmlFor="password">Mật khẩu</Label>
-                        <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+                        <Link href="/forgot-password" className="text-sm text-blue-600 hover:underline dark:text-blue-400">
                             Quên mật khẩu?
                         </Link>
                     </div>
@@ -146,14 +140,15 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                             required
                             disabled={isLoading}
                             autoComplete="current-password"
-                            className="pr-10 bg-white" // Thêm padding phải để không đè icon
+                            // ✅ FIX: Đổi bg-white thành bg-background
+                            className="pr-10 bg-background"
                         />
                         <button
                             type="button"
                             onClick={() => setShowPassword(prev => !prev)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors dark:hover:text-gray-300"
                             aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                            tabIndex={-1} // Không focus vào nút này khi tab
+                            tabIndex={-1}
                         >
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -181,7 +176,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
             {/* Biometric cho Mobile */}
             {isMobile && (
-                <div className="pt-2 border-t mt-4">
+                <div className="pt-2 border-t mt-4 border-border">
                     <BiometricAuth email={email} onSuccess={handleBiometricSuccess} />
                 </div>
             )}
