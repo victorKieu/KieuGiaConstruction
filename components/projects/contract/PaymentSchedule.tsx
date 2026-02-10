@@ -27,7 +27,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
 
     // State cho dòng thêm mới
     const [newName, setNewName] = useState("");
-    const [newPercent, setNewPercent] = useState<string>(""); // Dùng string để dễ nhập liệu
+    const [newPercent, setNewPercent] = useState<string>("");
     const [newAmount, setNewAmount] = useState<string>("");
     const [newDueDate, setNewDueDate] = useState("");
 
@@ -65,7 +65,6 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
         const amount = parseFloat(val);
         if (!isNaN(amount) && contractValue > 0) {
             const calculatedPercent = (amount / contractValue) * 100;
-            // Làm tròn 2 số thập phân cho đẹp
             setNewPercent(Math.round(calculatedPercent * 100) / 100 + "");
         } else {
             setNewPercent("");
@@ -90,7 +89,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                 setNewPercent("");
                 setNewAmount("");
                 setNewDueDate("");
-                loadData(); // Reload lại list
+                loadData();
             } else {
                 alert(res.error);
             }
@@ -122,18 +121,24 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
-                <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 text-slate-500" />
+                {/* ✅ FIX: text-slate-700 -> text-foreground */}
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    {/* ✅ FIX: text-slate-500 -> text-muted-foreground */}
+                    <RefreshCw className="w-4 h-4 text-muted-foreground" />
                     Tiến độ thanh toán
                 </h3>
-                <div className="text-xs text-slate-500">
-                    Giá trị HĐ: <span className="font-bold text-blue-600">{formatCurrency(contractValue)}</span>
+                {/* ✅ FIX: text-slate-500 -> text-muted-foreground */}
+                <div className="text-xs text-muted-foreground">
+                    {/* ✅ FIX: text-blue-600 -> dark:text-blue-400 */}
+                    Giá trị HĐ: <span className="font-bold text-blue-600 dark:text-blue-400">{formatCurrency(contractValue)}</span>
                 </div>
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
+            {/* ✅ FIX: border -> border-border */}
+            <div className="border border-border rounded-lg overflow-hidden">
                 <Table>
-                    <TableHeader className="bg-slate-50">
+                    {/* ✅ FIX: bg-slate-50 -> bg-muted/50 */}
+                    <TableHeader className="bg-muted/50">
                         <TableRow>
                             <TableHead className="w-[50px] text-center">TT</TableHead>
                             <TableHead>Nội dung đợt</TableHead>
@@ -146,14 +151,15 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={7} className="text-center py-4">Đang tải...</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">Đang tải...</TableCell></TableRow>
                         ) : milestones.map((item, index) => (
-                            <TableRow key={item.id} className="hover:bg-slate-50">
-                                <TableCell className="text-center">{index + 1}</TableCell>
-                                <TableCell className="font-medium">{item.name}</TableCell>
-                                <TableCell className="text-right">{item.percentage}%</TableCell>
-                                <TableCell className="text-right font-semibold">{formatCurrency(item.amount)}</TableCell>
-                                <TableCell>
+                            // ✅ FIX: hover:bg-slate-50 -> hover:bg-muted/50
+                            <TableRow key={item.id} className="hover:bg-muted/50">
+                                <TableCell className="text-center text-muted-foreground">{index + 1}</TableCell>
+                                <TableCell className="font-medium text-foreground">{item.name}</TableCell>
+                                <TableCell className="text-right text-muted-foreground">{item.percentage}%</TableCell>
+                                <TableCell className="text-right font-semibold text-foreground">{formatCurrency(item.amount)}</TableCell>
+                                <TableCell className="text-muted-foreground">
                                     {item.due_date ? new Date(item.due_date).toLocaleDateString('vi-VN') : '-'}
                                 </TableCell>
                                 <TableCell className="text-center">
@@ -163,29 +169,33 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                                         title="Bấm để đổi trạng thái"
                                     >
                                         {item.is_paid
-                                            ? <Badge className="bg-green-600 hover:bg-green-700"><CheckCircle className="w-3 h-3 mr-1" /> Đã thu</Badge>
-                                            : <Badge variant="outline" className="text-slate-500 hover:bg-slate-100"><Circle className="w-3 h-3 mr-1" /> Chưa thu</Badge>
+                                            ? <Badge className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="w-3 h-3 mr-1" /> Đã thu</Badge>
+                                            // ✅ FIX: Badge style for dark mode
+                                            : <Badge variant="outline" className="text-muted-foreground hover:bg-muted border-border"><Circle className="w-3 h-3 mr-1" /> Chưa thu</Badge>
                                         }
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)} className="h-8 w-8 text-red-400 hover:text-red-600">
+                                    {/* ✅ FIX: Hover colors */}
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)} className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
                                         <Trash2 className="w-4 h-4" />
                                     </Button>
                                 </TableCell>
                             </TableRow>
                         ))}
 
-                        {/* Dòng Tổng cộng */}
-                        <TableRow className="bg-slate-50 font-bold border-t-2">
-                            <TableCell colSpan={2} className="text-right">Tổng cộng:</TableCell>
-                            <TableCell className={`text-right ${totalPercent > 100 ? 'text-red-600' : 'text-slate-700'}`}>
+                        {/* Dòng Tổng cộng - ✅ FIX: bg-slate-50 -> bg-muted/50, border colors */}
+                        <TableRow className="bg-muted/50 font-bold border-t-2 border-border">
+                            <TableCell colSpan={2} className="text-right text-foreground">Tổng cộng:</TableCell>
+                            {/* ✅ FIX: text-red-600 -> dark:text-red-400 */}
+                            <TableCell className={`text-right ${totalPercent > 100 ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
                                 {totalPercent}%
                             </TableCell>
-                            <TableCell className={`text-right ${totalAmount > contractValue ? 'text-red-600' : 'text-slate-700'}`}>
+                            <TableCell className={`text-right ${totalAmount > contractValue ? 'text-red-600 dark:text-red-400' : 'text-foreground'}`}>
                                 {formatCurrency(totalAmount)}
                             </TableCell>
-                            <TableCell colSpan={3} className="text-xs text-slate-500 font-normal italic">
+                            {/* ✅ FIX: text-slate-500 -> text-muted-foreground */}
+                            <TableCell colSpan={3} className="text-xs text-muted-foreground font-normal italic">
                                 {remainingAmount > 0
                                     ? `(Còn lại: ${formatCurrency(remainingAmount)})`
                                     : remainingAmount < 0
@@ -195,15 +205,16 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                             </TableCell>
                         </TableRow>
 
-                        {/* Form thêm mới */}
-                        <TableRow className="bg-blue-50/50">
-                            <TableCell className="text-center"><Plus className="w-4 h-4 text-blue-500 mx-auto" /></TableCell>
+                        {/* Form thêm mới - ✅ FIX: bg-blue-50/50 -> dark:bg-blue-900/10 */}
+                        <TableRow className="bg-blue-50/50 dark:bg-blue-900/10">
+                            <TableCell className="text-center"><Plus className="w-4 h-4 text-blue-500 dark:text-blue-400 mx-auto" /></TableCell>
                             <TableCell>
                                 <Input
                                     placeholder="Tên đợt (VD: Tạm ứng...)"
                                     value={newName}
                                     onChange={(e) => setNewName(e.target.value)}
-                                    className="h-8 text-sm border-blue-200 focus-visible:ring-blue-400"
+                                    // ✅ FIX: Input colors for dark mode
+                                    className="h-8 text-sm border-blue-200 dark:border-blue-800 bg-background focus-visible:ring-blue-400"
                                 />
                             </TableCell>
                             <TableCell>
@@ -212,7 +223,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                                     placeholder="%"
                                     value={newPercent}
                                     onChange={(e) => handlePercentChange(e.target.value)}
-                                    className="h-8 text-sm text-right border-blue-200 focus-visible:ring-blue-400"
+                                    className="h-8 text-sm text-right border-blue-200 dark:border-blue-800 bg-background focus-visible:ring-blue-400"
                                 />
                             </TableCell>
                             <TableCell>
@@ -221,7 +232,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                                     placeholder="Số tiền"
                                     value={newAmount}
                                     onChange={(e) => handleAmountChange(e.target.value)}
-                                    className="h-8 text-sm text-right border-blue-200 focus-visible:ring-blue-400 font-semibold"
+                                    className="h-8 text-sm text-right border-blue-200 dark:border-blue-800 bg-background focus-visible:ring-blue-400 font-semibold"
                                 />
                             </TableCell>
                             <TableCell>
@@ -229,7 +240,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                                     type="date"
                                     value={newDueDate}
                                     onChange={(e) => setNewDueDate(e.target.value)}
-                                    className="h-8 text-sm border-blue-200 focus-visible:ring-blue-400"
+                                    className="h-8 text-sm border-blue-200 dark:border-blue-800 bg-background focus-visible:ring-blue-400"
                                 />
                             </TableCell>
                             <TableCell colSpan={2} className="text-right">
@@ -237,7 +248,7 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                                     size="sm"
                                     onClick={handleAdd}
                                     disabled={isPending || !newName || !newAmount}
-                                    className="bg-blue-600 hover:bg-blue-700 h-8 shadow-sm w-full"
+                                    className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 h-8 shadow-sm w-full text-white"
                                 >
                                     {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Thêm"}
                                 </Button>
@@ -247,7 +258,8 @@ export default function PaymentSchedule({ contractId, contractValue, projectId }
                 </Table>
             </div>
 
-            <p className="text-[11px] text-slate-400 italic">
+            {/* ✅ FIX: text-slate-400 -> text-muted-foreground */}
+            <p className="text-[11px] text-muted-foreground italic">
                 * Nhập % sẽ tự tính tiền và ngược lại. Tổng giá trị các đợt nên bằng 100% giá trị hợp đồng.
             </p>
         </div>

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     Plus, Trash2, FileText, Calendar, User, ShoppingCart, Package,
     AlertTriangle, CheckSquare, Truck, Loader2, Check, ChevronsUpDown, X,
-    Lock, AlertCircle // ✅ Thêm icon mới
+    Lock, AlertCircle
 } from "lucide-react";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
@@ -37,7 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 interface MaterialRequestManagerProps {
     projectId: string;
     requests: any[];
-    projectStatus: string; // ✅ Đã có
+    projectStatus: string;
 }
 
 function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
@@ -46,7 +46,7 @@ function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
     return (
         <Popover open={open} onOpenChange={setOpen} modal={true}>
             <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" aria-expanded={open} type="button" className={cn("w-full justify-between font-normal text-left px-3 h-9", !value && "text-muted-foreground")}>
+                <Button variant="outline" role="combobox" aria-expanded={open} type="button" className={cn("w-full justify-between font-normal text-left px-3 h-9 bg-background", !value && "text-muted-foreground")}>
                     <span className="truncate">{selectedItem ? selectedItem.name : (value || "Chọn vật tư...")}</span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -63,9 +63,9 @@ function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
                                     <div className="flex flex-col w-full">
                                         <div className="flex justify-between">
                                             <span className="font-medium">{item.name}</span>
-                                            {item.budget > 0 && <span className="text-[10px] bg-blue-50 text-blue-600 px-1 rounded">Max: {item.budget}</span>}
+                                            {item.budget > 0 && <span className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-1 rounded">Max: {item.budget}</span>}
                                         </div>
-                                        <span className="text-[10px] text-slate-400">ĐVT: {item.unit}</span>
+                                        <span className="text-[10px] text-muted-foreground">ĐVT: {item.unit}</span>
                                     </div>
                                 </CommandItem>
                             ))}
@@ -108,7 +108,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
     const [items, setItems] = useState<any[]>([{ item_name: "", unit: "", quantity: 1, notes: "" }]);
 
-    // ✅ LOGIC CHECK TRẠNG THÁI DỰ ÁN
     const isActive = ['in_progress', 'execution', 'construction'].includes(projectStatus?.toLowerCase());
     const isPaused = ['paused', 'suspended', 'on_hold'].includes(projectStatus?.toLowerCase());
 
@@ -234,60 +233,70 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
     };
 
     const PriorityBadge = ({ p }: { p: string }) => {
-        const map: any = { normal: "bg-blue-100 text-blue-700", urgent: "bg-red-100 text-red-700" };
+        const map: any = {
+            normal: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+            urgent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+        };
         return <Badge variant="outline" className={map[p] || map.normal}>{p}</Badge>;
     };
 
     return (
         <div className="space-y-6">
 
-            {/* 1. HEADER & CONTROL */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-lg border shadow-sm">
+            {/* 1. HEADER & CONTROL - ✅ FIX: bg-white -> bg-card */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card p-4 rounded-lg border border-border shadow-sm">
                 <div>
-                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                        <ShoppingCart className="w-5 h-5 text-blue-600" /> Đề xuất Vật tư
+                    {/* ✅ FIX: text-slate-800 -> text-foreground */}
+                    <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                        <ShoppingCart className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Đề xuất Vật tư
                     </h3>
-                    <p className="text-sm text-slate-500">Quản lý các yêu cầu cấp vật tư từ công trường</p>
+                    {/* ✅ FIX: text-slate-500 -> text-muted-foreground */}
+                    <p className="text-sm text-muted-foreground">Quản lý các yêu cầu cấp vật tư từ công trường</p>
                 </div>
 
-                {/* ✅ LOGIC KHÓA NÚT TẠO MỚI */}
+                {/* LOGIC KHÓA NÚT TẠO MỚI */}
                 {isActive ? (
                     <Dialog open={open} onOpenChange={setOpen}>
                         <DialogTrigger asChild>
-                            <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm" onClick={handleOpenCreate}>
+                            <Button className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white shadow-sm" onClick={handleOpenCreate}>
                                 <Plus className="w-4 h-4 mr-2" /> Tạo Đề xuất
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
                             <DialogHeader><DialogTitle>Tạo phiếu yêu cầu vật tư mới</DialogTitle></DialogHeader>
                             <div className="grid gap-6 py-4">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border">
-                                    <div className="space-y-2"><Label>Mã phiếu <span className="text-red-500">*</span></Label><Input value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} /></div>
-                                    <div className="space-y-2"><Label>Ngày yêu cầu <span className="text-red-500">*</span></Label><Input type="date" value={formData.request_date} onChange={e => setFormData({ ...formData, request_date: e.target.value })} /></div>
-                                    <div className="space-y-2"><Label>Cần hàng trước ngày</Label><Input type="date" value={formData.deadline_date} onChange={e => setFormData({ ...formData, deadline_date: e.target.value })} /></div>
-                                    <div className="space-y-2"><Label>Người yêu cầu</Label><Input value={currentUser.name} readOnly className="bg-slate-100 font-bold text-slate-700 cursor-not-allowed" /></div>
-                                    <div className="space-y-2"><Label>Độ ưu tiên</Label><Select defaultValue="normal" onValueChange={(val) => setFormData({ ...formData, priority: val })}><SelectTrigger className="bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Thấp</SelectItem><SelectItem value="normal">Bình thường</SelectItem><SelectItem value="high">Cao</SelectItem><SelectItem value="urgent">Khẩn cấp</SelectItem></SelectContent></Select></div>
-                                    <div className="space-y-2"><Label>Ghi chú chung</Label><Input value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} /></div>
+                                {/* ✅ FIX: bg-slate-50 -> bg-muted/50 */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-muted/50 p-4 rounded-lg border">
+                                    <div className="space-y-2"><Label>Mã phiếu <span className="text-red-500">*</span></Label><Input value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className="bg-background" /></div>
+                                    <div className="space-y-2"><Label>Ngày yêu cầu <span className="text-red-500">*</span></Label><Input type="date" value={formData.request_date} onChange={e => setFormData({ ...formData, request_date: e.target.value })} className="bg-background" /></div>
+                                    <div className="space-y-2"><Label>Cần hàng trước ngày</Label><Input type="date" value={formData.deadline_date} onChange={e => setFormData({ ...formData, deadline_date: e.target.value })} className="bg-background" /></div>
+                                    {/* ✅ FIX: bg-slate-100 -> bg-muted */}
+                                    <div className="space-y-2"><Label>Người yêu cầu</Label><Input value={currentUser.name} readOnly className="bg-muted font-bold text-muted-foreground cursor-not-allowed" /></div>
+                                    <div className="space-y-2"><Label>Độ ưu tiên</Label><Select defaultValue="normal" onValueChange={(val) => setFormData({ ...formData, priority: val })}><SelectTrigger className="bg-background"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Thấp</SelectItem><SelectItem value="normal">Bình thường</SelectItem><SelectItem value="high">Cao</SelectItem><SelectItem value="urgent">Khẩn cấp</SelectItem></SelectContent></Select></div>
+                                    <div className="space-y-2"><Label>Ghi chú chung</Label><Input value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} className="bg-background" /></div>
                                 </div>
 
                                 <div className="border rounded-lg overflow-hidden shadow-sm">
                                     <Table>
-                                        <TableHeader className="bg-slate-100">
+                                        {/* ✅ FIX: bg-slate-100 -> bg-muted */}
+                                        <TableHeader className="bg-muted">
                                             <TableRow><TableHead className="w-[40%]">Tên vật tư</TableHead><TableHead className="w-[15%]">ĐVT</TableHead><TableHead className="w-[15%]">Số lượng</TableHead><TableHead>Ghi chú</TableHead><TableHead className="w-[50px]"></TableHead></TableRow>
                                         </TableHeader>
                                         <TableBody>
                                             {items.map((item, idx) => (
                                                 <TableRow key={idx}>
                                                     <TableCell className="p-2"><MaterialCombobox value={item.item_name} onChange={(val: any) => updateItem(idx, 'item_name', val)} onUnitChange={(unit: any) => updateItem(idx, 'unit', unit)} options={budgetMaterials} /></TableCell>
-                                                    <TableCell className="p-2"><Input value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="bg-slate-50" /></TableCell>
-                                                    <TableCell className="p-2"><Input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="font-bold text-center" /></TableCell>
-                                                    <TableCell className="p-2"><Input value={item.notes} onChange={e => updateItem(idx, 'notes', e.target.value)} /></TableCell>
+                                                    {/* ✅ FIX: bg-slate-50 -> bg-muted/30 */}
+                                                    <TableCell className="p-2"><Input value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} className="bg-muted/30" /></TableCell>
+                                                    <TableCell className="p-2"><Input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="font-bold text-center bg-background" /></TableCell>
+                                                    <TableCell className="p-2"><Input value={item.notes} onChange={e => updateItem(idx, 'notes', e.target.value)} className="bg-background" /></TableCell>
                                                     <TableCell className="p-2 text-center"><Button variant="ghost" size="icon" onClick={() => removeItem(idx)}><Trash2 className="w-4 h-4 text-red-500" /></Button></TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>
                                     </Table>
-                                    <div className="p-2 border-t bg-slate-50"><Button variant="outline" size="sm" onClick={addItem}><Plus className="w-3 h-3 mr-1" /> Thêm dòng</Button></div>
+                                    {/* ✅ FIX: bg-slate-50 -> bg-muted/30 */}
+                                    <div className="p-2 border-t bg-muted/30"><Button variant="outline" size="sm" onClick={addItem}><Plus className="w-3 h-3 mr-1" /> Thêm dòng</Button></div>
                                 </div>
                                 <Button onClick={handleSubmit} disabled={submitting} className="w-full bg-blue-600 hover:bg-blue-700 h-10 shadow-md">
                                     {submitting ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang lưu...</> : "Gửi Đề xuất"}
@@ -297,7 +306,8 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                     </Dialog>
                 ) : (
                     // ⛔ HIỂN THỊ KHI KHÓA KHO
-                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 border border-slate-200 rounded-md text-slate-500 cursor-not-allowed">
+                    // ✅ FIX: bg-slate-100 -> bg-muted, text-slate-500 -> text-muted-foreground
+                    <div className="flex items-center gap-2 px-4 py-2 bg-muted border border-border rounded-md text-muted-foreground cursor-not-allowed">
                         <Lock className="w-4 h-4" />
                         <span className="font-medium text-sm">
                             {isPaused ? "Kho đang tạm khóa (Dự án Tạm dừng)" : "Kho đã đóng (Dự án Kết thúc/Hủy)"}
@@ -308,11 +318,12 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
             {/* ✅ BANNER CẢNH BÁO TẠM DỪNG */}
             {isPaused && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
-                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                // ✅ FIX: Dark mode colors
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 mt-0.5" />
                     <div>
-                        <h4 className="font-bold text-amber-800">Dự án đang trong trạng thái TẠM DỪNG</h4>
-                        <p className="text-sm text-amber-700">
+                        <h4 className="font-bold text-amber-800 dark:text-amber-400">Dự án đang trong trạng thái TẠM DỪNG</h4>
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
                             Mọi hoạt động nhập/xuất vật tư đều bị vô hiệu hóa để phục vụ việc kiểm kê và quyết toán điểm dừng.
                             Vui lòng liên hệ Ban Giám Đốc nếu cần xuất kho khẩn cấp.
                         </p>
@@ -323,22 +334,26 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
             {/* 2. LIST REQUESTS */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {requests.map((req) => (
-                    <Card key={req.id} className={`hover:shadow-md transition-all border-l-4 ${req.status === 'approved' ? 'border-l-green-500 bg-green-50/20' : 'border-l-blue-500'}`}>
+                    // ✅ FIX: border-l-500 colors
+                    <Card key={req.id} className={`hover:shadow-md transition-all border-l-4 ${req.status === 'approved' ? 'border-l-green-500 bg-green-50/20 dark:bg-green-900/10' : 'border-l-blue-500'}`}>
                         <CardHeader className="pb-2 flex flex-row justify-between">
-                            <div><CardTitle className="text-sm font-bold text-blue-700 flex items-center gap-2"><FileText className="w-4 h-4" /> {req.code}</CardTitle><div className="text-xs text-slate-500 mt-1 flex gap-1"><Calendar className="w-3 h-3" /> {formatDate(req.request_date)}</div></div>
+                            {/* ✅ FIX: text-blue-700 -> dark:text-blue-400 */}
+                            <div><CardTitle className="text-sm font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2"><FileText className="w-4 h-4" /> {req.code}</CardTitle><div className="text-xs text-muted-foreground mt-1 flex gap-1"><Calendar className="w-3 h-3" /> {formatDate(req.request_date)}</div></div>
                             <PriorityBadge p={req.priority} />
                         </CardHeader>
                         <CardContent className="text-sm space-y-3">
-                            <div className="flex items-center gap-2 text-slate-600"><User className="w-4 h-4 text-slate-400" /> <span className="font-medium">{req.requester?.name || "Không rõ"}</span></div>
-                            <div className="bg-white p-2 rounded text-xs space-y-1 border shadow-sm">
-                                <div className="font-semibold text-slate-700 mb-1 flex items-center gap-1"><Package className="w-3 h-3" /> Danh sách ({req.items?.length || 0}):</div>
-                                {req.items?.slice(0, 3).map((item: any) => (<div key={item.id} className="flex justify-between border-b border-dashed last:border-0 pb-1 last:pb-0"><span className="truncate max-w-[150px]">{item.item_name}</span><span className="font-bold">{item.quantity} {item.unit}</span></div>))}
-                                {req.items?.length > 3 && <div className="text-center text-blue-500 italic pt-1">+ {req.items.length - 3} khác...</div>}
+                            <div className="flex items-center gap-2 text-muted-foreground"><User className="w-4 h-4" /> <span className="font-medium">{req.requester?.name || "Không rõ"}</span></div>
+                            {/* ✅ FIX: bg-white -> bg-muted/30 */}
+                            <div className="bg-muted/30 p-2 rounded text-xs space-y-1 border shadow-sm">
+                                {/* ✅ FIX: text-slate-700 -> text-foreground */}
+                                <div className="font-semibold text-foreground mb-1 flex items-center gap-1"><Package className="w-3 h-3" /> Danh sách ({req.items?.length || 0}):</div>
+                                {req.items?.slice(0, 3).map((item: any) => (<div key={item.id} className="flex justify-between border-b border-dashed border-border last:border-0 pb-1 last:pb-0"><span className="truncate max-w-[150px]">{item.item_name}</span><span className="font-bold">{item.quantity} {item.unit}</span></div>))}
+                                <div className="text-center text-blue-500 italic pt-1">+ {Math.max(0, (req.items?.length || 0) - 3)} khác...</div>
                             </div>
-                            <div className="pt-2 flex justify-between items-center border-t mt-3">
-                                <span className={`text-xs font-bold flex items-center gap-1 ${req.status === 'approved' ? 'text-green-600' : 'text-orange-500'}`}>{req.status === 'pending' ? <><Loader2 className="w-3 h-3 animate-spin" /> Chờ xử lý</> : <><CheckSquare className="w-3 h-3" /> Đã duyệt</>}</span>
-                                {req.status === 'pending' && isActive && ( // Chỉ cho duyệt/xóa khi Active
-                                    <div className="flex gap-1"><Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm" onClick={() => handleOpenProcess(req)}>Duyệt & Điều phối</Button><Button variant="ghost" size="icon" className="h-7 w-7 text-red-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(req.id)}><Trash2 className="w-4 h-4" /></Button></div>
+                            <div className="pt-2 flex justify-between items-center border-t border-border mt-3">
+                                <span className={`text-xs font-bold flex items-center gap-1 ${req.status === 'approved' ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'}`}>{req.status === 'pending' ? <><Loader2 className="w-3 h-3 animate-spin" /> Chờ xử lý</> : <><CheckSquare className="w-3 h-3" /> Đã duyệt</>}</span>
+                                {req.status === 'pending' && isActive && (
+                                    <div className="flex gap-1"><Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm" onClick={() => handleOpenProcess(req)}>Duyệt & Điều phối</Button><Button variant="ghost" size="icon" className="h-7 w-7 text-red-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleDelete(req.id)}><Trash2 className="w-4 h-4" /></Button></div>
                                 )}
                             </div>
                         </CardContent>
@@ -349,25 +364,28 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
             {/* PROCESS DIALOG */}
             <Dialog open={processOpen} onOpenChange={setProcessOpen}>
                 <DialogContent className="max-w-4xl">
-                    <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckSquare className="w-5 h-5 text-indigo-600" /> Phân tích & Duyệt Đề xuất</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Phân tích & Duyệt Đề xuất</DialogTitle></DialogHeader>
                     {analyzing ? (
-                        <div className="py-12 flex flex-col items-center justify-center text-slate-500 space-y-3"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /><p>Đang kiểm tra tồn kho & định mức...</p></div>
+                        <div className="py-12 flex flex-col items-center justify-center text-muted-foreground space-y-3"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /><p>Đang kiểm tra tồn kho & định mức...</p></div>
                     ) : approvalItems.length > 0 ? (
                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                            <div className="bg-slate-50 p-3 rounded border text-sm grid grid-cols-2 gap-4">
-                                <div><span className="font-bold text-slate-500">Mã phiếu:</span> {selectedRequest?.code}</div>
-                                <div><span className="font-bold text-slate-500">Người yêu cầu:</span> {selectedRequest?.requester?.name}</div>
+                            {/* ✅ FIX: bg-slate-50 -> bg-muted */}
+                            <div className="bg-muted p-3 rounded border border-border text-sm grid grid-cols-2 gap-4">
+                                <div><span className="font-bold text-muted-foreground">Mã phiếu:</span> {selectedRequest?.code}</div>
+                                <div><span className="font-bold text-muted-foreground">Người yêu cầu:</span> {selectedRequest?.requester?.name}</div>
                             </div>
                             <div className="border rounded-lg overflow-hidden">
                                 <Table>
-                                    <TableHeader className="bg-indigo-50">
+                                    {/* ✅ FIX: bg-indigo-50 -> dark:bg-indigo-950/30 */}
+                                    <TableHeader className="bg-indigo-50 dark:bg-indigo-950/30">
                                         <TableRow>
-                                            <TableHead className="font-bold text-indigo-900 w-[25%]">Vật tư</TableHead>
-                                            <TableHead className="text-center font-bold text-indigo-900 w-[10%]">ĐVT</TableHead>
-                                            <TableHead className="text-center font-bold text-indigo-900 w-[15%]">Định mức</TableHead>
-                                            <TableHead className="text-center font-bold text-indigo-900 w-[10%]">Tồn kho</TableHead>
-                                            <TableHead className="text-center font-bold text-indigo-900 w-[15%]">Duyệt SL</TableHead>
-                                            <TableHead className="text-right font-bold text-indigo-900 w-[25%]">Giải pháp</TableHead>
+                                            {/* ✅ FIX: text-indigo-900 -> dark:text-indigo-300 */}
+                                            <TableHead className="font-bold text-indigo-900 dark:text-indigo-300 w-[25%]">Vật tư</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[10%]">ĐVT</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[15%]">Định mức</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[10%]">Tồn kho</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[15%]">Duyệt SL</TableHead>
+                                            <TableHead className="text-right font-bold text-indigo-900 dark:text-indigo-300 w-[25%]">Giải pháp</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -375,33 +393,35 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                             <TableRow key={idx}>
                                                 <TableCell className="font-medium">{item.item_name}</TableCell>
                                                 <TableCell className="text-center">{item.unit}</TableCell>
-                                                <TableCell className="text-center font-mono text-slate-500">
+                                                <TableCell className="text-center font-mono text-muted-foreground">
                                                     {item.budget_quantity > 0 ? item.budget_quantity : "-"}
                                                 </TableCell>
-                                                <TableCell className="text-center font-bold text-slate-600">{item.stock_available}</TableCell>
+                                                <TableCell className="text-center font-bold text-muted-foreground">{item.stock_available}</TableCell>
                                                 <TableCell className="p-1">
                                                     <Input
                                                         type="number"
                                                         min="0"
                                                         value={item.approved_quantity}
                                                         onChange={(e) => handleApprovalQtyChange(idx, Number(e.target.value))}
-                                                        className="h-8 text-center font-bold text-blue-700 border-blue-200 focus:border-blue-500"
+                                                        className="h-8 text-center font-bold text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 focus:border-blue-500 bg-background"
                                                     />
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex flex-col items-end gap-1 text-[11px]">
                                                         {item.action_issue > 0 && (
-                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 shadow-sm whitespace-nowrap">
+                                                            // ✅ FIX: badge colors
+                                                            <Badge variant="outline" className="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 shadow-sm whitespace-nowrap">
                                                                 <Truck className="w-3 h-3 mr-1" /> Xuất: {item.action_issue}
                                                             </Badge>
                                                         )}
                                                         {item.action_purchase > 0 && (
-                                                            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 shadow-sm whitespace-nowrap">
+                                                            // ✅ FIX: badge colors
+                                                            <Badge variant="outline" className="bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800 shadow-sm whitespace-nowrap">
                                                                 <ShoppingCart className="w-3 h-3 mr-1" /> Mua: {item.action_purchase}
                                                             </Badge>
                                                         )}
                                                         {item.action_issue === 0 && item.action_purchase === 0 && (
-                                                            <span className="text-slate-400 italic">Không xử lý</span>
+                                                            <span className="text-muted-foreground italic">Không xử lý</span>
                                                         )}
                                                     </div>
                                                 </TableCell>
@@ -411,14 +431,15 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                 </Table>
                             </div>
 
-                            <div className="bg-amber-50 p-3 rounded border border-amber-200 text-xs text-amber-800 flex gap-2 items-start">
-                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                            {/* ✅ FIX: bg-amber-50 -> dark:bg-amber-950/20 */}
+                            <div className="bg-amber-50 dark:bg-amber-950/20 p-3 rounded border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex gap-2 items-start">
+                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" />
                                 <div>
                                     <span className="font-bold">Lưu ý:</span> Bạn có thể chỉnh sửa "Duyệt SL". Hệ thống sẽ tự động tính toán lại số lượng Xuất kho và Mua mới.
                                 </div>
                             </div>
 
-                            <Button onClick={handleApprove} disabled={processing} className="w-full bg-green-600 hover:bg-green-700 h-10 shadow-md">
+                            <Button onClick={handleApprove} disabled={processing} className="w-full bg-green-600 hover:bg-green-700 h-10 shadow-md text-white">
                                 {processing ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang xử lý...</> : "✅ Xác nhận Duyệt & Thực thi"}
                             </Button>
                         </div>

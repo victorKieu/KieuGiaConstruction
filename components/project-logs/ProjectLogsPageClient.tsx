@@ -1,8 +1,10 @@
-"use client"; // Đánh dấu đây là client component
+"use client";
 
 import React, { useState } from "react";
 import LogEntryCard from "./LogEntryCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input"; // Sử dụng Input chuẩn UI nếu có, hoặc style lại input thường
+import { Textarea } from "@/components/ui/textarea"; // Sử dụng Textarea chuẩn UI
 
 interface ProjectLogsPageClientProps {
     logs: any[];
@@ -17,7 +19,7 @@ function ProjectLogsPageClient({ logs, projectId }: ProjectLogsPageClientProps) 
     const [newLogImages, setNewLogImages] = useState<string[]>([]);
     const [newLogParticipants, setNewLogParticipants] = useState("");
     const [newLogDirective, setNewLogDirective] = useState("");
-    const [isCreatingLog, setIsCreatingLog] = useState(false); // Trạng thái để hiển thị form tạo nhật ký
+    const [isCreatingLog, setIsCreatingLog] = useState(false);
 
     const handleEdit = (log: any) => {
         console.log("Edit log:", log);
@@ -25,27 +27,22 @@ function ProjectLogsPageClient({ logs, projectId }: ProjectLogsPageClientProps) 
 
     const handleDelete = async (logId: string) => {
         console.log("Delete log:", logId);
-        // Gọi API để xóa log
     };
 
     const handleAddComment = async (logId: string, comment: string) => {
         console.log("Add comment:", logId, comment);
-        // Gọi API để thêm bình luận
     };
 
     const handleLike = async (logId: string) => {
         console.log("Like log:", logId);
-        // Gọi API để thích log
     };
 
     const handleUnlike = async (logId: string) => {
         console.log("Unlike log:", logId);
-        // Gọi API để bỏ thích log
     };
 
     const handleLove = async (logId: string) => {
         console.log("Love log:", logId);
-        // Gọi API để thả tim log
     };
 
     const handleCreateLog = async () => {
@@ -110,89 +107,110 @@ function ProjectLogsPageClient({ logs, projectId }: ProjectLogsPageClientProps) 
         }
     };
 
+    // ✅ Helper class cho input để tái sử dụng style Dark Mode
+    const inputClass = "w-full bg-background border border-input rounded px-3 py-2 mb-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
     return (
         <div>
-            <h2 className="text-lg font-semibold mb-2">Nhật Ký Công Trình</h2>
-            {/* Nút để mở form tạo mới nhật ký */}
-            <Button onClick={() => setIsCreatingLog(!isCreatingLog)}>
+            {/* ✅ FIX: Text foreground */}
+            <h2 className="text-lg font-semibold mb-2 text-foreground">Nhật Ký Công Trình</h2>
+
+            <Button onClick={() => setIsCreatingLog(!isCreatingLog)} className="mb-4">
                 {isCreatingLog ? "Hủy" : "Tạo nhật ký"}
             </Button>
+
             {isCreatingLog && (
-                <div className="px-6 py-4 border-b">
+                // ✅ FIX: Border & Background colors
+                <div className="px-6 py-4 border border-border rounded-lg bg-card shadow-sm mb-6 animate-in fade-in slide-in-from-top-2">
                     <input
                         type="text"
                         placeholder="Hạng mục"
                         value={newLogSection}
                         onChange={(e) => setNewLogSection(e.target.value)}
-                        className="border rounded px-3 py-2 mb-2 w-full"
+                        className={inputClass}
                     />
                     <textarea
                         placeholder="Nội dung nhật ký"
                         value={newLogContent}
                         onChange={(e) => setNewLogContent(e.target.value)}
-                        className="border rounded px-3 py-2 mb-2 w-full"
+                        className={inputClass}
                         rows={3}
                     />
-                    <input
-                        type="text"
-                        placeholder="Thời tiết"
-                        value={newLogWeather}
-                        onChange={(e) => setNewLogWeather(e.target.value)}
-                        className="border rounded px-3 py-2 mb-2 w-full"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Nhiệt độ"
-                        value={newLogTemperature}
-                        onChange={(e) => setNewLogTemperature(e.target.value)}
-                        className="border rounded px-3 py-2 mb-2 w-full"
-                    />
-                    <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageUpload}
-                        className="border rounded px-3 py-2 mb-2 w-full"
-                    />
-                    <div className="flex flex-row gap-2">
-                        {newLogImages.map((image, index) => (
-                            <img
-                                key={index}
-                                src={image}
-                                alt={`preview-${index}`}
-                                className="object-cover rounded-lg w-20 h-20"
-                            />
-                        ))}
+                    <div className="grid grid-cols-2 gap-4">
+                        <input
+                            type="text"
+                            placeholder="Thời tiết"
+                            value={newLogWeather}
+                            onChange={(e) => setNewLogWeather(e.target.value)}
+                            className={inputClass}
+                        />
+                        <input
+                            type="text"
+                            placeholder="Nhiệt độ"
+                            value={newLogTemperature}
+                            onChange={(e) => setNewLogTemperature(e.target.value)}
+                            className={inputClass}
+                        />
                     </div>
+
+                    <div className="mb-2">
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Hình ảnh đính kèm</label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handleImageUpload}
+                            className={`${inputClass} py-1 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90`}
+                        />
+                    </div>
+
+                    {newLogImages.length > 0 && (
+                        <div className="flex flex-row gap-2 mb-2 overflow-x-auto pb-2">
+                            {newLogImages.map((image, index) => (
+                                <img
+                                    key={index}
+                                    src={image}
+                                    alt={`preview-${index}`}
+                                    className="object-cover rounded-lg w-20 h-20 border border-border"
+                                />
+                            ))}
+                        </div>
+                    )}
+
                     <input
                         type="text"
                         placeholder="Người tham gia"
                         value={newLogParticipants}
                         onChange={(e) => setNewLogParticipants(e.target.value)}
-                        className="border rounded px-3 py-2 mb-2 w-full"
+                        className={inputClass}
                     />
                     <input
                         type="text"
                         placeholder="Chỉ đạo"
                         value={newLogDirective}
                         onChange={(e) => setNewLogDirective(e.target.value)}
-                        className="border rounded px-3 py-2 mb-2 w-full"
+                        className={inputClass}
                     />
-                    <Button onClick={handleCreateLog} className="mt-2">Tạo Nhật Ký</Button>
+                    <div className="flex justify-end mt-2">
+                        <Button onClick={handleCreateLog}>Lưu Nhật Ký</Button>
+                    </div>
                 </div>
             )}
-            {logs.map((log) => (
-                <LogEntryCard
-                    key={log.id}
-                    log={log}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    onAddComment={handleAddComment}
-                    onLike={handleLike}
-                    onUnlike={handleUnlike}
-                    onLove={handleLove}
-                />
-            ))}
+
+            <div className="space-y-6">
+                {logs.map((log) => (
+                    <LogEntryCard
+                        key={log.id}
+                        log={log}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        onAddComment={handleAddComment}
+                        onLike={handleLike}
+                        onUnlike={handleUnlike}
+                        onLove={handleLove}
+                    />
+                ))}
+            </div>
         </div>
     );
 }

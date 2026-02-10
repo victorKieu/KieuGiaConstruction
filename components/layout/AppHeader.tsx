@@ -35,15 +35,13 @@ export default function AppHeader({ user }: AppHeaderProps) {
     const displayAvatarUrl = user?.avatar_url || "";
 
     return (
-        // Giữ z-50 cho Header (Thấp hơn z-100 của Sidebar và nút Menu)
-        <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-neutral-900 sticky top-0 z-50 shadow-sm">
+        // ✅ FIX: bg-white -> bg-background, border-b -> border-b border-border
+        <header className="h-16 flex items-center justify-between px-4 border-b border-border bg-background sticky top-0 z-50 shadow-sm transition-colors duration-300">
             {/* 1. KHU VỰC TRÁI */}
             <div className="flex items-center gap-3">
-                {/* ✅ GIỮ NGUYÊN pl-12: 
-                   Trên mobile (md:pl-0 sẽ không chạy), ta padding trái 12 đơn vị 
-                   để chữ không bị nút Menu (đang fixed ở góc trái) đè lên.
-                */}
-                <div className="font-bold text-lg text-blue-700 dark:text-blue-200 pl-12 md:pl-0 transition-all">
+                {/* pl-12 giữ nguyên cho mobile menu */}
+                {/* ✅ FIX: text-blue-700 -> dark:text-blue-400 (sáng hơn trên nền tối) */}
+                <div className="font-bold text-lg text-blue-700 dark:text-blue-400 pl-12 md:pl-0 transition-all">
                     Kieu Gia Construction
                 </div>
             </div>
@@ -51,10 +49,17 @@ export default function AppHeader({ user }: AppHeaderProps) {
             {/* 2. KHU VỰC PHẢI */}
             <div className="flex items-center gap-2">
                 <button
-                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                    // ✅ FIX: hover:bg-gray-100 -> hover:bg-accent hover:text-accent-foreground
+                    className="p-2 rounded-full hover:bg-accent hover:text-accent-foreground transition-colors text-foreground"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                    title="Đổi giao diện Sáng/Tối"
                 >
-                    {theme === "dark" ? <Sun className="w-5 h-5 text-yellow-500" /> : <Moon className="w-5 h-5 text-slate-700" />}
+                    {theme === "dark" ? (
+                        <Sun className="w-5 h-5 text-yellow-500" />
+                    ) : (
+                        // ✅ FIX: text-slate-700 -> text-foreground
+                        <Moon className="w-5 h-5 text-foreground" />
+                    )}
                 </button>
 
                 <NotificationBell />

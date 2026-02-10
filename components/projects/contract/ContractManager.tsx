@@ -21,10 +21,7 @@ export default function ContractManager({ initialContracts }: ContractManagerPro
 
     // --- STATE BỘ LỌC ---
     const [searchTerm, setSearchTerm] = useState("");
-
-    // ✅ THAY ĐỔI: Mặc định là 'active' (Chỉ hiện cái đang chạy)
     const [filterStatus, setFilterStatus] = useState("active");
-
     const [filterType, setFilterType] = useState("all");
 
     // --- LOGIC LỌC DỮ LIỆU ---
@@ -37,10 +34,9 @@ export default function ContractManager({ initialContracts }: ContractManagerPro
                 contract.title?.toLowerCase().includes(searchLower) ||
                 contract.customers?.name?.toLowerCase().includes(searchLower);
 
-            // 2. Lọc theo trạng thái (CẬP NHẬT LOGIC)
+            // 2. Lọc theo trạng thái
             let matchesStatus = true;
             if (filterStatus === "active") {
-                // Active = Không phải Thanh lý và Không phải Hủy
                 matchesStatus = !["liquidated", "cancelled"].includes(contract.status);
             } else if (filterStatus !== "all") {
                 matchesStatus = contract.status === filterStatus;
@@ -71,46 +67,53 @@ export default function ContractManager({ initialContracts }: ContractManagerPro
 
     const clearFilters = () => {
         setSearchTerm("");
-        setFilterStatus("active"); // Reset về active thay vì all
+        setFilterStatus("active");
         setFilterType("all");
     };
 
     return (
         <div className="space-y-6">
-            {/* Header & Title */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-lg border shadow-sm">
+            {/* Header & Title - ✅ FIX: bg-white -> bg-card */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card p-4 rounded-lg border border-border shadow-sm">
                 <div>
-                    <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    {/* ✅ FIX: text-slate-800 -> text-foreground */}
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         Danh sách Hợp đồng & Pháp lý
-                        <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">
+                        {/* ✅ FIX: bg-slate-100 -> bg-muted, text-slate-600 -> text-muted-foreground */}
+                        <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
                             {filteredContracts.length}
                         </span>
                     </h2>
-                    <p className="text-sm text-slate-500">Quản lý toàn bộ hợp đồng thi công, thiết kế và phụ lục.</p>
+                    {/* ✅ FIX: text-slate-500 -> text-muted-foreground */}
+                    <p className="text-sm text-muted-foreground">Quản lý toàn bộ hợp đồng thi công, thiết kế và phụ lục.</p>
                 </div>
-                <Button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-700 shadow-sm whitespace-nowrap">
+                <Button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-700 shadow-sm whitespace-nowrap text-white">
                     <Plus className="w-4 h-4 mr-2" /> Soạn Hợp đồng
                 </Button>
             </div>
 
             {/* --- THANH CÔNG CỤ LỌC --- */}
-            <div className="bg-slate-50 p-4 rounded-lg border flex flex-col md:flex-row gap-4 items-end md:items-center">
+            {/* ✅ FIX: bg-slate-50 -> bg-muted/40 */}
+            <div className="bg-muted/40 p-4 rounded-lg border border-border flex flex-col md:flex-row gap-4 items-end md:items-center">
 
                 {/* 1. Tìm kiếm */}
                 <div className="w-full md:w-1/3 relative">
-                    <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    {/* ✅ FIX: text-slate-400 -> text-muted-foreground */}
+                    <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
                     <Input
                         placeholder="Tìm số HĐ, tên khách hàng..."
-                        className="pl-9 bg-white border-slate-200"
+                        // ✅ FIX: bg-white -> bg-background, border-slate-200 -> border-input
+                        className="pl-9 bg-background border-input"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
 
-                {/* 2. Lọc Trạng thái (CẬP NHẬT UI) */}
+                {/* 2. Lọc Trạng thái */}
                 <div className="w-full md:w-1/5">
                     <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger className="bg-white border-slate-200">
+                        {/* ✅ FIX: bg-white -> bg-background */}
+                        <SelectTrigger className="bg-background border-input">
                             <SelectValue placeholder="Trạng thái" />
                         </SelectTrigger>
                         <SelectContent>
@@ -127,7 +130,8 @@ export default function ContractManager({ initialContracts }: ContractManagerPro
                 {/* 3. Lọc Loại Hợp đồng */}
                 <div className="w-full md:w-1/5">
                     <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger className="bg-white border-slate-200">
+                        {/* ✅ FIX: bg-white -> bg-background */}
+                        <SelectTrigger className="bg-background border-input">
                             <SelectValue placeholder="Loại hợp đồng" />
                         </SelectTrigger>
                         <SelectContent>
@@ -142,14 +146,21 @@ export default function ContractManager({ initialContracts }: ContractManagerPro
 
                 {/* Nút Xóa bộ lọc */}
                 {(searchTerm || filterStatus !== 'active' || filterType !== 'all') && (
-                    <Button variant="ghost" size="icon" onClick={clearFilters} className="text-slate-500 hover:text-red-500 hover:bg-red-50" title="Về mặc định">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={clearFilters}
+                        // ✅ FIX: Hover colors for dark mode
+                        className="text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Về mặc định"
+                    >
                         <X className="w-4 h-4" />
                     </Button>
                 )}
             </div>
 
-            {/* Danh sách Hợp đồng */}
-            <div className="bg-white rounded-xl shadow-sm border p-6 min-h-[500px]">
+            {/* Danh sách Hợp đồng - ✅ FIX: bg-white -> bg-card */}
+            <div className="bg-card rounded-xl shadow-sm border border-border p-6 min-h-[500px]">
                 {filteredContracts.length > 0 ? (
                     <ContractList
                         contracts={filteredContracts}
@@ -157,11 +168,12 @@ export default function ContractManager({ initialContracts }: ContractManagerPro
                         onViewDetail={handleViewDetail}
                     />
                 ) : (
-                    <div className="text-center py-20 text-slate-400">
+                    // ✅ FIX: text-slate-400 -> text-muted-foreground
+                    <div className="text-center py-20 text-muted-foreground">
                         <Filter className="w-12 h-12 mx-auto mb-3 opacity-20" />
                         <p>Không tìm thấy hợp đồng nào.</p>
                         {filterStatus === 'active' && (
-                            <Button variant="link" onClick={() => setFilterStatus('all')} className="mt-2 text-indigo-600">
+                            <Button variant="link" onClick={() => setFilterStatus('all')} className="mt-2 text-indigo-600 dark:text-indigo-400">
                                 Xem hợp đồng cũ (Thanh lý/Hủy)
                             </Button>
                         )}

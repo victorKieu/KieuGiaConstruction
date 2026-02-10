@@ -33,15 +33,24 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
         supabase.from("projects").select("*").eq("id", projectId).single(),
         supabase.from("customers").select("id, name"),
         supabase.from("employees").select("id, name"),
-        getProjectTypes(),      // <-- Lấy Loại dự án
-        getConstructionTypes()  // <-- Lấy Loại hình xây dựng
+        getProjectTypes(),       // <-- Lấy Loại dự án
+        getConstructionTypes()   // <-- Lấy Loại hình xây dựng
     ]);
 
     const project = projectRes.data;
 
+    // ✅ FIX: Giao diện lỗi chuẩn Dark Mode (Thay vì div trần)
     if (projectRes.error) {
         console.error("Lỗi khi tải dự án:", projectRes.error.message);
-        return <div>Đã xảy ra lỗi khi tải dữ án. Vui lòng thử lại.</div>;
+        return (
+            <div className="flex w-full h-screen items-center justify-center bg-background">
+                <div className="p-6 text-center text-red-600 dark:text-red-400 bg-card rounded-lg shadow border border-red-100 dark:border-red-900/50 max-w-md">
+                    <h3 className="font-bold text-lg mb-2">Đã xảy ra lỗi</h3>
+                    <p>Không thể tải dữ liệu dự án. Vui lòng thử lại sau.</p>
+                    <p className="text-xs text-muted-foreground mt-4">Error: {projectRes.error.message}</p>
+                </div>
+            </div>
+        );
     }
 
     if (!project) {
@@ -50,6 +59,7 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
 
     const initialDataForForm = cleanProjectDataForClient(project);
 
+    // Form component thường đã tự handle layout, nên không cần bọc thêm div ngoài nếu không cần thiết
     return (
         <ProjectForm
             initialData={initialDataForForm}

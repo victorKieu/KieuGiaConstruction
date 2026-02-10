@@ -49,7 +49,8 @@ function DeleteActionItem({ project }: { project: any }) {
         <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
             <AlertDialogTrigger asChild>
                 <DropdownMenuItem
-                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                    // ✅ FIX: Dark mode hover colors
+                    className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:text-red-400 dark:focus:bg-red-900/30 cursor-pointer"
                     onSelect={(e) => e.preventDefault()}
                 >
                     <Trash2 className="h-4 w-4 mr-2" />
@@ -60,7 +61,9 @@ function DeleteActionItem({ project }: { project: any }) {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Xác nhận Xóa Dự án?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Bạn có chắc chắn muốn xóa dự án <span className="font-bold text-black">"{project.name}"</span>?
+                        Bạn có chắc chắn muốn xóa dự án
+                        {/* ✅ FIX: text-black -> text-foreground */}
+                        <span className="font-bold text-foreground mx-1">"{project.name}"</span>?
                         <br /><br />
                         Hành động này sẽ xóa vĩnh viễn dự án và tất cả dữ liệu liên quan.
                         Không thể hoàn tác.
@@ -71,7 +74,7 @@ function DeleteActionItem({ project }: { project: any }) {
                     <AlertDialogAction
                         onClick={handleDeleteConfirm}
                         disabled={isDeleting}
-                        className="bg-red-600 hover:bg-red-700 text-white"
+                        className="bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
                     >
                         {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                         Xác nhận Xóa
@@ -81,6 +84,7 @@ function DeleteActionItem({ project }: { project: any }) {
         </AlertDialog>
     );
 }
+
 function UndoConstructionItem({ projectId }: { projectId: string }) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
@@ -104,14 +108,15 @@ function UndoConstructionItem({ projectId }: { projectId: string }) {
             onSelect={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={isPending}
-            className="text-orange-700 focus:text-orange-800 focus:bg-orange-50 cursor-pointer"
+            // ✅ FIX: Dark mode colors
+            className="text-orange-700 focus:text-orange-800 focus:bg-orange-50 dark:text-orange-400 dark:focus:bg-orange-900/30 cursor-pointer"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
             Hủy lệnh khởi công (Undo)
         </DropdownMenuItem>
     );
 }
-// --- COMPONENT MỚI: UNDO NGHIỆM THU (MỚI THÊM) ---
+
 function UndoFinishItem({ projectId }: { projectId: string }) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
@@ -135,7 +140,8 @@ function UndoFinishItem({ projectId }: { projectId: string }) {
             onSelect={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={isPending}
-            className="text-blue-700 focus:text-blue-800 focus:bg-blue-50 cursor-pointer"
+            // ✅ FIX: Dark mode colors
+            className="text-blue-700 focus:text-blue-800 focus:bg-blue-50 dark:text-blue-400 dark:focus:bg-blue-900/30 cursor-pointer"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2" />}
             Hủy nghiệm thu (Quay lại thi công)
@@ -143,7 +149,6 @@ function UndoFinishItem({ projectId }: { projectId: string }) {
     );
 }
 
-// --- COMPONENT MỚI: UNDO CANCEL (PHỤC HỒI DỰ ÁN) ---
 function UndoCancelItem({ projectId }: { projectId: string }) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
@@ -167,7 +172,8 @@ function UndoCancelItem({ projectId }: { projectId: string }) {
             onSelect={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={isPending}
-            className="text-green-700 focus:text-green-800 focus:bg-green-50 cursor-pointer"
+            // ✅ FIX: Dark mode colors
+            className="text-green-700 focus:text-green-800 focus:bg-green-50 dark:text-green-400 dark:focus:bg-green-900/30 cursor-pointer"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArchiveRestore className="w-4 h-4 mr-2" />}
             Phục hồi dự án (Undo)
@@ -175,7 +181,6 @@ function UndoCancelItem({ projectId }: { projectId: string }) {
     );
 }
 
-// --- COMPONENT: NÚT RESUME (Start) ---
 function ResumeProjectButton({ projectId }: { projectId: string }) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
@@ -198,13 +203,14 @@ function ResumeProjectButton({ projectId }: { projectId: string }) {
         <Button
             onClick={handleResume}
             disabled={isPending}
-            className="bg-green-600 hover:bg-green-700 text-white shadow-md animate-pulse font-bold"
+            className="bg-green-600 hover:bg-green-700 text-white shadow-md animate-pulse font-bold dark:bg-green-700 dark:hover:bg-green-800"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PlayCircle className="w-4 h-4 mr-2" />}
             Tiếp tục Thi Công (Start)
         </Button>
     );
 }
+
 interface ProjectHeaderWrapperProps {
     project: any;
     permissions: {
@@ -216,9 +222,8 @@ interface ProjectHeaderWrapperProps {
 }
 
 export default function ProjectHeaderWrapper({ project, permissions }: ProjectHeaderWrapperProps) {
-    // 1. Kiểm tra trạng thái để hiện nút Khởi công
     const currentStatusCode = project.status_data?.code?.toLowerCase() || '';
-    // Chỉ hiện khi trạng thái là Initial, Planning, hoặc Designing
+
     const canStartConstruction = ['initial', 'planning', 'design'].includes(currentStatusCode);
     const canUndoConstruction = currentStatusCode === 'in_progress' || currentStatusCode === 'execution';
     const canFinishProject = ['in_progress', 'execution', 'construction'].includes(currentStatusCode);
@@ -227,21 +232,23 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
     const isCancelled = currentStatusCode === 'cancelled';
     const isRunning = ['in_progress', 'execution', 'construction'].includes(currentStatusCode);
     const isPaused = ['paused', 'suspended', 'on_hold'].includes(currentStatusCode);
-    //const canFinishProject = isRunning; // Chỉ hoàn thành khi đang chạy
 
     return (
         <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
                 <Link href="/projects">
-                    <Button variant="outline" size="icon" className="h-9 w-9 bg-white hover:bg-slate-100 border-slate-200">
-                        <ArrowLeft className="h-4 w-4 text-slate-600" />
+                    {/* ✅ FIX: bg-white -> bg-background, border-slate-200 -> border-input */}
+                    <Button variant="outline" size="icon" className="h-9 w-9 bg-background hover:bg-accent border-input">
+                        <ArrowLeft className="h-4 w-4 text-muted-foreground" />
                     </Button>
                 </Link>
 
                 <div>
                     <div className="flex items-center gap-3">
-                        <h1 className="text-xl font-bold text-slate-800 line-clamp-1">{project.name}</h1>
-                        <Badge variant="outline" className="font-mono text-xs bg-slate-50 text-slate-600 border-slate-200 hidden sm:inline-flex">
+                        {/* ✅ FIX: text-slate-800 -> text-foreground */}
+                        <h1 className="text-xl font-bold text-foreground line-clamp-1">{project.name}</h1>
+                        {/* ✅ FIX: bg-slate-50 -> bg-muted, text-slate-600 -> text-muted-foreground */}
+                        <Badge variant="outline" className="font-mono text-xs bg-muted text-muted-foreground border-border hidden sm:inline-flex">
                             {project.code}
                         </Badge>
                     </div>
@@ -251,56 +258,50 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
             {/* Actions Buttons */}
             <div className="flex items-center gap-2">
 
-                {/* 1. NÚT PHÁT LỆNH KHỞI CÔNG (Chỉ hiện khi đúng trạng thái) */}
                 {permissions.canEdit && canStartConstruction && (
                     <StartConstructionDialog
                         project={{
                             id: project.id,
                             is_permit_required: project.is_permit_required,
-                            construction_permit_code: project.construction_permit_code, // ✅ Quan trọng: Để check validate
+                            construction_permit_code: project.construction_permit_code,
                             start_date: project.start_date
                         }}
                     />
                 )}
 
-                {/* 2. NHÓM NÚT ĐANG THI CÔNG */}
                 {permissions.canEdit && isRunning && (
                     <>
-                        {/* Nút Tạm dừng */}
                         <PauseProjectDialog project={{ id: project.id, name: project.name }} />
-
-                        {/* Nút Hoàn thành */}
                         <FinishProjectDialog
                             project={{ id: project.id, name: project.name, end_date: project.end_date }}
                         />
                     </>
                 )}
 
-                {/* 3. NÚT START (Khi đang Pause) */}
                 {permissions.canEdit && isPaused && (
                     <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 h-9 px-3">
+                        {/* ✅ FIX: Dark mode colors */}
+                        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 h-9 px-3">
                             <PauseCircle className="w-3 h-3 mr-1" /> ĐANG TẠM DỪNG
                         </Badge>
                         <ResumeProjectButton projectId={project.id} />
                     </div>
                 )}
 
-                {/* 4. NÚT CHỈNH SỬA (Desktop) - ✅ Đã khôi phục lại */}
+                {/* ✅ FIX: bg-white -> bg-background */}
                 {permissions.canEdit && (
                     <Link href={`/projects/${project.id}/edit`}>
-                        <Button variant="outline" size="sm" className="hidden sm:flex bg-white hover:bg-slate-50">
-                            <Edit className="w-4 h-4 mr-2 text-slate-500" />
+                        <Button variant="outline" size="sm" className="hidden sm:flex bg-background hover:bg-accent border-input">
+                            <Edit className="w-4 h-4 mr-2 text-muted-foreground" />
                             Chỉnh sửa
                         </Button>
                     </Link>
                 )}
 
-                {/* 5. DROPDOWN MENU (Mobile & Actions phụ) */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-9 w-9">
-                            <MoreVertical className="w-4 h-4 text-slate-500" />
+                            <MoreVertical className="w-4 h-4 text-muted-foreground" />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
@@ -312,7 +313,7 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
                                 </Link>
                             </DropdownMenuItem>
                         )}
-                        {/* ✅ UNDO 1: HỦY KHỞI CÔNG (Khi đang thi công) */}
+
                         {permissions.canEdit && canUndoConstruction && (
                             <>
                                 <DropdownMenuSeparator />
@@ -320,14 +321,13 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
                             </>
                         )}
 
-                        {/* ✅ UNDO 2: HỦY NGHIỆM THU (Khi đã hoàn thành) */}
                         {permissions.canEdit && canUndoFinish && (
                             <>
                                 <DropdownMenuSeparator />
                                 <UndoFinishItem projectId={project.id} />
                             </>
                         )}
-                        {/* ✅ UNDO CANCEL: Chỉ hiện khi Đã Hủy */}
+
                         {permissions.canEdit && isCancelled && (
                             <>
                                 <DropdownMenuSeparator />
@@ -337,14 +337,11 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
 
                         <DropdownMenuSeparator />
 
-                        {/* ===== KHU VỰC DANGER ZONE (HỦY & XÓA) ===== */}
-
-                        {/* ✅ NÚT HỦY DỰ ÁN (Chỉ hiện khi chưa hủy và chưa hoàn thành) */}
                         {permissions.canEdit && canCancel && (
                             <CancelProjectDialog
                                 project={project}
                                 trigger={
-                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-700 cursor-pointer">
+                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-red-600 focus:text-red-700 dark:text-red-400 dark:focus:text-red-300 dark:focus:bg-red-900/20 cursor-pointer">
                                         <XCircle className="w-4 h-4 mr-2" /> Hủy dự án (Dừng lại)
                                     </DropdownMenuItem>
                                 }

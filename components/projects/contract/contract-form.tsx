@@ -47,7 +47,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
 
-    // ✅ FIX: Bỏ generic <ContractFormValues> để tránh lỗi TS2322 Resolver
     const form = useForm({
         resolver: zodResolver(contractSchema),
         defaultValues: {
@@ -78,7 +77,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
         }
 
         let typeName = "HỢP ĐỒNG";
-        // Ép kiểu values.contract_type về string để so sánh an toàn
         const cType = String(values.contract_type);
         if (cType === 'design') typeName = "HỢP ĐỒNG THIẾT KẾ";
         else if (cType === 'construction') typeName = "HỢP ĐỒNG THI CÔNG";
@@ -168,7 +166,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
         printWindow.document.close();
     };
 
-    const onSubmit = async (data: any) => { // Dùng any ở đây cho data submit để tránh lỗi type check khi gọi updateContract
+    const onSubmit = async (data: any) => {
         setIsSubmitting(true)
         try {
             const payload = {
@@ -193,22 +191,31 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
 
     return (
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 animate-in slide-in-from-right duration-300">
-            <Card>
-                <CardHeader className="pb-2 border-b mb-4 flex flex-row items-center justify-between">
-                    <CardTitle>
+            {/* ✅ FIX: bg-card */}
+            <Card className="bg-card">
+                <CardHeader className="pb-2 border-b border-border mb-4 flex flex-row items-center justify-between">
+                    <CardTitle className="text-foreground">
                         {initialData.id ? "Cập nhật Văn bản" : "Tạo mới Văn bản"}
                     </CardTitle>
                     {initialData.id && (
-                        <Button type="button" variant="outline" onClick={handlePrint} className="gap-2 text-indigo-700 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 shadow-sm">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handlePrint}
+                            // ✅ FIX: Dark mode colors
+                            className="gap-2 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 shadow-sm"
+                        >
                             <Printer className="w-4 h-4" /> In Ấn
                         </Button>
                     )}
                 </CardHeader>
                 <CardContent className="space-y-6">
 
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* ✅ FIX: bg-muted/50 border-border */}
+                    <div className="bg-muted/50 p-4 rounded-lg border border-border grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="flex flex-col gap-2">
-                            <Label className="font-bold text-slate-700">Hình thức văn bản</Label>
+                            {/* ✅ FIX: text-foreground */}
+                            <Label className="font-bold text-foreground">Hình thức văn bản</Label>
                             <div className="flex items-center gap-2 mt-1">
                                 <Switch
                                     id="is-addendum"
@@ -218,7 +225,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                                         if (!checked) form.setValue("parent_id", null);
                                     }}
                                 />
-                                <Label htmlFor="is-addendum" className="cursor-pointer font-normal">
+                                <Label htmlFor="is-addendum" className="cursor-pointer font-normal text-muted-foreground">
                                     {isAddendum ? "Đây là Phụ lục Hợp đồng" : "Đây là Hợp đồng chính"}
                                 </Label>
                             </div>
@@ -226,12 +233,13 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
 
                         {isAddendum && (
                             <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                <Label className="font-bold text-blue-600">Thuộc Hợp đồng gốc <span className="text-red-500">*</span></Label>
+                                <Label className="font-bold text-blue-600 dark:text-blue-400">Thuộc Hợp đồng gốc <span className="text-red-500">*</span></Label>
                                 <Select
                                     value={form.watch("parent_id") || ""}
                                     onValueChange={(val) => form.setValue("parent_id", val)}
                                 >
-                                    <SelectTrigger className="bg-white border-blue-300">
+                                    {/* ✅ FIX: bg-background border-input */}
+                                    <SelectTrigger className="bg-background border-input">
                                         <SelectValue placeholder="-- Chọn hợp đồng gốc --" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -242,7 +250,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                                                 </SelectItem>
                                             ))
                                         ) : (
-                                            <div className="p-2 text-sm text-gray-500 italic text-center">Chưa có hợp đồng chính nào</div>
+                                            <div className="p-2 text-sm text-muted-foreground italic text-center">Chưa có hợp đồng chính nào</div>
                                         )}
                                     </SelectContent>
                                 </Select>
@@ -253,9 +261,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Số {isAddendum ? "Phụ lục" : "Hợp đồng"} <span className="text-red-500">*</span></Label>
-                            <Input {...form.register("contract_number")} placeholder={isAddendum ? "PL-01/..." : "HĐ-01/..."} />
-
-                            {/* ✅ FIX LỖI TS2322: Chuyển message thành String() để React render an toàn */}
+                            <Input {...form.register("contract_number")} placeholder={isAddendum ? "PL-01/..." : "HĐ-01/..."} className="bg-background" />
                             {form.formState.errors.contract_number?.message && (
                                 <p className="text-red-500 text-xs">
                                     {String(form.formState.errors.contract_number.message)}
@@ -269,7 +275,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                                 defaultValue={form.getValues("contract_type")}
                                 onValueChange={(val) => form.setValue("contract_type", val)}
                             >
-                                <SelectTrigger>
+                                <SelectTrigger className="bg-background">
                                     <SelectValue placeholder="Chọn loại hợp đồng" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -279,7 +285,6 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                                     <SelectItem value="supply">Cung cấp vật tư</SelectItem>
                                 </SelectContent>
                             </Select>
-                            {/* ✅ FIX LỖI TS2322 cho contract_type */}
                             {form.formState.errors.contract_type?.message && (
                                 <p className="text-red-500 text-xs">
                                     {String(form.formState.errors.contract_type.message)}
@@ -289,7 +294,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
 
                         <div className="space-y-2 md:col-span-2">
                             <Label>Tiêu đề <span className="text-red-500">*</span></Label>
-                            <Input {...form.register("title")} placeholder={isAddendum ? "V/v Bổ sung hạng mục..." : "Hợp đồng thi công trọn gói..."} />
+                            <Input {...form.register("title")} placeholder={isAddendum ? "V/v Bổ sung hạng mục..." : "Hợp đồng thi công trọn gói..."} className="bg-background" />
                             {form.formState.errors.title?.message && (
                                 <p className="text-red-500 text-xs">
                                     {String(form.formState.errors.title.message)}
@@ -299,7 +304,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
 
                         <div className="space-y-2">
                             <Label>Giá trị {isAddendum ? "Phát sinh" : "Hợp đồng"} (VNĐ)</Label>
-                            <Input type="number" {...form.register("value")} className="font-bold" />
+                            <Input type="number" {...form.register("value")} className="font-bold bg-background" />
                         </div>
 
                         <div className="space-y-2">
@@ -308,7 +313,7 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                                 defaultValue={form.getValues("status")}
                                 onValueChange={(val) => form.setValue("status", val)}
                             >
-                                <SelectTrigger>
+                                <SelectTrigger className="bg-background">
                                     <SelectValue placeholder="Chọn trạng thái" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -323,44 +328,45 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                 </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card">
                 <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                         <Label>Ngày ký</Label>
-                        <Input type="date" {...form.register("signing_date")} />
+                        <Input type="date" {...form.register("signing_date")} className="bg-background" />
                     </div>
                     <div className="space-y-2">
                         <Label>Ngày bắt đầu</Label>
-                        <Input type="date" {...form.register("start_date")} />
+                        <Input type="date" {...form.register("start_date")} className="bg-background" />
                     </div>
                     <div className="space-y-2">
                         <Label>Ngày kết thúc</Label>
-                        <Input type="date" {...form.register("end_date")} />
+                        <Input type="date" {...form.register("end_date")} className="bg-background" />
                     </div>
                 </CardContent>
             </Card>
 
-            <Card>
+            <Card className="bg-card">
                 <CardHeader><CardTitle>Nội dung & Điều khoản</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                     <div className="space-y-2">
                         <Label>Nội dung chi tiết</Label>
                         <Textarea
                             {...form.register("content")}
-                            className="min-h-[150px] font-mono text-sm"
+                            className="min-h-[150px] font-mono text-sm bg-background"
                         />
                     </div>
                     <div className="space-y-2">
                         <Label>Điều khoản thanh toán (Ghi chú)</Label>
                         <Textarea
                             {...form.register("payment_terms")}
-                            className="min-h-[80px]"
+                            className="min-h-[80px] bg-background"
                         />
                     </div>
                 </CardContent>
             </Card>
 
-            <Card className="border-indigo-100 shadow-sm">
+            {/* ✅ FIX: border-indigo-xxx -> border-border */}
+            <Card className="border border-border shadow-sm bg-card">
                 <CardContent className="pt-6">
                     {initialData?.id ? (
                         <PaymentSchedule
@@ -369,18 +375,19 @@ export function ContractForm({ initialData, projectId, onCancel, onSuccess, exis
                             projectId={projectId}
                         />
                     ) : (
-                        <div className="text-center py-8 text-gray-400 border border-dashed rounded bg-slate-50">
+                        <div className="text-center py-8 text-muted-foreground border border-dashed border-border rounded bg-muted/20">
                             Bạn cần lưu {isAddendum ? "Phụ lục" : "Hợp đồng"} trước khi tạo lịch thanh toán.
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            <div className="flex justify-end gap-3 sticky bottom-0 bg-white p-4 border-t shadow-lg md:static md:bg-transparent md:border-0 md:shadow-none z-10">
-                <Button type="button" variant="ghost" onClick={onCancel}>
+            {/* ✅ FIX: Sticky footer background */}
+            <div className="flex justify-end gap-3 sticky bottom-0 bg-background p-4 border-t border-border shadow-lg md:static md:bg-transparent md:border-0 md:shadow-none z-10">
+                <Button type="button" variant="ghost" onClick={onCancel} className="hover:bg-muted">
                     <X className="w-4 h-4 mr-2" /> Đóng
                 </Button>
-                <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700">
+                <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white">
                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                     Lưu {isAddendum ? "Phụ lục" : "Hợp đồng"}
                 </Button>

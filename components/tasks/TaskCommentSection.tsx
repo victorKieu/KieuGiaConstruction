@@ -318,7 +318,8 @@ export default function TaskCommentSection({ taskId, projectId, members, current
             if (match) {
                 const name = match[1];
                 const rest = content.substring(name.length);
-                return <><strong className="text-blue-600 font-semibold">{name}</strong>{rest}</>
+                // ✅ FIX: Text color for dark mode
+                return <><strong className="text-blue-600 dark:text-blue-400 font-semibold">{name}</strong>{rest}</>
             }
             return content;
         };
@@ -327,47 +328,70 @@ export default function TaskCommentSection({ taskId, projectId, members, current
             <div className="flex space-x-2 group">
                 <Avatar className="h-8 w-8 flex-shrink-0">
                     <AvatarImage src={comment.created_by.avatar_url || undefined} />
-                    <AvatarFallback className="text-xs">{comment.created_by.name?.[0]?.toUpperCase() || "?"}</AvatarFallback>
+                    <AvatarFallback className="text-xs bg-muted text-muted-foreground">{comment.created_by.name?.[0]?.toUpperCase() || "?"}</AvatarFallback>
                 </Avatar>
                 <div className="flex-grow">
                     {!isEditing ? (
                         <>
-                            <div className="bg-gray-100 rounded-xl px-3 py-2 relative group/comment">
-                                <span className="font-semibold text-sm text-gray-900 hover:underline cursor-pointer">{comment.created_by.name}</span>
-                                <p className="text-sm text-gray-800 whitespace-pre-line">{renderContentWithTag(comment.content)}</p>
-                                {likeCount > 0 && (<div className="absolute -bottom-3 right-2 bg-white rounded-full p-0.5 shadow-md flex items-center text-xs"><div className="bg-blue-500 rounded-full p-0.5 mr-1"><ThumbsUp size={10} className="text-white" /></div><span className="pr-1">{likeCount}</span></div>)}
+                            {/* ✅ FIX: bg-gray-100 -> bg-muted, Text colors */}
+                            <div className="bg-muted rounded-xl px-3 py-2 relative group/comment">
+                                <span className="font-semibold text-sm text-foreground hover:underline cursor-pointer">{comment.created_by.name}</span>
+                                <p className="text-sm text-foreground/90 whitespace-pre-line">{renderContentWithTag(comment.content)}</p>
+
+                                {likeCount > 0 && (
+                                    // ✅ FIX: Like badge bg
+                                    <div className="absolute -bottom-3 right-2 bg-background border border-border rounded-full p-0.5 shadow-sm flex items-center text-xs">
+                                        <div className="bg-blue-500 rounded-full p-0.5 mr-1"><ThumbsUp size={10} className="text-white" /></div>
+                                        <span className="pr-1 text-muted-foreground">{likeCount}</span>
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex items-center space-x-3 text-xs text-gray-500 mt-1 pl-3">
-                                <button onClick={handleLike} className={`font-semibold hover:underline ${isLiked ? 'text-blue-600' : ''}`} disabled={isLikePending}>Thích</button>
+
+                            {/* ✅ FIX: Action link colors */}
+                            <div className="flex items-center space-x-3 text-xs text-muted-foreground mt-1 pl-3">
+                                <button onClick={handleLike} className={`font-semibold hover:underline ${isLiked ? 'text-blue-600 dark:text-blue-400' : ''}`} disabled={isLikePending}>Thích</button>
                                 <button onClick={() => handleReply(comment.id, comment.created_by.name)} className="font-semibold hover:underline">Trả lời</button>
                                 <span>{formatRelativeTime(comment.created_at)}</span>
-                                {isOwner && (<><button onClick={() => setIsEditing(true)} className="font-semibold hover:underline">Sửa</button><button onClick={() => setIsDeleting(true)} className="font-semibold hover:underline text-red-500">Xóa</button></>)}
+                                {isOwner && (<><button onClick={() => setIsEditing(true)} className="font-semibold hover:underline">Sửa</button><button onClick={() => setIsDeleting(true)} className="font-semibold hover:underline text-red-500 dark:text-red-400">Xóa</button></>)}
                             </div>
                         </>
                     ) : (<form action={handleUpdateSubmit} className="space-y-2">
                         <input type="hidden" name="comment_id" value={comment.id} /><input type="hidden" name="project_id" value={projectId} />
-                        <Textarea name="content" defaultValue={comment.content} rows={2} required disabled={isUpdatePending} className="bg-gray-100 border-none rounded-xl" autoFocus />
+                        {/* ✅ FIX: Textarea update mode */}
+                        <Textarea name="content" defaultValue={comment.content} rows={2} required disabled={isUpdatePending} className="bg-muted border-none rounded-xl text-foreground focus-visible:ring-offset-0" autoFocus />
                         <div className="flex items-center space-x-2 text-xs">
-                            <Button type="submit" size="sm" disabled={isUpdatePending} className="h-6 px-2 text-xs rounded-full">{isUpdatePending ? "Đang lưu..." : "Lưu"}</Button>
-                            <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isUpdatePending} className="h-6 px-2 text-xs rounded-full">Hủy</Button>
+                            <Button type="submit" size="sm" disabled={isUpdatePending} className="h-6 px-2 text-xs rounded-full">
+                                {isUpdatePending ? "Đang lưu..." : "Lưu"}
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isUpdatePending} className="h-6 px-2 text-xs rounded-full text-muted-foreground hover:bg-muted">
+                                Hủy
+                            </Button>
                         </div>
                     </form>
                     )}
                     {comment.replies && comment.replies.length > 0 && (
-                        <div className="space-y-3 mt-2 relative pl-6"><div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
-                            {comment.replies.map(reply => (<div key={reply.id} className="relative"><div className="absolute -left-2 top-4 h-0.5 w-2 bg-gray-200"></div><CommentItem comment={reply} onActionSuccess={onActionSuccess} /></div>))}
+                        <div className="space-y-3 mt-2 relative pl-6">
+                            {/* ✅ FIX: Thread line color */}
+                            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border"></div>
+                            {comment.replies.map(reply => (
+                                <div key={reply.id} className="relative">
+                                    <div className="absolute -left-2 top-4 h-0.5 w-2 bg-border"></div>
+                                    <CommentItem comment={reply} onActionSuccess={onActionSuccess} />
+                                </div>
+                            ))}
                         </div>
                     )}
                     {replyingTo?.parentId === comment.id && (
                         <div className="flex items-start space-x-2 mt-2">
                             <Avatar className="h-8 w-8">
                                 <AvatarImage src={currentUserProfile?.avatar_url || undefined} />
-                                <AvatarFallback>{currentUserProfile?.name?.[0]}</AvatarFallback>
+                                <AvatarFallback className="bg-muted text-muted-foreground">{currentUserProfile?.name?.[0]}</AvatarFallback>
                             </Avatar>
                             <form action={createAction} id={`comment-form-${comment.id}`} className="flex-grow">
                                 <input type="hidden" name="parent_comment_id" value={comment.id} />
-                                <Textarea name="content" ref={replyTextareaRef} defaultValue={`@${replyingTo.userName} `} className="w-full bg-gray-100 border-none rounded-xl text-sm p-2 h-10" required onKeyDown={handleReplyKeyDown} />
-                                <div className="text-xs text-gray-500 mt-1">Nhấn <button type="button" onClick={() => setReplyingTo(null)} className="font-semibold hover:underline">Hủy</button> để đóng.</div>
+                                {/* ✅ FIX: Textarea reply mode */}
+                                <Textarea name="content" ref={replyTextareaRef} defaultValue={`@${replyingTo.userName} `} className="w-full bg-muted border-none rounded-xl text-sm p-2 h-10 text-foreground focus-visible:ring-offset-0" required onKeyDown={handleReplyKeyDown} />
+                                <div className="text-xs text-muted-foreground mt-1">Nhấn <button type="button" onClick={() => setReplyingTo(null)} className="font-semibold hover:underline text-foreground">Hủy</button> để đóng.</div>
                             </form>
                         </div>
                     )}
@@ -386,19 +410,23 @@ export default function TaskCommentSection({ taskId, projectId, members, current
     };
 
     return (
-        <div className="space-y-4 pt-4 border-t">
+        // ✅ FIX: Border color
+        <div className="space-y-4 pt-4 border-t border-border">
             <div className="flex justify-between items-center">
-                {/* ✅ FIX: Thay button thành div và thêm cursor-pointer */}
                 <div
                     onClick={() => setIsCommentsOpen(prev => !prev)}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors w-full cursor-pointer"
+                    // ✅ FIX: Hover color & Text color
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors w-full cursor-pointer"
                 >
-                    <h3 className="text-base font-semibold text-gray-800 flex items-center"><MessageSquare className="h-5 w-5 mr-2 text-gray-500" /> Bình luận & Tương tác</h3>
+                    <h3 className="text-base font-semibold text-foreground flex items-center">
+                        <MessageSquare className="h-5 w-5 mr-2 text-muted-foreground" />
+                        Bình luận & Tương tác
+                    </h3>
                     <div className="flex items-center">
-                        <span className="text-sm font-medium text-blue-600 mr-4">{`(${totalCommentCount})`}</span>
-                        {/* Nút Like Task - Sử dụng stopPropagation để không kích hoạt accordion */}
+                        <span className="text-sm font-medium text-blue-600 dark:text-blue-400 mr-4">{`(${totalCommentCount})`}</span>
                         <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
-                            <Button onClick={handleTaskLike} variant="ghost" size="sm" disabled={isTaskLikePending} className={`h-8 ${taskLikeState.isLiked ? 'text-blue-600' : 'text-gray-500'}`}>
+                            {/* ✅ FIX: Button ghost hover */}
+                            <Button onClick={handleTaskLike} variant="ghost" size="sm" disabled={isTaskLikePending} className={`h-8 ${taskLikeState.isLiked ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}>
                                 <ThumbsUp className={`h-4 w-4 mr-1 ${taskLikeState.isLiked ? 'fill-current' : ''}`} />
                                 {taskLikeState.count > 0 ? taskLikeState.count : 'Thích'}
                             </Button>
@@ -412,18 +440,20 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                     <div className="flex items-start space-x-2 mb-4">
                         <Avatar className="h-8 w-8">
                             <AvatarImage src={currentUserProfile?.avatar_url || undefined} />
-                            <AvatarFallback>{currentUserProfile?.name?.[0]}</AvatarFallback>
+                            <AvatarFallback className="bg-muted text-muted-foreground">{currentUserProfile?.name?.[0]}</AvatarFallback>
                         </Avatar>
                         <form ref={mainCommentFormRef} action={createAction} id="comment-form-root" className="flex-grow">
-                            <Textarea name="content" placeholder="Viết bình luận..." className="w-full bg-gray-100 border-none rounded-xl focus:ring-1 focus:ring-blue-500 text-sm p-2 min-h-[40px]" />
+                            {/* ✅ FIX: Textarea main input */}
+                            <Textarea name="content" placeholder="Viết bình luận..." className="w-full bg-muted border-none rounded-xl focus:ring-1 focus:ring-blue-500 text-sm p-2 min-h-[40px] text-foreground focus-visible:ring-offset-0" />
                             <div className="flex justify-end mt-2"><Button type="submit" size="sm" disabled={isCreatePending}>{isCreatePending ? 'Đang gửi...' : 'Gửi'}</Button></div>
                         </form>
                     </div>
 
                     <div className="space-y-3 pt-2">
                         {fetchError && <Alert variant="destructive"><AlertTitle>Lỗi tải bình luận</AlertTitle><AlertDescription>{fetchError}</AlertDescription></Alert>}
-                        {isLoading && <div className="text-center py-4 text-gray-500 text-sm">Đang tải bình luận...</div>}
-                        {!isLoading && !fetchError && comments.length === 0 && <p className="text-sm text-center py-4 text-gray-400">Chưa có bình luận nào. Hãy là người đầu tiên!</p>}
+                        {/* ✅ FIX: Loading/Empty text colors */}
+                        {isLoading && <div className="text-center py-4 text-muted-foreground text-sm">Đang tải bình luận...</div>}
+                        {!isLoading && !fetchError && comments.length === 0 && <p className="text-sm text-center py-4 text-muted-foreground">Chưa có bình luận nào. Hãy là người đầu tiên!</p>}
                         {!isLoading && !fetchError && comments.map((c: CommentData) => <CommentItem key={c.id} comment={c} onActionSuccess={triggerRefresh} />)}
                     </div>
                 </div>

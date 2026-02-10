@@ -59,7 +59,8 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
     }
 
     const renderStatusBadge = (status: Task['status']) => {
-        if (!status) return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200">Khởi tạo</Badge>;
+        // ✅ FIX: Fallback badge color for dark mode
+        if (!status) return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Khởi tạo</Badge>;
         return (
             <Badge variant="outline" style={{ backgroundColor: `${status.color}20`, color: status.color, borderColor: `${status.color}50` }}>
                 {status.name}
@@ -80,13 +81,15 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
     })).filter(m => m.id !== "");
 
     if (taskList.length === 0) {
-        return <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-lg">Chưa có công việc nào</div>
+        // ✅ FIX: Empty state color
+        return <div className="text-center py-8 text-muted-foreground border-2 border-dashed border-border rounded-lg">Chưa có công việc nào</div>
     }
 
     return (
         <div className="space-y-4">
             {taskList.map((task) => (
-                <div key={task.id} className="border rounded-lg p-4 hover:bg-slate-50 transition-colors bg-white shadow-sm">
+                // ✅ FIX: Card background, text colors, border colors
+                <div key={task.id} className="border border-border rounded-lg p-4 hover:bg-muted/50 transition-colors bg-card shadow-sm text-card-foreground">
                     <div className="flex items-start gap-4">
                         <Checkbox checked={task.progress === 100} className="mt-1" />
 
@@ -94,14 +97,15 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                             {/* Header Task */}
                             <div className="flex items-center justify-between">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <h3 className="font-semibold text-slate-800 text-lg">{task.name}</h3>
+                                    {/* ✅ FIX: Text foreground */}
+                                    <h3 className="font-semibold text-foreground text-lg">{task.name}</h3>
                                     {renderStatusBadge(task.status)}
                                     {renderPriorityBadge(task.priority)}
                                 </div>
 
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                                             <MoreHorizontal className="h-4 w-4" />
                                         </Button>
                                     </DropdownMenuTrigger>
@@ -111,7 +115,8 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                                 <Edit className="h-4 w-4 mr-2" /> Chỉnh sửa
                                             </Link>
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem className="text-red-600 cursor-pointer" onClick={() => handleDelete(task.id)}>
+                                        {/* ✅ FIX: Danger color */}
+                                        <DropdownMenuItem className="text-red-600 dark:text-red-400 cursor-pointer" onClick={() => handleDelete(task.id)}>
                                             <Trash2 className="h-4 w-4 mr-2" /> Xóa
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
@@ -119,23 +124,26 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                             </div>
 
                             {/* Description */}
-                            {task.description && <p className="text-sm text-slate-600">{task.description}</p>}
+                            {/* ✅ FIX: Text muted */}
+                            {task.description && <p className="text-sm text-muted-foreground">{task.description}</p>}
 
                             {/* Meta Info */}
-                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
+                            {/* ✅ FIX: Text muted */}
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
                                 <div className="flex items-center gap-2">
                                     <User className="w-4 h-4" />
                                     {task.assignee ? (
                                         <div className="flex items-center gap-1">
                                             {task.assignee.avatar_url && <img src={task.assignee.avatar_url} className="w-5 h-5 rounded-full object-cover" alt="" />}
-                                            <span className="font-medium text-slate-700">{task.assignee.name}</span>
+                                            {/* ✅ FIX: Text foreground */}
+                                            <span className="font-medium text-foreground">{task.assignee.name}</span>
                                         </div>
                                     ) : <span>Chưa phân công</span>}
                                 </div>
 
                                 <div className="flex items-center gap-2">
                                     <Calendar className="w-4 h-4" />
-                                    <span className={task.due_date && new Date(task.due_date) < new Date() ? "text-red-500 font-bold" : ""}>
+                                    <span className={task.due_date && new Date(task.due_date) < new Date() ? "text-red-500 dark:text-red-400 font-bold" : ""}>
                                         Hạn chót: {formatDate(task.due_date)}
                                     </span>
                                 </div>
@@ -143,14 +151,15 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
 
                             {/* Progress */}
                             <div className="space-y-1 pt-1 max-w-md">
-                                <div className="flex justify-between text-xs text-slate-500">
+                                <div className="flex justify-between text-xs text-muted-foreground">
                                     <span>Tiến độ: {task.progress || 0}%</span>
                                 </div>
                                 <Progress value={task.progress || 0} className="h-2" />
                             </div>
 
                             {/* ✅ PHẦN BÌNH LUẬN & LIKE (Đã thêm lại) */}
-                            <div className="mt-4 border-t pt-2">
+                            {/* ✅ FIX: Border color */}
+                            <div className="mt-4 border-t border-border pt-2">
                                 <TaskCommentSection
                                     taskId={task.id}
                                     projectId={projectId}

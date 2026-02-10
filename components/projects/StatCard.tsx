@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+﻿import { ReactNode } from 'react';
 
 interface StatCardProps {
     icon: ReactNode;
@@ -8,13 +8,16 @@ interface StatCardProps {
 
 export default function StatCard({ icon, title, value }: StatCardProps) {
     return (
-        <div className="bg-white p-4 rounded-lg shadow flex items-start gap-4">
-            <div className="bg-gray-100 p-3 rounded-lg text-gray-600">
+        // ✅ FIX: bg-white -> bg-card, text colors
+        <div className="bg-card text-card-foreground p-4 rounded-lg shadow flex items-start gap-4 border border-border">
+            {/* ✅ FIX: bg-gray-100 -> bg-muted */}
+            <div className="bg-muted p-3 rounded-lg text-muted-foreground">
                 {icon}
             </div>
             <div>
-                <div className="text-sm text-gray-500">{title}</div>
-                <div className="text-base font-semibold text-gray-800">{value}</div>
+                {/* ✅ FIX: text colors */}
+                <div className="text-sm text-muted-foreground">{title}</div>
+                <div className="text-base font-semibold text-foreground">{value}</div>
             </div>
         </div>
     );

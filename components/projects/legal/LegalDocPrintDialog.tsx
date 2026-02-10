@@ -7,7 +7,7 @@ import { Printer, FileText } from "lucide-react";
 import { useReactToPrint } from "react-to-print";
 import { formatDate } from "@/lib/utils/utils";
 
-// Mẫu in chuẩn (Giữ nguyên)
+// Mẫu in chuẩn (Giữ nguyên bg-white text-black để mô phỏng trang giấy)
 const PrintContent = ({ data, refProp }: { data: any, refProp: any }) => {
     return (
         <div ref={refProp} className="p-8 md:p-12 bg-white text-black font-serif max-w-[800px] mx-auto min-h-[1000px]">
@@ -74,36 +74,38 @@ const PrintContent = ({ data, refProp }: { data: any, refProp: any }) => {
 export default function LegalDocPrintDialog({ doc, projectName }: { doc: any, projectName: string }) {
     const componentRef = useRef<HTMLDivElement>(null);
 
-    // ✅ FIX LỖI "did not receive a contentRef": Dùng contentRef thay vì content
     const handlePrint = useReactToPrint({
-        contentRef: componentRef, // API mới của react-to-print v3+
+        contentRef: componentRef,
         documentTitle: `${doc.doc_code}_${doc.doc_type}`,
     });
 
-    // Chuẩn bị data
     const printData = { ...doc, project_name: projectName };
 
     return (
         <Dialog>
             <DialogTrigger asChild>
                 <Button variant="ghost" size="icon" title="In văn bản">
-                    <Printer className="w-4 h-4 text-slate-600" />
+                    {/* ✅ FIX: text-slate-600 -> text-muted-foreground */}
+                    <Printer className="w-4 h-4 text-muted-foreground" />
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-[850px] h-[90vh] flex flex-col p-0 bg-slate-100" aria-describedby={undefined}>
-                <div className="p-4 bg-white border-b flex justify-between items-center">
-                    <DialogTitle className="font-bold flex items-center gap-2 text-lg">
+            {/* ✅ FIX: bg-slate-100 -> bg-zinc-100 dark:bg-zinc-900 (Nền tối cho hộp thoại bao quanh tờ giấy) */}
+            <DialogContent className="max-w-[850px] h-[90vh] flex flex-col p-0 bg-zinc-100 dark:bg-zinc-900" aria-describedby={undefined}>
+
+                {/* ✅ FIX: Header dialog (bg-white -> bg-background, border -> border-border) */}
+                <div className="p-4 bg-background border-b border-border flex justify-between items-center">
+                    <DialogTitle className="font-bold flex items-center gap-2 text-lg text-foreground">
                         <FileText className="w-4 h-4" /> Xem trước bản in
                     </DialogTitle>
 
-                    <Button onClick={() => handlePrint()} className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={() => handlePrint()} className="bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700">
                         <Printer className="w-4 h-4 mr-2" /> In ngay
                     </Button>
                 </div>
 
                 <div className="flex-1 overflow-auto p-8 flex justify-center">
-                    {/* Phần hiển thị để in */}
+                    {/* Phần hiển thị để in - Giữ nguyên shadow để làm nổi bật tờ giấy trắng */}
                     <div className="shadow-lg">
                         <PrintContent refProp={componentRef} data={printData} />
                     </div>

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge"; // Nếu chưa có badge, có thể dùng div class
+import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils/utils";
 import { Trash2, Loader2, User, ShieldCheck, Briefcase } from "lucide-react";
 import { removeProjectMember } from "@/lib/action/projectActions";
@@ -15,30 +15,25 @@ import { MemberData } from "@/types/project";
 interface ProjectMembersTabProps {
     members: MemberData[];
     projectId: string;
-
-    // Props hỗ trợ chức năng Add
     allEmployees?: any[];
     roles?: any[];
-
-    // Phân quyền
     isManager?: boolean;
-    currentUserId?: string; // Để tránh tự xóa chính mình
+    currentUserId?: string;
 }
 
-// --- Helper Functions ---
 function getPositionName(position: any) {
     if (!position) return "—";
     if (typeof position === 'object' && position.name) return position.name;
     return position;
 }
 
-// Hàm lấy màu badge dựa trên role code
+// ✅ FIX: Cập nhật màu Badge cho Dark Mode
 function getRoleBadgeColor(code: string = "") {
     switch (code?.toUpperCase()) {
-        case 'MANAGER': return "bg-red-100 text-red-700 border-red-200";
-        case 'SUPERVISOR': return "bg-orange-100 text-orange-700 border-orange-200";
-        case 'ADMIN': return "bg-purple-100 text-purple-700 border-purple-200";
-        default: return "bg-blue-50 text-blue-700 border-blue-200";
+        case 'MANAGER': return "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+        case 'SUPERVISOR': return "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800";
+        case 'ADMIN': return "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800";
+        default: return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800";
     }
 }
 
@@ -50,16 +45,11 @@ export default function ProjectMembersTab({
     isManager = true,
     currentUserId = ""
 }: ProjectMembersTabProps) {
-    console.log("Check Quyền:", isManager)
     const [isPending, startTransition] = useTransition();
 
-    // Lọc data rác (null)
     const validMembers = members.filter((m) => m.employee);
-
-    // Lấy danh sách ID đã có để truyền vào Dialog (disable những người đã add)
     const existingMemberIds = validMembers.map(m => m.employee_id);
 
-    // Xử lý xóa thành viên
     const handleRemove = (employeeId: string, memberName: string) => {
         if (!confirm(`Xác nhận xóa "${memberName}" khỏi dự án này?`)) return;
 
@@ -74,20 +64,24 @@ export default function ProjectMembersTab({
     };
 
     return (
-        <Card className="shadow-sm border border-slate-200 rounded-xl bg-white">
-            <CardHeader className="border-b px-6 py-4 flex flex-row items-center justify-between bg-slate-50/50 rounded-t-xl">
+        // ✅ FIX: bg-white -> bg-card, border-slate-200 -> border-border
+        <Card className="shadow-sm border border-border rounded-xl bg-card">
+            {/* ✅ FIX: bg-slate-50/50 -> bg-muted/50 */}
+            <CardHeader className="border-b border-border px-6 py-4 flex flex-row items-center justify-between bg-muted/50 rounded-t-xl">
                 <div>
-                    <CardTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <Briefcase className="w-5 h-5 text-blue-600" />
+                    {/* ✅ FIX: text-gray-800 -> text-foreground */}
+                    <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+                        <Briefcase className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                         Nhân sự tham gia
-                        <span className="ml-2 inline-flex items-center justify-center bg-gray-200 text-gray-700 text-xs font-bold px-2 py-0.5 rounded-full min-w-[24px]">
+                        {/* ✅ FIX: Badge counter colors */}
+                        <span className="ml-2 inline-flex items-center justify-center bg-muted text-muted-foreground text-xs font-bold px-2 py-0.5 rounded-full min-w-[24px]">
                             {validMembers.length}
                         </span>
                     </CardTitle>
-                    <p className="text-sm text-gray-500 mt-1">Quản lý danh sách nhân viên và phân quyền trong dự án.</p>
+                    {/* ✅ FIX: text-gray-500 -> text-muted-foreground */}
+                    <p className="text-sm text-muted-foreground mt-1">Quản lý danh sách nhân viên và phân quyền trong dự án.</p>
                 </div>
 
-                {/* Nút Thêm Thành Viên (Chỉ Manager thấy) */}
                 {isManager && (
                     <AddMemberDialog
                         projectId={projectId}
@@ -98,9 +92,11 @@ export default function ProjectMembersTab({
                 )}
             </CardHeader>
 
-            <CardContent className="p-6 bg-slate-50/30 min-h-[300px]">
+            {/* ✅ FIX: bg-slate-50/30 -> bg-muted/20 */}
+            <CardContent className="p-6 bg-muted/20 min-h-[300px]">
                 {validMembers.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl bg-white">
+                    // ✅ FIX: Empty state colors
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border-2 border-dashed border-border rounded-xl bg-card">
                         <User className="w-12 h-12 mb-3 opacity-20" />
                         <p>Chưa có nhân sự nào được phân công.</p>
                     </div>
@@ -108,16 +104,11 @@ export default function ProjectMembersTab({
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                         {validMembers.map((m) => {
                             const e = m.employee!;
-                            // Fallback Avatar an toàn
                             const avatarSrc = (e as any).user_profiles?.avatar_url || e.avatar_url || "";
-
                             const roleName = m.role_name || "Thành viên";
                             const roleCode = m.role_code || "MEMBER";
                             const positionName = getPositionName(e.position);
 
-                            // Logic ẩn nút xóa:
-                            // 1. Không được xóa chính mình
-                            // 2. Không được xóa người có role MANAGER (trừ khi Admin hệ thống - logic xử lý sau, tạm thời ẩn cho an toàn)
                             const isMe = e.id === currentUserId;
                             const isProjectManagerTarget = roleCode === 'MANAGER';
                             const canDelete = isManager && !isMe && !isProjectManagerTarget;
@@ -125,15 +116,16 @@ export default function ProjectMembersTab({
                             return (
                                 <div
                                     key={m.project_id + "-" + m.employee_id}
-                                    className="group relative bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200"
+                                    // ✅ FIX: Card item style (bg-card, border-border, hover colors)
+                                    className="group relative bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md hover:border-blue-400 dark:hover:border-blue-500 transition-all duration-200"
                                 >
-                                    {/* Nút Xóa (Absolute) */}
                                     {canDelete && (
                                         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full"
+                                                // ✅ FIX: Button hover colors
+                                                className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full"
                                                 onClick={() => handleRemove(m.employee_id, e.name)}
                                                 disabled={isPending}
                                                 title="Xóa khỏi dự án"
@@ -144,23 +136,21 @@ export default function ProjectMembersTab({
                                     )}
 
                                     <div className="flex items-center gap-4">
-                                        {/* Avatar */}
-                                        <Avatar className="h-14 w-14 border-2 border-white shadow-sm ring-1 ring-gray-100">
-                                            <AvatarImage
-                                                src={avatarSrc}
-                                                className="object-cover"
-                                            />
+                                        {/* Avatar - ✅ FIX: border colors */}
+                                        <Avatar className="h-14 w-14 border-2 border-background shadow-sm ring-1 ring-border">
+                                            <AvatarImage src={avatarSrc} className="object-cover" />
                                             <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg">
                                                 {e.name?.[0]?.toUpperCase()}
                                             </AvatarFallback>
                                         </Avatar>
 
-                                        {/* Thông tin chính */}
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="font-bold text-gray-800 truncate" title={e.name}>
+                                            {/* ✅ FIX: text-gray-800 -> text-foreground */}
+                                            <h4 className="font-bold text-foreground truncate" title={e.name}>
                                                 {e.name}
                                             </h4>
                                             <div className="flex items-center gap-2 mt-1">
+                                                {/* ✅ FIX: Badge colors using helper function */}
                                                 <Badge variant="outline" className={`px-2 py-0 h-5 text-[10px] uppercase tracking-wider font-semibold border ${getRoleBadgeColor(roleCode)}`}>
                                                     {roleName}
                                                 </Badge>
@@ -168,29 +158,29 @@ export default function ProjectMembersTab({
                                         </div>
                                     </div>
 
-                                    {/* Thông tin chi tiết bên dưới */}
-                                    <div className="mt-4 pt-3 border-t border-dashed border-gray-100 space-y-2">
+                                    {/* ✅ FIX: Border colors & Text colors */}
+                                    <div className="mt-4 pt-3 border-t border-dashed border-border space-y-2">
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-400 text-xs font-medium uppercase">Chức vụ</span>
-                                            <span className="text-gray-700 font-medium truncate max-w-[120px]" title={positionName}>
+                                            <span className="text-muted-foreground text-xs font-medium uppercase">Chức vụ</span>
+                                            <span className="text-foreground font-medium truncate max-w-[120px]" title={positionName}>
                                                 {positionName}
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-400 text-xs font-medium uppercase">Tham gia</span>
-                                            <span className="text-gray-600">{formatDate(m.joined_at)}</span>
+                                            <span className="text-muted-foreground text-xs font-medium uppercase">Tham gia</span>
+                                            <span className="text-foreground/80">{formatDate(m.joined_at)}</span>
                                         </div>
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-400 text-xs font-medium uppercase">Email</span>
-                                            <span className="text-gray-500 text-xs truncate max-w-[140px]" title={e.email}>
+                                            <span className="text-muted-foreground text-xs font-medium uppercase">Email</span>
+                                            <span className="text-muted-foreground text-xs truncate max-w-[140px]" title={e.email}>
                                                 {e.email || "—"}
                                             </span>
                                         </div>
                                     </div>
 
-                                    {/* Icon Role nền chìm (Optional decoration) */}
                                     {roleCode === 'MANAGER' && (
-                                        <ShieldCheck className="absolute bottom-2 right-2 text-red-50 w-12 h-12 -z-0 pointer-events-none" />
+                                        // ✅ FIX: Icon chìm opacity thấp hơn ở dark mode
+                                        <ShieldCheck className="absolute bottom-2 right-2 text-red-50 dark:text-red-900/10 w-12 h-12 -z-0 pointer-events-none" />
                                     )}
                                 </div>
                             );

@@ -202,7 +202,7 @@ export function TransactionDetailDialog({ transaction, open, setOpen }: Props) {
                             </Button>
                         )}
                         <Button variant="default" className="bg-blue-600 hover:bg-blue-700" onClick={handlePrint}>
-                            <Printer className="w-4 h-4 mr-2" /> In Phiếu A5
+                            <Printer className="w-4 h-4 mr-2" /> In
                         </Button>
                     </div>
                 </div>

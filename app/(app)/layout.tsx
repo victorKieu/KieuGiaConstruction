@@ -2,7 +2,7 @@
 import AppHeader from "@/components/layout/AppHeader";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
 import { redirect } from "next/navigation";
-import AutoLogoutProvider from "@/components/auth/AutoLogoutProvider"; // 1. Import Component tự động logout
+import AutoLogoutProvider from "@/components/auth/AutoLogoutProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
     const session = await getUserProfile();
@@ -16,11 +16,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     return (
         <AutoLogoutProvider>
-            <div className="flex h-screen bg-gray-50">
+            {/* ✅ FIX: bg-gray-50 -> bg-background (Để ăn theo màu nền Dark/Light của hệ thống) */}
+            <div className="flex h-screen bg-background">
                 <Sidebar user={userData} />
+
                 <div className="flex flex-col flex-1 overflow-hidden">
                     <AppHeader user={userData} />
-                    <main className="flex-1 overflow-y-auto p-4 md:p-6">
+
+                    {/* Main content area */}
+                    <main className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
                         {children}
                     </main>
                 </div>

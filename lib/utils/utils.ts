@@ -7,9 +7,11 @@ export function cn(...inputs: any[]) {
 }
 
 export function formatCurrency(amount: number | null | undefined, currency: string = "VND", locale: string = "vi-VN"): string {
-    if (amount === null || amount === undefined) {
-        return "0" + (currency === "VND" ? " ₫" : ""); // Hiển thị "0 ₫" nếu dữ liệu là null/undefined
+    // ✅ CẬP NHẬT: Nếu là 0, null hoặc undefined -> Trả về "-"
+    if (!amount || amount === 0) {
+        return "-";
     }
+
     const formatter = new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currency,
@@ -18,6 +20,7 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
     });
     return formatter.format(amount);
 }
+
 export function formatDate(date: string | Date): string {
     if (!date) return "Không xác định";
     return new Date(date).toLocaleDateString("vi-VN", {
@@ -26,6 +29,7 @@ export function formatDate(date: string | Date): string {
         year: "numeric"
     })
 }
+
 export function formatDateVN(date: string | Date): string {
     if (!date) return "Ngày ... tháng ... năm ...";
     const d = new Date(date);
@@ -54,7 +58,7 @@ export function getStatusColor(status: string): string {
             return "bg-gray-100 text-gray-800"
     }
 }
-// Cập nhật hàm formatNumber: đảm bảo trả về "0" nếu dữ liệu là null/undefined
+
 export function formatNumber(num: number | null | undefined): string {
     if (num === null || num === undefined) {
         return "0";

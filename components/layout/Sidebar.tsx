@@ -149,7 +149,7 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
                 {children}
             </div>
             <div
-                className={`pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-[120] px-3 py-1 rounded bg-black/90 text-white text-xs whitespace-nowrap shadow-xl transition-all duration-300
+                className={`pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-[120] px-3 py-1 rounded bg-popover text-popover-foreground text-xs whitespace-nowrap shadow-xl transition-all duration-300 border border-border
         ${show ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2"}
         `}
             >
@@ -159,11 +159,13 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
     );
 }
 
+// ✅ FIX: Thêm prop 'user' vào interface để khớp với layout.tsx (tránh lỗi TS2322)
 interface SidebarProps {
+    user?: any; // Thêm prop user (có thể optional hoặc required tùy logic)
     className?: string;
 }
 
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({ user, className }: SidebarProps) {
     const pathname = usePathname();
     const [expanded, setExpanded] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -214,8 +216,9 @@ export function Sidebar({ className }: SidebarProps) {
 
     const sidebarContent = (
         <aside
+            // ✅ FIX: bg-white -> bg-card, border -> border-border
             className={`
-        h-screen bg-white dark:bg-neutral-900 border-r border-blue-100 dark:border-neutral-800 shadow-2xl
+        h-screen bg-card border-r border-border shadow-2xl
         flex flex-col transition-all duration-300
         ${collapsed ? "w-16 min-w-16 max-w-16" : "w-[252px] min-w-[252px] max-w-[252px]"}
         
@@ -233,7 +236,8 @@ export function Sidebar({ className }: SidebarProps) {
             onMouseEnter={() => !isMobile && !className && setExpanded(true)}
             onMouseLeave={() => !isMobile && !className && setExpanded(false)}
         >
-            <div className="flex items-center gap-3 h-20 px-4 border-b border-blue-100 dark:border-neutral-800 relative bg-gradient-to-tr from-blue-50 to-white dark:from-neutral-900 dark:to-neutral-800">
+            {/* ✅ FIX: Header sidebar background gradient -> bg-muted/50 */}
+            <div className="flex items-center gap-3 h-20 px-4 border-b border-border relative bg-muted/30">
                 <div className="relative w-10 h-10 flex-shrink-0 drop-shadow-md">
                     {logoError ? (
                         <LogoFallback />
@@ -251,20 +255,21 @@ export function Sidebar({ className }: SidebarProps) {
                 </div>
                 {!collapsed && (
                     <div>
-                        <div className="font-bold text-xl text-blue-700 dark:text-blue-200 tracking-wide">Kieu Gia</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-300 font-medium">Construction</div>
+                        {/* ✅ FIX: Text colors */}
+                        <div className="font-bold text-xl text-primary tracking-wide">Kieu Gia</div>
+                        <div className="text-xs text-muted-foreground font-medium">Construction</div>
                     </div>
                 )}
 
                 {/* Nút đóng Sidebar trên Mobile */}
                 {!className && isMobile && !mobileOpen && (
                     <button
-                        // ✅ FIX: Z-Index 110 (Cao hơn cả Sidebar)
-                        className="fixed top-3 left-3 z-[110] bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all hover:bg-blue-50"
+                        // ✅ FIX: Z-Index 110, bg -> bg-background
+                        className="fixed top-3 left-3 z-[110] bg-background/90 shadow-xl p-2 rounded-full md:hidden border border-border backdrop-blur-md transition-all hover:bg-accent"
                         onClick={() => setMobileOpen(true)}
                         aria-label="Mở menu"
                     >
-                        <MenuIcon className="w-6 h-6 text-blue-600 dark:text-blue-200" />
+                        <MenuIcon className="w-6 h-6 text-foreground" />
                     </button>
                 )}
             </div>
@@ -277,11 +282,12 @@ export function Sidebar({ className }: SidebarProps) {
                                 <Tooltip text={item.title}>
                                     <button
                                         onClick={() => toggleExpand(item.href)}
+                                        // ✅ FIX: Active/Inactive colors
                                         className={`
                       group flex items-center w-full px-4 py-2 rounded-r-full transition-all
                       ${isActive(item.href)
-                                                ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-semibold scale-110 shadow"
-                                                : "hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-200 text-gray-700 dark:text-gray-200"}
+                                                ? "bg-primary/10 text-primary font-semibold scale-110 shadow-sm border-r-4 border-primary"
+                                                : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
                     `}
                                     >
                                         <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
@@ -293,8 +299,8 @@ export function Sidebar({ className }: SidebarProps) {
                                     className={`
                     group flex items-center w-full px-4 py-2 rounded-r-full transition-all
                     ${isActive(item.href)
-                                            ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-semibold shadow"
-                                            : "hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-200 text-gray-700 dark:text-gray-200"}
+                                            ? "bg-primary/10 text-primary font-semibold shadow-sm border-r-4 border-primary"
+                                            : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
                   `}
                                 >
                                     <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
@@ -313,7 +319,8 @@ export function Sidebar({ className }: SidebarProps) {
                 `}
                                 style={{ pointerEvents: expandedItems[item.href] && !collapsed ? "auto" : "none" }}
                             >
-                                <div className="ml-6 pl-2 border-l border-blue-100 dark:border-neutral-800">
+                                {/* ✅ FIX: Border line color */}
+                                <div className="ml-6 pl-2 border-l border-border">
                                     {item.children.map((child) => (
                                         <Link
                                             key={child.href}
@@ -321,8 +328,8 @@ export function Sidebar({ className }: SidebarProps) {
                                             className={`
                         flex items-center px-4 py-2 text-sm rounded-r-full my-1 transition-all
                         ${isActive(child.href)
-                                                    ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-bold scale-105 shadow"
-                                                    : "hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-200 text-blue-700 dark:text-blue-200"}
+                                                    ? "bg-primary/10 text-primary font-bold scale-105 shadow-sm border-r-2 border-primary"
+                                                    : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
                       `}
                                         >
                                             {child.title}
@@ -338,8 +345,8 @@ export function Sidebar({ className }: SidebarProps) {
                             className={`
                 group flex items-center px-4 py-2 rounded-r-full transition-all mb-1
                 ${isActive(item.href)
-                                    ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-semibold scale-105 shadow"
-                                    : "hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-700 dark:hover:text-blue-200 text-gray-700 dark:text-gray-200"}
+                                    ? "bg-primary/10 text-primary font-semibold scale-105 shadow-sm border-r-4 border-primary"
+                                    : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
               `}
                         >
                             {collapsed ? (
@@ -364,12 +371,12 @@ export function Sidebar({ className }: SidebarProps) {
             {/* Nút Menu Mobile Trôi Nổi */}
             {!className && isMobile && !mobileOpen && (
                 <button
-                    // ✅ FIX: Z-Index 110 (Cao hơn Header z-50)
-                    className="fixed top-3 left-3 z-[110] bg-white/90 dark:bg-neutral-900 shadow-xl p-2 rounded-full md:hidden border border-blue-100 dark:border-neutral-800 backdrop-blur-md transition-all hover:bg-blue-50"
+                    // ✅ FIX: Z-Index 110, Colors
+                    className="fixed top-3 left-3 z-[110] bg-background/90 shadow-xl p-2 rounded-full md:hidden border border-border backdrop-blur-md transition-all hover:bg-accent"
                     onClick={() => setMobileOpen(true)}
                     aria-label="Mở menu"
                 >
-                    <MenuIcon className="w-6 h-6 text-blue-600 dark:text-blue-200" />
+                    <MenuIcon className="w-6 h-6 text-foreground" />
                 </button>
             )}
 
@@ -378,8 +385,8 @@ export function Sidebar({ className }: SidebarProps) {
             {/* Overlay Mobile */}
             {!className && isMobile && mobileOpen && (
                 <div
-                    // ✅ FIX: Z-Index 90 để nằm dưới Sidebar (z-100) nhưng trên Header (z-50)
-                    className="fixed inset-0 bg-black/40 z-[90] backdrop-blur-[2px] transition-opacity"
+                    // ✅ FIX: Z-Index 90, bg-black/40 (giữ nguyên vì overlay tối là chuẩn)
+                    className="fixed inset-0 bg-black/60 z-[90] backdrop-blur-[2px] transition-opacity"
                     onClick={() => setMobileOpen(false)}
                 />
             )}

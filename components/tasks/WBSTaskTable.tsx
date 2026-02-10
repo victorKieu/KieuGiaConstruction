@@ -1,6 +1,5 @@
 "use client";
 
-// ✅ THÊM IMPORT Fragment
 import { useState, useMemo, Fragment } from "react";
 import { format } from "date-fns";
 import {
@@ -118,21 +117,24 @@ export default function WBSTaskTable({
         const paddingLeft = level * 24 + 12;
 
         return (
-            // ✅ FIX: Dùng Fragment có key thay vì <>
             <Fragment key={task.id}>
-                <TableRow className="hover:bg-slate-50 group border-b border-slate-100">
+                {/* ✅ FIX: Hover color, Border color */}
+                <TableRow className="hover:bg-muted/50 group border-b border-border">
                     <TableCell className="py-3">
                         <div className="flex items-center" style={{ paddingLeft: `${paddingLeft}px` }}>
                             {hasChildren ? (
-                                <button onClick={() => toggleExpand(task.id)} className="mr-1 p-1 hover:bg-slate-200 rounded text-slate-500">
+                                // ✅ FIX: Button expand hover colors
+                                <button onClick={() => toggleExpand(task.id)} className="mr-1 p-1 hover:bg-muted rounded text-muted-foreground">
                                     {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                 </button>
                             ) : <div className="w-6 mr-1" />}
-                            <span className="font-medium truncate max-w-[300px]" title={task.name}>{task.name}</span>
+                            {/* ✅ FIX: Text color */}
+                            <span className="font-medium truncate max-w-[300px] text-foreground" title={task.name}>{task.name}</span>
                         </div>
                     </TableCell>
 
-                    <TableCell className="text-xs text-slate-500">
+                    {/* ✅ FIX: Text muted */}
+                    <TableCell className="text-xs text-muted-foreground">
                         <div className="flex flex-col gap-0.5">
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {task.start_date ? format(new Date(task.start_date), "dd/MM") : "--"}</span>
                         </div>
@@ -141,19 +143,22 @@ export default function WBSTaskTable({
                     <TableCell className="w-[180px]">
                         <div className="flex flex-col gap-2">
                             <div className="flex justify-between items-center text-[10px]">
-                                <span className="font-semibold text-slate-600">{task.progress}%</span>
+                                {/* ✅ FIX: Text muted */}
+                                <span className="font-semibold text-muted-foreground">{task.progress}%</span>
                                 {task.status?.name ? (
                                     <Badge variant="outline" className="h-5 px-1.5 border-0" style={{ backgroundColor: `${task.status.color}20`, color: task.status.color }}>
                                         {task.status.name}
                                     </Badge>
-                                ) : <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-200">Mới</Badge>}
+                                ) : <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Mới</Badge>}
                             </div>
-                            <Progress value={task.progress || 0} className="h-1.5 w-full bg-slate-100" />
+                            {/* ✅ FIX: Progress bar background */}
+                            <Progress value={task.progress || 0} className="h-1.5 w-full bg-secondary" />
                         </div>
                     </TableCell>
 
                     <TableCell className="text-right w-[120px]">
-                        <span className="text-sm font-mono font-medium text-slate-700">
+                        {/* ✅ FIX: Text foreground */}
+                        <span className="text-sm font-mono font-medium text-foreground">
                             {task.cost_estimate > 0 ? formatCurrency(task.cost_estimate) : "-"}
                         </span>
                     </TableCell>
@@ -162,24 +167,28 @@ export default function WBSTaskTable({
                         {task.assignee ? (
                             <div className="flex items-center gap-2">
                                 {task.assignee.avatar_url ? (
-                                    <img src={task.assignee.avatar_url} className="w-6 h-6 rounded-full object-cover border" alt="Avatar" />
+                                    <img src={task.assignee.avatar_url} className="w-6 h-6 rounded-full object-cover border border-border" alt="Avatar" />
                                 ) : (
-                                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] text-blue-700 font-bold border border-blue-200 uppercase">
+                                    // ✅ FIX: Avatar fallback colors
+                                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-[10px] text-blue-700 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800 uppercase">
                                         {task.assignee.name ? task.assignee.name.charAt(0) : "?"}
                                     </div>
                                 )}
-                                <span className="text-xs truncate max-w-[100px]">{task.assignee.name}</span>
+                                {/* ✅ FIX: Text foreground */}
+                                <span className="text-xs truncate max-w-[100px] text-foreground">{task.assignee.name}</span>
                             </div>
-                        ) : <span className="text-xs text-slate-400 italic">--</span>}
+                        ) : <span className="text-xs text-muted-foreground italic">--</span>}
                     </TableCell>
 
                     <TableCell className="text-right">
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            {/* ✅ FIX: Icon color */}
+                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleAddSubTask(task.id)}><Plus className="w-4 h-4 mr-2" /> Thêm việc con</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleEdit(task)}><Edit className="w-4 h-4 mr-2" /> Sửa</DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(task.id)}><Trash2 className="w-4 h-4 mr-2" /> Xóa</DropdownMenuItem>
+                                {/* ✅ FIX: Danger text color */}
+                                <DropdownMenuItem className="text-red-600 dark:text-red-400" onClick={() => handleDelete(task.id)}><Trash2 className="w-4 h-4 mr-2" /> Xóa</DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -190,10 +199,12 @@ export default function WBSTaskTable({
     };
 
     return (
-        <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
+        // ✅ FIX: bg-card, border-border
+        <div className="border border-border rounded-lg bg-card shadow-sm overflow-hidden">
             <Table>
-                <TableHeader className="bg-slate-50">
-                    <TableRow>
+                {/* ✅ FIX: Header background */}
+                <TableHeader className="bg-muted/50">
+                    <TableRow className="border-border">
                         <TableHead className="w-[300px]">Hạng mục / Công việc</TableHead>
                         <TableHead className="w-[100px]">Thời gian</TableHead>
                         <TableHead className="w-[180px]">Tiến độ</TableHead>
@@ -204,7 +215,8 @@ export default function WBSTaskTable({
                 </TableHeader>
                 <TableBody>
                     {taskTree.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-12 text-slate-500">Chưa có dữ liệu.</TableCell></TableRow>
+                        // ✅ FIX: Text muted
+                        <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Chưa có dữ liệu.</TableCell></TableRow>
                     ) : taskTree.map(task => renderRow(task))}
                 </TableBody>
             </Table>

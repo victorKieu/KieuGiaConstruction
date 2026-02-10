@@ -20,10 +20,12 @@ export default function RequestDetailClient({ request }: { request: any }) {
                     <Button variant="outline" onClick={() => router.push(`requests/${request.id}/edit`)}><Edit className="w-4 h-4 mr-2" /> Sửa</Button>
                 )}
             </div>
+            {/* ✅ FIX: Card tự động dark mode */}
             <Card>
                 <CardHeader><CardTitle>{request.code} - {request.requester?.name}</CardTitle></CardHeader>
                 <CardContent>
-                    <div className="mb-4 text-sm text-slate-500">
+                    {/* ✅ FIX: text-slate-500 -> text-muted-foreground */}
+                    <div className="mb-4 text-sm text-muted-foreground">
                         Ngày tạo: {format(new Date(request.created_at), "dd/MM/yyyy")} | Trạng thái: <Badge>{request.status}</Badge>
                     </div>
                     <Table>
