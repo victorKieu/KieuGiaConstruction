@@ -9,6 +9,7 @@ import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectMilestoneTab from "./tab/ProjectMilestoneTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
+import ProjectQTOTab from "./tab/ProjectQTOTab";
 import ConstructionLogManager from "@/components/projects/execution/ConstructionLogManager";
 
 import {
@@ -41,6 +42,7 @@ interface ProjectTabsProps {
 const TABS = {
     TASKS: "Công việc & Mốc",
     SURVEY: "Khảo sát",
+    QTO: "Tiên lượng (QTO)",
     MEMBERS: "Nhân sự",
     LOGS: "Nhật ký thi công",
     DOCUMENTS: "Tài liệu",
@@ -54,6 +56,7 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
     const tabParam = searchParams.get("tab");
     switch (tabParam) {
         case "survey": return TABS.SURVEY;
+        case "qto": return TABS.QTO;
         case "tasks": return TABS.TASKS;
         case "members": return TABS.MEMBERS;
         case "logs": return TABS.LOGS;
@@ -66,6 +69,7 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
 function getUrlParamFromTabName(tabName: string): string {
     switch (tabName) {
         case TABS.SURVEY: return "survey";
+        case TABS.QTO: return "qto";
         case TABS.TASKS: return "tasks";
         case TABS.MEMBERS: return "members";
         case TABS.LOGS: return "logs";
@@ -140,6 +144,10 @@ export default function ProjectTabs({
                         projectId={projectId} surveys={surveys} members={members}
                         surveyTemplates={surveyTemplates} surveyTaskTemplates={surveyTaskTemplates}
                     />
+                )}
+
+                {activeTab === TABS.QTO && (
+                    <ProjectQTOTab projectId={projectId} />
                 )}
 
                 {activeTab === TABS.MEMBERS && (

@@ -16,6 +16,7 @@ import { saveQuotation, type QuotationInput } from "@/lib/action/quotationAction
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { readMoneyToText } from "@/lib/utils/readNumber"
+import { createClient } from "@/lib/supabase/client" // ✅ Import Supabase Client
 
 // --- 1. SCHEMA ---
 const quotationSchema = z.object({
@@ -33,10 +34,9 @@ const quotationSchema = z.object({
     items: z.array(z.object({
         id: z.string().optional(),
         item_type: z.enum(['section', 'item']).default('item'),
-        // ✅ Relax validation: Cho phép null/undefined, mặc định về chuỗi rỗng để tránh lỗi
         work_item_name: z.string().min(1, "Nội dung không được để trống"),
         details: z.string().nullish().transform(v => v || ''),
-        unit: z.string().nullish().transform(v => v || ''), // ✅ Fix lỗi unit bị null
+        unit: z.string().nullish().transform(v => v || ''),
         quantity: z.coerce.number().optional(),
         unit_price: z.coerce.number().optional(),
         vat_rate: z.coerce.number().default(0),
@@ -75,14 +75,13 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             customer_name: defaultCustomerName,
             project_name: defaultProjectName,
             address: defaultAddress,
-            // ✅ FIX LỖI DATA NULL: Map lại dữ liệu để đảm bảo không có trường nào bị null
             items: initialData.items?.map((i: any) => ({
                 ...i,
                 item_type: i.item_type || 'item',
-                work_item_name: i.work_item_name || '', // Fix null
-                unit: i.unit || '',                     // Fix null
-                details: i.details || '',               // Fix null
-                notes: i.notes || '',                   // Fix null
+                work_item_name: i.work_item_name || '',
+                unit: i.unit || '',
+                details: i.details || '',
+                notes: i.notes || '',
                 vat_rate: i.vat_rate || 0,
             }))
         } : {
@@ -126,11 +125,70 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
     const totalAmount = preTaxTotal + vatTotal;
 
+    // ✅ HÀM IMPORT DỮ LIỆU TỰ ĐỘNG TỪ BẢNG DỰ TOÁN
+    const handleImportFromEstimation = async () => {
+        if (!confirm("Hành động này sẽ xóa toàn bộ nội dung báo giá hiện tại bên dưới và thay thế bằng dữ liệu từ Dự toán. Bạn có chắc chắn?")) return;
+
+        const supabase = createClient();
+        setIsSubmitting(true);
+
+        try {
+            // Lấy dữ liệu đã được chốt giá từ bảng estimation_items
+            const { data, error } = await supabase
+                .from('estimation_items')
+                .select('*')
+                .eq('project_id', projectId)
+                .order('section_name', { ascending: true }); // Sắp xếp theo hạng mục
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                alert("Chưa có dữ liệu dự toán. Hãy thực hiện AI bóc tách hoặc Đồng bộ QTO trước.");
+                return;
+            }
+
+            // Xóa sạch các dòng trống hiện hành trong Form
+            remove();
+
+            // Auto-fill dữ liệu vào Form
+            let currentSection = "";
+            data.forEach((item) => {
+                // 1. Nếu có tên hạng mục (section_name) mới, tạo 1 dòng Tiêu đề lớn
+                if (item.section_name && item.section_name !== currentSection) {
+                    append({
+                        item_type: 'section',
+                        work_item_name: item.section_name.toUpperCase(),
+                        vat_rate: 0
+                    });
+                    currentSection = item.section_name;
+                }
+
+                // 2. Điền chi tiết công việc / vật tư
+                append({
+                    item_type: 'item',
+                    work_item_name: item.material_name || item.original_name || "Mục chưa tên",
+                    unit: item.unit || "",
+                    quantity: item.quantity || 0,
+                    unit_price: item.unit_price || 0,
+                    vat_rate: 8, // Mặc định 8%
+                    details: "",
+                    notes: ""
+                });
+            });
+
+            alert("✨ Đã tự động lập báo giá thành công từ dữ liệu Dự toán!");
+        } catch (err: any) {
+            console.error(err);
+            alert("Lỗi khi tải dữ liệu dự toán: " + err.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handlePrint = () => {
         const data = form.getValues();
         const LOGO_URL = "https://oshquiqzokyyawgoemql.supabase.co/storage/v1/object/sign/logo/53350f6b-9e2e-4a99-aaff-33ed9f89f362/KG%20Logo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8wYTI4MzQ5Ni1iODVhLTQwMmYtYWU0NS1lMGYyMmU3ZDRjOGEiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJsb2dvLzUzMzUwZjZiLTllMmUtNGE5OS1hYWZmLTMzZWQ5Zjg5ZjM2Mi9LRyBMb2dvLnBuZyIsImlhdCI6MTc2Nzc4NDUzMSwiZXhwIjo2MDg3Nzg0NTMxfQ.V9jUhkfi9TPss2WKkNhay5tqV6A7Xb3lH7Lyy0L53OY";
 
-        // Check sơ bộ trước khi in
         if (!data.quotation_number || !data.title) {
             alert("Vui lòng nhập Số báo giá và Hạng mục trước khi in!");
             return;
@@ -300,7 +358,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         }
     }
 
-    // ✅ DEBUG LỖI VALIDATION: Hiển thị alert chi tiết
     const onError = (errors: FieldErrors<QuotationFormValues>) => {
         console.log("Validation Errors:", errors);
         let errorMsg = "Vui lòng kiểm tra lại thông tin:\n";
@@ -309,7 +366,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         if (errors.title) errorMsg += "- Hạng mục báo giá chưa nhập\n";
 
         if (errors.items) {
-            // Kiểm tra xem lỗi ở dòng nào
             const itemsErrors = errors.items as any[];
             if (Array.isArray(itemsErrors)) {
                 itemsErrors.forEach((err, idx) => {
@@ -387,9 +443,20 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             </Card>
 
             <Card className="overflow-hidden">
-                <div className="bg-slate-50 p-3 border-b flex justify-between items-center">
+                <div className="bg-slate-50 p-3 border-b flex flex-wrap justify-between items-center gap-2">
                     <h3 className="font-semibold text-slate-700 flex items-center"><Calculator className="w-4 h-4 mr-2" /> Chi tiết</h3>
                     <div className="flex gap-2">
+                        {/* ✅ NÚT MỚI: TỰ ĐỘNG FILL TỪ BẢNG DỰ TOÁN */}
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleImportFromEstimation}
+                            disabled={isSubmitting}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md animate-pulse-once"
+                        >
+                            {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "✨ Lập Báo Giá Tự Động"}
+                        </Button>
+
                         <Button type="button" size="sm" variant="outline" onClick={() => append({ item_type: 'section', work_item_name: 'I. TÊN MỤC LỚN', vat_rate: 0 })} className="text-green-700 border-green-200">
                             <Plus className="w-3 h-3 mr-1" /> Thêm Mục
                         </Button>

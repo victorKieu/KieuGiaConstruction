@@ -171,3 +171,100 @@ export async function createManualEstimationItem(projectId: string, data: any) {
     revalidatePath(`/projects/${projectId}`);
     return { success: true, message: "Đã thêm mới thành công!" };
 }
+
+export async function analyzeQTOAndGenerateEstimation(projectId: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Lấy tất cả các hạng mục QTO đã được gán mã định mức
+        const { data: qtoItems, error: qtoError } = await supabase
+            .from('qto_items')
+            .select('*')
+            .eq('project_id', projectId)
+            .not('norm_code', 'is', null); // Chỉ lấy những dòng có mã định mức
+
+        if (qtoError) throw qtoError;
+        if (!qtoItems || qtoItems.length === 0) {
+            return { success: false, error: "Chưa có hạng mục nào được gán Mã Định Mức." };
+        }
+
+        // 2. Xóa các dòng Dự toán tự động cũ (tránh trùng lặp khi ấn phân tích nhiều lần)
+        await supabase
+            .from('estimation_items')
+            .delete()
+            .eq('project_id', projectId)
+            .not('qto_item_id', 'is', null);
+
+        // 3. Duyệt qua từng dòng QTO để phân tích
+        let insertPayload: any[] = [];
+
+        for (const qto of qtoItems) {
+            // Tìm định mức trong thư viện (bảng norms & norm_details & resources)
+            const { data: normData } = await supabase
+                .from('norms')
+                .select(`
+                    id, code, name,
+                    norm_details ( quantity, resources ( id, code, name, unit, unit_price, group_code ) )
+                `)
+                .eq('code', qto.norm_code)
+                .single();
+
+            // Nếu KHÔNG có định mức (nhập sai mã hoặc mã chưa có trong data), đẩy thẳng dưới dạng hạng mục tự do
+            if (!normData || !normData.norm_details) {
+                insertPayload.push({
+                    project_id: projectId,
+                    qto_item_id: qto.id,
+                    original_name: `[Chưa rõ định mức] ${qto.item_name}`,
+                    quantity: qto.quantity,
+                    unit: qto.unit,
+                    section_name: 'I. HẠNG MỤC TỰ DO',
+                    is_mapped: false,
+                });
+                continue;
+            }
+
+            // Nếu CÓ định mức: Nhân (Khối lượng QTO) * (Hệ số vật tư trong định mức)
+            const details: any[] = normData.norm_details;
+            for (const detail of details) {
+                const resource = detail.resources;
+                if (!resource) continue;
+
+                // Tính toán khối lượng vật tư thực tế cần dùng
+                // Tính toán khối lượng vật tư thực tế cần dùng
+                const actualQuantity = Number(qto.quantity) * Number(detail.quantity);
+
+                // Phân loại Section dựa vào group_code của resource (VL, NC, M)
+                let sectionName = 'VẬT TƯ';
+                if (resource.group_code === 'NC') sectionName = 'NHÂN CÔNG';
+                if (resource.group_code === 'M') sectionName = 'MÁY THI CÔNG';
+
+                insertPayload.push({
+                    project_id: projectId,
+                    qto_item_id: qto.id,
+                    original_name: `(${qto.norm_code}) ${resource.name}`,
+                    material_code: resource.code,
+                    material_name: resource.name,
+                    quantity: actualQuantity,
+                    unit: resource.unit || '',
+                    unit_price: resource.unit_price || 0,
+                    section_name: `II. ${sectionName} (Quy đổi định mức)`,
+                    is_mapped: true
+                });
+            }
+        }
+
+        // 4. Lưu toàn bộ kết quả quy đổi vào bảng Dự Toán
+        if (insertPayload.length > 0) {
+            const { error: insertError } = await supabase
+                .from('estimation_items')
+                .insert(insertPayload);
+
+            if (insertError) throw insertError;
+        }
+
+        return { success: true, message: "Đã phân tích vật tư thành công." };
+    } catch (error: any) {
+        console.error(error);
+        return { success: false, error: error.message };
+    }
+}

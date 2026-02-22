@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react"
 import supabase from "@/lib/supabase/client"
-import { CardContent} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ContactFormModal } from "./ContactFormModal"
 import { ContactCard } from "@/components/shared/ContactCard"
+import { Plus, UserX } from "lucide-react" // Thêm icon
+
 interface Contact {
     id: string
     name: string
@@ -45,6 +46,7 @@ export function CustomerContactList({ customerId }: { customerId: string }) {
     }, [customerId])
 
     async function handleDelete(contactId: string) {
+        // Có thể thay bằng AlertDialog của Shadcn sau này
         const confirm = window.confirm("Bạn có chắc chắn muốn xóa liên hệ này?")
 
         if (!confirm) return
@@ -84,16 +86,22 @@ export function CustomerContactList({ customerId }: { customerId: string }) {
     }
 
     if (loading) {
-        return <p className="text-muted-foreground">Đang tải liên hệ...</p>
+        return <p className="text-sm text-muted-foreground text-center py-4">Đang tải danh sách liên hệ...</p>
     }
 
     return (
-        <div className="space-y-3">
-            {contacts.length === 0 ? (
-                <p className="text-muted-foreground">Chưa có người liên hệ nào</p>
-            ) : (
+        <div className="space-y-4">
+            <div className="flex flex-col gap-3">
+                {contacts.length === 0 ? (
+                    // ✅ FIX: Empty State đẹp hơn cho Dark Mode
+                    <div className="flex flex-col items-center justify-center py-8 border border-dashed border-border rounded-lg bg-muted/30 text-muted-foreground text-sm">
+                        <UserX className="w-8 h-8 mb-2 opacity-50" />
+                        <p>Chưa có người liên hệ nào</p>
+                    </div>
+                ) : (
                     contacts.map((c) => (
-                        <ContactCard key={c.id}
+                        <ContactCard
+                            key={c.id}
                             contact={c}
                             onEdit={(c) => openEdit(c)}
                             onDelete={(id) => handleDelete(id)}
@@ -102,13 +110,17 @@ export function CustomerContactList({ customerId }: { customerId: string }) {
                             compact={false}
                         />
                     ))
-            )}
+                )}
+            </div>
 
-            <div className="flex justify-center">
-                <CardContent className="flex justify-center">
-                    <Button onClick={() => openEdit(null)}>Thêm liên hệ</Button>
-                </CardContent>
-            </div> 
+            {/* ✅ FIX: Nút thêm mới dạng Dashed full-width */}
+            <Button
+                variant="outline"
+                className="w-full border-dashed border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 h-10"
+                onClick={() => openEdit(null)}
+            >
+                <Plus className="w-4 h-4 mr-2" /> Thêm người liên hệ
+            </Button>
 
             {isModalOpen && (
                 <ContactFormModal

@@ -31,6 +31,7 @@ import {
 } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
+import QTOClient from "@/components/projects/qto/QTOClient";
 
 interface Props {
     projectId: string;
@@ -44,7 +45,7 @@ interface SelectedMaterialData {
     ref_price: number;
 }
 
-export default function ProjectEstimationTab({ projectId }: Props) {
+export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any) {
     const router = useRouter();
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
@@ -64,6 +65,24 @@ export default function ProjectEstimationTab({ projectId }: Props) {
             setItems(res.data);
         }
         setInitLoaded(true);
+    };
+
+    // Hàm gọi khi AI hoàn thành phân tích
+    const handleAnalysisComplete = async () => {
+        setLoading(true); // Bật hiệu ứng loading của bảng
+
+        // 1. Tự động đồng bộ dữ liệu từ bảng project_qto sang bảng estimation_items
+        const syncRes = await createEstimationFromBudget(projectId);
+
+        if (syncRes.success) {
+            toast.success("Đã đồng bộ khối lượng AI vào bảng dự toán!");
+        }
+
+        // 2. Tải lại dữ liệu lên bảng
+        await loadData();
+        router.refresh();
+
+        setLoading(false);
     };
 
     const handleDownloadTemplate = () => {
@@ -204,10 +223,10 @@ export default function ProjectEstimationTab({ projectId }: Props) {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500">
-            {/* HEADER - ✅ FIX: bg-white -> bg-card */}
+
+            {/* HEADER */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-card p-4 rounded-lg border border-border shadow-sm">
                 <div>
-                    {/* ✅ FIX: text-slate-800 -> text-foreground, text-slate-500 -> text-muted-foreground */}
                     <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                         <DollarSign className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                         Bảng Dự toán & Chuẩn hóa
@@ -216,7 +235,6 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* ✅ FIX: bg-purple-50 -> dark:bg-purple-900/20, border-purple-100 -> dark:border-purple-900 */}
                     <div className="bg-purple-50 dark:bg-purple-900/20 px-3 py-1.5 rounded border border-purple-100 dark:border-purple-900 text-right mr-2">
                         <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold uppercase block">Tổng cộng</span>
                         <span className="text-lg font-bold text-purple-700 dark:text-purple-300">{formatCurrency(totalEstimate)}</span>
@@ -281,11 +299,10 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                 </div>
             </div>
 
-            {/* TABLE - ✅ FIX: bg-white -> bg-card */}
+            {/* TABLE */}
             <Card className="border-none shadow-none bg-card">
                 <Table className="border rounded-md">
                     <TableHeader>
-                        {/* ✅ FIX: bg-slate-100 -> bg-muted/50 */}
                         <TableRow className="bg-muted/50">
                             <TableHead className="w-[50px] text-center">STT</TableHead>
                             <TableHead className="min-w-[250px]">Thông tin Gốc (Từ Excel/Nhập tay)</TableHead>
@@ -301,17 +318,15 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                         {!initLoaded ? (
                             <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
                         ) : sortedItems.length === 0 ? (
-                            <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground italic">Chưa có dữ liệu. Hãy Import Excel hoặc Thêm mới.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground italic">Chưa có dữ liệu. Hãy Import Excel, Dùng AI hoặc Thêm mới.</TableCell></TableRow>
                         ) : (
                             sortedItems.map((item, index) => (
-                                // ✅ FIX: hover:bg-slate-50 -> hover:bg-muted/50, bg-green-50/20 -> dark:bg-green-900/10
                                 <TableRow key={item.id} className={item.is_mapped ? "bg-green-50/20 dark:bg-green-900/10 hover:bg-green-50/40 dark:hover:bg-green-900/20" : "hover:bg-muted/50"}>
                                     <TableCell className="text-center text-muted-foreground text-xs">{index + 1}</TableCell>
 
                                     {/* CỘT THÔNG TIN GỐC */}
                                     <TableCell>
                                         <div className="font-medium text-foreground">{item.original_name || item.material_name}</div>
-                                        {/* ✅ FIX: text-slate-400 -> text-muted-foreground */}
                                         {item.section_name && <div className="text-[10px] text-muted-foreground italic">{item.section_name}</div>}
                                     </TableCell>
 
@@ -330,12 +345,10 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                                         {item.is_mapped ? (
                                             <div className="flex flex-col group relative cursor-pointer">
                                                 <div className="flex items-center gap-1">
-                                                    {/* ✅ FIX: Badge colors */}
                                                     <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 px-1 py-0 h-5 text-[10px]">{item.material_code}</Badge>
                                                 </div>
                                                 <span className="text-sm text-green-800 dark:text-green-300 line-clamp-1">{item.material_name}</span>
 
-                                                {/* ✅ FIX: Popup bg-white -> bg-popover */}
                                                 <div className="absolute right-0 top-0 hidden group-hover:block bg-popover shadow-sm rounded border border-border z-10">
                                                     <MaterialSelector
                                                         onSelect={(mat) => handleMaterialSelect(item.id, mat)}
@@ -359,7 +372,7 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                                         )}
                                     </TableCell>
 
-                                    {/* CỘT GIÁ - ✅ FIX: border-slate-200 -> border-input */}
+                                    {/* CỘT GIÁ */}
                                     <TableCell className="text-right p-1">
                                         <Input
                                             type="number"

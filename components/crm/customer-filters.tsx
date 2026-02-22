@@ -33,7 +33,11 @@ export function CustomerFilters({ filter, onFilterChangeAction }: CustomerFilter
         async function fetchTags() {
             setIsLoading(true);
             try {
-                const { data, error } = await supabase.from("customer_tags").select("id, name").order("name");
+                const { data, error } = await supabase
+                    .from("customer_tags")
+                    .select("id, name")
+                    .order("name");
+
                 if (error) throw error;
                 setTags(data || []);
             } catch (error) {
@@ -58,15 +62,16 @@ export function CustomerFilters({ filter, onFilterChangeAction }: CustomerFilter
     };
 
     return (
-        <div className="flex flex-col md:flex-row gap-2">
-            <div className="flex-1 min-w-[120px]">
-                <Label htmlFor="tag">Nhãn</Label>
+        <div className="flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 min-w-[200px] space-y-2">
+                <Label htmlFor="tag" className="text-foreground">Nhãn khách hàng</Label>
                 <Select
                     value={filter.tag}
                     onValueChange={(value) => onFilterChangeAction({ ...filter, tag: value })}
                     disabled={isLoading}
                 >
-                    <SelectTrigger id="tag">
+                    {/* ✅ FIX: bg-background để tránh trong suốt trong Dark Mode */}
+                    <SelectTrigger id="tag" className="w-full bg-background border-input text-foreground">
                         <SelectValue placeholder="Chọn nhãn" />
                     </SelectTrigger>
                     <SelectContent>
@@ -79,9 +84,18 @@ export function CustomerFilters({ filter, onFilterChangeAction }: CustomerFilter
                     </SelectContent>
                 </Select>
             </div>
-            <div className="flex items-end gap-2">
-                <Button onClick={handleSearch}>Lọc</Button>
-                <Button variant="outline" onClick={handleReset}>
+            <div className="flex items-center gap-2">
+                <Button
+                    onClick={handleSearch}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                    Lọc
+                </Button>
+                <Button
+                    variant="outline"
+                    onClick={handleReset}
+                    className="bg-background hover:bg-accent hover:text-accent-foreground border-input"
+                >
                     Đặt lại
                 </Button>
             </div>

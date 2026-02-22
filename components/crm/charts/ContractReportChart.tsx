@@ -28,19 +28,22 @@ export function ContractReportChart() {
                 const { data, error } = await supabase
                     .from("crm_contract_report")
                     .select("*")
-                    .order("signed_at", { ascending: false })
+                    .order("signed_at", { ascending: false });
 
-                if (error) throw error
-                setData(data as Contract[])
-            } catch (error) {
-                console.error("Lỗi khi lấy dữ liệu hợp đồng:", error)
+                if (error) {
+                    // In chi tiết lỗi để kiểm tra cấu trúc DB
+                    console.error("Supabase Error Details:", JSON.stringify(error, null, 2));
+                    throw error;
+                }
+                setData(data as Contract[]);
+            } catch (error: any) {
+                console.error("Lỗi fetch hợp đồng:", error.message || error);
             } finally {
-                setLoading(false)
+                setLoading(false);
             }
         }
-
-        fetchContracts()
-    }, [])
+        fetchContracts();
+    }, []);
 
     if (loading) {
         return (

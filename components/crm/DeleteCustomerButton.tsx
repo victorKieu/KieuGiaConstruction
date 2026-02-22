@@ -4,14 +4,19 @@ import { useState } from "react";
 import { Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast"; // Kiểm tra lại đường dẫn hook toast của bạn
-// --- THAY ĐỔI ĐƯỜNG DẪN IMPORT TẠI ĐÂY ---
+import { useToast } from "@/hooks/use-toast";
 import { deleteCustomer } from "@/lib/action/crmActions";
 
-// Định nghĩa Props khớp với cách gọi bên page.tsx
 interface DeleteCustomerButtonProps {
     id: string;
     name: string;
@@ -25,31 +30,45 @@ export function DeleteCustomerButton({ id, name }: DeleteCustomerButtonProps) {
     const handleDelete = async () => {
         setLoading(true);
 
-        // Gọi hàm từ file crmActions mới
-        const res = await deleteCustomer(id);
+        try {
+            const res = await deleteCustomer(id);
 
-        setLoading(false);
-        setOpen(false);
-
-        if (res.success) {
+            if (res.success) {
+                toast({
+                    title: "Thành công",
+                    description: res.message,
+                    // ✅ FIX: Dùng variant default hoặc class semantic thay vì hardcode màu
+                    className: "bg-green-600 text-white border-none dark:bg-green-800",
+                });
+                setOpen(false); // Chỉ đóng khi thành công để UX tốt hơn (hoặc đóng luôn tùy ý)
+            } else {
+                toast({
+                    title: "Lỗi",
+                    description: res.error,
+                    variant: "destructive",
+                });
+            }
+        } catch (error) {
             toast({
-                title: "Thành công",
-                description: res.message,
-                className: "bg-green-600 text-white border-none",
-            });
-        } else {
-            toast({
-                title: "Không thể xóa!",
-                description: res.error,
+                title: "Lỗi hệ thống",
+                description: "Đã xảy ra lỗi không mong muốn.",
                 variant: "destructive",
             });
+        } finally {
+            setLoading(false);
+            // setOpen(false); // Nếu muốn luôn đóng dialog dù lỗi hay không thì uncomment dòng này
         }
     };
 
     return (
         <AlertDialog open={open} onOpenChange={setOpen}>
             <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50 hover:text-red-700">
+                {/* ✅ FIX: Sử dụng semantic colors cho nút xóa */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
                     <Trash2 className="h-4 w-4" />
                 </Button>
             </AlertDialogTrigger>
@@ -57,7 +76,7 @@ export function DeleteCustomerButton({ id, name }: DeleteCustomerButtonProps) {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Xác nhận xóa?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Bạn có chắc chắn muốn xóa khách hàng <b className="text-red-600">{name}</b> không?
+                        Bạn có chắc chắn muốn xóa khách hàng <b className="text-destructive">{name}</b> không?
                         <br />
                         Hành động này không thể hoàn tác và sẽ xóa các dữ liệu liên quan.
                     </AlertDialogDescription>
@@ -66,14 +85,15 @@ export function DeleteCustomerButton({ id, name }: DeleteCustomerButtonProps) {
                     <AlertDialogCancel disabled={loading}>Hủy</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={(e) => {
-                            e.preventDefault();
+                            e.preventDefault(); // Chặn đóng modal tự động để chờ API
                             handleDelete();
                         }}
                         disabled={loading}
-                        className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                        // ✅ FIX: Style chuẩn cho nút Destructive trong Dark Mode
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
                     >
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                        Xóa
+                        {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                        Xóa vĩnh viễn
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

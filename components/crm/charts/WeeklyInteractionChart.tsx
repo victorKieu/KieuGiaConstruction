@@ -1,85 +1,133 @@
-﻿"use client"
-/**
- * Component: WeeklyInteractionChart
- * Mô tả: Biểu đồ đường hiển thị số lượt tương tác theo tuần
- * Refactor: Kết nối Supabase + ChartContainer + ChartTooltip
- */
+﻿"use client";
 
-import { useEffect, useState } from "react"
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import supabase from "@/lib/supabase/client"
+import { useEffect, useState } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Loader2, AlertCircle } from "lucide-react";
+import supabase from "@/lib/supabase/client";
+import { format, subDays, startOfDay } from "date-fns";
+import { Database } from "@/types/supabase"; // Đảm bảo đường dẫn này trỏ đúng đến file supabase.ts của bạn
 
-interface InteractionPoint {
-    week: string
-    total: number
+// ✅ Định nghĩa kiểu dữ liệu từ Schema của bạn
+type InteractionRow = Database["public"]["Tables"]["customer_interactions"]["Row"];
+
+interface ChartData {
+    date: string;
+    count: number;
+    rawDate: string;
 }
 
 export function WeeklyInteractionChart() {
-    const [data, setData] = useState<InteractionPoint[]>([])
-    const [isLoading, setIsLoading] = useState(true)
+    const [data, setData] = useState<ChartData[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     useEffect(() => {
-        async function fetchInteractions() {
+        async function fetchWeeklyInteractions() {
+            setIsLoading(true);
+            setErrorMsg(null);
             try {
-                const { data, error } = await supabase
-                    .from("customer_interactions")
-                    .select("interaction_date")
+                // Lấy mốc thời gian 7 ngày trước
+                const last7Days = startOfDay(subDays(new Date(), 7)).toISOString();
 
-                if (error) throw error
+                // ✅ Query bảng tương tác khách hàng
+                const { data: interactions, error } = await supabase
+                    .from('customer_interactions')
+                    .select('interaction_date')
+                    .gte('interaction_date', last7Days);
 
-                const weekMap: Record<string, number> = {}
+                if (error) throw error;
 
-                data?.forEach((i) => {
-                    const date = new Date(i.interaction_date)
-                    const weekKey = `Tuần ${getWeekNumber(date)}`
-                    weekMap[weekKey] = (weekMap[weekKey] || 0) + 1
-                })
+                // Khởi tạo khung dữ liệu cho 7 ngày gần nhất (để tránh ngày không có tương tác bị trống)
+                const days: ChartData[] = Array.from({ length: 7 }, (_, i) => {
+                    const d = subDays(new Date(), i);
+                    return {
+                        date: format(d, "dd/MM"),
+                        count: 0,
+                        rawDate: format(d, "yyyy-MM-dd")
+                    };
+                }).reverse();
 
-                const chartData = Object.entries(weekMap).map(([week, total]) => ({ week, total }))
-                setData(chartData)
-            } catch (error) {
-                console.error("Lỗi khi lấy dữ liệu tương tác:", error)
+                // ✅ FIX TS7006: Khai báo kiểu InteractionRow cho item
+                (interactions as InteractionRow[] || []).forEach((item: InteractionRow) => {
+                    if (item.interaction_date) {
+                        const itemDate = item.interaction_date.split('T')[0];
+                        const dayIdx = days.findIndex(d => d.rawDate === itemDate);
+                        if (dayIdx !== -1) {
+                            days[dayIdx].count++;
+                        }
+                    }
+                });
+
+                setData(days);
+            } catch (err: any) {
+                console.error("Lỗi fetch tương tác tuần:", err);
+                setErrorMsg(err.message || "Không thể tải dữ liệu tương tác");
             } finally {
-                setIsLoading(false)
+                setIsLoading(false);
             }
         }
-
-        fetchInteractions()
-    }, [])
-
-    function getWeekNumber(date: Date): number {
-        const firstDay = new Date(date.getFullYear(), 0, 1)
-        const pastDays = Math.floor((date.getTime() - firstDay.getTime()) / (24 * 60 * 60 * 1000))
-        return Math.ceil((pastDays + firstDay.getDay() + 1) / 7)
-    }
+        fetchWeeklyInteractions();
+    }, []);
 
     if (isLoading) {
-        return <div className="h-[250px] flex items-center justify-center text-muted-foreground">Đang tải dữ liệu...</div>
+        return (
+            <div className="h-[250px] flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+        );
     }
 
-    if (data.length === 0) {
-        return <div className="h-[250px] flex items-center justify-center text-muted-foreground">Chưa có dữ liệu tương tác</div>
+    if (errorMsg) {
+        return (
+            <div className="h-[250px] flex flex-col items-center justify-center text-destructive p-4 text-center">
+                <AlertCircle className="h-8 w-8 mb-2 opacity-50" />
+                <p className="text-xs">{errorMsg}</p>
+            </div>
+        );
     }
 
     return (
-        <ChartContainer
-            config={{
-                total: {
-                    label: "Số lượt tương tác",
-                    color: "hsl(var(--chart-3))",
-                },
-            }}
-            className="h-[250px]"
-        >
-            <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
-                    <XAxis dataKey="week" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="total" stroke="var(--color-total)" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-            </ResponsiveContainer>
-        </ChartContainer>
-    )
+        <div className="h-[250px] w-full">
+            {data.every(d => d.count === 0) ? (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground italic">
+                    Không có tương tác nào trong 7 ngày qua
+                </div>
+            ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                            axisLine={false}
+                            tickLine={false}
+                        />
+                        <YAxis
+                            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                            axisLine={false}
+                            tickLine={false}
+                        />
+                        <Tooltip
+                            contentStyle={{
+                                backgroundColor: 'hsl(var(--card))',
+                                borderColor: 'hsl(var(--border))',
+                                color: 'hsl(var(--foreground))',
+                                borderRadius: '8px'
+                            }}
+                            itemStyle={{ color: 'hsl(var(--primary))' }}
+                        />
+                        <Line
+                            type="monotone"
+                            dataKey="count"
+                            name="Số tương tác"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth={2.5}
+                            dot={{ r: 4, fill: 'hsl(var(--primary))', strokeWidth: 2, stroke: 'hsl(var(--background))' }}
+                            activeDot={{ r: 6, strokeWidth: 0 }}
+                        />
+                    </LineChart>
+                </ResponsiveContainer>
+            )}
+        </div>
+    );
 }

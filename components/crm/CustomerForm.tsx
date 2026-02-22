@@ -12,8 +12,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import type { Resolver } from "react-hook-form";
-
-// IMPORT COMPONENT MỚI
 import { DictionarySelect } from "@/components/common/DictionarySelect";
 
 // --- HELPERS ---
@@ -30,65 +28,46 @@ const zEmailOrNull = z.string()
     })
     .transform(val => (val === "" || val === undefined ? null : val));
 
-// --- SCHEMA (ĐÃ LOẠI BỎ ENUM) ---
+// --- SCHEMA ---
 export const customerFormSchema = z.object({
     id: z.string().optional(),
     name: z.string().min(1, { message: "Tên khách hàng là bắt buộc." }),
     code: z.string().optional(),
-
-    // THAY ĐỔI: type giờ là string UUID (lấy từ Dictionary)
     type: z.string({ required_error: "Vui lòng chọn loại khách hàng" }).min(1, "Vui lòng chọn loại khách hàng"),
-
     email: zEmailOrNull,
     phone: zOptionalString,
     contactPerson: zOptionalString,
-
-    address: zOptionalString, // Số nhà, tên đường
-    ward: zOptionalString,    // Phường/Xã (MỚI)
-    province: zOptionalString, // Tỉnh/Thành phố
-
+    address: zOptionalString,
+    ward: zOptionalString,
+    province: zOptionalString,
     taxCode: zOptionalString,
     idNumber: zOptionalString,
     bankAccount: zOptionalString,
     website: zOptionalString,
     businessType: zOptionalString,
-
-    // THAY ĐỔI: title cũng dùng Dictionary
     title: zOptionalString,
-
     birthday: zOptionalString,
     gender: z.enum(["male", "female", "other"]).default("other"),
     avatarUrl: zOptionalString,
-
-    // THAY ĐỔI: status dùng Dictionary
     status: z.string().default("active"),
-
     notes: zOptionalString,
-
-    // THAY ĐỔI: source dùng Dictionary (không cần transform default nữa vì select trả về ID)
     source: zOptionalString,
-
     tag: zOptionalString,
     ownerId: zOptionalString,
 });
 
 export type CustomerFormData = z.infer<typeof customerFormSchema>;
 
-// --- DB INTERFACE ---
 export interface RawCustomerDataFromDB {
     id: string;
     name: string;
     code?: string | null;
-
-    // Update Type: String UUID
     type: string;
-
     phone?: string | null;
     email?: string | null;
     address?: string | null;
     province?: string | null;
     ward?: string | null;
-
     contact_person?: string | null;
     tax_code?: string | null;
     id_number?: string | null;
@@ -96,27 +75,20 @@ export interface RawCustomerDataFromDB {
     website?: string | null;
     business_type?: string | null;
     title?: string | null;
-
-    // Update Status: String UUID
     status?: string | null;
-
     gender?: "other" | "male" | "female" | null;
     birthday?: string | null;
     avatar_url?: string | null;
     notes?: string | null;
-
     owner_id?: string | null;
     tag_id?: string | null;
     source_id?: string | null;
-
     created_at?: string;
     updated_at?: string;
 }
 
-// --- PROPS ---
 interface CustomerTag { id: string; name: string; }
 interface User { id: string; name: string; email: string; }
-// Đã xóa interface Source vì dùng DictionarySelect tự fetch
 interface ActionState { success: boolean; error?: string; id?: string; }
 
 interface CustomerFormProps {
@@ -124,42 +96,33 @@ interface CustomerFormProps {
     onSubmitAction: (formData: CustomerFormData) => Promise<ActionState>;
     tags: CustomerTag[];
     users: User[];
-    // sources: Source[]; -> ĐÃ XÓA
     isCustomerProfileEdit?: boolean;
 }
 
-// --- MAPPING FUNCTION ---
 export const mapRawDataToFormData = (rawData: RawCustomerDataFromDB): CustomerFormData => {
     return {
         id: rawData.id,
         name: rawData.name,
         code: rawData.code ?? "",
-
-        // Map thẳng ID, không cần fallback hardcode 'individual'
         type: rawData.type ?? "",
-
         email: rawData.email ?? "",
         phone: rawData.phone ?? "",
         contactPerson: rawData.contact_person ?? "",
-
         address: rawData.address ?? "",
         ward: rawData.ward ?? "",
         province: rawData.province ?? "",
-
         taxCode: rawData.tax_code ?? "",
         idNumber: rawData.id_number ?? "",
         bankAccount: rawData.bank_account ?? "",
         website: rawData.website ?? "",
         businessType: rawData.business_type ?? "",
         title: rawData.title ?? "",
-
         birthday: rawData.birthday ?? "",
         gender: rawData.gender ?? "other",
         avatarUrl: rawData.avatar_url ?? "",
-
-        status: rawData.status ?? "", // Map ID status
+        status: rawData.status ?? "",
         notes: rawData.notes ?? "",
-        source: rawData.source_id ?? "", // Map ID source
+        source: rawData.source_id ?? "",
         tag: rawData.tag_id ?? "",
         ownerId: rawData.owner_id ?? "",
     };
@@ -171,7 +134,6 @@ const defaultEmptyFormData: CustomerFormData = {
     birthday: "", gender: "other", status: "", notes: "", source: "", tag: "", ownerId: "", avatarUrl: "",
 };
 
-// --- COMPONENT ---
 export function CustomerForm({ onSubmitAction, initialData, tags, users, isCustomerProfileEdit }: CustomerFormProps) {
     const { register, handleSubmit, watch, setValue, formState: { errors }, setError, reset } = useForm<CustomerFormData>({
         resolver: zodResolver(customerFormSchema) as Resolver<CustomerFormData>,
@@ -184,7 +146,6 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
         { success: false }
     );
 
-    // Watchers
     const watchedType = watch("type");
     const watchedGender = watch("gender");
     const watchedStatus = watch("status");
@@ -215,17 +176,20 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     const handleCancel = () => router.push("/crm/customers");
     const onSubmit = (data: CustomerFormData) => startTransition(() => dispatch(data));
 
+    // Helper class cho input
+    const inputClass = "bg-background border-input text-foreground";
+
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {initialData?.id && <input type="hidden" {...register("id")} />}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* --- CỘT TRÁI: THÔNG TIN CƠ BẢN --- */}
+                {/* --- CỘT TRÁI --- */}
                 <div className="space-y-4">
                     <div className="grid grid-cols-1 gap-4">
                         <div>
                             <Label htmlFor="name">Tên Khách Hàng <span className="text-red-500">*</span></Label>
-                            <Input id="name" {...register("name")} placeholder="Nhập tên khách hàng" />
+                            <Input id="name" {...register("name")} placeholder="Nhập tên khách hàng" className={inputClass} />
                             {errors.name?.message && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
                         </div>
 
@@ -233,11 +197,11 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label>Mã KH</Label>
-                                    <Input {...register("code")} readOnly placeholder="Tự động" className="bg-gray-100 text-gray-500" />
+                                    {/* ✅ FIX: ReadOnly input style */}
+                                    <Input {...register("code")} readOnly placeholder="Tự động" className="bg-muted text-muted-foreground cursor-not-allowed" />
                                 </div>
                                 <div>
                                     <Label>Loại KH</Label>
-                                    {/* SỬ DỤNG DICTIONARY SELECT */}
                                     <DictionarySelect
                                         category="CRM_CUSTOMER_TYPE"
                                         placeholder="Chọn loại"
@@ -250,62 +214,56 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                         )}
                     </div>
 
-                    {/* Thông tin định danh 
-                        LƯU Ý: Vì Type giờ là UUID động nên ta không thể check cứng (watchedType === 'company') để ẩn hiện field.
-                        Tạm thời hiển thị tất cả các field định danh để tránh lỗi logic.
-                    */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>CMND/CCCD (Cá nhân)</Label>
-                            <Input {...register("idNumber")} placeholder="Số giấy tờ" />
+                            <Input {...register("idNumber")} placeholder="Số giấy tờ" className={inputClass} />
                         </div>
                         <div>
                             <Label>Mã Số Thuế (DN)</Label>
-                            <Input {...register("taxCode")} placeholder="MST" />
+                            <Input {...register("taxCode")} placeholder="MST" className={inputClass} />
                         </div>
                     </div>
 
                     <div>
                         <Label>Lĩnh vực / Ngành nghề</Label>
-                        <Input {...register("businessType")} placeholder="VD: Xây dựng, Thương mại..." />
+                        <Input {...register("businessType")} placeholder="VD: Xây dựng, Thương mại..." className={inputClass} />
                     </div>
 
-                    {/* Địa chỉ mở rộng */}
-                    <div className="space-y-3 p-3 bg-gray-50 rounded-md border">
-                        <Label className="font-semibold text-gray-700">Địa chỉ & Khu vực</Label>
+                    {/* ✅ FIX: bg-gray-50 -> bg-muted/50 */}
+                    <div className="space-y-3 p-3 bg-muted/50 rounded-md border border-border">
+                        <Label className="font-semibold text-foreground">Địa chỉ & Khu vực</Label>
                         <div>
-                            <Input {...register("address")} placeholder="Số nhà, Tên đường" className="mb-2" />
+                            <Input {...register("address")} placeholder="Số nhà, Tên đường" className={`mb-2 ${inputClass}`} />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                            {/* Thay District bằng Ward */}
-                            <Input {...register("ward")} placeholder="Phường/ Xã" />
-                            <Input {...register("province")} placeholder="Tỉnh/ Thành phố" />
+                            <Input {...register("ward")} placeholder="Phường/ Xã" className={inputClass} />
+                            <Input {...register("province")} placeholder="Tỉnh/ Thành phố" className={inputClass} />
                         </div>
                     </div>
                 </div>
 
-                {/* --- CỘT PHẢI: LIÊN HỆ & PHÂN LOẠI --- */}
+                {/* --- CỘT PHẢI --- */}
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Email</Label>
-                            <Input type="email" {...register("email")} placeholder="email@example.com" />
+                            <Input type="email" {...register("email")} placeholder="email@example.com" className={inputClass} />
                             {errors.email?.message && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                         </div>
                         <div>
                             <Label>Điện thoại</Label>
-                            <Input {...register("phone")} placeholder="0909..." />
+                            <Input {...register("phone")} placeholder="0909..." className={inputClass} />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Người liên hệ</Label>
-                            <Input {...register("contactPerson")} />
+                            <Input {...register("contactPerson")} className={inputClass} />
                         </div>
                         <div>
                             <Label>Chức vụ</Label>
-                            {/* Dùng Dictionary cho Chức vụ liên hệ */}
                             <DictionarySelect
                                 category="CRM_CONTACT_TITLE"
                                 placeholder="VD: Giám đốc"
@@ -318,22 +276,21 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Website</Label>
-                            <Input {...register("website")} placeholder="www.website.com" />
+                            <Input {...register("website")} placeholder="www.website.com" className={inputClass} />
                         </div>
                         <div>
                             <Label>Tài khoản NH</Label>
-                            <Input {...register("bankAccount")} placeholder="Số TK ngân hàng" />
+                            <Input {...register("bankAccount")} placeholder="Số TK ngân hàng" className={inputClass} />
                         </div>
                     </div>
 
-                    {/* Phân loại quản lý */}
                     {!isCustomerProfileEdit && (
-                        <div className="space-y-3 p-3 bg-blue-50/50 rounded-md border border-blue-100">
-                            <Label className="font-semibold text-blue-800">Thông tin quản lý</Label>
+                        // ✅ FIX: bg-blue-50 -> dark:bg-blue-900/20
+                        <div className="space-y-3 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-100 dark:border-blue-900">
+                            <Label className="font-semibold text-blue-800 dark:text-blue-300">Thông tin quản lý</Label>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <Label className="text-xs">Nguồn</Label>
-                                    {/* Dùng Dictionary cho Nguồn */}
                                     <DictionarySelect
                                         category="CRM_SOURCE"
                                         placeholder="Chọn nguồn"
@@ -343,9 +300,8 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 </div>
                                 <div>
                                     <Label className="text-xs">Phụ trách</Label>
-                                    {/* Owner vẫn là Users (Foreign Key bảng Employee) nên giữ nguyên Select */}
                                     <Select value={watchedOwnerId || ""} onValueChange={(v) => setValue("ownerId", v)}>
-                                        <SelectTrigger className="h-9"><SelectValue placeholder="Chọn NV" /></SelectTrigger>
+                                        <SelectTrigger className="h-9 bg-background border-input"><SelectValue placeholder="Chọn NV" /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">-- Không --</SelectItem>
                                             {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
@@ -354,9 +310,8 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 </div>
                                 <div>
                                     <Label className="text-xs">Nhãn (Tag)</Label>
-                                    {/* Tag vẫn là bảng riêng customer_tags */}
                                     <Select value={watchedTag || ""} onValueChange={(v) => setValue("tag", v)}>
-                                        <SelectTrigger className="h-9"><SelectValue placeholder="Gắn thẻ" /></SelectTrigger>
+                                        <SelectTrigger className="h-9 bg-background border-input"><SelectValue placeholder="Gắn thẻ" /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">-- Không --</SelectItem>
                                             {tags.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
@@ -365,7 +320,6 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                 </div>
                                 <div>
                                     <Label className="text-xs">Trạng thái</Label>
-                                    {/* Dùng Dictionary cho Status */}
                                     <DictionarySelect
                                         category="CRM_CUSTOMER_STATUS"
                                         value={watchedStatus}
@@ -378,22 +332,20 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                 </div>
             </div>
 
-            {/* Ghi chú & Ngày sinh (Hàng cuối) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                 <div className="md:col-span-2">
                     <Label>Ghi chú</Label>
-                    <Textarea rows={2} {...register("notes")} />
+                    <Textarea rows={2} {...register("notes")} className={inputClass} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                     <div>
                         <Label>Ngày sinh/TL</Label>
-                        <Input type="date" {...register("birthday")} />
+                        <Input type="date" {...register("birthday")} className={inputClass} />
                     </div>
                     <div>
                         <Label>Giới tính</Label>
-                        {/* Giới tính thường cố định, có thể giữ Select cứng hoặc đổi sang Dictionary HRM_GENDER tùy nhu cầu */}
                         <Select value={watchedGender} onValueChange={(v: any) => setValue("gender", v)}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="bg-background border-input"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="male">Nam</SelectItem>
                                 <SelectItem value="female">Nữ</SelectItem>
@@ -404,12 +356,11 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                 </div>
             </div>
 
-            {/* ERROR & BUTTONS */}
             {errors.root?.message && (
-                <div className="p-3 bg-red-50 text-red-600 rounded text-center text-sm">{errors.root.message}</div>
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded text-center text-sm border border-red-100 dark:border-red-900">{errors.root.message}</div>
             )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 pt-4 border-t border-border">
                 <Button type="button" variant="outline" onClick={handleCancel}>Hủy</Button>
                 <Button type="submit" disabled={pendingAction} className="min-w-[120px]">
                     {pendingAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : initialData ? "Cập Nhật" : "Tạo Mới"}

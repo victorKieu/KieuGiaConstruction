@@ -1,83 +1,76 @@
 ﻿"use client";
 
+import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart as PieChartIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import supabase from "@/lib/supabase/client";
 
-// 1. Định nghĩa kiểu dữ liệu cho Props
-interface SourcePieChartProps {
-    data: {
-        name: string;
-        value: number;
-        fill: string;
-    }[];
+interface ChartItem {
+    name: string;
+    value: number;
+    fill: string;
 }
 
-// 2. Component nhận props 'data' thay vì tự fetch
-export function SourcePieChart({ data }: SourcePieChartProps) {
-    // Kiểm tra nếu dữ liệu null hoặc rỗng thì gán mảng rỗng để tránh lỗi map
-    const chartData = data || [];
+export function SourcePieChart() {
+    const [data, setData] = useState<ChartItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchSourceStats() {
+            try {
+                // ✅ Lấy thêm cột 'color' từ quan hệ sys_dictionaries
+                const { data: customers, error } = await supabase
+                    .from('customers')
+                    .select(`
+                        source_id, 
+                        sys_dictionaries!customers_source_id_fkey(name, color)
+                    `);
+
+                if (error) throw error;
+
+                const counts: Record<string, { count: number; color: string }> = {};
+                customers?.forEach((c: any) => {
+                    const sourceName = c.sys_dictionaries?.name || "Khác";
+                    // ✅ Lấy mã màu từ DB, nếu trống gán màu xám mặc định
+                    const sourceColor = c.sys_dictionaries?.color || "#888888";
+
+                    if (!counts[sourceName]) {
+                        counts[sourceName] = { count: 0, color: sourceColor };
+                    }
+                    counts[sourceName].count++;
+                });
+
+                const chartData = Object.entries(counts).map(([name, info]) => ({
+                    name,
+                    value: info.count,
+                    fill: info.color // ✅ Sử dụng màu sắc từ sys_dictionaries
+                }));
+
+                setData(chartData);
+            } catch (err) {
+                console.error("Lỗi fetch nguồn:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+        fetchSourceStats();
+    }, []);
+
+    if (isLoading) return <div className="h-[250px] flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
-        // Card tự động dùng bg-card text-card-foreground nhờ globals.css
-        <Card className="flex flex-col h-full shadow-sm">
-            <CardHeader className="items-center pb-2">
-                <CardTitle className="text-sm font-medium flex gap-2">
-                    {/* ✅ FIX: Icon màu xanh sáng hơn trong dark mode */}
-                    <PieChartIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Nguồn Khách hàng
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 pb-0">
-                {chartData.length === 0 ? (
-                    <div className="h-[250px] flex items-center justify-center text-sm text-muted-foreground">
-                        Chưa có dữ liệu nguồn.
-                    </div>
-                ) : (
-                    <div className="h-[250px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={chartData}
-                                    dataKey="value"
-                                    nameKey="name"
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={80}
-                                    paddingAngle={2}
-                                >
-                                    {chartData.map((entry, index) => (
-                                        // Cell giữ nguyên fill từ props (màu sắc biểu đồ thường không cần đổi theo theme)
-                                        <Cell key={`cell-${index}`} fill={entry.fill} strokeWidth={0} />
-                                    ))}
-                                </Pie>
-
-                                {/* ✅ FIX: Tooltip dùng biến màu hệ thống để tự đổi màu nền/chữ */}
-                                <Tooltip
-                                    formatter={(value: number) => [value, "Khách hàng"]}
-                                    cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
-                                    contentStyle={{
-                                        backgroundColor: 'hsl(var(--card))',
-                                        borderColor: 'hsl(var(--border))',
-                                        color: 'hsl(var(--foreground))',
-                                        borderRadius: '8px',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-                                    }}
-                                    itemStyle={{ color: 'hsl(var(--foreground))' }}
-                                />
-
-                                <Legend
-                                    verticalAlign="bottom"
-                                    height={36}
-                                    iconType="circle"
-                                    // ✅ FIX: Text chú thích dùng text-muted-foreground thay vì slate-600
-                                    formatter={(value) => <span className="text-xs text-muted-foreground ml-1">{value}</span>}
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
+        <div className="h-[250px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2}>
+                        {data.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} strokeWidth={0} />
+                        ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }} />
+                    <Legend verticalAlign="bottom" height={36} formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
+                </PieChart>
+            </ResponsiveContainer>
+        </div>
     );
 }

@@ -29,23 +29,24 @@ export const metadata: Metadata = {
     description: "Quản lý khách hàng và cơ hội bán hàng",
 }
 
+// ✅ ĐẢM BẢO ĐÂY LÀ EXPORT DEFAULT DUY NHẤT
 export default function CrmDashboardPage() {
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full bg-background">
             <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
                 <div className="flex items-center justify-between space-y-2">
-                    <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+                    <h2 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h2>
                 </div>
 
                 <Tabs defaultValue="overview" className="space-y-4">
-                    <TabsList>
+                    <TabsList className="bg-muted/50 border border-border">
                         <TabsTrigger value="overview">Tổng quan</TabsTrigger>
                         <TabsTrigger value="analytics">Phân tích</TabsTrigger>
                         <TabsTrigger value="reports">Báo cáo</TabsTrigger>
                     </TabsList>
 
                     {/* --- TAB: TỔNG QUAN --- */}
-                    <TabsContent value="overview" className="space-y-4">
+                    <TabsContent value="overview" className="space-y-4 outline-none">
                         <Suspense fallback={<StatsLoading />}>
                             <CrmStats />
                         </Suspense>
@@ -53,17 +54,17 @@ export default function CrmDashboardPage() {
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                             <DashboardCard
                                 title="Cơ hội bán hàng"
-                                description="Theo dõi tiến trình các cơ hội bán hàng theo giai đoạn"
+                                description="Tiến trình theo giai đoạn"
                                 className="col-span-4"
                             >
-                                <Suspense fallback={<ChartSkeleton height="h-[250px]" />}>
+                                <Suspense fallback={<ChartSkeleton height="h-[300px]" />}>
                                     <SalesPipeline />
                                 </Suspense>
                             </DashboardCard>
 
                             <DashboardCard
-                                title="Khách hàng gần đây"
-                                description="Khách hàng mới và cập nhật gần đây"
+                                title="Khách hàng mới"
+                                description="Cập nhật gần đây"
                                 className="col-span-3"
                             >
                                 <Suspense fallback={<ListSkeleton count={5} />}>
@@ -72,10 +73,10 @@ export default function CrmDashboardPage() {
                             </DashboardCard>
                         </div>
 
-                        <div className="grid gap-4 grid-cols-1">
+                        <div className="grid gap-4">
                             <DashboardCard
                                 title="Hoạt động sắp tới"
-                                description="Các cuộc gọi, cuộc họp và nhiệm vụ đã lên lịch"
+                                description="Lịch làm việc trong 7 ngày tới"
                             >
                                 <Suspense fallback={<ListSkeleton count={3} />}>
                                     <UpcomingActivities />
@@ -85,54 +86,56 @@ export default function CrmDashboardPage() {
                     </TabsContent>
 
                     {/* --- TAB: PHÂN TÍCH --- */}
-                    <TabsContent value="analytics" className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            <DashboardCard title="Phân bổ nguồn" description="Tỷ lệ khách hàng theo kênh" contentClassName="h-[300px]">
-                                <SourcePieChart />
+                    <TabsContent value="analytics" className="space-y-4 outline-none">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <DashboardCard title="Nguồn khách" contentClassName="h-[300px]">
+                                <Suspense fallback={<ChartSkeleton />}>
+                                    <SourcePieChart />
+                                </Suspense>
                             </DashboardCard>
-
-                            <DashboardCard title="Doanh số theo cấp" description="Phân tích doanh số nhóm KH" contentClassName="h-[300px]">
-                                <SalesByLevelChart />
+                            <DashboardCard title="Doanh số cấp độ" contentClassName="h-[300px]">
+                                <Suspense fallback={<ChartSkeleton />}>
+                                    <SalesByLevelChart />
+                                </Suspense>
                             </DashboardCard>
-
-                            <DashboardCard title="Tương tác tuần" description="Số lượt gọi, gặp, báo giá" contentClassName="h-[300px]">
-                                <WeeklyInteractionChart />
+                            <DashboardCard title="Tương tác tuần" contentClassName="h-[300px]">
+                                <Suspense fallback={<ChartSkeleton />}>
+                                    <WeeklyInteractionChart />
+                                </Suspense>
                             </DashboardCard>
                         </div>
-
                         <div className="grid gap-4 md:grid-cols-2">
-                            <DashboardCard title="Cảnh báo chăm sóc" description="Khách hàng chưa được chăm sóc đúng hạn">
-                                <AlertTable />
+                            <DashboardCard title="Cảnh báo chăm sóc">
+                                <Suspense fallback={<ChartSkeleton height="h-[400px]" />}>
+                                    <AlertTable />
+                                </Suspense>
                             </DashboardCard>
-
-                            <DashboardCard title="Hiệu suất giới thiệu" description="Khách hàng và CTV giới thiệu thành công">
-                                <ReferralTable />
+                            <DashboardCard title="Hiệu suất giới thiệu">
+                                <Suspense fallback={<ChartSkeleton height="h-[400px]" />}>
+                                    <ReferralTable />
+                                </Suspense>
                             </DashboardCard>
                         </div>
                     </TabsContent>
 
                     {/* --- TAB: BÁO CÁO --- */}
-                    <TabsContent value="reports" className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            <DashboardCard title="Hợp đồng" description="Thống kê trạng thái và giá trị" contentClassName="h-[300px]">
+                    <TabsContent value="reports" className="space-y-4 outline-none">
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <Suspense fallback={<ChartSkeleton />}>
                                 <ContractReportChart />
-                            </DashboardCard>
-
-                            <DashboardCard title="Dự báo doanh thu" description="Ước lượng từ các cơ hội mở" contentClassName="h-[300px]">
+                            </Suspense>
+                            <Suspense fallback={<ChartSkeleton />}>
                                 <OpportunityForecastChart />
-                            </DashboardCard>
-
-                            <DashboardCard title="Phân khúc" description="Phân tích theo nhóm khách hàng" contentClassName="h-[300px]">
+                            </Suspense>
+                            <Suspense fallback={<ChartSkeleton />}>
                                 <CustomerSegmentChart />
-                            </DashboardCard>
+                            </Suspense>
                         </div>
-
                         <div className="grid gap-4 md:grid-cols-2">
-                            <DashboardCard title="KPI Nhân viên" description="Hiệu suất bán hàng và CSKH">
+                            <DashboardCard title="KPI Nhân viên">
                                 <KpiDashboardTable />
                             </DashboardCard>
-
-                            <DashboardCard title="Cảnh báo đến hạn" description="Hợp đồng và hoạt động cần xử lý">
+                            <DashboardCard title="Cảnh báo đến hạn">
                                 <ReminderAlertsTable />
                             </DashboardCard>
                         </div>
@@ -143,7 +146,8 @@ export default function CrmDashboardPage() {
     )
 }
 
-// --- REUSABLE COMPONENT (Giảm lặp code) ---
+// --- HELPERS (Nên để dưới cùng hoặc tách file) ---
+
 interface DashboardCardProps {
     title: string
     description?: string
@@ -155,47 +159,37 @@ interface DashboardCardProps {
 function DashboardCard({ title, description, children, className, contentClassName }: DashboardCardProps) {
     return (
         <Card className={className}>
-            <CardHeader>
-                <CardTitle>{title}</CardTitle>
+            <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-bold">{title}</CardTitle>
                 {description && <CardDescription>{description}</CardDescription>}
             </CardHeader>
-            <CardContent className={contentClassName || "pl-2"}>
+            <CardContent className={contentClassName || "px-4 pb-4"}>
                 {children}
             </CardContent>
         </Card>
     )
 }
 
-// --- SKELETONS (Clean & Generic) ---
 function StatsLoading() {
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {Array(4).fill(0).map((_, i) => (
-                <Card key={i}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <Skeleton className="h-4 w-[70px]" />
-                        <Skeleton className="h-4 w-4 rounded-full" />
-                    </CardHeader>
-                    <CardContent>
-                        <Skeleton className="h-7 w-[100px] mb-1" />
-                        <Skeleton className="h-4 w-[120px]" />
-                    </CardContent>
+            {[1, 2, 3, 4].map((i) => (
+                <Card key={i} className="animate-pulse">
+                    <CardHeader className="pb-2"><Skeleton className="h-4 w-20" /></CardHeader>
+                    <CardContent><Skeleton className="h-8 w-24" /></CardContent>
                 </Card>
             ))}
         </div>
     )
 }
 
-function ListSkeleton({ count = 5 }: { count?: number }) {
+function ListSkeleton({ count }: { count: number }) {
     return (
-        <div className="space-y-4">
-            {Array(count).fill(0).map((_, i) => (
-                <div key={i} className="flex items-center gap-4">
+        <div className="space-y-4 p-2">
+            {[...Array(count)].map((_, i) => (
+                <div key={i} className="flex gap-4 items-center">
                     <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="space-y-2 flex-1">
-                        <Skeleton className="h-4 w-[60%]" />
-                        <Skeleton className="h-3 w-[40%]" />
-                    </div>
+                    <div className="flex-1 space-y-2"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-3 w-1/3" /></div>
                 </div>
             ))}
         </div>
@@ -203,9 +197,5 @@ function ListSkeleton({ count = 5 }: { count?: number }) {
 }
 
 function ChartSkeleton({ height = "h-[300px]" }: { height?: string }) {
-    return (
-        <div className={`${height} flex items-center justify-center w-full`}>
-            <Skeleton className="h-[90%] w-[90%] rounded-md" />
-        </div>
-    )
+    return <div className={`${height} w-full`}><Skeleton className="h-full w-full rounded-lg" /></div>
 }

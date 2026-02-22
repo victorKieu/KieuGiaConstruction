@@ -6,7 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import supabase from '@/lib/supabase/client';
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
-import { Edit, MessageSquare, Trash } from "lucide-react"
+import { Edit, MessageSquare, Trash, PlusCircle } from "lucide-react"
 
 import {
     fetchEmployeeByAuthUserId,
@@ -20,8 +20,7 @@ interface Note {
     content: string
     created_at: string
     created_by: string
-    creator_type?: "employee" | "customer" | "supplier" // Nếu có
-    // ...
+    creator_type?: "employee" | "customer" | "supplier"
 }
 
 interface NoteWithCreator extends Note {
@@ -41,7 +40,6 @@ export function CustomerNotes({ customerId }: CustomerNotesProps) {
         async function fetchNotesWithCreators() {
             setIsLoading(true)
             try {
-                // Lấy notes
                 const { data: notes, error } = await supabase
                     .from("customer_notes")
                     .select("*")
@@ -50,13 +48,10 @@ export function CustomerNotes({ customerId }: CustomerNotesProps) {
 
                 if (error) throw error
 
-                // Nếu có nhiều loại creator, ưu tiên dùng note.creator_type
-                // Nếu chỉ employee tạo note, có thể bỏ các nhánh còn lại
                 const notesWithCreator: NoteWithCreator[] = await Promise.all(
                     notes.map(async (note: Note) => {
                         let creator: any = null
 
-                        // Nếu bạn có field creator_type thì dùng như sau:
                         if (note.creator_type === "employee" || !note.creator_type) {
                             creator = await fetchEmployeeByAuthUserId(note.created_by)
                         } else if (note.creator_type === "customer") {
@@ -90,10 +85,10 @@ export function CustomerNotes({ customerId }: CustomerNotesProps) {
                 {Array(3)
                     .fill(0)
                     .map((_, i) => (
-                        <Card key={i} className="animate-pulse">
-                            <CardHeader className="h-12 bg-muted/20"></CardHeader>
-                            <CardContent className="h-20 bg-muted/10"></CardContent>
-                            <CardFooter className="h-8 bg-muted/20"></CardFooter>
+                        <Card key={i} className="animate-pulse bg-card border-border">
+                            <CardHeader className="h-12 bg-muted/50 rounded-t-lg mb-2"></CardHeader>
+                            <CardContent className="h-20 bg-muted/30 mx-4 rounded"></CardContent>
+                            <CardFooter className="h-8 bg-muted/50 rounded-b-lg mt-2"></CardFooter>
                         </Card>
                     ))}
             </div>
@@ -102,10 +97,14 @@ export function CustomerNotes({ customerId }: CustomerNotesProps) {
 
     if (notes.length === 0) {
         return (
-            <Card>
-                <CardContent className="text-center py-10">
+            // ✅ FIX: Empty State Styles for Dark Mode
+            <Card className="bg-muted/10 border-dashed border-border">
+                <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+                    <MessageSquare className="w-10 h-10 text-muted-foreground mb-4 opacity-50" />
                     <p className="text-muted-foreground mb-4">Chưa có ghi chú nào cho khách hàng này</p>
-                    <Button>Thêm ghi chú mới</Button>
+                    <Button variant="outline" className="border-dashed border-border hover:bg-muted/50">
+                        <PlusCircle className="w-4 h-4 mr-2" /> Thêm ghi chú mới
+                    </Button>
                 </CardContent>
             </Card>
         )
@@ -120,27 +119,38 @@ export function CustomerNotes({ customerId }: CustomerNotesProps) {
             </div>
 
             {notes.map((note) => (
-                <Card key={note.id}>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center justify-between">
-                            <span>Ghi chú bởi: {note.creator_name}</span>
+                // ✅ FIX: Card Background & Border Colors
+                <Card key={note.id} className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-2 border-b border-border/50">
+                        <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className="text-sm font-semibold text-foreground">
+                                    {note.creator_name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    {note.creator_email}
+                                </span>
+                            </div>
                             <div className="flex gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted hover:text-foreground">
                                     <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive">
                                     <Trash className="h-4 w-4" />
                                 </Button>
                             </div>
-                        </CardTitle>
+                        </div>
                     </CardHeader>
-                    <CardContent className="pb-2">
-                        <p className="text-sm whitespace-pre-line">{note.content}</p>
+
+                    <CardContent className="py-4">
+                        <p className="text-sm whitespace-pre-line leading-relaxed text-foreground/90">
+                            {note.content}
+                        </p>
                     </CardContent>
-                    <CardFooter className="pt-2 text-xs text-muted-foreground">
-                        <div className="flex justify-between w-full">
-                            <span>Email: {note.creator_email}</span>
-                            <span>{format(new Date(note.created_at), "PPp", { locale: vi })}</span>
+
+                    <CardFooter className="pt-2 pb-3 bg-muted/30 border-t border-border/50 text-xs text-muted-foreground rounded-b-lg">
+                        <div className="flex justify-end w-full">
+                            <span>{format(new Date(note.created_at), "PP p", { locale: vi })}</span>
                         </div>
                     </CardFooter>
                 </Card>
