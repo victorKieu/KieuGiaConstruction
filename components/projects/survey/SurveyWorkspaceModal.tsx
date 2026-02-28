@@ -50,13 +50,12 @@ export default function SurveyWorkspaceModal({
     }, [survey.name, surveyTypes]);
 
     const displayTitle = currentType ? currentType.value : survey.name;
+    const isFengShui = survey.name.includes("PHONG_THUY");
 
     const filteredTemplates = useMemo(() => {
         const typeCode = survey.name.split(' - ')[0];
         return surveyTaskTemplates.filter(t => (t as any).type === typeCode);
     }, [surveyTaskTemplates, survey.name]);
-
-    const isFengShui = survey.name.includes("PHONG_THUY");
 
     const triggerRefresh = useCallback(async () => {
         if (!survey.id) return;
@@ -91,160 +90,145 @@ export default function SurveyWorkspaceModal({
                 </div>
             </DialogTrigger>
 
-            <DialogContent className="max-w-[1400px] w-[98vw] h-[96vh] flex flex-col p-0 overflow-hidden bg-white border-none shadow-2xl">
+            <DialogContent className="max-w-[1400px] w-[98vw] h-[96vh] flex flex-col !p-0 !gap-0 overflow-hidden bg-white border-none shadow-2xl">
+                {/* Accessibility Title */}
                 <div className="sr-only">
-                    <DialogHeader>
-                        <DialogTitle>{displayTitle}</DialogTitle>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>{displayTitle}</DialogTitle></DialogHeader>
                 </div>
 
-                <Tabs defaultValue="tasks" className="flex-1 flex flex-col min-h-0">
+                <Tabs defaultValue="tasks" className="flex-1 flex flex-col min-h-0 !gap-0">
 
-                    {/* TOP BAR: SIÊU GỌN, DARK MODE STYLE */}
-                    <div className="flex items-center justify-between px-4 bg-slate-900 text-white shrink-0 h-12">
-                        <div className="flex items-center gap-6 h-full">
-                            <div className="flex items-center gap-2 border-r border-slate-700 pr-4 h-6">
-                                <LayoutGrid className="w-4 h-4 text-blue-400" />
-                                <span className="font-black uppercase tracking-tighter text-[13px]">{displayTitle}</span>
-                                <span className="text-[10px] text-slate-400 font-bold ml-2">#{project.code}</span>
-                            </div>
-
-                            <TabsList className="bg-transparent h-12 p-0 gap-0">
-                                <TabsTrigger value="tasks" className="data-[state=active]:bg-white/5 data-[state=active]:text-blue-400 rounded-none h-12 px-6 text-[11px] font-black uppercase transition-all border-b-2 border-transparent data-[state=active]:border-blue-500">
-                                    NHIỆM VỤ
-                                </TabsTrigger>
-                                {isFengShui && (
-                                    <TabsTrigger value="fengshui" className="data-[state=active]:bg-white/5 data-[state=active]:text-orange-400 rounded-none h-12 px-6 text-[11px] font-black uppercase transition-all border-b-2 border-transparent data-[state=active]:border-orange-500">
-                                        LA BÀN
-                                    </TabsTrigger>
-                                )}
-                            </TabsList>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 bg-white/5 px-3 py-1 rounded-full border border-white/10 shadow-inner">
-                                <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500"
-                                        style={{ width: `${progressPercent}%` }}
-                                    />
+                    {/* HEADER ĐEN: Chứa Info + Progress + Tabs */}
+                    <div className="bg-slate-900 text-white shrink-0 flex flex-col">
+                        {/* Hàng 1: Info & Progress & Close */}
+                        <div className="flex items-center justify-between px-4 h-12 border-b border-white/5">
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <LayoutGrid className="w-4 h-4 text-blue-400" />
+                                    <span className="font-black uppercase tracking-tighter text-[13px]">{displayTitle}</span>
+                                    <span className="text-[10px] text-slate-400 font-bold ml-1">#{project.code}</span>
                                 </div>
-                                <span className="text-[11px] font-black text-blue-400">{progressPercent}%</span>
+                                {/* Progress Bar */}
+                                <div className="hidden sm:flex items-center gap-3 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                                    <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                        <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                                    </div>
+                                    <span className="text-[10px] font-black text-blue-400">{progressPercent}%</span>
+                                </div>
                             </div>
-                            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white h-8 w-8 hover:bg-white/10 rounded-full">
+                            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white h-8 w-8 rounded-full">
                                 <X className="w-5 h-5" />
                             </Button>
                         </div>
+
+                        {/* Hàng 2: Tab Triggers (Bắt buộc phải có để Mobile không bị mất) */}
+                        <TabsList className="bg-transparent h-10 w-full justify-start rounded-none p-0 gap-0">
+                            <TabsTrigger value="tasks" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-blue-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-blue-500">
+                                NHIỆM VỤ
+                            </TabsTrigger>
+                            {isFengShui && (
+                                <TabsTrigger value="fengshui" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-orange-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-orange-500">
+                                    LA BÀN
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
                     </div>
 
-                    <TabsContent value="tasks" className="flex-1 flex flex-col m-0 overflow-hidden bg-slate-50 p-3 gap-3">
+                    {/* VÙNG NỘI DUNG: Khít tuyệt đối */}
+                    <div className="flex-1 relative min-h-0 bg-slate-950">
 
-                        {/* INLINE QUICK FORM */}
-                        <form ref={formRef} action={formAction} className="flex items-center gap-2 bg-white p-2 px-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0">
-                            <input type="hidden" name="surveyId" value={survey.id} />
-                            <input type="hidden" name="projectId" value={projectId} />
+                        {/* TAB NHIỆM VỤ: Giữ nguyên 100% logic cũ của sếp */}
+                        <TabsContent value="tasks" className="h-full w-full m-0 p-3 bg-slate-50 flex flex-col gap-3 overflow-y-auto data-[state=inactive]:hidden">
 
-                            <div className="flex-[3]">
-                                <Select name="title" required>
-                                    <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 focus:ring-offset-0 font-bold text-slate-700 text-sm rounded-lg">
-                                        <SelectValue placeholder="Chọn hạng mục công việc khảo sát..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {filteredTemplates.map((t) => (
-                                            <SelectItem key={t.id} value={t.title} className="text-sm font-semibold">{t.title}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            {/* FORM NHẬP (Giữ nguyên các trường: Người làm, Hạn) */}
+                            <form ref={formRef} action={formAction} className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm shrink-0 sticky top-0 z-10">
+                                <input type="hidden" name="surveyId" value={survey.id} />
+                                <input type="hidden" name="projectId" value={projectId} />
 
-                            <div className="flex-1">
-                                <Select name="assigned_to" defaultValue="unassigned">
-                                    <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 focus:ring-offset-0 text-[11px] font-black uppercase">
-                                        <SelectValue placeholder="Người làm" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="unassigned">Tự thực hiện</SelectItem>
-                                        {members?.map((m) => m.employee && (
-                                            <SelectItem key={m.employee.id} value={m.employee.id} className="text-xs">{m.employee.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="w-36">
-                                <Input name="due_date" type="date" className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 focus-visible:ring-offset-0 text-xs font-bold" />
-                            </div>
-
-                            <SubmitTaskButton />
-                        </form>
-
-                        {/* SCROLLABLE TASK LIST */}
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                            {isLoading ? (
-                                <div className="flex flex-col items-center justify-center p-20 gap-3">
-                                    <Loader2 className="animate-spin text-blue-600 w-8 h-8" />
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Đang tải dữ liệu...</p>
+                                <div className="flex-[3] min-w-[200px]">
+                                    <Select name="title" required>
+                                        <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 font-bold text-slate-700 text-sm">
+                                            <SelectValue placeholder="Chọn hạng mục công việc..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {filteredTemplates.map((t) => (
+                                                <SelectItem key={t.id} value={t.title} className="text-sm font-semibold">{t.title}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            ) : tasks.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-40 border-2 border-dashed border-slate-200 rounded-3xl bg-white/50">
-                                    <ListTodo className="w-16 h-16 mb-2" />
-                                    <p className="text-sm font-black uppercase tracking-[0.2em]">Danh sách trống</p>
+
+                                <div className="flex-1 min-w-[120px]">
+                                    <Select name="assigned_to" defaultValue="unassigned">
+                                        <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 text-[11px] font-black uppercase">
+                                            <SelectValue placeholder="Người làm" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="unassigned">Tự thực hiện</SelectItem>
+                                            {members?.map((m) => m.employee && (
+                                                <SelectItem key={m.employee.id} value={m.employee.id} className="text-xs">{m.employee.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            ) : (
-                                tasks.map(task => {
-                                    const isDone = task.status === 'completed';
-                                    return (
-                                        <div key={task.id} className={`flex justify-between items-center p-3 bg-white border rounded-xl transition-all group shadow-sm hover:shadow-md hover:border-blue-200 ${isDone ? 'bg-slate-50/50' : ''}`}>
-                                            <div className="flex items-center gap-4 flex-1">
-                                                <div className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${isDone ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                    {isDone ? <ClipboardCheck className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className={`text-[14px] font-bold truncate ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                                                            {task.title}
-                                                        </p>
-                                                        {isDone && <span className="text-[9px] bg-green-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">Xong</span>}
+
+                                <div className="w-32">
+                                    <Input name="due_date" type="date" className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-xs font-bold" />
+                                </div>
+
+                                <SubmitTaskButton />
+                            </form>
+
+                            {/* DANH SÁCH NHIỆM VỤ (Giữ nguyên progress bar mini và các nút) */}
+                            <div className="space-y-2 pb-10">
+                                {isLoading ? (
+                                    <div className="flex justify-center p-10 opacity-50"><Loader2 className="animate-spin w-6 h-6" /></div>
+                                ) : tasks.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-20 text-slate-300 border-2 border-dashed rounded-3xl bg-white/50">
+                                        <ListTodo className="w-12 h-12 mb-2" />
+                                        <p className="text-xs font-black uppercase tracking-widest">Danh sách trống</p>
+                                    </div>
+                                ) : (
+                                    tasks.map(task => {
+                                        const isDone = task.status === 'completed';
+                                        return (
+                                            <div key={task.id} className="flex justify-between items-center p-3 bg-white border rounded-xl shadow-sm group hover:border-blue-200 transition-all">
+                                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isDone ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                        {isDone ? <ClipboardCheck className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                                                     </div>
-                                                    <div className="flex items-center gap-3 mt-0.5">
-                                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter shrink-0">
-                                                            {task.assigned_to?.name || "Hệ thống"} • {task.due_date ? formatDate(task.due_date) : "Chưa có hạn"}
-                                                        </p>
-                                                        {/* Task Progress Bar Mini */}
-                                                        {!isDone && (
-                                                            <div className="w-full max-w-[100px] h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                                <div className="h-full bg-blue-300 w-1/3 animate-pulse" />
-                                                            </div>
-                                                        )}
+                                                    <div className="truncate flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className={`text-sm font-bold truncate ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
+                                                            {isDone && <span className="text-[8px] bg-green-500 text-white px-1 py-0.5 rounded font-black uppercase">Xong</span>}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <p className="text-[10px] text-slate-400 font-black uppercase">
+                                                                {task.assigned_to?.name || "Hệ thống"} • {task.due_date ? formatDate(task.due_date) : "N/A"}
+                                                            </p>
+                                                            {!isDone && <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-300 w-1/3 animate-pulse" /></div>}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-1.5 ml-4">
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                                <div className="flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <SurveyResultModal task={task} projectId={projectId} onUpdateSuccess={triggerRefresh} />
                                                     <SurveyTaskEditModal task={task} members={members} surveyTaskTemplates={surveyTaskTemplates} projectId={projectId} onUpdateSuccess={triggerRefresh} />
                                                     <SurveyTaskDeleteButton taskId={task.id} projectId={projectId} onDeleteSuccess={triggerRefresh} />
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-                    </TabsContent>
-
-                    {isFengShui && (
-                        <TabsContent
-                            value="fengshui"
-                            style={{ marginTop: 0 }}
-                            className="flex-1 w-full h-full !m-0 !p-0 border-none outline-none focus-visible:ring-0 data-[state=active]:flex flex-col overflow-hidden"
-                        >
-                            <div className="flex-1 w-full h-full bg-slate-950">
-                                <FengShuiCompass projectId={projectId} />
+                                        );
+                                    })
+                                )}
                             </div>
                         </TabsContent>
-                    )}
+
+                        {/* TAB LA BÀN: Khít viền */}
+                        {isFengShui && (
+                            <TabsContent value="fengshui" className="absolute inset-0 m-0 p-0 flex flex-col bg-slate-950 data-[state=inactive]:hidden">
+                                <FengShuiCompass projectId={projectId} />
+                            </TabsContent>
+                        )}
+                    </div>
                 </Tabs>
             </DialogContent>
         </Dialog>
