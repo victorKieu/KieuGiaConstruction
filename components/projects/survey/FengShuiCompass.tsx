@@ -2,11 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { evaluateFengShui, Gender } from '@/lib/utils/fengShui';
-import { Save, RefreshCcw, User } from 'lucide-react';
+import { Save, RefreshCcw, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-export default function FengShuiCompass({ projectId }: { projectId: string }) {
+interface FengShuiCompassProps {
+    projectId: string;
+    onSaveResult?: (data: { heading: number; result: string; cung: string; dirName: string }) => void;
+}
+
+export default function FengShuiCompass({ projectId, onSaveResult }: FengShuiCompassProps) {
     const [name, setName] = useState<string>("");
     const [heading, setHeading] = useState<number | null>(null);
     const [year, setYear] = useState<number>(1985);
@@ -14,7 +19,6 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
     const [isLock, setIsLock] = useState(false);
     const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
 
-    // FIX LỖI: Định nghĩa hàm requestPermission
     const requestPermission = async () => {
         if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
             try {
@@ -41,10 +45,22 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
 
     const fengShui = heading !== null ? evaluateFengShui(year, gender, heading) : null;
 
+    // HÀM QUAN TRỌNG: Gửi dữ liệu về Modal để lưu vào Database
+    const handleFinalSave = () => {
+        if (onSaveResult && fengShui && heading !== null) {
+            onSaveResult({
+                heading: heading,
+                result: fengShui.result,
+                cung: fengShui.cung,
+                dirName: fengShui.dirName
+            });
+        }
+    };
+
     return (
         <div className="w-full h-full flex flex-col bg-slate-950 overflow-hidden relative">
 
-            {/* 1. COMPACT INPUT BAR - Ép sát đỉnh, không có margin-top */}
+            {/* 1. INPUT BAR */}
             <div className="bg-slate-900/90 backdrop-blur-md p-3 border-b border-slate-800 z-50 shrink-0">
                 <div className="flex gap-2 items-end">
                     <div className="flex-[2]">
@@ -78,9 +94,8 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
                 </div>
             </div>
 
-            {/* 2. MAIN COMPASS AREA - Tràn viền */}
+            {/* 2. MAIN COMPASS AREA */}
             <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-                {/* Thước ngắm đỏ xuyên suốt dọc màn hình */}
                 <div className="absolute top-0 bottom-0 w-[1px] bg-red-600/60 z-20 pointer-events-none shadow-[0_0_10px_rgba(220,38,38,0.5)]">
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-600 rotate-45 mt-[-6px]" />
                 </div>
@@ -94,7 +109,6 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
                     </div>
                 ) : (
                     <div className="relative flex flex-col items-center">
-                        {/* Mặt La bàn xoay (Luo Pan) */}
                         <div
                             className="relative w-[88vw] h-[88vw] max-w-[480px] max-h-[480px] transition-transform duration-300 ease-out z-10"
                             style={{ transform: `rotate(${-(heading || 0)}deg)` }}
@@ -107,7 +121,6 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
                             />
                         </div>
 
-                        {/* Tâm la bàn hiển thị số độ */}
                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-30 pointer-events-none">
                             <div className="bg-slate-950/80 px-4 py-1 rounded-full border border-amber-500/50 backdrop-blur-md shadow-2xl">
                                 <span className="text-3xl font-black text-white tracking-tighter leading-none">
@@ -119,7 +132,7 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
                 )}
             </div>
 
-            {/* 3. FLOATING RESULTS - Nổi trên đáy màn hình */}
+            {/* 3. FLOATING RESULTS */}
             {fengShui && heading !== null && (
                 <div className="absolute bottom-6 left-4 right-4 z-40 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className={`p-4 rounded-[2rem] backdrop-blur-xl border-2 shadow-2xl ${fengShui.isGood ? 'bg-emerald-950/60 border-emerald-500/40' : 'bg-rose-950/60 border-rose-500/40'}`}>
@@ -144,7 +157,11 @@ export default function FengShuiCompass({ projectId }: { projectId: string }) {
                                 {isLock ? <RefreshCcw className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                 {isLock ? "MỞ KHÓA" : "KHÓA HƯỚNG"}
                             </Button>
-                            <Button className="flex-1 h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg shadow-blue-600/20">
+                            <Button
+                                onClick={handleFinalSave}
+                                className="flex-1 h-11 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg shadow-blue-600/20"
+                            >
+                                <CheckCircle2 className="w-4 h-4 mr-2" />
                                 LƯU KẾT QUẢ
                             </Button>
                         </div>

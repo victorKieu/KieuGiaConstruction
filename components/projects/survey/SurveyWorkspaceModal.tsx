@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createSurveyTask, getSurveyTasks } from "@/lib/action/surveyActions";
+import { createSurveyTask, getSurveyTasks, updateSurvey } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
 import { Loader2, Plus, ListTodo, CheckCircle2, LayoutGrid, X, ClipboardCheck, FileText } from "lucide-react";
@@ -16,6 +16,7 @@ import SurveyResultModal from "./SurveyResultModal";
 import SurveyTaskDeleteButton from "./SurveyTaskDeleteButton";
 import SurveyTaskEditModal from "./SurveyTaskEditModal";
 import FengShuiCompass from "./FengShuiCompass";
+import { toast } from "sonner";
 
 interface SurveyWorkspaceModalProps {
     survey: Survey;
@@ -68,6 +69,18 @@ export default function SurveyWorkspaceModal({
     useEffect(() => { if (isOpen) triggerRefresh(); }, [isOpen, triggerRefresh]);
     useEffect(() => { if (state.success) { formRef.current?.reset(); triggerRefresh(); } }, [state.success, triggerRefresh]);
 
+    const handleSaveCompassData = async (data: { heading: number; result: string; cung: string; dirName: string }) => {
+        try {
+            const formData = new FormData();
+            formData.append("id", survey.id);
+            formData.append("notes", `[PHONG THUỶ] Hướng: ${data.dirName}, Độ: ${data.heading}°, Cung: ${data.cung} (${data.result})`);
+            const res = await updateSurvey(survey.id, formData);
+            if (res.success) toast.success("Đã lưu thông số La bàn!");
+        } catch (error) {
+            toast.error("Lỗi kết nối");
+        }
+    };
+
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const progressPercent = tasks.length === 0 ? 0 : Math.round((completedTasks / tasks.length) * 100);
 
@@ -91,16 +104,12 @@ export default function SurveyWorkspaceModal({
             </DialogTrigger>
 
             <DialogContent className="max-w-[1400px] w-[98vw] h-[96vh] flex flex-col !p-0 !gap-0 overflow-hidden bg-white border-none shadow-2xl">
-                {/* Accessibility Title */}
                 <div className="sr-only">
                     <DialogHeader><DialogTitle>{displayTitle}</DialogTitle></DialogHeader>
                 </div>
 
                 <Tabs defaultValue="tasks" className="flex-1 flex flex-col min-h-0 !gap-0">
-
-                    {/* HEADER ĐEN: Chứa Info + Progress + Tabs */}
-                    <div className="bg-slate-900 text-white shrink-0 flex flex-col">
-                        {/* Hàng 1: Info & Progress & Close */}
+                    <div className="bg-slate-900 text-white shrink-0 flex flex-col z-50">
                         <div className="flex items-center justify-between px-4 h-12 border-b border-white/5">
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2">
@@ -108,7 +117,6 @@ export default function SurveyWorkspaceModal({
                                     <span className="font-black uppercase tracking-tighter text-[13px]">{displayTitle}</span>
                                     <span className="text-[10px] text-slate-400 font-bold ml-1">#{project.code}</span>
                                 </div>
-                                {/* Progress Bar */}
                                 <div className="hidden sm:flex items-center gap-3 bg-white/5 px-3 py-1 rounded-full border border-white/10">
                                     <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                         <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
@@ -121,7 +129,6 @@ export default function SurveyWorkspaceModal({
                             </Button>
                         </div>
 
-                        {/* Hàng 2: Tab Triggers (Bắt buộc phải có để Mobile không bị mất) */}
                         <TabsList className="bg-transparent h-10 w-full justify-start rounded-none p-0 gap-0">
                             <TabsTrigger value="tasks" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-blue-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-blue-500">
                                 NHIỆM VỤ
@@ -134,63 +141,66 @@ export default function SurveyWorkspaceModal({
                         </TabsList>
                     </div>
 
-                    {/* VÙNG NỘI DUNG: Khít tuyệt đối */}
                     <div className="flex-1 relative min-h-0 bg-slate-950">
-
-                        {/* TAB NHIỆM VỤ: Giữ nguyên 100% logic cũ của sếp */}
                         <TabsContent value="tasks" className="h-full w-full m-0 p-3 bg-slate-50 flex flex-col gap-3 overflow-y-auto data-[state=inactive]:hidden">
-
-                            {/* FORM NHẬP (Giữ nguyên các trường: Người làm, Hạn) */}
-                            <form ref={formRef} action={formAction} className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm shrink-0 sticky top-0 z-10">
+                            {/* FORM: Dùng 'notes' thay cho 'description' để khớp Schema */}
+                            <form ref={formRef} action={formAction} className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0 sticky top-0 z-20">
                                 <input type="hidden" name="surveyId" value={survey.id} />
                                 <input type="hidden" name="projectId" value={projectId} />
 
-                                <div className="flex-[3] min-w-[200px]">
-                                    <Select name="title" required>
-                                        <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 font-bold text-slate-700 text-sm">
-                                            <SelectValue placeholder="Chọn hạng mục công việc..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {filteredTemplates.map((t) => (
-                                                <SelectItem key={t.id} value={t.title} className="text-sm font-semibold">{t.title}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex-[2] min-w-[180px]">
+                                        <Select name="title" required>
+                                            <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 font-bold text-slate-700 text-sm">
+                                                <SelectValue placeholder="Hạng mục..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {filteredTemplates.map((t) => (
+                                                    <SelectItem key={t.id} value={t.title} className="text-sm font-semibold">{t.title}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex-[3] min-w-[200px]">
+                                        <Input name="notes" placeholder="Nội dung chi tiết..." className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-sm font-medium" />
+                                    </div>
                                 </div>
 
-                                <div className="flex-1 min-w-[120px]">
-                                    <Select name="assigned_to" defaultValue="unassigned">
-                                        <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 text-[11px] font-black uppercase">
-                                            <SelectValue placeholder="Người làm" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="unassigned">Tự thực hiện</SelectItem>
-                                            {members?.map((m) => m.employee && (
-                                                <SelectItem key={m.employee.id} value={m.employee.id} className="text-xs">{m.employee.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                <div className="flex items-center gap-2 border-t pt-2">
+                                    <div className="flex-1">
+                                        <Select name="assigned_to" defaultValue="unassigned">
+                                            <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 text-[11px] font-black uppercase">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="unassigned">Tự thực hiện</SelectItem>
+                                                {members?.map((m) => m.employee && (
+                                                    <SelectItem key={m.employee.id} value={m.employee.id} className="text-xs">{m.employee.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="w-32">
+                                        <Input name="due_date" type="date" className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-xs font-bold" />
+                                    </div>
+                                    <SubmitTaskButton />
                                 </div>
-
-                                <div className="w-32">
-                                    <Input name="due_date" type="date" className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-xs font-bold" />
-                                </div>
-
-                                <SubmitTaskButton />
                             </form>
 
-                            {/* DANH SÁCH NHIỆM VỤ (Giữ nguyên progress bar mini và các nút) */}
+                            {/* DANH SÁCH NHIỆM VỤ */}
                             <div className="space-y-2 pb-10">
                                 {isLoading ? (
                                     <div className="flex justify-center p-10 opacity-50"><Loader2 className="animate-spin w-6 h-6" /></div>
                                 ) : tasks.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center p-20 text-slate-300 border-2 border-dashed rounded-3xl bg-white/50">
                                         <ListTodo className="w-12 h-12 mb-2" />
-                                        <p className="text-xs font-black uppercase tracking-widest">Danh sách trống</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-center">Chưa có nhiệm vụ</p>
                                     </div>
                                 ) : (
                                     tasks.map(task => {
                                         const isDone = task.status === 'completed';
+                                        // Ép kiểu sang any để truy cập các trường linh hoạt
+                                        const t = task as any;
                                         return (
                                             <div key={task.id} className="flex justify-between items-center p-3 bg-white border rounded-xl shadow-sm group hover:border-blue-200 transition-all">
                                                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -202,15 +212,15 @@ export default function SurveyWorkspaceModal({
                                                             <p className={`text-sm font-bold truncate ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
                                                             {isDone && <span className="text-[8px] bg-green-500 text-white px-1 py-0.5 rounded font-black uppercase">Xong</span>}
                                                         </div>
-                                                        <div className="flex items-center gap-2 mt-0.5">
-                                                            <p className="text-[10px] text-slate-400 font-black uppercase">
+                                                        {t.notes && <p className="text-[11px] text-blue-500 font-medium truncate italic">{t.notes}</p>}
+                                                        <div className="flex items-center gap-3 mt-0.5">
+                                                            <p className="text-[9px] text-slate-400 font-black uppercase">
                                                                 {task.assigned_to?.name || "Hệ thống"} • {task.due_date ? formatDate(task.due_date) : "N/A"}
                                                             </p>
-                                                            {!isDone && <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-300 w-1/3 animate-pulse" /></div>}
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <SurveyResultModal task={task} projectId={projectId} onUpdateSuccess={triggerRefresh} />
                                                     <SurveyTaskEditModal task={task} members={members} surveyTaskTemplates={surveyTaskTemplates} projectId={projectId} onUpdateSuccess={triggerRefresh} />
                                                     <SurveyTaskDeleteButton taskId={task.id} projectId={projectId} onDeleteSuccess={triggerRefresh} />
@@ -222,10 +232,12 @@ export default function SurveyWorkspaceModal({
                             </div>
                         </TabsContent>
 
-                        {/* TAB LA BÀN: Khít viền */}
                         {isFengShui && (
                             <TabsContent value="fengshui" className="absolute inset-0 m-0 p-0 flex flex-col bg-slate-950 data-[state=inactive]:hidden">
-                                <FengShuiCompass projectId={projectId} />
+                                <FengShuiCompass
+                                    projectId={projectId}
+                                    onSaveResult={handleSaveCompassData}
+                                />
                             </TabsContent>
                         )}
                     </div>
