@@ -89,7 +89,7 @@ export function MaterialSelector({ onSelect, trigger, defaultSearch = "" }: Mate
 
                 <div className="flex gap-2 my-2">
                     <Input
-                        value={query}
+                        value={query || ""}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Nhập Mã hoặc Tên vật tư..."
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

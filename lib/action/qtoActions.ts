@@ -92,6 +92,24 @@ export async function updateQTODetailText(detailId: string, projectId: string, t
     return { success: true };
 }
 
+// LƯU MÃ ĐỊNH MỨC VÀO HẠNG MỤC QTO
+export async function updateQTONormCode(itemId: string, projectId: string, normCode: string) {
+    const supabase = await createClient();
+    try {
+        const { error } = await supabase
+            .from('qto_items')
+            .update({ norm_code: normCode })
+            .eq('id', itemId)
+            .eq('project_id', projectId);
+
+        if (error) throw new Error(error.message);
+        return { success: true };
+    } catch (error: any) {
+        console.error("Lỗi update norm code:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 // --- 5. DELETE ACTIONS ---
 export async function deleteQTOItem(id: string, projectId: string) {
     const supabase = await createClient();
@@ -114,129 +132,111 @@ export async function calculateMaterialBudget(projectId: string) {
     const supabase = await createClient();
 
     try {
-        console.log(`🚀 Bắt đầu tính toán cho dự án: ${projectId}`);
-
-        // A. Lấy QTO Items và Details (Khối lượng thiết kế)
+        // A. Lấy QTO Items
         const { data: qtoItems, error: qtoError } = await supabase
             .from("qto_items")
-            .select(`
-                id, 
-                norm_code,
-                details:qto_item_details (length, width, height, quantity_factor)
-            `)
+            .select(`id, item_name, norm_code, details:qto_item_details (length, width, height, quantity_factor)`)
             .eq("project_id", projectId)
             .not("norm_code", "is", null);
 
         if (qtoError) throw new Error("Lỗi lấy QTO: " + qtoError.message);
-        if (!qtoItems || qtoItems.length === 0) return { success: false, error: "Chưa có dữ liệu bóc tách có mã định mức." };
+        if (!qtoItems || qtoItems.length === 0) {
+            return { success: false, error: "Chưa có Hạng mục nào được gắn mã định mức!" };
+        }
 
-        // Tổng hợp khối lượng theo mã định mức
-        const workVolumeMap: Record<string, number> = {};
+        const uniqueNormCodes = Array.from(new Set(qtoItems.map(i => i.norm_code).filter(Boolean)));
+
+        // B. Lấy thông tin Định mức
+        const { data: normDefs, error: defError } = await supabase
+            .from("norms").select("id, code").in("code", uniqueNormCodes);
+
+        if (defError) throw new Error("Lỗi lấy định mức: " + defError.message);
+
+        const normIdMap = new Map(normDefs?.map(n => [n.code, n.id]));
+        const normIds = Array.from(normIdMap.values());
+
+        // C. Lấy chi tiết Hao phí
+        const { data: normDetailsList, error: detailError } = await supabase
+            .from("norm_details")
+            .select(`norm_id, quantity, resource:resources (name, unit)`)
+            .in("norm_id", normIds);
+
+        if (detailError) throw new Error("Lỗi lấy chi tiết hao phí: " + detailError.message);
+
+        // D. Phân rã vật tư (Resource Explosion)
+        const groupedMap: Record<string, any> = {};
 
         qtoItems.forEach(item => {
             if (!item.norm_code) return;
-            // Kéo logic tính toán từ Client xuống Server để đồng bộ khối lượng
-            const itemTotal = item.details.reduce((sum: number, d: any) => {
+
+            let itemTotal = 0;
+            item.details?.forEach((d: any) => {
                 const len = Number(d.length) || 0;
                 const wid = Number(d.width) || 0;
                 const hei = Number(d.height) || 0;
                 const fac = Number(d.quantity_factor) || 0;
 
-                if (len === 0 && wid === 0 && hei === 0) return sum;
-
-                const finalL = len !== 0 ? len : 1;
-                const finalW = wid !== 0 ? wid : 1;
-                const finalH = hei !== 0 ? hei : 1;
-                const finalF = fac !== 0 ? fac : 1;
-
-                return sum + (finalL * finalW * finalH * finalF);
-            }, 0);
-
-            if (itemTotal > 0) {
-                workVolumeMap[item.norm_code] = (workVolumeMap[item.norm_code] || 0) + itemTotal;
-            }
-        });
-
-        const normCodes = Object.keys(workVolumeMap);
-        if (normCodes.length === 0) return { success: false, error: "Tổng khối lượng bóc tách bằng 0." };
-
-        // B. Lấy thông tin từ bảng `norms` (Từ điển định mức chuẩn)
-        const { data: normDefs, error: defError } = await supabase
-            .from("norms")
-            .select("id, code")
-            .in("code", normCodes);
-
-        if (defError) throw new Error("Lỗi lấy định mức: " + defError.message);
-        if (!normDefs || normDefs.length === 0) return { success: false, error: "Không tìm thấy mã định mức nào trong hệ thống." };
-
-        const normIdMap: Record<string, string> = {};
-        const normIds: string[] = [];
-
-        normDefs.forEach(n => {
-            normIdMap[n.code] = n.id;
-            normIds.push(n.id);
-        });
-
-        // C. Lấy chi tiết Hao phí từ bảng `norm_details` và join với `resources` để lấy tên vật tư
-        const { data: normDetailsList, error: detailError } = await supabase
-            .from("norm_details")
-            .select(`
-                norm_id, 
-                quantity,
-                resource:resources (name, unit)
-            `)
-            .in("norm_id", normIds);
-
-        if (detailError) throw new Error("Lỗi lấy chi tiết hao phí: " + detailError.message);
-
-        // D. Tính toán Bóc tách vật tư (Resource Explosion)
-        const resourceMap: Record<string, { unit: string, quantity: number }> = {};
-
-        for (const code of normCodes) {
-            const workQty = workVolumeMap[code];
-            const normId = normIdMap[code];
-
-            if (!normId) continue;
-
-            const ingredients = normDetailsList?.filter(d => d.norm_id === normId) || [];
-
-            ingredients.forEach((ing: any) => {
-                const requiredQty = workQty * Number(ing.quantity);
-                if (requiredQty > 0 && ing.resource) {
-                    const matName = ing.resource.name;
-                    if (!resourceMap[matName]) {
-                        resourceMap[matName] = { unit: ing.resource.unit, quantity: 0 };
-                    }
-                    resourceMap[matName].quantity += requiredQty;
+                if (len === 0 && wid === 0 && hei === 0) {
+                    itemTotal += fac;
+                } else {
+                    itemTotal += ((len || 1) * (wid || 1) * (hei || 1) * (fac || 1));
                 }
             });
+
+            if (itemTotal <= 0) return;
+
+            const normId = normIdMap.get(item.norm_code);
+            const ingredients = normDetailsList?.filter(d => d.norm_id === normId) || [];
+
+            // Gộp Hạng mục
+            const categoryName = `[${item.norm_code}] ${item.item_name || 'Hạng mục chung'}`;
+
+            ingredients.forEach((ing: any) => {
+                const requiredQty = itemTotal * Number(ing.quantity);
+                if (requiredQty > 0 && ing.resource) {
+                    const matName = ing.resource.name;
+                    const key = `${categoryName}_${matName}`;
+
+                    if (!groupedMap[key]) {
+                        groupedMap[key] = {
+                            project_id: projectId,
+                            category: categoryName, // Nếu DB sếp chưa có cột category, lệnh Insert sẽ báo lỗi ngay lập tức để sếp biết!
+                            material_name: matName,
+                            unit: ing.resource.unit,
+                            budget_quantity: 0,
+                            last_updated: new Date().toISOString()
+                        };
+                    }
+                    groupedMap[key].budget_quantity += requiredQty;
+                }
+            });
+        });
+
+        const budgetRecords = Object.values(groupedMap);
+
+        // 🔴 KIỂM TRA CHẶT CHẼ TRƯỚC KHI XÓA & LƯU
+        if (budgetRecords.length === 0) {
+            return {
+                success: false,
+                error: "Tính toán ra 0 vật tư. Nguyên nhân: Mã định mức sếp chọn chưa có bảng hao phí vật liệu bên trong (Rỗng)!"
+            };
         }
 
-        // E. Lưu vào bảng project_material_budget
-        const budgetRecords = Object.entries(resourceMap).map(([matName, data]) => ({
-            project_id: projectId,
-            material_name: matName,
-            unit: data.unit,
-            budget_quantity: data.quantity,
-            last_updated: new Date().toISOString()
-        }));
+        // Xóa cũ và Lưu mới
+        await supabase.from("project_material_budget").delete().eq("project_id", projectId);
 
-        if (budgetRecords.length > 0) {
-            // Xóa ngân sách cũ để ghi đè ngân sách mới
-            await supabase.from("project_material_budget").delete().eq("project_id", projectId);
-
-            const { error: insertError } = await supabase
-                .from("project_material_budget")
-                .insert(budgetRecords);
-
-            if (insertError) throw new Error("Lỗi lưu kết quả: " + insertError.message);
+        const { error: insertError } = await supabase.from("project_material_budget").insert(budgetRecords);
+        if (insertError) {
+            throw new Error(`Lỗi Insert Database: ${insertError.message} (Có thể do sếp chưa tạo cột 'category' trong bảng project_material_budget)`);
         }
 
-        revalidatePath(`/projects/${projectId}`);
-        return { success: true, message: `Thành công! Đã tính toán ${budgetRecords.length} loại vật tư.` };
+        return {
+            success: true,
+            message: `🎉 Thành công! Đã bóc tách được ${budgetRecords.length} dòng vật tư.`
+        };
 
     } catch (e: any) {
-        console.error("🔥 Calculate Error:", e);
+        console.error("🔥 Calculate Error:", e.message);
         return { success: false, error: e.message };
     }
 }

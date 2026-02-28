@@ -11,11 +11,10 @@ import {
 
 import { getProjectDocuments } from "@/lib/action/documentActions";
 import { getProjectTasks } from "@/lib/action/taskActions";
-import { getDictionaryItems } from "@/lib/action/dictionaryActions";
+import { getDictionaryItems } from "@/lib/action/dictionaryActions"; // ✅ Đảm bảo action này tồn tại
 
 import {
     getProjectSurveys,
-    getSurveyTemplates,
     getSurveyTaskTemplates
 } from "@/lib/action/surveyActions";
 import { getEmployees } from "@/lib/action/employeeActions";
@@ -41,7 +40,7 @@ import ProgressBar from "@/components/ui/ProgressBar";
 import { Badge } from "@/components/ui/badge";
 import MaterialRequestManager from "@/components/projects/requests/MaterialRequestManager";
 import QuotationPageClient from "./quotation/page-client";
-
+import AIProjectAnalytics from "@/components/projects/analytics/AIProjectAnalytics";
 import ProjectEstimationTab from "@/components/projects/tab/ProjectEstimationTab";
 import ProjectLegalTab from "@/components/projects/tab/ProjectLegalTab";
 
@@ -101,7 +100,9 @@ export default async function ProjectPage({ params }: PageProps) {
     const [
         projectRes, membersRes, docsRes, milestonesRes,
         tasksRes,
-        surveysRes, surveyTemplatesRes, surveyTaskTemplatesRes,
+        surveysRes,
+        surveyTypesRes, // 🔴 Đã đổi từ surveyTemplatesRes
+        surveyTaskTemplatesRes,
         rolesRes, employeesRes, quotationsRes, contractsRes,
         qtoItems, norms, estimateRes, costTemplatesRes,
         budgetRes,
@@ -118,7 +119,7 @@ export default async function ProjectPage({ params }: PageProps) {
         getProjectMilestones(id),
         getProjectTasks(id),
         getProjectSurveys(id),
-        getSurveyTemplates(),
+        getDictionaryItems('SURVEY_TYPE'), // 🔴 Lấy từ Dictionary thay vì bảng mẫu cũ
         getSurveyTaskTemplates(),
         getProjectRoles(),
         getEmployees({ limit: 1000, page: 1 }),
@@ -143,7 +144,7 @@ export default async function ProjectPage({ params }: PageProps) {
         return <div className="p-20 text-center">Dự án không tồn tại hoặc bạn không có quyền truy cập.</div>;
     }
 
-    // --- TÍNH TOÁN TÀI CHÍNH TỪ DỮ LIỆU VIEW ---
+    // --- TÍNH TOÁN TÀI CHÍNH ---
     const totalRevenue = project.total_contract_value || 0;
     const actualReceived = project.total_income || 0;
     const totalCost = project.total_expenses || 0;
@@ -158,7 +159,11 @@ export default async function ProjectPage({ params }: PageProps) {
     const quotations = (quotationsRes as any)?.success ? (quotationsRes as any).data : [];
     const contracts = (contractsRes as any)?.success ? (contractsRes as any).data : [];
     const surveys = (surveysRes as any)?.data || [];
-    const surveyTemplates = (surveyTemplatesRes as any)?.data || [];
+
+    // 🔴 Xử lý dữ liệu Dictionary Survey Types
+    const surveyTypes = (surveyTypesRes as any)?.data || (Array.isArray(surveyTypesRes) ? surveyTypesRes : []);
+    console.log("CHECK DICTIONARY:", surveyTypes);
+
     const surveyTaskTemplates = (surveyTaskTemplatesRes as any)?.data || [];
     const roles = Array.isArray(rolesRes) ? rolesRes : ((rolesRes as any)?.data || []);
     const allEmployees = (employeesRes as any)?.employees || [];
@@ -178,7 +183,7 @@ export default async function ProjectPage({ params }: PageProps) {
         projectStatuses: getDictData(projectStatusesRes)
     };
 
-    // Calculations
+    // Calculations cho Tiến độ
     const actualProgress = project.progress || 0;
     const today = new Date();
     const startDate = project.start_date ? new Date(project.start_date) : new Date();
@@ -214,7 +219,6 @@ export default async function ProjectPage({ params }: PageProps) {
     const statusBorder = `${statusColor}40`;
 
     return (
-        // ✅ FIX: bg-gray-50 -> bg-background
         <div className="container mx-auto px-2 md:px-6 py-4 md:py-8 space-y-4 md:space-y-6 bg-background min-h-screen">
             <ProjectHeaderWrapper project={project} permissions={permissions} />
 
@@ -249,7 +253,6 @@ export default async function ProjectPage({ params }: PageProps) {
             </div>
 
             <Tabs defaultValue="overview" className="space-y-4">
-                {/* ✅ FIX: bg-white -> bg-muted/20 hoặc bg-card */}
                 <TabsList className="bg-card p-1 border border-border rounded-lg w-full md:w-auto flex justify-start overflow-x-auto">
                     <TabsTrigger value="overview"><Activity className="w-4 h-4 mr-2" />Tổng quan</TabsTrigger>
                     <TabsTrigger value="legal"><Scale className="w-4 h-4 mr-2 text-purple-600 dark:text-purple-400" />Hồ sơ Pháp lý</TabsTrigger>
@@ -260,12 +263,14 @@ export default async function ProjectPage({ params }: PageProps) {
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4 animate-in slide-in-from-bottom-2 duration-500">
+                    <AIProjectAnalytics
+                        project={project}
+                        financeStats={{ totalRevenue, totalCost, actualReceived, profit }}
+                    />
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-6">
-                            {/* ✅ FIX: Card tự động support darkmode với bg-card */}
                             <Card className="shadow-sm border-none bg-card">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    {/* ✅ FIX: text-slate-800 -> text-foreground */}
                                     <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                                         <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Thông tin dự án
                                     </CardTitle>
@@ -282,7 +287,6 @@ export default async function ProjectPage({ params }: PageProps) {
                                 </CardHeader>
                                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
                                     <div className="space-y-3">
-                                        {/* ✅ FIX: text-slate-400 -> text-muted-foreground, text-slate-700 -> text-foreground */}
                                         <div><span className="text-muted-foreground block uppercase text-[10px] font-bold">Khách hàng</span><span className="font-semibold text-foreground">{project.customer?.name || 'Chưa xác định'}</span></div>
                                         <div><span className="text-muted-foreground block uppercase text-[10px] font-bold">Quản lý (PM)</span><span className="font-semibold text-foreground">{project.manager?.name || 'Chưa phân công'}</span></div>
                                     </div>
@@ -315,7 +319,6 @@ export default async function ProjectPage({ params }: PageProps) {
                                             <ProgressBar value={actualProgress} colorClass="bg-green-500" />
                                         </div>
                                     </div>
-                                    {/* ✅ FIX: bg-slate-50 -> bg-muted/50 */}
                                     <div className="p-3 bg-muted/50 rounded-lg flex justify-between items-center">
                                         <span className="text-sm font-semibold text-foreground">Đánh giá KPI:</span>
                                         <span className={`text-sm font-bold ${kpiProgressColor}`}>{kpiProgress > 0 ? `+${kpiProgress}%` : `${kpiProgress}%`} ({kpiProgressStatus})</span>
@@ -331,7 +334,6 @@ export default async function ProjectPage({ params }: PageProps) {
                                 <CardHeader><CardTitle className="text-base text-foreground">Tài chính dự án</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="flex flex-col items-end">
-                                        {/* ✅ FIX: Dark mode cho khối green-50 */}
                                         <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900 rounded-lg text-green-800 dark:text-green-300 shadow-sm">
                                             <Banknote className="w-4 h-4" />
                                             <span className="text-sm font-medium">Giá trị HĐ:</span>
@@ -350,15 +352,25 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
-                {/* Các Tabs khác - ✅ FIX: bg-white -> bg-card, border-slate-100 -> border-border */}
                 <TabsContent value="legal">
                     <div className="bg-card p-2 md:p-6 rounded-xl shadow-sm border border-border min-h-[500px]">
                         <ProjectLegalTab project={project} docs={legalDocs} />
                     </div>
                 </TabsContent>
+
                 <TabsContent value="execution">
                     <div className="bg-card p-2 md:p-6 rounded-xl shadow-sm border border-border min-h-[500px]">
-                        <ProjectTabs projectId={id} project={project} members={members} documents={documents} financeStats={{ totalRevenue, totalCost, actualReceived, remainingDebt, overdueCount: project.overdue_count || 0, profit, profitMargin: 0 }} milestones={milestones} tasks={tasks} dictionaries={dictionaries} surveys={surveys} surveyTemplates={surveyTemplates} surveyTaskTemplates={surveyTaskTemplates} allEmployees={allEmployees} roles={roles} isManager={permissions.canAddMember} currentUserId={session.entityId || ""} taskFeed={taskFeedOutput} membersCount={members.length} documentsCount={documents.length} logs={constructionLogs} />
+                        <ProjectTabs
+                            projectId={id} project={project} members={members} documents={documents}
+                            financeStats={{ totalRevenue, totalCost, actualReceived, remainingDebt, overdueCount: project.overdue_count || 0, profit, profitMargin: 0 }}
+                            milestones={milestones} tasks={tasks} dictionaries={dictionaries} surveys={surveys}
+                            // 🔴 Đã đổi prop sang surveyTypes
+                            surveyTypes={surveyTypes}
+                            surveyTaskTemplates={surveyTaskTemplates}
+                            allEmployees={allEmployees} roles={roles} isManager={permissions.canAddMember}
+                            currentUserId={session.entityId || ""} taskFeed={taskFeedOutput}
+                            membersCount={members.length} documentsCount={documents.length} logs={constructionLogs}
+                        />
                     </div>
                 </TabsContent>
 
@@ -375,6 +387,7 @@ export default async function ProjectPage({ params }: PageProps) {
                         />
                     </div>
                 </TabsContent>
+
                 <TabsContent value="quotation">
                     <div className="bg-card p-6 rounded-xl shadow-sm border border-border min-h-[500px]">
                         <QuotationPageClient projectId={id} project={project} quotations={quotations} contracts={contracts} />

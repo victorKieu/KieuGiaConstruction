@@ -250,7 +250,7 @@ function SummaryDashboard({ projects }: { projects: ProjectWithExtras[] }) {
 export default function ProjectList({ projects, currentUserRole, dictionaries }: ProjectListProps) {
     const currentYear = new Date().getFullYear().toString();
     const [filterStatus, setFilterStatus] = useState<string>("active");
-    const [filterYear, setFilterYear] = useState<string>(currentYear);
+    const [filterYear, setFilterYear] = useState<string>("all");
 
     const statusOptions = dictionaries?.statuses || [];
 

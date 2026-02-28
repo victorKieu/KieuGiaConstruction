@@ -13,9 +13,15 @@ import ProjectQTOTab from "./tab/ProjectQTOTab";
 import ConstructionLogManager from "@/components/projects/execution/ConstructionLogManager";
 
 import {
-    ProjectData, MilestoneData, MemberData, DocumentData, TaskData,
-    Survey, SurveyTemplate, SurveyTaskTemplate
+    ProjectData, MilestoneData, MemberData, DocumentData,
+    Survey, SurveyTaskTemplate
 } from "@/types/project";
+
+// Thêm interface cho Dictionary
+interface SysDictionary {
+    code: string;
+    value: string;
+}
 
 interface ProjectTabsProps {
     projectId: string;
@@ -27,7 +33,8 @@ interface ProjectTabsProps {
     tasks: any[];
     dictionaries: any;
     surveys: Survey[];
-    surveyTemplates: SurveyTemplate[];
+    // 🔴 Đã đổi từ surveyTemplates sang surveyTypes
+    surveyTypes: SysDictionary[];
     surveyTaskTemplates: SurveyTaskTemplate[];
     taskFeed: React.ReactNode;
     membersCount: number;
@@ -81,7 +88,7 @@ function getUrlParamFromTabName(tabName: string): string {
 
 export default function ProjectTabs({
     projectId, project, milestones, members, documents, financeStats, tasks, dictionaries,
-    surveys, surveyTemplates, surveyTaskTemplates, taskFeed, membersCount, documentsCount,
+    surveys, surveyTypes = [], surveyTaskTemplates, taskFeed, membersCount, documentsCount,
     logs = [],
     allEmployees = [], roles = [], isManager = false, currentUserId = "",
 }: ProjectTabsProps) {
@@ -105,20 +112,18 @@ export default function ProjectTabs({
 
     return (
         <div className="w-full">
-            {/* Thanh Tab Navigation - ✅ FIX: border-border */}
+            {/* Thanh Tab Navigation */}
             <div className="flex gap-4 border-b border-border mb-4 overflow-x-auto scrollbar-hide">
                 {tabs.map((tab) => (
                     <button
                         key={tab}
                         onClick={() => handleTabClick(tab)}
-                        // ✅ FIX: Colors cho dark mode (text-muted-foreground, hover:text-foreground, dark:text-blue-400)
                         className={`pb-2 border-b-2 whitespace-nowrap transition-colors px-1 text-sm font-medium ${activeTab === tab
                             ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
                             : "border-transparent text-muted-foreground hover:text-foreground"
                             }`}
                     >
                         {tab}
-                        {/* Badges số lượng - ✅ FIX: bg-muted text-muted-foreground */}
                         {tab === TABS.MEMBERS && <span className="ml-1 text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">({membersCount})</span>}
                         {tab === TABS.DOCUMENTS && <span className="ml-1 text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">({documentsCount})</span>}
                         {tab === TABS.LOGS && <span className="ml-1 text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">({logs.length})</span>}
@@ -141,8 +146,13 @@ export default function ProjectTabs({
 
                 {activeTab === TABS.SURVEY && (
                     <ProjectSurveyTab
-                        projectId={projectId} surveys={surveys} members={members}
-                        surveyTemplates={surveyTemplates} surveyTaskTemplates={surveyTaskTemplates}
+                        projectId={projectId}
+                        project={project}
+                        surveys={surveys}
+                        members={members}
+                        // 🔴 Truyền surveyTypes từ Dictionary vào đây
+                        surveyTypes={surveyTypes}
+                        surveyTaskTemplates={surveyTaskTemplates}
                     />
                 )}
 

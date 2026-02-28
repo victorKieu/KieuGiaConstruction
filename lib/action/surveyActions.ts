@@ -343,3 +343,16 @@ export async function deleteSurveyTask(prevState: any, formData: FormData): Prom
         return { success: false, error: error.message };
     }
 }
+
+// Thêm hàm này vào surveyActions.ts
+export async function getSurveyTypesFromDictionary() {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+        .from("sys_dictionary")
+        .select(`code, value`)
+        .eq('type', 'survey_type')
+        .eq('is_active', true)
+        .order("value", { ascending: true });
+
+    return { data, error };
+}

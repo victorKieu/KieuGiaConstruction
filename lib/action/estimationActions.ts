@@ -20,13 +20,13 @@ export async function getEstimationItems(projectId: string) {
     return { success: true, data: data || [] };
 }
 
-// 2. ĐỒNG BỘ DỰ TOÁN TỪ BẢNG VẬT TƯ (ĐÃ FIX LỖI GENERATED COLUMN)
+// 2. ĐỒNG BỘ DỰ TOÁN TỪ BẢNG VẬT TƯ (ĐÃ NÂNG CẤP PHÂN RÃ HẠNG MỤC)
 export async function createEstimationFromBudget(projectId: string) {
     const supabase = await createClient();
     console.log(`🚀 [Sync] Bắt đầu đồng bộ dự toán cho dự án: ${projectId}`);
 
     try {
-        // A. Lấy dữ liệu nguồn
+        // A. Lấy dữ liệu nguồn từ QTO
         const { data: budgetItems, error: budgetError } = await supabase
             .from('project_material_budget')
             .select('*')
@@ -41,42 +41,50 @@ export async function createEstimationFromBudget(projectId: string) {
         // B. Lấy giá cũ để bảo lưu
         const { data: currentEstimates } = await supabase
             .from('estimation_items')
-            .select('material_name, unit_price')
+            .select('category, material_name, unit_price')
             .eq('project_id', projectId);
 
+        // Map giá cũ theo (Hạng mục + Tên vật tư) để giữ giá chính xác
         const priceMap = new Map<string, number>();
         currentEstimates?.forEach(e => {
-            if (e.unit_price) priceMap.set(e.material_name, e.unit_price);
+            if (e.unit_price) {
+                priceMap.set(`${e.category || ''}_${e.material_name}`, e.unit_price);
+                // Tạo thêm map dự phòng theo tên vật tư
+                priceMap.set(`_${e.material_name}`, e.unit_price);
+            }
         });
 
         // C. Chuẩn bị dữ liệu Upsert
-        // ❌ BỎ 'total_cost' VÌ DB TỰ TÍNH
         const upsertData = budgetItems.map(item => {
-            const oldPrice = priceMap.get(item.material_name) || 0;
+            const exactKey = `${item.category || ''}_${item.material_name}`;
+            const backupKey = `_${item.material_name}`;
+            const oldPrice = priceMap.get(exactKey) || priceMap.get(backupKey) || 0;
+
             return {
                 project_id: projectId,
+                category: item.category, // 🔴 MANG TÊN HẠNG MỤC TỪ QTO SANG DỰ TOÁN
                 material_name: item.material_name,
                 material_code: item.material_name,
                 unit: item.unit,
                 quantity: item.budget_quantity,
                 unit_price: oldPrice,
-                // total_cost: ... ⛔ KHÔNG GỬI TRƯỜNG NÀY
             };
         });
 
         console.log(`💾 [Sync] Đang Upsert ${upsertData.length} dòng...`);
 
+        // 🔴 ĐỔI KHÓA XUNG ĐỘT: Cho phép trùng tên Vật tư miễn là khác Hạng mục (Category)
         const { error: upsertError } = await supabase
             .from('estimation_items')
-            .upsert(upsertData, { onConflict: 'project_id, material_name' });
+            .upsert(upsertData, { onConflict: 'project_id, category, material_name' });
 
         if (upsertError) {
             console.error("❌ Lỗi Upsert:", upsertError);
             throw new Error("Lỗi lưu DB: " + upsertError.message);
         }
 
-        revalidatePath(`/projects/${projectId}`);
-        return { success: true, message: `Đã đồng bộ ${upsertData.length} hạng mục!` };
+        // revalidatePath(`/projects/${projectId}`); // (Đảm bảo sếp đã import revalidatePath ở trên cùng file)
+        return { success: true, message: `Đã đồng bộ ${upsertData.length} hạng mục phân rã chi tiết!` };
 
     } catch (e: any) {
         console.error("🔥 Sync Error:", e);
@@ -181,14 +189,14 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
             .from('qto_items')
             .select('*')
             .eq('project_id', projectId)
-            .not('norm_code', 'is', null); // Chỉ lấy những dòng có mã định mức
+            .not('norm_code', 'is', null);
 
         if (qtoError) throw qtoError;
         if (!qtoItems || qtoItems.length === 0) {
             return { success: false, error: "Chưa có hạng mục nào được gán Mã Định Mức." };
         }
 
-        // 2. Xóa các dòng Dự toán tự động cũ (tránh trùng lặp khi ấn phân tích nhiều lần)
+        // 2. Xóa các dòng Dự toán tự động cũ
         await supabase
             .from('estimation_items')
             .delete()
@@ -199,7 +207,6 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
         let insertPayload: any[] = [];
 
         for (const qto of qtoItems) {
-            // Tìm định mức trong thư viện (bảng norms & norm_details & resources)
             const { data: normData } = await supabase
                 .from('norms')
                 .select(`
@@ -209,11 +216,15 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
                 .eq('code', qto.norm_code)
                 .single();
 
-            // Nếu KHÔNG có định mức (nhập sai mã hoặc mã chưa có trong data), đẩy thẳng dưới dạng hạng mục tự do
+            // 🔴 ĐỊNH NGHĨA CATEGORY TẠI ĐÂY CHUNG CHO CẢ 2 TRƯỜNG HỢP
+            const categoryName = `[${qto.norm_code}] ${qto.item_name || 'Hạng mục chung'}`;
+
+            // Nếu KHÔNG có định mức
             if (!normData || !normData.norm_details) {
                 insertPayload.push({
                     project_id: projectId,
                     qto_item_id: qto.id,
+                    category: categoryName, // 🔴 BỔ SUNG CỘT NÀY
                     original_name: `[Chưa rõ định mức] ${qto.item_name}`,
                     quantity: qto.quantity,
                     unit: qto.unit,
@@ -223,17 +234,14 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
                 continue;
             }
 
-            // Nếu CÓ định mức: Nhân (Khối lượng QTO) * (Hệ số vật tư trong định mức)
+            // Nếu CÓ định mức
             const details: any[] = normData.norm_details;
             for (const detail of details) {
                 const resource = detail.resources;
                 if (!resource) continue;
 
-                // Tính toán khối lượng vật tư thực tế cần dùng
-                // Tính toán khối lượng vật tư thực tế cần dùng
                 const actualQuantity = Number(qto.quantity) * Number(detail.quantity);
 
-                // Phân loại Section dựa vào group_code của resource (VL, NC, M)
                 let sectionName = 'VẬT TƯ';
                 if (resource.group_code === 'NC') sectionName = 'NHÂN CÔNG';
                 if (resource.group_code === 'M') sectionName = 'MÁY THI CÔNG';
@@ -241,6 +249,7 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
                 insertPayload.push({
                     project_id: projectId,
                     qto_item_id: qto.id,
+                    category: categoryName, // 🔴 BỔ SUNG CỘT NÀY ĐỂ HIỂN THỊ ĐÚNG TÊN HẠNG MỤC
                     original_name: `(${qto.norm_code}) ${resource.name}`,
                     material_code: resource.code,
                     material_name: resource.name,
@@ -253,7 +262,7 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
             }
         }
 
-        // 4. Lưu toàn bộ kết quả quy đổi vào bảng Dự Toán
+        // 4. Lưu toàn bộ kết quả
         if (insertPayload.length > 0) {
             const { error: insertError } = await supabase
                 .from('estimation_items')

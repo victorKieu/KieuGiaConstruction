@@ -1,5 +1,4 @@
 ﻿import { redirect } from "next/navigation";
-// Import thêm getStandardResources
 import { getNorms, getStandardResources } from "@/lib/action/normActions";
 import NormClient from "@/components/dictionaries/norms/NormClient";
 import { checkIsAdmin } from "@/lib/supabase/getUserProfile";

@@ -116,6 +116,7 @@ const navItems = [
             { title: "Từ điển nhóm dữ liệu", href: "/admin/dictionaries/categories" },
             { title: "Từ điển dữ liệu", href: "/admin/dictionaries/system" },
             { title: "Định mức khối lượng", href: "/admin/dictionaries/norms" },
+            { title: "Danh Mục Công Tác", href: "/admin/dictionaries/templates" },
         ],
     },
     {

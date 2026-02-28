@@ -45,38 +45,63 @@ export async function POST(req: Request) {
         };
 
         // 3. GỌI AI PHÂN TÍCH VỚI PROMPT TOÁN HỌC CHUẨN
-        const model = genAI.getGenerativeModel({ model: 'gemini-3.1-pro-preview' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }); // Bản 1.0 Pro (Rất ổn định)
 
         const prompt = `
-Bạn là Kỹ sư Dự toán Xây dựng (QS). Hãy bóc tách khối lượng từ bản vẽ thiết kế.
-- Đọc bản vẽ và khảo sát hiện trạng (nếu có) để xác định các hạng mục công việc, cấu kiện, và kích thước liên quan.
-- Trích xuất các hạng mục chính (ví dụ: Móng, Tường, Sàn...) và các công tác con (ví dụ: Đào đất, Đổ bê tông...).
-- Với mỗi công tác, hãy tìm kiếm các kích thước liên quan (Dài, Rộng, Cao) và số lượng cấu kiện (quantity_factor).
-- Luôn tuân thủ đúng cấu trúc JSON được yêu cầu, không thêm bất kỳ văn bản giải thích nào ngoài JSON.
-- Luôn kiểm tra kỹ lưỡng để đảm bảo dữ liệu trả về là hợp lệ và có thể parse được.
-- Bóc tách càng chi tiết càng tốt, đừng bỏ sót bất kỳ kích thước hoặc công tác nào có thể tìm thấy trên bản vẽ.
+Generate a detailed Bill of Quantities (BOQ) based on the house plan provided in the PDF document.
 
-5 QUY TẮC TỐI THƯỢNG (PHẢI TUÂN THỦ NGHIÊM NGẶT):
+Instructions:
+- Analyze the provided house plan PDF to identify all relevant components such as rooms, dimensions, materials, and structural elements.
+- Calculate quantities for materials including but not limited to concrete, bricks, timber, steel, finishes, plumbing, and electrical installations.
+- Organize the BOQ in a clear, logical structure categorizing items by construction trade or section.
+- Include units of measurement, quantities, and brief descriptions for each item.
+- Ensure accuracy by cross-verifying quantities with the dimensions given in the plan.
+- If certain details are missing or unclear in the plan, identify these gaps explicitly.
 
-1. KHÔNG TỰ BỊA MÃ ĐỊNH MỨC: Luôn luôn để trường "norm_code": null. Web app sẽ tự động map mã sau.
-2. BÓC TÁCH CHI TIẾT (BREAKDOWNS) VÀ CHỦNG LOẠI VẬT TƯ:
-   - Phân rã theo từng cấu kiện (VD: Móng M1, Móng M2, Dầm D1, Cột C1...).
-   - Đọc kỹ các Text/Ghi chú trên bản vẽ. Nếu bản vẽ có ghi chú cấp phối, mác bê tông, loại gạch, kích thước thép... BẮT BUỘC phải đưa vào tên công tác ("item_name") hoặc diễn giải ("explanation"). VD: "Bê tông đài móng đá 1x2 M250".
-3. TRÍCH XUẤT ĐÚNG KÍCH THƯỚC: Chỉ lấy chính xác Số lượng cấu kiện (quantity_factor), Dài (length), Rộng (width), Cao/Dày (height). Kích thước nào không có hoặc không thể suy luận, hãy để là 0.
-4. CẤM TUYỆT ĐỐI DÙNG PHÉP TÍNH TRONG JSON: Các trường length, width, height, quantity_factor CHỈ ĐƯỢC PHÉP LÀ MỘT CON SỐ DUY NHẤT (VD: Ghi 106.2 thay vì 46.00 + 60.20). Nếu cần tính tổng, hãy tự nhẩm trong đầu và in ra kết quả cuối cùng.
-5. CẤU TRÚC PHÂN CẤP RÕ RÀNG: Nhóm các công tác vào đúng Hạng mục cha (VD: "PHẦN MÓNG", "PHẦN THÂN", "PHẦN HOÀN THIỆN").
+Steps:
+1. Extract and interpret the layout, dimensions, and structural details from the PDF.
+2. List and categorize all materials and components necessary for the construction.
+3. Compute quantities based on calculations derived from the plan.
+4. Present the BOQ in a tabulated or structured format, easy to read and understand.
 
-Trả về DUY NHẤT một MẢNG JSON theo đúng cấu trúc mẫu sau (không kèm theo bất kỳ văn bản Markdown nào khác):
+Output Format:
+- Provide the BOQ as a structured table or list with columns/fields including: Item Number, Description, Unit, Quantity, and Remarks (if needed).
+
+Notes:
+- Assume standard construction practices unless specified.
+- Request additional information if the PDF lacks critical data.
+
+Respond with the complete BOQ based solely on the provided PDF data. If you cannot process attachments directly, guide the user on how to share textual details or images necessary for the BOQ generation.
+
+- Always translate into Vietnamese
+
+5 ESSENTIAL RULES (MUST BE STRICTLY ADHERED TO):
+
+1. DO NOT CREATE YOUR OWN NORM CODES: Always leave the "norm_code" field as null. The web app will automatically map the code later.
+
+2. BREAKDOWNS AND MATERIAL TYPES:
+
+- Break down by individual components (e.g., Foundation M1, Foundation M2, Beam D1, Column C1...).
+
+- Carefully read the Text/Notes on the drawing. If the drawing includes notes on mix design, concrete grade, brick type, steel dimensions, etc., it is MANDATORY to include them in the work item name ("item_name") or explanation ("explanation"). For example: "Concrete footing with 1x2 stone aggregate M250".
+
+3. EXTRACT THE CORRECT DIMENSIONS: Only extract the exact Quantity of Components (quantity_factor), Length, Width, and Height. For dimensions that are missing or cannot be deduced, leave them as 0.
+4. ABSOLUTELY NO CALCULATIONS IN JSON: The length, width, height, and quantity_factor fields MUST ONLY BE SINGLE NUMBERS (e.g., write 106.2 instead of 46.00 + 60.20). If you need to calculate the total, do it mentally and print the final result.
+
+5. CLEAR HIERARCHICAL STRUCTURE: Group tasks into the correct parent categories (e.g., "FOUNDATION", "SUBSTRATE", "FINISHING").
+
+Return ONLY a JSON array with the following structure (without any other Markdown text):
 [
   {
-    "section_name": "PHẦN MÓNG",
+    "section_name": "I. PHẦN MÓNG",
     "items": [
       {
         "item_name": "Bê tông lót móng đá 4x6 M100",
         "norm_code": null,
         "unit": "m3",
         "details": [
-          { "explanation": "Lót đài móng M1", "quantity_factor": 13, "length": 1.55, "width": 1.35, "height": 0.1 }
+          { "explanation": "Lót đài móng M1", "quantity_factor": 13, "length": 1.55, "width": 1.35, "height": 0.1 },
+          { "explanation": "Lót đài móng M2", "quantity_factor": 4, "length": 2.10, "width": 1.80, "height": 0.1 }
         ]
       },
       {

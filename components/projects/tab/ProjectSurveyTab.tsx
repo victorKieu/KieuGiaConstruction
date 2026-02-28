@@ -2,68 +2,91 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import SurveyCreateModal from "../survey/SurveyCreateModal";
-import SurveyDetailModal from "../survey/SurveyDetailModal";
+import SurveyWorkspaceModal from "../survey/SurveyWorkspaceModal";
 import SurveyDeleteButton from "../survey/SurveyDeleteButton";
-import { MemberData } from "@/types/project";
-import type { Survey, SurveyTemplate, SurveyTaskTemplate } from "@/types/project";
+import { Survey, SurveyTaskTemplate, MemberData, ProjectData } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
+import { Compass, Ruler, Camera } from "lucide-react";
+
+// Định nghĩa interface cho Dictionary
+interface SysDictionary {
+    code: string;
+    value: string;
+}
 
 interface ProjectSurveyTabProps {
     projectId: string;
+    project: ProjectData;
     surveys: Survey[];
     members: MemberData[];
-    surveyTemplates: SurveyTemplate[];
+    surveyTypes: SysDictionary[];
     surveyTaskTemplates: SurveyTaskTemplate[];
 }
 
-export default function ProjectSurveyTab({ projectId, surveys, members, surveyTemplates, surveyTaskTemplates }: ProjectSurveyTabProps) {
+export default function ProjectSurveyTab({
+    projectId,
+    project,
+    surveys = [], // Default giá trị để tránh lỗi map
+    members = [],
+    surveyTypes = [], // Truyền mảng rỗng nếu chưa có dữ liệu
+    surveyTaskTemplates = []
+}: ProjectSurveyTabProps) {
+
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-lg font-semibold">Các đợt Khảo sát ({surveys.length})</CardTitle>
-                <SurveyCreateModal projectId={projectId} surveyTemplates={surveyTemplates} />
+        <Card className="shadow-sm border-slate-200">
+            <CardHeader className="flex flex-row items-center justify-between bg-slate-50 border-b pb-4">
+                <div>
+                    <CardTitle className="text-lg font-bold text-blue-900 flex items-center gap-2">
+                        <Ruler className="w-5 h-5 text-orange-500" /> Quản lý Đợt Khảo sát
+                    </CardTitle>
+                    <p className="text-xs text-slate-500 mt-1">Lập Workspace khảo sát theo từng giai đoạn từ Từ điển hệ thống</p>
+                </div>
+
+                {/* Truyền surveyTypes vào Modal Tạo mới */}
+                <SurveyCreateModal
+                    projectId={projectId}
+                    surveyTypes={surveyTypes}
+                />
             </CardHeader>
-            <CardContent>
+
+            <CardContent className="pt-6">
                 {surveys.length === 0 ? (
-                    <p className="text-sm text-gray-500">Chưa có đợt khảo sát nào. Nhấn nút để tạo mới.</p>
+                    <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed text-slate-400">
+                        <Compass className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm font-medium">Chưa có đợt khảo sát nào được khởi tạo.</p>
+                    </div>
                 ) : (
-                    <ul className="space-y-4 mt-4">
+                    <ul className="space-y-4">
                         {surveys.map((survey) => (
-                            <li key={survey.id} className="flex flex-col p-4 mb-2 bg-white rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                                {/* Hàng trên: Thông tin khảo sát và các nút thao tác */}
-                                <div className="flex justify-between items-center mb-4">
-                                    {/* 1. Phần Modal Chi Tiết Khảo sát */}
+                            <li key={survey.id} className="flex flex-col p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all hover:shadow-md">
+                                <div className="flex justify-between items-center">
+
+                                    {/* Phần Workspace Modal */}
                                     <div className="flex-1 min-w-0 flex items-center gap-3">
-                                        <SurveyDetailModal
+                                        <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                            <Camera className="w-5 h-5" />
+                                        </div>
+                                        <SurveyWorkspaceModal
                                             survey={survey}
+                                            project={project} // ✅ Sếp nhớ truyền project object vào đây nhé
                                             members={members}
                                             projectId={projectId}
                                             surveyTaskTemplates={surveyTaskTemplates}
+                                            surveyTypes={surveyTypes}
                                         />
                                     </div>
 
-                                    {/* 2. Phần Status và Nút Sửa/Xóa */}
+                                    {/* Phần Status và Nút Sửa/Xóa */}
                                     <div className="flex flex-shrink-0 items-center space-x-1 ml-4">
-                                        <Badge className="text-xs" variant="outline">
-                                            {survey.status}
+                                        <Badge className={`text-xs mr-3 ${survey.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'} border-none shadow-none`}>
+                                            {survey.status === 'completed' ? 'Hoàn thành' : 'Đang xử lý'}
                                         </Badge>
 
-                                        {/* Nút SỬA */}
-                                        <SurveyEditModal
-                                            survey={survey}
-                                            projectId={projectId}
-                                        />
-
-                                        {/* Nút XÓA */}
-                                        <SurveyDeleteButton
-                                            surveyId={survey.id}
-                                            projectId={projectId}
-                                        />
+                                        <SurveyEditModal survey={survey} projectId={projectId} />
+                                        <SurveyDeleteButton surveyId={survey.id} projectId={projectId} />
                                     </div>
                                 </div>
-
-                                
                             </li>
                         ))}
                     </ul>
