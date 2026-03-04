@@ -1,20 +1,19 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import SurveyCreateModal from "../survey/SurveyCreateModal";
 import SurveyWorkspaceModal from "../survey/SurveyWorkspaceModal";
 import SurveyDeleteButton from "../survey/SurveyDeleteButton";
-import { Survey, MemberData, ProjectData } from "@/types/project";
+import { Survey, SurveyTaskTemplate, MemberData, ProjectData } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
 import { Compass, Ruler, Camera } from "lucide-react";
 
-
-// Định nghĩa interface cho Dictionary
 interface SysDictionary {
     code: string;
-    name?: string;  // Thêm cái này
-    value?: string; // Giữ cái này nếu DB cũ đang dùng value
+    name?: string;
+    value?: string;
 }
 interface ProjectSurveyTabProps {
     projectId: string;
@@ -22,16 +21,35 @@ interface ProjectSurveyTabProps {
     surveys: Survey[];
     members: MemberData[];
     surveyTypes: SysDictionary[];
+    surveyTaskTemplates?: any[];
 }
 
 export default function ProjectSurveyTab({
     projectId,
     project,
-    surveys = [], // Default giá trị để tránh lỗi map
+    surveys: initialSurveys = [],
     members = [],
-    surveyTypes = [], // Truyền mảng rỗng nếu chưa có dữ liệu
-    //surveyTaskTemplates = []
+    surveyTypes = [],
+    surveyTaskTemplates = []
 }: ProjectSurveyTabProps) {
+    // ✅ 1. Dùng State nội bộ để giao diện đổi màu lập tức
+    const [surveys, setSurveys] = useState(initialSurveys);
+
+    // ✅ 2. Đồng bộ nếu Server trả data mới về
+    useEffect(() => {
+        setSurveys(initialSurveys);
+    }, [initialSurveys]);
+
+    // ✅ 3. Hàm "Bắt sóng" từ Modal bên trong bắn ra
+    const handleSurveyProgress = useCallback((surveyId: string, progress: number) => {
+        setSurveys(prev => prev.map(s => {
+            if (s.id === surveyId) {
+                // Đạt 100% thì tự đổi chữ thành 'completed' ngay trên UI
+                return { ...s, status: progress === 100 ? 'completed' : 'pending' };
+            }
+            return s;
+        }));
+    }, []);
 
     return (
         <Card className="shadow-sm border-slate-200">
@@ -42,12 +60,7 @@ export default function ProjectSurveyTab({
                     </CardTitle>
                     <p className="text-xs text-slate-500 mt-1">Lập Workspace khảo sát theo từng giai đoạn từ Từ điển hệ thống</p>
                 </div>
-
-                {/* Truyền surveyTypes vào Modal Tạo mới */}
-                <SurveyCreateModal
-                    projectId={projectId}
-                    surveyTypes={surveyTypes}
-                />
+                <SurveyCreateModal projectId={projectId} surveyTypes={surveyTypes} />
             </CardHeader>
 
             <CardContent className="pt-6">
@@ -61,23 +74,21 @@ export default function ProjectSurveyTab({
                         {surveys.map((survey) => (
                             <li key={survey.id} className="flex flex-col p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all hover:shadow-md">
                                 <div className="flex justify-between items-center">
-
-                                    {/* Phần Workspace Modal */}
                                     <div className="flex-1 min-w-0 flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                                             <Camera className="w-5 h-5" />
                                         </div>
                                         <SurveyWorkspaceModal
                                             survey={survey}
-                                            project={project} // ✅ Sếp nhớ truyền project object vào đây nhé
+                                            project={project}
                                             members={members}
                                             projectId={projectId}
-                                            //surveyTaskTemplates={surveyTaskTemplates}
+                                            surveyTaskTemplates={surveyTaskTemplates}
                                             surveyTypes={surveyTypes}
+                                            onProgressChange={handleSurveyProgress} // ✅ 4. TRUYỀN HÀM NÀY VÀO MODAL
                                         />
                                     </div>
 
-                                    {/* Phần Status và Nút Sửa/Xóa */}
                                     <div className="flex flex-shrink-0 items-center space-x-1 ml-4">
                                         <Badge className={`text-xs mr-3 ${survey.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'} border-none shadow-none`}>
                                             {survey.status === 'completed' ? 'Hoàn thành' : 'Đang xử lý'}

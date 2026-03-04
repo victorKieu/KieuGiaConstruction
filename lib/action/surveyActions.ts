@@ -264,6 +264,9 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
     const costFromForm = Number(formData.get("cost") || 0);
     const analysisJsonRaw = formData.get("analysis_json") as string;
 
+    // LẤY DANH SÁCH FILE TỪ FORM BẮN LÊN
+    const files = formData.getAll("images") as File[];
+
     let analysisJson = null;
     if (analysisJsonRaw) {
         try {
@@ -275,20 +278,55 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
     try {
         const supabase = await createSupabaseServerClient();
+        const uploadedUrls: string[] = [];
 
-        // 1. CẬP NHẬT TASK
+        // --- LOGIC UPLOAD ẢNH LÊN SUPABASE STORAGE ---
+        if (files && files.length > 0) {
+            for (const file of files) {
+                if (file.size === 0) continue; // Bỏ qua nếu file rỗng
+
+                // Tạo tên file ngẫu nhiên chống trùng lặp
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${taskId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+                // Ném file lên Bucket 'survey_files'
+                const { error: uploadError } = await supabase.storage
+                    .from('survey_files')
+                    .upload(fileName, file);
+
+                if (uploadError) {
+                    console.error("❌ Lỗi upload ảnh:", uploadError);
+                } else {
+                    // Lấy link Public để hiển thị
+                    const { data: publicUrlData } = supabase.storage
+                        .from('survey_files')
+                        .getPublicUrl(fileName);
+                    uploadedUrls.push(publicUrlData.publicUrl);
+                }
+            }
+        }
+
+        // --- CẬP NHẬT TASK VÀO DATABASE ---
+        // Chuẩn bị data update
+        const updateData: any = {
+            status: status,
+            notes: textFromForm,
+            result_data: {
+                analysis: analysisJson,
+                raw_text: textFromForm,
+                updated_at: new Date().toISOString()
+            },
+            cost: costFromForm
+        };
+
+        // Nếu có ảnh mới upload thì nhét vào cột attachments (dạng mảng JSON)
+        if (uploadedUrls.length > 0) {
+            updateData.attachments = uploadedUrls;
+        }
+
         const { data: updatedTask, error } = await supabase
             .from("survey_tasks")
-            .update({
-                status: status,
-                notes: textFromForm,
-                result_data: {
-                    analysis: analysisJson,
-                    raw_text: textFromForm,
-                    updated_at: new Date().toISOString()
-                },
-                cost: costFromForm
-            })
+            .update(updateData)
             .eq("id", taskId)
             .select("survey_id")
             .single();
@@ -298,7 +336,7 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
             throw error;
         }
 
-        // 2. TÍNH % VÀ ĐỔI TRẠNG THÁI SURVEY BÊN NGOÀI
+        // --- TÍNH % VÀ ĐỔI TRẠNG THÁI SURVEY BÊN NGOÀI ---
         if (updatedTask && updatedTask.survey_id) {
             const surveyId = updatedTask.survey_id;
 
@@ -312,7 +350,6 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
                 const completed = allTasks.filter(t => t.status === 'completed').length;
                 const progressPercent = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-                // Cập nhật trạng thái ra ngoài: 100% thì completed, ngược lại thì pending
                 const surveyStatus = progressPercent === 100 ? 'completed' : 'pending';
 
                 const { error: surveyError } = await supabase
@@ -327,13 +364,12 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
             }
         }
 
-        // 3. RESET CACHE UI TẬN GỐC
+        // --- RESET CACHE UI ---
         if (projectId) {
             revalidatePath(`/projects/${projectId}`, 'layout');
         }
 
         return { success: true, message: "Cập nhật thành công!" };
-        // ĐÂY NÀY SẾP, LỖI DO THIẾU CÁI CỤM CATCH NÀY ĐÂY:
     } catch (e: any) {
         console.error("Lỗi tại updateSurveyTaskResult:", e.message);
         return { success: false, message: "Lỗi Server: " + e.message };

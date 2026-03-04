@@ -26,6 +26,7 @@ interface SurveyWorkspaceModalProps {
     projectId: string;
     surveyTaskTemplates?: any[];
     surveyTypes: { code: string; name?: string; value?: string }[];
+    onProgressChange?: (surveyId: string, progress: number) => void; // 👈 THÊM DÒNG NÀY
 }
 
 function SubmitTaskButton() {
@@ -38,7 +39,7 @@ function SubmitTaskButton() {
 }
 
 export default function SurveyWorkspaceModal({
-    survey, project, members, projectId, surveyTaskTemplates = [], surveyTypes = []
+    survey, project, members, projectId, surveyTaskTemplates = [], surveyTypes = [], onProgressChange
 }: SurveyWorkspaceModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
@@ -105,11 +106,13 @@ export default function SurveyWorkspaceModal({
         }
     }, [state.success, triggerRefresh]);
 
-    const handleSaveCompassData = async (data: { heading: number; result: string; cung: string; dirName: string }) => {
+    const handleSaveCompassData = async (data: any) => {
         try {
             const formData = new FormData();
             formData.append("id", survey.id);
-            formData.append("notes", `[PHONG THUỶ] Hướng: ${data.dirName}, Độ: ${data.heading}°, Cung: ${data.cung} (${data.result})`);
+            // ✅ Đẩy nguyên đoạn báo cáo xịn xò vào cột notes
+            formData.append("notes", data.reportText);
+
             const res = await updateSurvey(null, formData);
             if (res.success) toast.success("Đã lưu thông số La bàn!");
         } catch (error) {
@@ -122,7 +125,14 @@ export default function SurveyWorkspaceModal({
     const progressPercent = tasks.length === 0 ? 0 : Math.round((completedTasks / tasks.length) * 100);
     const prevProgressRef = useRef(progressPercent);
 
-    // Hiệu ứng "Pháo hoa" khi đạt 100%
+    // 1. Gửi tín hiệu phần trăm ra cho Component cha (ProjectSurveyTab) để đổi màu Badge
+    useEffect(() => {
+        if (onProgressChange && tasks.length > 0) {
+            onProgressChange(survey.id, progressPercent);
+        }
+    }, [progressPercent, survey.id, onProgressChange, tasks.length]);
+
+    // 2. Hiệu ứng "Pháo hoa" nổ bên trong Modal khi đạt 100%
     useEffect(() => {
         if (progressPercent === 100 && prevProgressRef.current < 100 && tasks.length > 0) {
             toast.success("TUYỆT VỜI! Đã hoàn thành 100% hạng mục.", {

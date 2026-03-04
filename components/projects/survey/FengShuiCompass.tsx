@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Compass, Save, RefreshCw, Smartphone, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { evaluateFengShui, type FullFengShuiAnalysis } from "@/lib/utils/fengShui";
@@ -24,7 +24,7 @@ export default function FengShuiCompass({
     const [isLocked, setIsLocked] = useState(false);
     const [analysis, setAnalysis] = useState<FullFengShuiAnalysis | null>(null);
 
-    // ✅ Tự động tính toán phong thủy khi Heading hoặc Thông tin gia chủ thay đổi
+    // Tự động tính toán phong thủy khi Heading hoặc Thông tin gia chủ thay đổi
     useEffect(() => {
         if (!isLocked) {
             const res = evaluateFengShui(birthYear, gender, heading);
@@ -35,7 +35,7 @@ export default function FengShuiCompass({
     // Xử lý cảm biến la bàn trên điện thoại
     useEffect(() => {
         const handleOrientation = (e: DeviceOrientationEvent) => {
-            // @ts-ignore - Hỗ trợ webkit cho iOS
+            // @ts-ignore
             const compass = e.webkitCompassHeading || (360 - (e.alpha || 0));
             if (!isLocked) setHeading(Math.round(compass));
         };
@@ -55,9 +55,22 @@ export default function FengShuiCompass({
     }, [isLocked]);
 
     const handleSave = () => {
+        if (!analysis) return;
+
+        // ✅ TỰ ĐỘNG SINH CÂU BÁO CÁO CHUẨN ĐÉT ĐỂ LƯU VÀO DATABASE
+        const reportText = `[BÁO CÁO PHONG THỦY GIA CHỦ: ${ownerName.toUpperCase()}]
+Năm sinh: ${birthYear} - Giới tính: ${gender === 'nam' ? 'Nam' : 'Nữ'}
+Cung mệnh: ${analysis.cung} (${analysis.nhom})
+--------------------------------------------------
+1. KẾT QUẢ ĐO HIỆN TẠI:
+- Hướng đo: ${analysis.currentDirection.name} (${heading}°)
+- Cung: ${analysis.currentDirection.star} (${analysis.currentDirection.isGood ? 'TỐT' : 'XẤU'})
+- Luận giải: ${analysis.currentDirection.desc}`;
+
         onSaveResult({
             heading,
             analysis,
+            reportText, // Truyền câu báo cáo này ra ngoài
             timestamp: new Date().toISOString()
         });
     };
@@ -65,42 +78,28 @@ export default function FengShuiCompass({
     return (
         <div className="flex flex-col items-center justify-center space-y-8 w-full">
             {/* --- Hiển thị thông tin Gia chủ đang đo --- */}
-            <div className="text-center space-y-1 animate-in fade-in slide-in-from-top-4">
+            <div className="text-center space-y-1 animate-in fade-in slide-in-from-top-4 mt-8">
                 <div className="flex items-center justify-center gap-2 text-blue-400 font-black uppercase tracking-tighter text-lg">
-                    <User size={18} /> {ownerName || "Gia chủ"}
+                    <User size={18} /> {ownerName}
                 </div>
                 <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">
-                    {birthYear} — {gender === 'nam' ? 'Tây Tứ Trạch' : 'Đông Tứ Trạch'} (Cung {analysis?.cung})
+                    {birthYear} — {gender === 'nam' ? 'Nam' : 'Nữ'} (Cung {analysis?.cung})
                 </p>
             </div>
 
             {/* --- Mặt La bàn --- */}
-            <div className="relative w-72 h-72 md:w-80 md:h-80 rounded-full border-[6px] border-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-slate-900 flex items-center justify-center overflow-hidden">
-                {/* Các vạch chia độ */}
+            <div className="relative w-72 h-72 md:w-80 md:h-80 rounded-full border-[6px] border-slate-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-slate-900 flex items-center justify-center overflow-hidden shrink-0">
                 <div className="absolute inset-2 rounded-full border border-slate-700/50 opacity-50" />
-
-                {/* Kim chỉ hướng (Đứng yên) */}
                 <div className="absolute top-0 w-1 h-8 bg-red-500 z-20 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
 
-                {/* Đĩa xoay La bàn */}
-                <div
-                    className="relative w-full h-full transition-transform duration-100 ease-out"
-                    style={{ transform: `rotate(${-heading}deg)` }}
-                >
-                    {/* Các hướng chính */}
+                <div className="relative w-full h-full transition-transform duration-100 ease-out" style={{ transform: `rotate(${-heading}deg)` }}>
                     {['BẮC', 'ĐÔNG', 'NAM', 'TÂY'].map((dir, i) => (
                         <div key={dir} className="absolute inset-0 flex flex-col items-center pt-4" style={{ transform: `rotate(${i * 90}deg)` }}>
                             <span className={`font-black text-sm ${dir === 'BẮC' ? 'text-red-500' : 'text-white/60'}`}>{dir}</span>
                         </div>
                     ))}
-
-                    {/* Hiển thị Cung Tốt/Xấu trực tiếp trên đĩa xoay (Nếu có analysis) */}
                     {analysis?.allDirections.map((d, i) => (
-                        <div
-                            key={i}
-                            className="absolute inset-0 flex flex-col items-center justify-start pt-12"
-                            style={{ transform: `rotate(${d.degree}deg)` }}
-                        >
+                        <div key={i} className="absolute inset-0 flex flex-col items-center justify-start pt-12" style={{ transform: `rotate(${d.degree}deg)` }}>
                             <div className={`text-[8px] font-bold px-1.5 py-0.5 rounded-sm ${d.type === 'good' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/10 text-red-400/50'}`}>
                                 {d.star}
                             </div>
@@ -108,7 +107,6 @@ export default function FengShuiCompass({
                     ))}
                 </div>
 
-                {/* Hiển thị số độ ở giữa */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-30 pointer-events-none">
                     <div className="bg-slate-950/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center">
                         <span className="text-4xl font-black text-white leading-none tracking-tighter">{heading}°</span>
@@ -140,8 +138,7 @@ export default function FengShuiCompass({
                     <Save className="mr-2 h-4 w-4" /> Lưu lại
                 </Button>
             </div>
-
-            <p className="text-white/20 text-[9px] font-medium uppercase tracking-[0.3em]">Thiết kế bởi KieuGia Construction</p>
+            <p className="text-white/20 text-[9px] font-medium uppercase tracking-[0.3em] pb-10">Thiết kế bởi KieuGia Construction</p>
         </div>
     );
 }
