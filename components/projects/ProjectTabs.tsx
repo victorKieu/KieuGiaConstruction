@@ -20,7 +20,8 @@ import {
 // Thêm interface cho Dictionary
 interface SysDictionary {
     code: string;
-    value: string;
+    name?: string;
+    value?: string;
 }
 
 interface ProjectTabsProps {

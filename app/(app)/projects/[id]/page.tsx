@@ -13,14 +13,11 @@ import { getProjectDocuments } from "@/lib/action/documentActions";
 import { getProjectTasks } from "@/lib/action/taskActions";
 import { getDictionaryItems } from "@/lib/action/dictionaryActions"; // ✅ Đảm bảo action này tồn tại
 
-import {
-    getProjectSurveys,
-    getSurveyTaskTemplates
-} from "@/lib/action/surveyActions";
+import { getProjectSurveys } from "@/lib/action/surveyActions";
 import { getEmployees } from "@/lib/action/employeeActions";
 import { getQuotations } from "@/lib/action/quotationActions";
 import { getContracts } from "@/lib/action/contractActions";
-
+import { getDictionaryOptions } from "@/lib/action/dictionaryActions";
 import { getProjectQTO, getMaterialBudget } from "@/lib/action/qtoActions";
 import { getNorms } from "@/lib/action/normActions";
 import { getEstimationItems, getCostTemplates } from "@/lib/action/estimationActions";
@@ -101,17 +98,22 @@ export default async function ProjectPage({ params }: PageProps) {
         projectRes, membersRes, docsRes, milestonesRes,
         tasksRes,
         surveysRes,
-        surveyTypesRes, // 🔴 Đã đổi từ surveyTemplatesRes
-        surveyTaskTemplatesRes,
-        rolesRes, employeesRes, quotationsRes, contractsRes,
-        qtoItems, norms, estimateRes, costTemplatesRes,
+        surveyTypesRes,     // 1. Dictionary SURVEY_TYPE
+        rolesRes,
+        employeesRes,
+        quotationsRes,
+        contractsRes,
+        qtoItems,
+        norms,
+        estimateRes,
+        costTemplatesRes,
         budgetRes,
         materialRequestsRes,
         legalDocsRes,
         constructionLogsRes,
-        taskStatusesRes,
-        taskPrioritiesRes,
-        projectStatusesRes
+        taskStatusesRes,    // 2. Dictionary TASK_STATUS
+        taskPrioritiesRes,  // 3. Dictionary TASK_PRIORITY
+        projectStatusesRes  // 4. Dictionary PROJECT_STATUS
     ] = await Promise.all([
         getProject(id),
         getProjectMembers(id),
@@ -119,8 +121,7 @@ export default async function ProjectPage({ params }: PageProps) {
         getProjectMilestones(id),
         getProjectTasks(id),
         getProjectSurveys(id),
-        getDictionaryItems('SURVEY_TYPE'), // 🔴 Lấy từ Dictionary thay vì bảng mẫu cũ
-        getSurveyTaskTemplates(),
+        getDictionaryItems('SURVEY_TYPE'),
         getProjectRoles(),
         getEmployees({ limit: 1000, page: 1 }),
         getQuotations(id),
@@ -161,10 +162,9 @@ export default async function ProjectPage({ params }: PageProps) {
     const surveys = (surveysRes as any)?.data || [];
 
     // 🔴 Xử lý dữ liệu Dictionary Survey Types
-    const surveyTypes = (surveyTypesRes as any)?.data || (Array.isArray(surveyTypesRes) ? surveyTypesRes : []);
+    const surveyTypes = await getDictionaryOptions("SURVEY_TYPE");
     console.log("CHECK DICTIONARY:", surveyTypes);
 
-    const surveyTaskTemplates = (surveyTaskTemplatesRes as any)?.data || [];
     const roles = Array.isArray(rolesRes) ? rolesRes : ((rolesRes as any)?.data || []);
     const allEmployees = (employeesRes as any)?.employees || [];
 
@@ -172,9 +172,11 @@ export default async function ProjectPage({ params }: PageProps) {
     const constructionLogs = Array.isArray(constructionLogsRes) ? constructionLogsRes : [];
 
     const getDictData = (res: any) => {
-        if (Array.isArray(res)) return res;
-        if (res && Array.isArray(res.data)) return res.data;
-        return [];
+        const data = Array.isArray(res) ? res : [];
+        return data.map(item => ({
+            ...item,
+            value: item.code // Map 'code' sang 'value' để component Select cũ chạy được
+        }));
     };
 
     const dictionaries = {
@@ -364,9 +366,7 @@ export default async function ProjectPage({ params }: PageProps) {
                             projectId={id} project={project} members={members} documents={documents}
                             financeStats={{ totalRevenue, totalCost, actualReceived, remainingDebt, overdueCount: project.overdue_count || 0, profit, profitMargin: 0 }}
                             milestones={milestones} tasks={tasks} dictionaries={dictionaries} surveys={surveys}
-                            // 🔴 Đã đổi prop sang surveyTypes
                             surveyTypes={surveyTypes}
-                            surveyTaskTemplates={surveyTaskTemplates}
                             allEmployees={allEmployees} roles={roles} isManager={permissions.canAddMember}
                             currentUserId={session.entityId || ""} taskFeed={taskFeedOutput}
                             membersCount={members.length} documentsCount={documents.length} logs={constructionLogs}

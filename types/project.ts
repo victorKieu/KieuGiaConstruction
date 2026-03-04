@@ -239,6 +239,7 @@ export interface SurveyTask {
     title: string;
     status: string;
     due_date: string | null;
+    cost?: number;
     result_data: JSON | null;
     notes: string | null;
     assigned_to: {
@@ -256,6 +257,7 @@ export interface SurveyTemplate {
 export interface SurveyTaskTemplate {
     id: string;
     title: string;
+    code: string;
     category: string | null;
     description: string | null;
     estimated_cost: number | null;

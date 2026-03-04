@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createSurveyTask, getSurveyTasks, updateSurvey } from "@/lib/action/surveyActions";
+import { getDictionaryItems } from "@/lib/action/dictionaryActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
 import { Loader2, Plus, ListTodo, CheckCircle2, LayoutGrid, X, ClipboardCheck, FileText } from "lucide-react";
 import { formatDate } from "@/lib/utils/utils";
-import { MemberData, ProjectData, Survey, SurveyTask, SurveyTaskTemplate } from "@/types/project";
+import { MemberData, ProjectData, Survey, SurveyTask } from "@/types/project";
 import SurveyResultModal from "./SurveyResultModal";
 import SurveyTaskDeleteButton from "./SurveyTaskDeleteButton";
 import SurveyTaskEditModal from "./SurveyTaskEditModal";
@@ -23,8 +24,8 @@ interface SurveyWorkspaceModalProps {
     project: ProjectData;
     members: MemberData[];
     projectId: string;
-    surveyTaskTemplates: SurveyTaskTemplate[];
-    surveyTypes: { code: string; value: string }[];
+    surveyTaskTemplates?: any[];
+    surveyTypes: { code: string; name?: string; value?: string }[];
 }
 
 function SubmitTaskButton() {
@@ -41,48 +42,96 @@ export default function SurveyWorkspaceModal({
 }: SurveyWorkspaceModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
-    const [state, formAction] = useActionState(createSurveyTask, { success: false });
+    const [state, formAction] = useActionState(createSurveyTask as any, { success: false });
     const [tasks, setTasks] = useState<SurveyTask[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [dictionaryItems, setDictionaryItems] = useState<any[]>([]);
+
+    // 1. CHUẨN HÓA TYPE CODE
+    const typeCode = useMemo(() => {
+        if (!survey.name) return "";
+        return survey.name.split(' - ')[0].toUpperCase().trim();
+    }, [survey.name]);
 
     const currentType = useMemo(() => {
-        const typeCode = survey.name.split(' - ')[0];
         return surveyTypes.find(t => t.code === typeCode || t.code === survey.name);
-    }, [survey.name, surveyTypes]);
+    }, [typeCode, surveyTypes, survey.name]);
 
-    const displayTitle = currentType ? currentType.value : survey.name;
-    const isFengShui = survey.name.includes("PHONG_THUY");
+    const displayTitle = currentType ? (currentType.name || currentType.value) : survey.name;
+    const isFengShui = typeCode.includes("PHONG_THUY") || survey.name.includes("PHONG_THUY");
 
-    const filteredTemplates = useMemo(() => {
-        const typeCode = survey.name.split(' - ')[0];
-        return surveyTaskTemplates.filter(t => (t as any).type === typeCode);
-    }, [surveyTaskTemplates, survey.name]);
+    // 2. FETCH NHIỆM VỤ CON
+    const fetchDictionary = useCallback(async () => {
+        if (!typeCode) return;
+        try {
+            const categoryName = `TASK_${typeCode}`;
+            const data = await getDictionaryItems(categoryName);
+            if (data && data.length > 0) {
+                setDictionaryItems(data);
+            }
+        } catch (error) {
+            console.error("Lỗi fetch:", error);
+        }
+    }, [typeCode]);
 
     const triggerRefresh = useCallback(async () => {
         if (!survey.id) return;
         setIsLoading(true);
         const result = await getSurveyTasks(survey.id);
-        if (result.data) setTasks(result.data as SurveyTask[]);
+        if (result.data) setTasks([...result.data] as SurveyTask[]);
         setIsLoading(false);
     }, [survey.id]);
 
-    useEffect(() => { if (isOpen) triggerRefresh(); }, [isOpen, triggerRefresh]);
-    useEffect(() => { if (state.success) { formRef.current?.reset(); triggerRefresh(); } }, [state.success, triggerRefresh]);
+    const handleLocalTaskUpdate = useCallback((taskId: string, newStatus: string) => {
+        setTasks(prevTasks =>
+            prevTasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t)
+        );
+        // Vẫn gọi refresh chạy ngầm để chắc kèo đồng bộ
+        triggerRefresh();
+    }, [triggerRefresh]);
+
+    useEffect(() => {
+        if (isOpen) {
+            triggerRefresh();
+            fetchDictionary();
+        }
+    }, [isOpen, triggerRefresh, fetchDictionary]);
+
+    useEffect(() => {
+        if (state.success) {
+            formRef.current?.reset();
+            triggerRefresh();
+            toast.success("Đã thêm nhiệm vụ mới");
+        }
+    }, [state.success, triggerRefresh]);
 
     const handleSaveCompassData = async (data: { heading: number; result: string; cung: string; dirName: string }) => {
         try {
             const formData = new FormData();
             formData.append("id", survey.id);
             formData.append("notes", `[PHONG THUỶ] Hướng: ${data.dirName}, Độ: ${data.heading}°, Cung: ${data.cung} (${data.result})`);
-            const res = await updateSurvey(survey.id, formData);
+            const res = await updateSurvey(null, formData);
             if (res.success) toast.success("Đã lưu thông số La bàn!");
         } catch (error) {
             toast.error("Lỗi kết nối");
         }
     };
 
+    // --- LOGIC PROGRESS BAR ---
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const progressPercent = tasks.length === 0 ? 0 : Math.round((completedTasks / tasks.length) * 100);
+    const prevProgressRef = useRef(progressPercent);
+
+    // Hiệu ứng "Pháo hoa" khi đạt 100%
+    useEffect(() => {
+        if (progressPercent === 100 && prevProgressRef.current < 100 && tasks.length > 0) {
+            toast.success("TUYỆT VỜI! Đã hoàn thành 100% hạng mục.", {
+                description: "Dữ liệu đã được đồng bộ về hệ thống trung tâm.",
+                icon: <CheckCircle2 className="text-green-500 w-5 h-5" />,
+            });
+        }
+        prevProgressRef.current = progressPercent;
+    }, [progressPercent, tasks.length]);
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -117,12 +166,28 @@ export default function SurveyWorkspaceModal({
                                     <span className="font-black uppercase tracking-tighter text-[13px]">{displayTitle}</span>
                                     <span className="text-[10px] text-slate-400 font-bold ml-1">#{project.code}</span>
                                 </div>
-                                <div className="hidden sm:flex items-center gap-3 bg-white/5 px-3 py-1 rounded-full border border-white/10">
-                                    <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                        <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+
+                                {/* ✅ PROGRESS BAR ĐỔI MÀU Ở ĐÂY */}
+                                <div className="hidden sm:flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 shadow-inner">
+                                    <div className="w-24 h-2 bg-slate-700/50 rounded-full overflow-hidden border border-white/5">
+                                        <div
+                                            className={`h-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(59,130,246,0.5)] ${progressPercent === 100
+                                                ? "bg-gradient-to-r from-green-400 to-emerald-600 shadow-green-500/50"
+                                                : progressPercent > 50
+                                                    ? "bg-gradient-to-r from-blue-400 to-indigo-500"
+                                                    : "bg-gradient-to-r from-slate-400 to-blue-400"
+                                                }`}
+                                            style={{ width: `${progressPercent}%` }}
+                                        />
                                     </div>
-                                    <span className="text-[10px] font-black text-blue-400">{progressPercent}%</span>
+                                    <div className="flex flex-col">
+                                        <span className={`text-[10px] font-black leading-none ${progressPercent === 100 ? "text-green-400" : "text-blue-400"}`}>
+                                            {progressPercent}% {progressPercent === 100 && "✨"}
+                                        </span>
+                                        <span className="text-[7px] uppercase tracking-tighter opacity-50 font-bold">Progress</span>
+                                    </div>
                                 </div>
+
                             </div>
                             <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-white h-8 w-8 rounded-full">
                                 <X className="w-5 h-5" />
@@ -133,17 +198,11 @@ export default function SurveyWorkspaceModal({
                             <TabsTrigger value="tasks" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-blue-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-blue-500">
                                 NHIỆM VỤ
                             </TabsTrigger>
-                            {isFengShui && (
-                                <TabsTrigger value="fengshui" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-orange-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-orange-500">
-                                    LA BÀN
-                                </TabsTrigger>
-                            )}
                         </TabsList>
                     </div>
 
                     <div className="flex-1 relative min-h-0 bg-slate-950">
                         <TabsContent value="tasks" className="h-full w-full m-0 p-3 bg-slate-50 flex flex-col gap-3 overflow-y-auto data-[state=inactive]:hidden">
-                            {/* FORM: Dùng 'notes' thay cho 'description' để khớp Schema */}
                             <form ref={formRef} action={formAction} className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0 sticky top-0 z-20">
                                 <input type="hidden" name="surveyId" value={survey.id} />
                                 <input type="hidden" name="projectId" value={projectId} />
@@ -151,18 +210,26 @@ export default function SurveyWorkspaceModal({
                                 <div className="flex flex-wrap items-center gap-2">
                                     <div className="flex-[2] min-w-[180px]">
                                         <Select name="title" required>
-                                            <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 font-bold text-slate-700 text-sm">
-                                                <SelectValue placeholder="Hạng mục..." />
+                                            <SelectTrigger className="bg-slate-50 border-slate-200 focus:ring-blue-500">
+                                                <SelectValue placeholder="Chọn hạng mục từ danh mục..." />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {filteredTemplates.map((t) => (
-                                                    <SelectItem key={t.id} value={t.title} className="text-sm font-semibold">{t.title}</SelectItem>
-                                                ))}
+                                                {dictionaryItems.length > 0 ? (
+                                                    dictionaryItems.map((item) => (
+                                                        <SelectItem key={item.id} value={item.name} className="text-sm font-semibold">
+                                                            {item.name}
+                                                        </SelectItem>
+                                                    ))
+                                                ) : (
+                                                    <SelectItem value="Other" disabled className="text-xs italic text-slate-400">
+                                                        Chưa có danh mục TASK_{typeCode}
+                                                    </SelectItem>
+                                                )}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div className="flex-[3] min-w-[200px]">
-                                        <Input name="notes" placeholder="Nội dung chi tiết..." className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-sm font-medium" />
+                                        <Input name="notes" placeholder="Mô tả cụ thể hiện trường..." className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-sm font-medium" />
                                     </div>
                                 </div>
 
@@ -175,7 +242,9 @@ export default function SurveyWorkspaceModal({
                                             <SelectContent>
                                                 <SelectItem value="unassigned">Tự thực hiện</SelectItem>
                                                 {members?.map((m) => m.employee && (
-                                                    <SelectItem key={m.employee.id} value={m.employee.id} className="text-xs">{m.employee.name}</SelectItem>
+                                                    <SelectItem key={m.employee.id || m.employee_id} value={m.employee.id || m.employee_id} className="text-xs">
+                                                        {m.employee.name}
+                                                    </SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
@@ -187,7 +256,6 @@ export default function SurveyWorkspaceModal({
                                 </div>
                             </form>
 
-                            {/* DANH SÁCH NHIỆM VỤ */}
                             <div className="space-y-2 pb-10">
                                 {isLoading ? (
                                     <div className="flex justify-center p-10 opacity-50"><Loader2 className="animate-spin w-6 h-6" /></div>
@@ -199,30 +267,53 @@ export default function SurveyWorkspaceModal({
                                 ) : (
                                     tasks.map(task => {
                                         const isDone = task.status === 'completed';
-                                        // Ép kiểu sang any để truy cập các trường linh hoạt
                                         const t = task as any;
                                         return (
-                                            <div key={task.id} className="flex justify-between items-center p-3 bg-white border rounded-xl shadow-sm group hover:border-blue-200 transition-all">
-                                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isDone ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
+                                            <div key={task.id} className="flex justify-between items-start p-3 bg-white border rounded-xl shadow-sm group hover:border-blue-200 transition-all">
+
+                                                {/* ✅ ĐÃ SỬA: items-start và xóa truncate để chữ được bung xõa thoải mái */}
+                                                <div className="flex items-start gap-3 flex-1 min-w-0">
+                                                    <div className={`w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 ${isDone ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
                                                         {isDone ? <ClipboardCheck className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                                                     </div>
-                                                    <div className="truncate flex-1">
+
+                                                    <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
                                                             <p className={`text-sm font-bold truncate ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
                                                             {isDone && <span className="text-[8px] bg-green-500 text-white px-1 py-0.5 rounded font-black uppercase">Xong</span>}
                                                         </div>
-                                                        {t.notes && <p className="text-[11px] text-blue-500 font-medium truncate italic">{t.notes}</p>}
-                                                        <div className="flex items-center gap-3 mt-0.5">
+
+                                                        {/* Báo cáo phong thủy và Ghi chú */}
+                                                        {t.notes && (
+                                                            <div className={`mt-2 ${isDone ? 'bg-slate-100/50 border border-slate-200 p-3 rounded-lg shadow-inner' : ''}`}>
+                                                                <p className={`text-[11px] leading-relaxed ${isDone ? 'text-slate-700 whitespace-pre-wrap font-medium' : 'text-blue-500 font-medium truncate italic'}`}>
+                                                                    {t.notes}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex items-center gap-3 mt-2">
                                                             <p className="text-[9px] text-slate-400 font-black uppercase">
                                                                 {task.assigned_to?.name || "Hệ thống"} • {task.due_date ? formatDate(task.due_date) : "N/A"}
                                                             </p>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <SurveyResultModal task={task} projectId={projectId} onUpdateSuccess={triggerRefresh} />
-                                                    <SurveyTaskEditModal task={task} members={members} surveyTaskTemplates={surveyTaskTemplates} projectId={projectId} onUpdateSuccess={triggerRefresh} />
+
+                                                <div className="flex items-center gap-1 transition-opacity shrink-0 ml-4">
+                                                    <SurveyResultModal
+                                                        task={task}
+                                                        surveyId={survey.id}
+                                                        projectId={projectId}
+                                                        onUpdateSuccess={(newStatus: string) => handleLocalTaskUpdate(task.id, newStatus)}
+                                                    />
+                                                    <SurveyTaskEditModal
+                                                        task={task}
+                                                        members={members}
+                                                        surveyTaskTemplates={dictionaryItems}
+                                                        projectId={projectId}
+                                                        onUpdateSuccess={triggerRefresh}
+                                                    />
                                                     <SurveyTaskDeleteButton taskId={task.id} projectId={projectId} onDeleteSuccess={triggerRefresh} />
                                                 </div>
                                             </div>

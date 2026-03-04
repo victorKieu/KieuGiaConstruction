@@ -6,32 +6,6 @@ import { getCurrentUser } from "./authActions";
 import { isValidUUID } from "@/lib/utils/uuid";
 import type { ActionResponse } from "@/lib/action/projectActions";
 
-// 
-
-// --- 1. GET DATA (READ) ---
-
-export async function getSurveyTemplates() {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase
-        .from("survey_templates")
-        .select(`id, name, description`)
-        .eq('is_active', true)
-        .order("name", { ascending: true });
-
-    return { data, error };
-}
-
-export async function getSurveyTaskTemplates() {
-    const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase
-        .from("survey_task_templates")
-        .select(`id, title, category, description, estimated_cost`)
-        .eq('is_active', true)
-        .order("category", { ascending: true })
-        .order("title", { ascending: true });
-
-    return { data, error };
-}
 
 export async function getProjectSurveys(projectId: string) {
     const supabase = await createSupabaseServerClient();
@@ -71,7 +45,11 @@ export async function getSurveyTasks(surveyId: string) {
         .from("survey_tasks")
         .select(`
             *,
-            assigned_to:employees ( name, avatar_url )
+            assigned_to:employees ( 
+                id,
+                name, 
+                user_profiles ( avatar_url ) 
+            )
         `)
         .eq("survey_id", surveyId)
         .order("title", { ascending: true });
@@ -277,45 +255,88 @@ export async function updateSurveyTask(
     }
 }
 
-export async function updateSurveyTaskResult(
-    prevState: any,
-    formData: FormData
-): Promise<ActionResponse> {
+export async function updateSurveyTaskResult(prevState: any, formData: FormData) {
+    const taskId = formData.get("taskId") as string;
+    const projectId = formData.get("projectId") as string;
+    const status = formData.get("status") as string || "completed";
+
+    const textFromForm = formData.get("result_data_text") as string;
+    const costFromForm = Number(formData.get("cost") || 0);
+    const analysisJsonRaw = formData.get("analysis_json") as string;
+
+    let analysisJson = null;
+    if (analysisJsonRaw) {
+        try {
+            analysisJson = JSON.parse(analysisJsonRaw);
+        } catch (e) {
+            console.error("Lỗi parse JSON:", e);
+        }
+    }
+
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth();
 
-        const taskId = formData.get("taskId") as string | null;
-        const projectId = formData.get("projectId") as string | null;
-        const notes = (formData.get("notes") as string)?.trim() || null;
-        const cost = Number.parseFloat(formData.get("cost") as string) || 0;
-        const status = formData.get("status") as string;
-
-        // Fix: Ép kiểu any để tránh lỗi TypeScript với cột JSONB
-        const resultData: any = {
-            result_text: (formData.get("result_data_text") as string) || null
-        };
-
-        if (!taskId || !isValidUUID(taskId)) return { success: false, error: "ID Task không hợp lệ." };
-        if (!projectId) return { success: false, error: "ID Dự án thiếu." };
-
-        const { error: updateError } = await supabase
+        // 1. CẬP NHẬT TASK
+        const { data: updatedTask, error } = await supabase
             .from("survey_tasks")
             .update({
-                notes: notes,
-                cost: cost,
                 status: status,
-                result_data: resultData
+                notes: textFromForm,
+                result_data: {
+                    analysis: analysisJson,
+                    raw_text: textFromForm,
+                    updated_at: new Date().toISOString()
+                },
+                cost: costFromForm
             })
-            .eq("id", taskId);
+            .eq("id", taskId)
+            .select("survey_id")
+            .single();
 
-        if (updateError) throw updateError;
+        if (error) {
+            console.error("Lỗi update task:", error);
+            throw error;
+        }
 
-        revalidatePath(`/projects/${projectId}`);
-        return { success: true, message: "Đã cập nhật kết quả khảo sát." };
+        // 2. TÍNH % VÀ ĐỔI TRẠNG THÁI SURVEY BÊN NGOÀI
+        if (updatedTask && updatedTask.survey_id) {
+            const surveyId = updatedTask.survey_id;
 
-    } catch (error: any) {
-        return { success: false, error: error.message };
+            const { data: allTasks } = await supabase
+                .from("survey_tasks")
+                .select("status")
+                .eq("survey_id", surveyId);
+
+            if (allTasks) {
+                const total = allTasks.length;
+                const completed = allTasks.filter(t => t.status === 'completed').length;
+                const progressPercent = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+                // Cập nhật trạng thái ra ngoài: 100% thì completed, ngược lại thì pending
+                const surveyStatus = progressPercent === 100 ? 'completed' : 'pending';
+
+                const { error: surveyError } = await supabase
+                    .from("project_surveys")
+                    .update({
+                        progress: progressPercent,
+                        status: surveyStatus
+                    })
+                    .eq("id", surveyId);
+
+                if (surveyError) console.error("Lỗi update bảng project_surveys:", surveyError.message);
+            }
+        }
+
+        // 3. RESET CACHE UI TẬN GỐC
+        if (projectId) {
+            revalidatePath(`/projects/${projectId}`, 'layout');
+        }
+
+        return { success: true, message: "Cập nhật thành công!" };
+        // ĐÂY NÀY SẾP, LỖI DO THIẾU CÁI CỤM CATCH NÀY ĐÂY:
+    } catch (e: any) {
+        console.error("Lỗi tại updateSurveyTaskResult:", e.message);
+        return { success: false, message: "Lỗi Server: " + e.message };
     }
 }
 

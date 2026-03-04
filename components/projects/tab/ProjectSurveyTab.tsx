@@ -4,24 +4,24 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import SurveyCreateModal from "../survey/SurveyCreateModal";
 import SurveyWorkspaceModal from "../survey/SurveyWorkspaceModal";
 import SurveyDeleteButton from "../survey/SurveyDeleteButton";
-import { Survey, SurveyTaskTemplate, MemberData, ProjectData } from "@/types/project";
+import { Survey, MemberData, ProjectData } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
 import { Compass, Ruler, Camera } from "lucide-react";
 
+
 // Định nghĩa interface cho Dictionary
 interface SysDictionary {
     code: string;
-    value: string;
+    name?: string;  // Thêm cái này
+    value?: string; // Giữ cái này nếu DB cũ đang dùng value
 }
-
 interface ProjectSurveyTabProps {
     projectId: string;
     project: ProjectData;
     surveys: Survey[];
     members: MemberData[];
     surveyTypes: SysDictionary[];
-    surveyTaskTemplates: SurveyTaskTemplate[];
 }
 
 export default function ProjectSurveyTab({
@@ -30,7 +30,7 @@ export default function ProjectSurveyTab({
     surveys = [], // Default giá trị để tránh lỗi map
     members = [],
     surveyTypes = [], // Truyền mảng rỗng nếu chưa có dữ liệu
-    surveyTaskTemplates = []
+    //surveyTaskTemplates = []
 }: ProjectSurveyTabProps) {
 
     return (
@@ -72,7 +72,7 @@ export default function ProjectSurveyTab({
                                             project={project} // ✅ Sếp nhớ truyền project object vào đây nhé
                                             members={members}
                                             projectId={projectId}
-                                            surveyTaskTemplates={surveyTaskTemplates}
+                                            //surveyTaskTemplates={surveyTaskTemplates}
                                             surveyTypes={surveyTypes}
                                         />
                                     </div>
