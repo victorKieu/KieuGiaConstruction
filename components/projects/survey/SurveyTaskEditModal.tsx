@@ -108,7 +108,7 @@ export default function SurveyTaskEditModal({ task, members, surveyTaskTemplates
 
                     <div className="space-y-2">
                         <Label htmlFor="assigned_to" className="text-xs font-bold uppercase text-slate-500">Người thực hiện</Label>
-                        <Select name="assigned_to" defaultValue={task.assigned_to?.id || "unassigned"}>
+                        <Select name="assigned_to" defaultValue={(task.assigned_to as any)?.id || "unassigned"}>
                             <SelectTrigger className="h-10">
                                 <SelectValue placeholder="Giao cho..." />
                             </SelectTrigger>

@@ -10,17 +10,20 @@ import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
 import { Compass, Ruler, Camera } from "lucide-react";
 
-interface SysDictionary {
+// ✅ ĐÃ SỬA: Bỏ dấu '?' để ép kiểu dữ liệu bắt buộc là string, 
+// khớp với kiểu mà component con đang mong đợi.
+interface LocalSysDictionary {
     code: string;
-    name?: string;
-    value?: string;
+    name: string;
+    value: string;
 }
+
 interface ProjectSurveyTabProps {
     projectId: string;
     project: ProjectData;
     surveys: Survey[];
     members: MemberData[];
-    surveyTypes: SysDictionary[];
+    surveyTypes: LocalSysDictionary[]; // ✅ Đổi tên interface để tránh trùng lặp hệ thống
     surveyTaskTemplates?: any[];
 }
 

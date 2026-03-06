@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { updateSurveyTaskResult } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
-import { Loader2, Edit3, Compass, Sparkles, Home, CheckCircle2, X, User, ImagePlus, Camera, MapPin, CloudSun } from "lucide-react";
+import { Loader2, Edit3, Compass, Sparkles, Home, CheckCircle2, X, User, ImagePlus, Camera, Trash2 } from "lucide-react";
 import { evaluateFengShui, type FullFengShuiAnalysis } from "@/lib/utils/fengShui";
 import FengShuiCompass from "./FengShuiCompass";
 import { toast } from "sonner";
@@ -55,49 +55,76 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
     const [status, setStatus] = useState<string>("completed");
     const [cost, setCost] = useState<number>(0);
     const [analysisJson, setAnalysisJson] = useState<string>("");
+    const [fsAnalysis, setFsAnalysis] = useState<FullFengShuiAnalysis | null>(null);
+
+    // --- State quản lý Ảnh đính kèm ---
     const [selectedImages, setSelectedImages] = useState<{ file: File, preview: string }[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const [state, formAction] = useActionState(updateSurveyTaskResult as any, {
+    // ✅ 1. HÀM GET METADATA (Đã bổ sung để lấy GPS và thời gian)
+    const getMetaData = async (): Promise<string> => {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(`🕒 Thời gian: ${new Date().toLocaleString('vi-VN')}`);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lng = pos.coords.longitude.toFixed(6);
+                    const time = new Date().toLocaleString('vi-VN');
+                    resolve(`📍 Tọa độ: ${lat}, ${lng}\n🕒 Thời gian: ${time}`);
+                },
+                (err) => {
+                    console.error(err);
+                    resolve(`🕒 Thời gian: ${new Date().toLocaleString('vi-VN')}`);
+                },
+                { enableHighAccuracy: true }
+            );
+        });
+    };
+
+    // ✅ 2. HÀM BỌC ACTION ĐỂ GỬI ẢNH LÊN SERVER (Fix lỗi UUID "null" & thiếu ảnh)
+    const wrappedAction = async (state: any, formData: FormData) => {
+        const taskId = task?.id || task?._id;
+
+        if (!taskId || taskId === "null") {
+            toast.error("Lỗi: Không tìm thấy ID của nhiệm vụ!");
+            return { success: false, message: "ID không hợp lệ" };
+        }
+
+        // Xóa các trường mặc định từ form (nếu có rác)
+        formData.delete('taskId');
+        formData.delete('projectId');
+        formData.delete('analysis_json');
+        formData.delete('status');
+        formData.delete('images');
+
+        // Truyền giá trị an toàn vào FormData để gửi Server
+        formData.append('taskId', String(taskId));
+        formData.append('projectId', String(projectId || ""));
+        formData.append('status', status);
+        formData.append('analysis_json', analysisJson || "");
+
+        // Nhồi các file ảnh đã đóng dấu Watermark vào form
+        selectedImages.forEach((item) => {
+            formData.append('images', item.file);
+        });
+
+        // Gọi action thực tế
+        return updateSurveyTaskResult(state, formData);
+    };
+
+    const [state, formAction] = useActionState(wrappedAction as any, {
         success: false,
         message: "",
         error: undefined
     });
 
-    // ✅ HÀM MỚI: Lấy thông tin tọa độ và địa chỉ
-    const getMetaData = async (): Promise<string> => {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) {
-                resolve("Không hỗ trợ GPS");
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                const lat = pos.coords.latitude.toFixed(6);
-                const lng = pos.coords.longitude.toFixed(6);
-                const time = new Date().toLocaleString('vi-VN');
-
-                // Thêm thông tin thời tiết giả lập (hoặc gọi API nếu có key)
-                const weather = "Nắng nhẹ, 28°C";
-
-                // Thử lấy địa chỉ thô (Nếu sếp có Google API Key thì dùng Geocoding sẽ chuẩn hơn)
-                // Ở đây ta ghi tọa độ để đảm bảo tính pháp lý trước
-                resolve(`📍 Tọa độ: ${lat}, ${lng}\n☁️ Thời tiết: ${weather}\n🕒 Thời gian: ${time}`);
-            }, (err) => {
-                console.error(err);
-                resolve(`🕒 Thời gian: ${new Date().toLocaleString('vi-VN')}`);
-            }, { enableHighAccuracy: true });
-        });
-    };
-
-    // ✅ FIX LỖI: Vẽ Watermark lên ảnh
+    // Hàm QUAN TRỌNG: Vẽ Watermark lên ảnh
     const processImageWithWatermark = async (file: File): Promise<File> => {
         const meta = await getMetaData();
-        const textLines = [
-            COMPANY_NAME,
-            `Dự án: ${projectId}`,
-            ...meta.split('\n')
-        ];
+        const textWatermark = `${COMPANY_NAME}\n${meta}\nDự án: ${projectId}`;
 
         return new Promise((resolve) => {
             const reader = new FileReader();
@@ -110,50 +137,53 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                     const ctx = canvas.getContext('2d');
                     if (!ctx) return resolve(file);
 
-                    // Giữ kích thước gốc
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
+                    // Cố định chiều rộng tối đa để web không bị treo
+                    const MAX_WIDTH = 1600;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > MAX_WIDTH) {
+                        height = (MAX_WIDTH / width) * height;
+                        width = MAX_WIDTH;
+                    }
 
-                    // Cấu hình chữ
-                    const fontSize = Math.max(canvas.width / 45, 18);
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const fontSize = Math.max(canvas.width / 40, 20);
                     ctx.font = `bold ${fontSize}px Arial`;
 
-                    const margin = fontSize;
-                    const lineHeight = fontSize * 1.4;
-                    const padding = 20;
-
-                    // Tính toán chiều cao vùng đen
-                    const rectHeight = (textLines.length * lineHeight) + (padding * 2);
-
-                    // Vẽ dải đen mờ phía dưới
-                    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                    const margin = 20;
+                    const lines = textWatermark.split('\n');
+                    const rectHeight = lines.length * (fontSize + 10) + margin;
                     ctx.fillRect(0, canvas.height - rectHeight, canvas.width, rectHeight);
 
-                    // Vẽ chữ lên trên dải đen
                     ctx.fillStyle = "white";
                     ctx.textBaseline = "top";
-                    textLines.forEach((line, i) => {
-                        ctx.fillText(line, padding, canvas.height - rectHeight + padding + (i * lineHeight));
+                    lines.forEach((line, i) => {
+                        ctx.fillText(line, margin, canvas.height - rectHeight + margin + i * (fontSize + 10));
                     });
 
                     canvas.toBlob((blob) => {
                         if (blob) {
-                            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+                            const newFile = new File([blob], file.name || `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
+                            resolve(newFile);
                         } else {
                             resolve(file);
                         }
-                    }, "image/jpeg", 0.85);
+                    }, "image/jpeg", 0.8);
                 };
             };
         });
     };
 
+    // Xử lý chọn ảnh & kích hoạt đóng dấu
     const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const loadingToast = toast.loading("Đang đóng dấu thông tin tọa độ & công ty...");
+            const toastId = toast.loading("Đang đóng dấu thông tin ảnh...");
             const filesArray = Array.from(e.target.files);
-            const processedImages = [];
+            const processedImages: { file: File; preview: string }[] = [];
 
             try {
                 for (const file of filesArray) {
@@ -164,15 +194,14 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                     });
                 }
                 setSelectedImages(prev => [...prev, ...processedImages]);
-                toast.dismiss(loadingToast);
-                toast.success(`Đã xử lý xong ${filesArray.length} ảnh!`);
-            } catch (error) {
-                toast.dismiss(loadingToast);
-                toast.error("Lỗi khi xử lý ảnh");
+                toast.success("Đóng dấu ảnh thành công!", { id: toastId });
+            } catch (err) {
+                toast.error("Lỗi khi xử lý ảnh", { id: toastId });
             }
         }
     };
 
+    // Xóa ảnh khỏi danh sách chờ
     const removeImage = (index: number) => {
         setSelectedImages(prev => {
             const updated = [...prev];
@@ -182,22 +211,31 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
         });
     };
 
+    // Thoát la bàn bằng ESC
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowCompass(false); };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, []);
+
+    // Xử lý sau khi Server phản hồi
     useEffect(() => {
         if (state.success && isOpen) {
             setIsOpen(false);
             setSelectedImages([]);
             onUpdateSuccess(status);
-            toast.success("Đã lưu kết quả khảo sát thành công!");
+            toast.success("Đã lưu kết quả và ảnh hiện trạng!");
         } else if (state.message && !state.success) {
             toast.error(state.message);
         }
     }, [state.success, state.message, isOpen, onUpdateSuccess, status]);
 
-    const isFengShuiTask = task.title.toUpperCase().includes("HƯỚNG") || task.title.toUpperCase().includes("PHONG THỦY");
+    const isFengShuiTask = task?.title?.toUpperCase().includes("HƯỚNG") || task?.title?.toUpperCase().includes("PHONG THỦY");
 
     const handleCompassSave = (data: any) => {
         const result = evaluateFengShui(birthYear, gender, data.heading);
-        // ... (Giữ nguyên logic handleCompassSave cũ của sếp)
+        setFsAnalysis(result);
+
         const tot = result.allDirections.filter(d => d.type === 'good').map(d => `${d.star} (${d.dirName})`).join(", ");
         const xau = result.allDirections.filter(d => d.type === 'bad').map(d => `${d.star} (${d.dirName})`).join(", ");
 
@@ -214,7 +252,17 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
             generated_at: new Date().toISOString()
         };
 
-        const formattedText = `[BÁO CÁO PHONG THỦY GIA CHỦ: ${ownerName.toUpperCase()}]\nNăm sinh: ${birthYear} - Cung mệnh: ${result.cung} (${result.nhom})\n-----------------------------------------\n1. KẾT QUẢ ĐO HIỆN TẠI:\n- Hướng đo: ${result.currentDirection.name} (${data.heading}°)\n- Cung: ${result.currentDirection.star} -> Đánh giá: ${result.currentDirection.isGood ? 'TỐT (Nên dùng)' : 'XẤU (Cần hóa giải)'}\n\n2. CHI TIẾT 8 HƯỚNG BÁT TRẠCH:\n${listCongNang}\n-----------------------------------------\nGhi chú thêm: Hướng tốt (${tot}). Hướng xấu (${xau}).`;
+        const formattedText = `[BÁO CÁO PHONG THỦY GIA CHỦ: ${ownerName.toUpperCase()}]
+Năm sinh: ${birthYear} - Cung mệnh: ${result.cung} (${result.nhom})
+-----------------------------------------
+1. KẾT QUẢ ĐO HIỆN TẠI:
+- Hướng đo: ${result.currentDirection.name} (${data.heading}°)
+- Cung: ${result.currentDirection.star} -> Đánh giá: ${result.currentDirection.isGood ? 'TỐT (Nên dùng)' : 'XẤU (Cần hóa giải)'}
+
+2. CHI TIẾT 8 HƯỚNG BÁT TRẠCH:
+${listCongNang}
+-----------------------------------------
+Ghi chú thêm: Hướng tốt (${tot}). Hướng xấu (${xau}).`;
 
         setResultText(formattedText);
         setAnalysisJson(JSON.stringify(fullData));
@@ -234,19 +282,19 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                 <div className="bg-slate-900 p-6 text-white shrink-0 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-10"><Home size={80} /></div>
                     <DialogTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-3 relative z-10">
-                        <CheckCircle2 className="text-blue-400" /> {task.title}
+                        <CheckCircle2 className="text-blue-400" /> {task?.title}
                     </DialogTitle>
                     <p className="text-slate-400 text-[10px] mt-1 relative z-10 tracking-widest uppercase opacity-70">Dự án: {projectId}</p>
                 </div>
 
                 {/* Form chính */}
                 <form action={formAction} className="p-6 space-y-6 bg-white">
-                    <input type="hidden" name="taskId" value={task.id} />
-                    <input type="hidden" name="projectId" value={projectId} />
+                    <input type="hidden" name="taskId" value={task?.id || ""} />
+                    <input type="hidden" name="projectId" value={projectId || ""} />
                     <input type="hidden" name="analysis_json" value={analysisJson} />
                     <input type="hidden" name="status" value={status} />
 
-                    {/* Input file ẩn */}
+                    {/* Input file ẩn để gửi ảnh */}
                     <div className="hidden">
                         <input
                             type="file"
@@ -316,10 +364,10 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                         />
                     </div>
 
-                    {/* KHU VỰC UPLOAD ẢNH CÓ WATERMARK */}
+                    {/* --- KHU VỰC UPLOAD ẢNH --- */}
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                            <Label className="text-xs font-black text-slate-500 uppercase tracking-widest">Ảnh đính kèm (Có đóng dấu GPS)</Label>
+                            <Label className="text-xs font-black text-slate-500 uppercase tracking-widest">Ảnh hiện trạng công trình</Label>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -327,7 +375,7 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                                 onClick={() => fileInputRef.current?.click()}
                                 className="h-8 border-dashed border-slate-300 text-blue-600 hover:bg-blue-50"
                             >
-                                <Camera className="w-3.5 h-3.5 mr-2" /> Chụp/Chọn ảnh
+                                <Camera className="w-3.5 h-3.5 mr-2" /> Thêm ảnh
                             </Button>
                         </div>
 
@@ -335,11 +383,16 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 p-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                                 {selectedImages.map((img, index) => (
                                     <div key={index} className="relative aspect-square group rounded-lg overflow-hidden border border-white shadow-sm">
-                                        <Image src={img.preview} alt="Preview" fill className="object-cover" />
+                                        <Image
+                                            src={img.preview}
+                                            alt="Preview"
+                                            fill
+                                            className="object-cover"
+                                        />
                                         <button
                                             type="button"
                                             onClick={() => removeImage(index)}
-                                            className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                                         >
                                             <X className="w-3 h-3" />
                                         </button>
@@ -348,19 +401,19 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                                 <button
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg text-slate-400"
+                                    className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-lg hover:bg-white hover:border-blue-400 transition-all text-slate-400 hover:text-blue-500"
                                 >
                                     <ImagePlus className="w-6 h-6 mb-1" />
-                                    <span className="text-[8px] font-bold">THÊM</span>
+                                    <span className="text-[8px] font-bold uppercase">Thêm</span>
                                 </button>
                             </div>
                         ) : (
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="py-8 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:bg-slate-50 cursor-pointer"
+                                className="py-8 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:bg-slate-50 cursor-pointer transition-colors"
                             >
-                                <Camera className="w-8 h-8 mb-2 opacity-20" />
-                                <p className="text-[10px] font-medium uppercase tracking-widest text-center">Bấm để chụp ảnh hiện trạng<br />(Tự động chèn tọa độ & công ty)</p>
+                                <ImagePlus className="w-8 h-8 mb-2 opacity-20" />
+                                <p className="text-[10px] font-medium uppercase tracking-widest">Bấm để chọn hoặc chụp ảnh</p>
                             </div>
                         )}
                     </div>
@@ -396,7 +449,7 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
 
                 {/* Overlay La bàn */}
                 {showCompass && (
-                    <div className="absolute inset-0 z-[100] bg-slate-950/98 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="absolute inset-0 z-[100] bg-slate-950/98 backdrop-blur-md flex items-center justify-center animate-in fade-in duration-200 p-4">
                         <div className="w-full max-w-md flex flex-col items-center relative">
                             <Button type="button" variant="ghost" size="icon" className="absolute -top-12 right-0 text-white/50 hover:text-white" onClick={() => setShowCompass(false)}>
                                 <X className="h-8 w-8" />
@@ -408,6 +461,9 @@ export default function SurveyResultModal({ task, projectId, onUpdateSuccess }: 
                                 gender={gender}
                                 onSaveResult={handleCompassSave}
                             />
+                            <Button type="button" variant="outline" className="mt-8 border-white/20 text-white hover:bg-white/10 rounded-full px-10 h-11" onClick={() => setShowCompass(false)}>
+                                Đóng công cụ
+                            </Button>
                         </div>
                     </div>
                 )}
