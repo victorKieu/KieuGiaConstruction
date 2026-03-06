@@ -21,7 +21,8 @@ export interface FullFengShuiAnalysis {
         star: string;
         isGood: boolean;
         desc: string;
-        remedy: string; // Bổ sung nội dung hóa giải thực tế
+        remedy: string;
+        climateAnalysis: string; // 👈 Sếp thêm dòng này vào đây là xong!
     };
     allDirections: FengShuiDirectionResult[];
 }
@@ -42,7 +43,44 @@ export const DIRECTIONS = [
 export const getDirectionId = (degree: number) => DIRECTIONS.find(d => degree >= d.min && degree < d.max)?.id || "N";
 export const getDirectionName = (degree: number) => DIRECTIONS.find(d => degree >= d.min && degree < d.max)?.name || "Bắc";
 
-// 2. Bổ sung Hàm lấy nội dung Hóa Giải (Dễ dàng update nội dung tại đây)
+// ✅ 2. HÀM PHÂN TÍCH VI KHÍ HẬU (MỚI)
+export const analyzeClimate = (degree: number): string => {
+    // Bắc
+    if (degree >= 337.5 || degree < 22.5)
+        return "☀️ Nắng: Cường độ bức xạ thấp, ít nắng, mùa đông thường thiếu sáng.\n🍃 Gió: Chịu trực diện gió mùa Đông Bắc lạnh. Cần thiết kế mặt sau kín, sử dụng cửa kính hộp cách nhiệt.";
+
+    // Đông Bắc
+    if (degree >= 22.5 && degree < 67.5)
+        return "⛅ Nắng: Đón nắng nhẹ buổi sáng, năng lượng ổn định.\n❄️ Gió: Luồng gió mùa khô lạnh. Nên bố trí các không gian đệm như sảnh, ban công để ngăn khí lạnh tràn vào nhà.";
+
+    // Đông
+    if (degree >= 67.5 && degree < 112.5)
+        return "☀️ Nắng: Đón ánh sáng bình minh (Sinh khí) rất tốt cho sức khỏe.\n🍃 Gió: Đón gió biển thổi vào, lưu thông không khí tốt. Nên mở ô thoáng lớn để nạp khí tươi.";
+
+    // Đông Nam
+    if (degree >= 112.5 && degree < 157.5)
+        return "⛅ Nắng: Ánh sáng chan hòa, không quá gắt.\n🍃 Gió: Hướng gió lý tưởng nhất, mát mẻ quanh năm. Cần ưu tiên bố trí cửa chính hoặc ban công tại đây.";
+
+    // Nam
+    if (degree >= 157.5 && degree < 202.5)
+        return "☀️ Nắng: Bức xạ mặt trời cao nhưng ổn định. Cần mái hiên rộng để che chắn.\n🌊 Gió: Đón gió nồm mát mẻ vào mùa hè. Đây là hướng giúp ngôi nhà 'đông ấm hè mát'.";
+
+    // Tây Nam
+    if (degree >= 202.5 && degree < 247.5)
+        return "⛅ Nắng: Bắt đầu gắt vào buổi chiều muộn, dễ tích nhiệt.\n🔥 Gió: Thường gặp gió Lào khô nóng. Cần bố trí nhiều cây xanh hoặc tiểu cảnh nước phía trước để giảm nhiệt.";
+
+    // Tây
+    if (degree >= 247.5 && degree < 292.5)
+        return "☀️ Nắng: Nắng quái chiều cực gắt, gây hư hại nội thất và nóng bức. Cần dùng tường đôi, lam chắn nắng hoặc kính phản quang.\n💨 Gió: Khô hanh, khí bị quẩn. Cần giải pháp thông gió xuyên phòng (Cross Ventilation).";
+
+    // Tây Bắc
+    if (degree >= 292.5 && degree < 337.5)
+        return "⛅ Nắng: Nắng chiều muộn tích nhiệt lâu trong tường. Cần sơn chống nóng hoặc làm mặt đứng kép (double skin).\n💨 Gió: Gió lạnh về đêm vào mùa đông và khô vào mùa hè. Cần kiểm soát kín kẽ hệ thống cửa.";
+
+    return "Đang phân tích...";
+};
+
+// 3. Bổ sung Hàm lấy nội dung Hóa Giải (Dễ dàng update nội dung tại đây)
 export const getRemedy = (star: string): string => {
     const remedies: Record<string, string> = {
         "Tuyệt Mệnh": "Hướng cực xấu. Hóa giải bằng cách đặt bếp hướng Thiên Y (Thiên Y chế Tuyệt Mệnh). Sử dụng vật phẩm hành Hỏa hoặc Kim lồi để trấn áp.",
@@ -57,7 +95,7 @@ export const getRemedy = (star: string): string => {
     return remedies[star] || "Cần tham khảo ý kiến chuyên gia để bố trí công năng phù hợp.";
 };
 
-// 3. Bảng Ma Trận Bát Trạch đầy đủ (GIỮ NGUYÊN)
+// 4. Bảng Ma Trận Bát Trạch
 const BAT_TRACH_MATRIX: Record<string, Record<string, { star: string, type: 'good' | 'bad', desc: string }>> = {
     "Khảm": {
         "N": { star: "Phục Vị", type: "good", desc: "Bình yên, ổn định" },
@@ -141,7 +179,7 @@ const BAT_TRACH_MATRIX: Record<string, Record<string, { star: string, type: 'goo
     }
 };
 
-// 4. Hàm tính Cung Mệnh chuẩn (GIỮ NGUYÊN)
+// 5. Hàm tính Cung Mệnh chuẩn (GIỮ NGUYÊN)
 export const getCungMenh = (year: number, gender: Gender) => {
     let sum = year.toString().split('').reduce((a, b) => a + parseInt(b), 0);
     while (sum > 9) sum = sum.toString().split('').reduce((a, b) => a + parseInt(b), 0);
@@ -168,64 +206,50 @@ export const getCungMenh = (year: number, gender: Gender) => {
     return { quaiSo, ...mapCung[quaiSo] };
 };
 
-// 5. Hàm Phân Tích Toàn Diện (GIỮ NGUYÊN VÀ BỔ SUNG REMEDY)
+// 6. Hàm Phân Tích Toàn Diện (GIỮ NGUYÊN VÀ BỔ SUNG REMEDY)
 export const evaluateFengShui = (year: number, gender: Gender, degree: number): FullFengShuiAnalysis => {
     const { cung, nhom } = getCungMenh(year, gender);
     const dirId = getDirectionId(degree);
-    const dirName = getDirectionName(degree);
     const currentStar = BAT_TRACH_MATRIX[cung][dirId];
-
-    const directionMap: Record<string, number> = {
-        "N": 0, "NE": 45, "E": 90, "SE": 135,
-        "S": 180, "SW": 225, "W": 270, "NW": 315
-    };
+    const directionMap: Record<string, number> = { "N": 0, "NE": 45, "E": 90, "SE": 135, "S": 180, "SW": 225, "W": 270, "NW": 315 };
 
     const allDirs: FengShuiDirectionResult[] = [
-        { id: "N", name: "Bắc" }, { id: "NE", name: "Đông Bắc" },
-        { id: "E", name: "Đông" }, { id: "SE", name: "Đông Nam" },
-        { id: "S", name: "Nam" }, { id: "SW", name: "Tây Nam" },
-        { id: "W", name: "Tây" }, { id: "NW", name: "Tây Bắc" }
+        { id: "N", name: "Bắc" }, { id: "NE", name: "Đông Bắc" }, { id: "E", name: "Đông" }, { id: "SE", name: "Đông Nam" },
+        { id: "S", name: "Nam" }, { id: "SW", name: "Tây Nam" }, { id: "W", name: "Tây" }, { id: "NW", name: "Tây Bắc" }
     ].map(d => {
         const starInfo = BAT_TRACH_MATRIX[cung][d.id];
-        return {
-            dirId: d.id,
-            dirName: d.name,
-            star: starInfo.star,
-            type: starInfo.type,
-            desc: starInfo.desc,
-            degree: directionMap[d.id],
-            remedy: getRemedy(starInfo.star) // Tự động lấy hóa giải cho 8 hướng
-        };
+        return { dirId: d.id, dirName: d.name, star: starInfo.star, type: starInfo.type, desc: starInfo.desc, degree: directionMap[d.id], remedy: getRemedy(starInfo.star) };
     });
 
     return {
-        cung,
-        nhom,
+        cung, nhom,
         currentDirection: {
-            name: dirName,
-            degree: degree,
-            star: currentStar.star,
-            isGood: currentStar.type === 'good',
-            desc: currentStar.desc,
-            remedy: getRemedy(currentStar.star) // Lấy hóa giải cho hướng hiện tại
+            name: getDirectionName(degree), degree: degree, star: currentStar.star, isGood: currentStar.type === 'good', desc: currentStar.desc,
+            remedy: getRemedy(currentStar.star),
+            climateAnalysis: analyzeClimate(degree) // ✅ Tự động gán phân tích nắng gió
         },
         allDirections: allDirs
     };
 };
 
-// 6. Hàm Sinh Văn Bản Báo Cáo (Tiện ích bổ sung cho sếp)
+// 7. Hàm Sinh Văn Bản Báo Cáo (Tiện ích bổ sung cho sếp)
 export const generateFengShuiReportText = (ownerName: string, birthYear: number, gender: Gender, analysis: FullFengShuiAnalysis): string => {
-    const isBad = !analysis.currentDirection.isGood;
-
     return `[BÁO CÁO PHONG THỦY: ${ownerName.toUpperCase()}]
 Năm sinh: ${birthYear} - Mệnh: ${analysis.cung} (${analysis.nhom})
 -----------------------------------------
-KẾT QUẢ ĐO: Hướng ${analysis.currentDirection.name} (${analysis.currentDirection.degree}°) -> ${analysis.currentDirection.star}
+1. KẾT QUẢ ĐO THỰC ĐỊA:
+- Hướng đo thực tế: ${analysis.currentDirection.name} (${analysis.currentDirection.degree}°)
+- Cung Sao: ${analysis.currentDirection.star} (${analysis.currentDirection.isGood ? '✅ Tốt/Cát' : '❌ Xấu/Hung'})
 - Luận giải: ${analysis.currentDirection.desc}
-- Lời khuyên/Hóa giải: ${analysis.currentDirection.remedy}
+
+2. PHÂN TÍCH VI KHÍ HẬU (NẮNG & GIÓ):
+${analysis.currentDirection.climateAnalysis}
+
+3. LỜI KHUYÊN & HÓA GIẢI:
+${analysis.currentDirection.remedy}
 
 CHI TIẾT 8 HƯỚNG BÁT TRẠCH:
 ${analysis.allDirections.map(d => `- Hướng ${d.dirName} (${d.degree}°): ${d.star} -> ${d.type === 'good' ? '✅ Tốt' : '❌ Xấu'}`).join("\n")}
 -----------------------------------------
-Thiết kế bởi KieuGia Construction`;
+Thiết Kế Bởi Kiều Gia Construction - We Build - You Live`;
 };

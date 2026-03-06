@@ -113,7 +113,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
             const element = reportRef.current;
 
             const opt = {
-                margin: [15, 10, 20, 10] as [number, number, number, number], // Tăng margin bottom để không đè số trang
+                // Tăng margin bottom lên 20 để có chỗ trống cho số trang
+                margin: [15, 10, 20, 10] as [number, number, number, number],
                 filename: `BM_KS_${projectCode || 'DA'}_${ownerName ? ownerName.replace(/\s+/g, '_') : 'KH'}.pdf`,
                 image: { type: 'jpeg' as const, quality: 1 },
                 html2canvas: { scale: 4, useCORS: true, letterRendering: true, windowWidth: 800, width: 794 },
@@ -121,25 +122,22 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                 pagebreak: { mode: ['css', 'legacy'] }
             };
 
-            // ✅ FIX LỖI TS2339: Ép kiểu 'as any' cho toàn bộ chuỗi Promise trước khi gọi .save()
+            // Sử dụng chuỗi Promise được ép kiểu 'as any' để gọi .save() và thêm số trang
             await (html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf: any) => {
                 const totalPages = pdf.internal.getNumberOfPages();
 
                 for (let i = 1; i <= totalPages; i++) {
                     pdf.setPage(i);
                     pdf.setFontSize(9);
-                    pdf.setTextColor(100);
+                    pdf.setTextColor(100); // Màu xám nhẹ
 
                     const pageWidth = pdf.internal.pageSize.getWidth();
                     const pageHeight = pdf.internal.pageSize.getHeight();
 
-                    // Định dạng: Trang: 1/2
-                    const text = `Trang: ${i}/${totalPages}`;
-
-                    // Vẽ số trang vào chính giữa chân trang, cách mép dưới 10mm
-                    pdf.text(text, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                    // Vẽ dòng chữ "Trang: i/n" vào giữa chân trang, cách mép dưới 10mm
+                    pdf.text(`Trang: ${i}/${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
                 }
-                return pdf; // Trả lại đối tượng pdf để hoàn tất chuỗi
+                return pdf;
             }) as any).save();
 
             toast.success("Đã tải xuống thành công!", { id: toastId });
@@ -214,25 +212,23 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const isFengShuiTask = task?.title?.toUpperCase().includes("HƯỚNG") || task?.title?.toUpperCase().includes("PHONG THỦY");
 
     const handleCompassSave = (data: any) => {
-        // 1. Não bộ tự tính toán data phong thủy
+        // 1. Lấy kết quả tổng thể từ fengShui.ts
         const result = evaluateFengShui(birthYear, gender, data.heading);
         setFsAnalysis(result);
 
-        // 2. Não bộ tự đẻ ra chuỗi text báo cáo
-        const formattedText = generateFengShuiReportText(ownerName, birthYear, gender, result);
+        // 2. Lấy DUY NHẤT chuỗi báo cáo đã được format chuẩn (nắng gió 2 dòng, hóa giải...)
+        const fullReport = generateFengShuiReportText(ownerName, birthYear, gender, result);
 
-        // 3. Đóng gói cho DB
-        const fullData = {
+        // 3. Đưa vào State và chuẩn bị lưu Database
+        setResultText(fullReport);
+        setAnalysisJson(JSON.stringify({
             owner: { name: ownerName, birthYear, gender },
             compass: data,
             fengshui: result,
             generated_at: new Date().toISOString()
-        };
-
-        setResultText(formattedText);
-        setAnalysisJson(JSON.stringify(fullData));
+        }));
         setShowCompass(false);
-        toast.success("Đã phân tích toàn bộ 8 hướng!");
+        toast.success("Đã cập nhật báo cáo thực địa đồng bộ!");
     };
 
     const isCompleted = task?.status === 'completed';
@@ -269,7 +265,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     <td className="w-[30%] p-2 border border-slate-900 text-[11px] text-slate-800 align-middle">
                                         <div className="flex justify-between items-end border-b border-slate-300 pb-1.5 mb-1.5 gap-2">
                                             <span className="shrink-0">Mã DA:</span>
-                                            <span className="font-bold text-blue-900 text-right break-all text-[10px] leading-tight max-w-[100px]">{projectCode || "N/A"}</span>
+                                            <span className="font-bold text-blue-900 text-right text-[10px] leading-normal">{projectCode || "N/A"}</span>
                                         </div>
                                         <div className="flex justify-between items-end border-b border-slate-300 pb-1.5 mb-1.5 gap-2">
                                             <span className="shrink-0">Ngày lập:</span>
@@ -335,21 +331,33 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                 </table>
                             </div>
                         )}
-
+                        <div className="col-span-2 mt-3 pt-3 border-t border-slate-300">
+                            <p className="text-blue-900 font-bold mb-1.5">➤ Phân tích Vi khí hậu (Nắng & Gió):</p>
+                            <p className="italic text-slate-700 leading-relaxed whitespace-pre-line">
+                                {fsAnalysis?.currentDirection?.climateAnalysis && (
+                                    <div className="col-span-2 mt-3 pt-3 border-t border-slate-300">
+                                        <p className="text-blue-900 font-bold mb-1">➤ Phân tích Vi khí hậu (Nắng & Gió):</p>
+                                        <p className="italic text-slate-800 leading-normal whitespace-pre-line text-[11px]">
+                                            {fsAnalysis?.currentDirection?.climateAnalysis}
+                                        </p>
+                                    </div>
+                                )}
+                            </p>
+                        </div>
                         {/* SECTION 2: GHI CHÚ */}
                         <div className="mb-6">
-                            <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>
-                                {fsAnalysis ? "II. Ghi chú khảo sát" : "I. Ghi chú khảo sát"}
+                            <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>
+                                II. Luận giải chi tiết & Hóa giải phong thủy
                             </h3>
-                            <div className="border border-slate-400 p-4 text-sm leading-relaxed min-h-[80px] bg-slate-50/50 rounded-b-md rounded-tr-md">
-                                {task?.notes ? (
-                                    task.notes.split('\n').map((line: string, index: number) => (
+                            <div className="border border-slate-400 p-4 text-sm leading-relaxed min-h-[100px] bg-slate-50/50 rounded-b-md rounded-tr-md">
+                                {(resultText || task?.notes) ? (
+                                    (resultText || task?.notes).split('\n').map((line: string, index: number) => (
                                         <p key={index} style={{ pageBreakInside: 'avoid', marginBottom: '4px', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                                             {line || '\u00A0'}
                                         </p>
                                     ))
                                 ) : (
-                                    <p style={{ pageBreakInside: 'avoid' }} className="italic text-slate-500">Không có ghi chú thêm về hiện trạng.</p>
+                                    <p style={{ pageBreakInside: 'avoid' }} className="italic text-slate-500">Chưa có dữ liệu luận giải.</p>
                                 )}
                             </div>
                         </div>
@@ -357,8 +365,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                         {/* SECTION 3: HÌNH ẢNH */}
                         {existingImages.length > 0 && (
                             <div>
-                                <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>
-                                    {fsAnalysis ? "III. Hình ảnh hiện trạng" : "II. Hình ảnh hiện trạng"}
+                                <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-2 inline-block">
+                                    III. Hình ảnh hiện trạng thực địa
                                 </h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     {existingImages.map((url, i) => (
@@ -407,6 +415,16 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     <div><p className="text-[10px] text-slate-400 uppercase font-bold">Năm sinh</p><p className="font-black text-slate-800">{birthYear} ({gender === 'nam' ? 'Nam' : 'Nữ'})</p></div>
                                     <div><p className="text-[10px] text-slate-400 uppercase font-bold">Cung Mệnh</p><p className="font-black text-blue-600">{fsAnalysis.cung}</p></div>
                                     <div><p className="text-[10px] text-slate-400 uppercase font-bold">Nhóm Mệnh</p><p className="font-black text-blue-600">{fsAnalysis.nhom}</p></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><p className="text-slate-400 font-bold text-[10px]">CUNG MỆNH</p><p className="font-black text-slate-800">{fsAnalysis.cung}</p></div>
+                                    <div><p className="text-slate-400 font-bold text-[10px]">HƯỚNG NHÀ</p><p className="font-black text-blue-600">{fsAnalysis.currentDirection.name} ({fsAnalysis.currentDirection.degree}°)</p></div>
+                                </div>
+                                <div className="col-span-2 mt-3 pt-3 border-t border-slate-300">
+                                    <p className="text-blue-900 font-bold mb-1">➤ Phân tích Vi khí hậu (Nắng & Gió):</p>
+                                    <p className="italic text-slate-800 leading-normal whitespace-pre-line text-[11px]">
+                                        {fsAnalysis?.currentDirection?.climateAnalysis}
+                                    </p>
                                 </div>
                             </div>
                         )}
