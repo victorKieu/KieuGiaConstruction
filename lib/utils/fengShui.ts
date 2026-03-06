@@ -9,6 +9,7 @@ export interface FengShuiDirectionResult {
     type: 'good' | 'bad';
     desc: string;
     degree: number;
+    remedy?: string; // Bổ sung trường hóa giải cho từng hướng
 }
 
 export interface FullFengShuiAnalysis {
@@ -20,11 +21,12 @@ export interface FullFengShuiAnalysis {
         star: string;
         isGood: boolean;
         desc: string;
+        remedy: string; // Bổ sung nội dung hóa giải thực tế
     };
     allDirections: FengShuiDirectionResult[];
 }
 
-// 1. Định nghĩa các hướng và ID tương ứng
+// 1. Định nghĩa các hướng và ID tương ứng (GIỮ NGUYÊN)
 export const DIRECTIONS = [
     { name: "Bắc", min: 337.5, max: 360, id: "N" },
     { name: "Bắc", min: 0, max: 22.5, id: "N" },
@@ -40,7 +42,22 @@ export const DIRECTIONS = [
 export const getDirectionId = (degree: number) => DIRECTIONS.find(d => degree >= d.min && degree < d.max)?.id || "N";
 export const getDirectionName = (degree: number) => DIRECTIONS.find(d => degree >= d.min && degree < d.max)?.name || "Bắc";
 
-// 2. Bảng Ma Trận Bát Trạch đầy đủ (Chuẩn phong thủy)
+// 2. Bổ sung Hàm lấy nội dung Hóa Giải (Dễ dàng update nội dung tại đây)
+export const getRemedy = (star: string): string => {
+    const remedies: Record<string, string> = {
+        "Tuyệt Mệnh": "Hướng cực xấu. Hóa giải bằng cách đặt bếp hướng Thiên Y (Thiên Y chế Tuyệt Mệnh). Sử dụng vật phẩm hành Hỏa hoặc Kim lồi để trấn áp.",
+        "Ngũ Quỷ": "Dễ gặp tai họa. Hóa giải bằng cách đặt bếp hướng Sinh Khí (Sinh Khí giáng Ngũ Quỷ). Dùng vật phẩm hành Thủy (hồ cá, màu xanh biển) để tiết chế Hỏa của Ngũ Quỷ.",
+        "Lục Sát": "Gây xáo trộn quan hệ. Hóa giải bằng cách đặt bếp hướng Diên Niên. Sử dụng vật phẩm hành Thổ (đồ gốm sứ, đá phong thủy) để khắc chế.",
+        "Họa Hại": "Gặp điều thị phi, khó khăn. Hóa giải bằng cách đặt bếp hướng Phục Vị. Sử dụng vật phẩm hành Kim (chuông gió đồng) để làm suy yếu Thổ của Họa Hại.",
+        "Sinh Khí": "Hướng đại cát. Cần giữ gìn sạch sẽ, mở cửa chính hoặc đặt ban thờ để đón tài lộc.",
+        "Thiên Y": "Tốt cho sức khỏe. Phù hợp đặt phòng ngủ hoặc giường ngủ để giải trừ bệnh tật.",
+        "Diên Niên": "Tốt cho gia đạo. Phù hợp làm phòng khách, phòng làm việc để tăng sự hòa thuận.",
+        "Phục Vị": "Hướng bình an. Phù hợp làm phòng thờ hoặc nơi thiền định, học tập."
+    };
+    return remedies[star] || "Cần tham khảo ý kiến chuyên gia để bố trí công năng phù hợp.";
+};
+
+// 3. Bảng Ma Trận Bát Trạch đầy đủ (GIỮ NGUYÊN)
 const BAT_TRACH_MATRIX: Record<string, Record<string, { star: string, type: 'good' | 'bad', desc: string }>> = {
     "Khảm": {
         "N": { star: "Phục Vị", type: "good", desc: "Bình yên, ổn định" },
@@ -124,13 +141,12 @@ const BAT_TRACH_MATRIX: Record<string, Record<string, { star: string, type: 'goo
     }
 };
 
-// 3. Hàm tính Cung Mệnh chuẩn
+// 4. Hàm tính Cung Mệnh chuẩn (GIỮ NGUYÊN)
 export const getCungMenh = (year: number, gender: Gender) => {
     let sum = year.toString().split('').reduce((a, b) => a + parseInt(b), 0);
     while (sum > 9) sum = sum.toString().split('').reduce((a, b) => a + parseInt(b), 0);
 
     let quaiSo = 0;
-    // Công thức tính quái số chuẩn cho thế kỷ 20 và 21
     if (year < 2000) {
         quaiSo = gender === "nam" ? 11 - sum : 4 + sum;
     } else {
@@ -152,16 +168,13 @@ export const getCungMenh = (year: number, gender: Gender) => {
     return { quaiSo, ...mapCung[quaiSo] };
 };
 
-// 4. Hàm Phân Tích Toàn Diện (Hàm chính dùng cho Form)
+// 5. Hàm Phân Tích Toàn Diện (GIỮ NGUYÊN VÀ BỔ SUNG REMEDY)
 export const evaluateFengShui = (year: number, gender: Gender, degree: number): FullFengShuiAnalysis => {
     const { cung, nhom } = getCungMenh(year, gender);
     const dirId = getDirectionId(degree);
     const dirName = getDirectionName(degree);
-
-    // Tra cứu sao của hướng hiện tại
     const currentStar = BAT_TRACH_MATRIX[cung][dirId];
 
-    // Lấy danh sách tất cả các hướng để phân tích kỹ thuật (Bếp, Giường, Thờ...)
     const directionMap: Record<string, number> = {
         "N": 0, "NE": 45, "E": 90, "SE": 135,
         "S": 180, "SW": 225, "W": 270, "NW": 315
@@ -180,7 +193,8 @@ export const evaluateFengShui = (year: number, gender: Gender, degree: number): 
             star: starInfo.star,
             type: starInfo.type,
             desc: starInfo.desc,
-            degree: directionMap[d.id] // 👈 Gán số độ tương ứng để Compass sử dụng
+            degree: directionMap[d.id],
+            remedy: getRemedy(starInfo.star) // Tự động lấy hóa giải cho 8 hướng
         };
     });
 
@@ -192,8 +206,26 @@ export const evaluateFengShui = (year: number, gender: Gender, degree: number): 
             degree: degree,
             star: currentStar.star,
             isGood: currentStar.type === 'good',
-            desc: currentStar.desc
+            desc: currentStar.desc,
+            remedy: getRemedy(currentStar.star) // Lấy hóa giải cho hướng hiện tại
         },
         allDirections: allDirs
     };
+};
+
+// 6. Hàm Sinh Văn Bản Báo Cáo (Tiện ích bổ sung cho sếp)
+export const generateFengShuiReportText = (ownerName: string, birthYear: number, gender: Gender, analysis: FullFengShuiAnalysis): string => {
+    const isBad = !analysis.currentDirection.isGood;
+
+    return `[BÁO CÁO PHONG THỦY: ${ownerName.toUpperCase()}]
+Năm sinh: ${birthYear} - Mệnh: ${analysis.cung} (${analysis.nhom})
+-----------------------------------------
+KẾT QUẢ ĐO: Hướng ${analysis.currentDirection.name} (${analysis.currentDirection.degree}°) -> ${analysis.currentDirection.star}
+- Luận giải: ${analysis.currentDirection.desc}
+- Lời khuyên/Hóa giải: ${analysis.currentDirection.remedy}
+
+CHI TIẾT 8 HƯỚNG BÁT TRẠCH:
+${analysis.allDirections.map(d => `- Hướng ${d.dirName} (${d.degree}°): ${d.star} -> ${d.type === 'good' ? '✅ Tốt' : '❌ Xấu'}`).join("\n")}
+-----------------------------------------
+Thiết kế bởi KieuGia Construction`;
 };

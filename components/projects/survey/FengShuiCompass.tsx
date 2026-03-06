@@ -24,7 +24,7 @@ export default function FengShuiCompass({
     const [isLocked, setIsLocked] = useState(false);
     const [analysis, setAnalysis] = useState<FullFengShuiAnalysis | null>(null);
 
-    // Tự động tính toán phong thủy khi Heading hoặc Thông tin gia chủ thay đổi
+    // Tự động tính toán phong thủy khi Heading hoặc Thông tin gia chủ thay đổi (Để hiển thị la bàn)
     useEffect(() => {
         if (!isLocked) {
             const res = evaluateFengShui(birthYear, gender, heading);
@@ -57,21 +57,10 @@ export default function FengShuiCompass({
     const handleSave = () => {
         if (!analysis) return;
 
-        // ✅ TỰ ĐỘNG SINH CÂU BÁO CÁO CHUẨN ĐÉT ĐỂ LƯU VÀO DATABASE
-        const reportText = `[BÁO CÁO PHONG THỦY GIA CHỦ: ${ownerName.toUpperCase()}]
-Năm sinh: ${birthYear} - Giới tính: ${gender === 'nam' ? 'Nam' : 'Nữ'}
-Cung mệnh: ${analysis.cung} (${analysis.nhom})
---------------------------------------------------
-1. KẾT QUẢ ĐO HIỆN TẠI:
-- Hướng đo: ${analysis.currentDirection.name} (${heading}°)
-- Cung: ${analysis.currentDirection.star} (${analysis.currentDirection.isGood ? 'TỐT' : 'XẤU'})
-- Luận giải: ${analysis.currentDirection.desc}`;
-
+        // ✅ CHỈ CẦN TRẢ VỀ SỐ ĐỘ. 
+        // Logic sinh văn bản, hóa giải phong thủy đã được file SurveyResultModal lo liệu toàn bộ.
         onSaveResult({
-            heading,
-            analysis,
-            reportText, // Truyền câu báo cáo này ra ngoài
-            timestamp: new Date().toISOString()
+            heading: heading
         });
     };
 
@@ -122,11 +111,11 @@ Cung mệnh: ${analysis.cung} (${analysis.nhom})
                 <Button
                     type="button"
                     variant={isLocked ? "destructive" : "outline"}
-                    className={`h-12 rounded-2xl font-bold uppercase tracking-wider transition-all ${!isLocked && 'border-white/10 bg-white/5 text-white'}`}
+                    className={`h-12 rounded-2xl font-bold uppercase tracking-wider transition-all ${!isLocked && 'border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white'}`}
                     onClick={() => setIsLocked(!isLocked)}
                 >
                     {isLocked ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Smartphone className="mr-2 h-4 w-4" />}
-                    {isLocked ? "Mở khóa" : "Chốt hướng"}
+                    {isLocked ? "Đo lại" : "Chốt hướng"}
                 </Button>
 
                 <Button
@@ -135,7 +124,7 @@ Cung mệnh: ${analysis.cung} (${analysis.nhom})
                     className="h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-wider shadow-lg shadow-blue-900/40 disabled:opacity-20"
                     onClick={handleSave}
                 >
-                    <Save className="mr-2 h-4 w-4" /> Lưu lại
+                    <Save className="mr-2 h-4 w-4" /> Lưu kết quả
                 </Button>
             </div>
             <p className="text-white/20 text-[9px] font-medium uppercase tracking-[0.3em] pb-10">Thiết kế bởi KieuGia Construction</p>

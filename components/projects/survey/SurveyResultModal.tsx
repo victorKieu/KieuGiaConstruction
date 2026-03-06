@@ -18,11 +18,10 @@ import { updateSurveyTaskResult } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
 import { Loader2, Edit3, Compass, Sparkles, Home, CheckCircle2, X, User, ImagePlus, Camera, Eye, FileText } from "lucide-react";
-import { evaluateFengShui, type FullFengShuiAnalysis } from "@/lib/utils/fengShui";
 import FengShuiCompass from "./FengShuiCompass";
 import { toast } from "sonner";
 import Image from "next/image";
-
+import { evaluateFengShui, generateFengShuiReportText, type FullFengShuiAnalysis } from "@/lib/utils/fengShui";
 function SubmitResultButton() {
     const { pending } = useFormStatus();
     return (
@@ -114,16 +113,35 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
             const element = reportRef.current;
 
             const opt = {
-                margin: [15, 10, 15, 10] as [number, number, number, number],
+                margin: [15, 10, 20, 10] as [number, number, number, number], // Tăng margin bottom để không đè số trang
                 filename: `BM_KS_${projectCode || 'DA'}_${ownerName ? ownerName.replace(/\s+/g, '_') : 'KH'}.pdf`,
                 image: { type: 'jpeg' as const, quality: 1 },
-                // ✅ Thêm windowWidth: 800 và width: 794 để chốt cứng kích thước máy chụp
                 html2canvas: { scale: 4, useCORS: true, letterRendering: true, windowWidth: 800, width: 794 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
                 pagebreak: { mode: ['css', 'legacy'] }
             };
 
-            await html2pdf().set(opt).from(element).save();
+            // ✅ FIX LỖI TS2339: Ép kiểu 'as any' cho toàn bộ chuỗi Promise trước khi gọi .save()
+            await (html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf: any) => {
+                const totalPages = pdf.internal.getNumberOfPages();
+
+                for (let i = 1; i <= totalPages; i++) {
+                    pdf.setPage(i);
+                    pdf.setFontSize(9);
+                    pdf.setTextColor(100);
+
+                    const pageWidth = pdf.internal.pageSize.getWidth();
+                    const pageHeight = pdf.internal.pageSize.getHeight();
+
+                    // Định dạng: Trang: 1/2
+                    const text = `Trang: ${i}/${totalPages}`;
+
+                    // Vẽ số trang vào chính giữa chân trang, cách mép dưới 10mm
+                    pdf.text(text, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                }
+                return pdf; // Trả lại đối tượng pdf để hoàn tất chuỗi
+            }) as any).save();
+
             toast.success("Đã tải xuống thành công!", { id: toastId });
         } catch (error) {
             console.error("Lỗi xuất PDF:", error);
@@ -196,14 +214,24 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const isFengShuiTask = task?.title?.toUpperCase().includes("HƯỚNG") || task?.title?.toUpperCase().includes("PHONG THỦY");
 
     const handleCompassSave = (data: any) => {
+        // 1. Não bộ tự tính toán data phong thủy
         const result = evaluateFengShui(birthYear, gender, data.heading);
         setFsAnalysis(result);
-        const tot = result.allDirections.filter(d => d.type === 'good').map(d => `${d.star}`).join(", ");
-        const xau = result.allDirections.filter(d => d.type === 'bad').map(d => `${d.star}`).join(", ");
-        const listCongNang = result.allDirections.map(d => `- Hướng ${d.dirName} (${d.degree}°): ${d.star} -> ${d.type === 'good' ? '✅ Tốt' : '❌ Xấu'}`).join("\n");
-        const fullData = { owner: { name: ownerName, birthYear, gender }, compass: data, fengshui: result, generated_at: new Date().toISOString() };
-        const formattedText = `[BÁO CÁO PHONG THỦY: ${ownerName.toUpperCase()}]\nNăm sinh: ${birthYear} - Mệnh: ${result.cung} (${result.nhom})\n-----------------------------------------\nKẾT QUẢ ĐO: Hướng ${result.currentDirection.name} (${data.heading}°) -> ${result.currentDirection.star}\n\nCHI TIẾT 8 HƯỚNG BÁT TRẠCH:\n${listCongNang}\n-----------------------------------------\nLưu ý: Mở cửa/Phòng ngủ hướng tốt (${tot}). Đặt WC/Kho hướng xấu (${xau}).`;
-        setResultText(formattedText); setAnalysisJson(JSON.stringify(fullData)); setShowCompass(false);
+
+        // 2. Não bộ tự đẻ ra chuỗi text báo cáo
+        const formattedText = generateFengShuiReportText(ownerName, birthYear, gender, result);
+
+        // 3. Đóng gói cho DB
+        const fullData = {
+            owner: { name: ownerName, birthYear, gender },
+            compass: data,
+            fengshui: result,
+            generated_at: new Date().toISOString()
+        };
+
+        setResultText(formattedText);
+        setAnalysisJson(JSON.stringify(fullData));
+        setShowCompass(false);
         toast.success("Đã phân tích toàn bộ 8 hướng!");
     };
 
