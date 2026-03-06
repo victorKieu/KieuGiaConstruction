@@ -260,36 +260,87 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
     const projectId = formData.get("projectId") as string;
     const status = formData.get("status") as string || "completed";
 
+    if (!taskId || taskId === "null" || taskId === "undefined") {
+        console.error("Lỗi updateSurveyTaskResult: taskId không hợp lệ", taskId);
+        return { success: false, message: "Lỗi Server: ID nhiệm vụ không hợp lệ." };
+    }
+
     const textFromForm = formData.get("result_data_text") as string;
     const costFromForm = Number(formData.get("cost") || 0);
     const analysisJsonRaw = formData.get("analysis_json") as string;
 
-    // LẤY DANH SÁCH FILE TỪ FORM BẮN LÊN
     const files = formData.getAll("images") as File[];
+
+    const existingAttachmentsRaw = formData.get("existing_attachments") as string;
+    let existingAttachments: string[] = [];
+    if (existingAttachmentsRaw) {
+        try {
+            existingAttachments = JSON.parse(existingAttachmentsRaw);
+        } catch (e) {
+            console.error("Lỗi parse ảnh cũ:", e);
+        }
+    }
 
     let analysisJson = null;
     if (analysisJsonRaw) {
         try {
             analysisJson = JSON.parse(analysisJsonRaw);
         } catch (e) {
-            console.error("Lỗi parse JSON:", e);
+            console.error("Lỗi parse JSON analysis:", e);
         }
     }
 
     try {
         const supabase = await createSupabaseServerClient();
+
+        // ==========================================
+        // 🚀 BƯỚC 1: TÌM VÀ XÓA ẢNH RÁC TRONG BUCKET
+        // ==========================================
+        // Lấy danh sách ảnh CŨ đang lưu trong DB trước khi bị ghi đè
+        const { data: currentTask } = await supabase
+            .from("survey_tasks")
+            .select("attachments")
+            .eq("id", taskId)
+            .single();
+
+        const oldAttachments: string[] = currentTask?.attachments || [];
+
+        // Tìm ra những URL có trong DB cũ nhưng KHÔNG CÓ trong danh sách Client giữ lại
+        const urlsToDelete = oldAttachments.filter(url => !existingAttachments.includes(url));
+
+        if (urlsToDelete.length > 0) {
+            // Tách lấy Tên File từ URL Public của Supabase
+            // Ví dụ URL: https://xxx.supabase.co/storage/v1/object/public/survey_files/ten-file.jpg
+            const filesToDelete = urlsToDelete.map(url => {
+                const parts = url.split('/survey_files/');
+                return parts.length > 1 ? parts[1] : null;
+            }).filter(Boolean) as string[];
+
+            // Ra lệnh xóa file vật lý trên Bucket
+            if (filesToDelete.length > 0) {
+                const { error: removeError } = await supabase.storage
+                    .from('survey_files')
+                    .remove(filesToDelete);
+
+                if (removeError) {
+                    console.error("❌ Lỗi khi xóa file vật lý khỏi Bucket:", removeError);
+                } else {
+                    console.log("✅ Đã dọn dẹp file vật lý thành công:", filesToDelete);
+                }
+            }
+        }
+        // ==========================================
+
         const uploadedUrls: string[] = [];
 
-        // --- LOGIC UPLOAD ẢNH LÊN SUPABASE STORAGE ---
+        // --- LOGIC UPLOAD ẢNH MỚI LÊN SUPABASE STORAGE ---
         if (files && files.length > 0) {
             for (const file of files) {
-                if (file.size === 0) continue; // Bỏ qua nếu file rỗng
+                if (file.size === 0) continue;
 
-                // Tạo tên file ngẫu nhiên chống trùng lặp
                 const fileExt = file.name.split('.').pop();
                 const fileName = `${taskId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-                // Ném file lên Bucket 'survey_files'
                 const { error: uploadError } = await supabase.storage
                     .from('survey_files')
                     .upload(fileName, file);
@@ -297,7 +348,6 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
                 if (uploadError) {
                     console.error("❌ Lỗi upload ảnh:", uploadError);
                 } else {
-                    // Lấy link Public để hiển thị
                     const { data: publicUrlData } = supabase.storage
                         .from('survey_files')
                         .getPublicUrl(fileName);
@@ -306,8 +356,10 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
             }
         }
 
+        // GỘP ẢNH CŨ (ĐÃ GIỮ LẠI) VÀ ẢNH MỚI (VỪA UPLOAD)
+        const finalAttachments = [...existingAttachments, ...uploadedUrls];
+
         // --- CẬP NHẬT TASK VÀO DATABASE ---
-        // Chuẩn bị data update
         const updateData: any = {
             status: status,
             notes: textFromForm,
@@ -316,13 +368,9 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
                 raw_text: textFromForm,
                 updated_at: new Date().toISOString()
             },
-            cost: costFromForm
+            cost: costFromForm,
+            attachments: finalAttachments
         };
-
-        // Nếu có ảnh mới upload thì nhét vào cột attachments (dạng mảng JSON)
-        if (uploadedUrls.length > 0) {
-            updateData.attachments = uploadedUrls;
-        }
 
         const { data: updatedTask, error } = await supabase
             .from("survey_tasks")

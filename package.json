@@ -57,6 +57,7 @@
     "dotenv": "^17.3.1",
     "embla-carousel-react": "8.5.1",
     "express": "^5.2.1",
+    "html2pdf.js": "^0.14.0",
     "i18next": "^25.2.1",
     "input-otp": "1.4.1",
     "js-cookie": "^3.0.5",

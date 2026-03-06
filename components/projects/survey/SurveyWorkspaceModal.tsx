@@ -315,13 +315,15 @@ export default function SurveyWorkspaceModal({
                                                         task={task}
                                                         surveyId={survey.id}
                                                         projectId={projectId}
+                                                        projectCode={project.code}
+                                                        projectName={project.name}
                                                         onUpdateSuccess={(newStatus: string) => handleLocalTaskUpdate(task.id, newStatus)}
                                                     />
                                                     <SurveyTaskEditModal
                                                         task={task}
                                                         members={members}
                                                         surveyTaskTemplates={dictionaryItems}
-                                                        projectId={projectId}
+                                                        projectId={projectId}                                                       
                                                         onUpdateSuccess={triggerRefresh}
                                                     />
                                                     <SurveyTaskDeleteButton taskId={task.id} projectId={projectId} onDeleteSuccess={triggerRefresh} />
