@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import SurveyCreateModal from "../survey/SurveyCreateModal";
 import SurveyWorkspaceModal from "../survey/SurveyWorkspaceModal";
 import SurveyDeleteButton from "../survey/SurveyDeleteButton";
-import { Survey, SurveyTaskTemplate, MemberData, ProjectData } from "@/types/project";
+import { Survey, MemberData, ProjectData } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
 import { Compass, Ruler, Camera } from "lucide-react";

@@ -7,15 +7,53 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { updateSurveyTaskResult } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
-import { Loader2, Edit3, Compass, Sparkles, Home, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair } from "lucide-react";
+import { Loader2, Edit3, Compass, Sparkles, Home, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Building2, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, Wrench, Clock, ShieldAlert } from "lucide-react";
 import FengShuiCompass from "./FengShuiCompass";
 import { toast } from "sonner";
 import Image from "next/image";
 import { evaluateFengShui, generateFengShuiReportText, type FullFengShuiAnalysis, LOAN_DAU_DICTIONARY, generateLoanDauReportText } from "@/lib/utils/fengShui";
 import { calculateFlyingStars, calculateThanSat, type FlyingStarResult, type ThanSatResult } from "@/lib/utils/advancedFengShui";
+
+// ================= CÁC TÙY CHỌN CHO KHẢO SÁT ĐỊA CHẤT & LOGISTICS =================
+const GEO_OPTIONS = {
+    roadAccess: ["Ngõ < 2m (Chỉ xe ba gác)", "Ngõ 2-3m (Xe tải 1 tấn)", "Đường > 3m (Xe cẩu, bê tông vào tận nơi)"],
+    storage: ["Có bãi tập kết rộng", "Phải để vật tư ngoài đường", "Rất chật, phải vận chuyển vật tư theo ngày"],
+    elevation: ["Thấp hơn mặt đường (Dễ ngập)", "Bằng mặt đường", "Cao hơn mặt đường"],
+    soilType: ["Đất thổ cư lâu năm (Cứng)", "Đất ruộng, ao hồ san lấp (Mềm, sình lầy)", "Đất pha cát / sỏi đá"],
+    waterLevel: ["Sâu (Khô ráo, dễ làm móng)", "Nông (Đào móng dễ ngập nước)"],
+    electricity: ["Có sẵn đồng hồ", "Phải kéo nhờ hàng xóm", "Chưa có, phải xin cấp mới"],
+    water: ["Có nước máy", "Dùng nước giếng khoan", "Chưa có nguồn nước"],
+    drainage: ["Có hệ thống cống thành phố", "Chưa có, phải tự thấm"],
+    neighbor: ["Nhà cấp 4 cũ/yếu", "Nhà cao tầng móng cọc", "Đất trống", "Tường xây sát ranh, không khe hở", "Đã nứt tường/thấm dột từ trước"],
+    workingHours: ["Được thi công cả ngày", "Cấm thi công giờ nghỉ trưa", "Chỉ làm giờ hành chính (Nghỉ Chủ Nhật)"],
+    vehicleLimit: ["Không cấm tải/cấm giờ", "Cấm xe tải theo giờ hành chính", "Cấm xe bồn, phải trộn tay/trạm mini"],
+    sanitation: ["Bình thường", "Phải quây bạt kín 100%", "Khu vực khắt khe về tiếng ồn/bụi"]
+};
+
+// ================= CÁC TÙY CHỌN CHO ĐỊA HÌNH =================
+const TOPO_OPTIONS = {
+    obstaclesAir: ["Không vướng mắc", "Vướng dây điện/Cáp viễn thông chằng chịt", "Vướng cây xanh lớn, ban công nhà đối diện"],
+    obstaclesUnderground: ["Đất nguyên thổ", "Có hầm tự hoại/bể nước ngầm cũ", "Có giếng khoan cũ", "Có đường ống nước/cáp ngầm chạy ngang"],
+    demolition: ["Đất trống, thi công được ngay", "Có nhà cũ cần đập phá tháo dỡ", "Nhà cũ mượn tường hàng xóm (Cực kỳ cẩn thận)"],
+    debris: ["Không có", "Có cây cổ thụ cần bứng gốc/xin phép", "Cần dọn dẹp nhiều xà bần"],
+    foundationEquip: ["Vào được máy ép tải sắt / Robot ép", "Chỉ vào được máy ép Neo", "Chỉ thi công được cọc khoan nhồi mini", "Làm móng nông (Băng/Đơn)"],
+    diggingMethod: ["Đào mở trần tự do", "Phải đóng cừ tràm/Cừ Larsen chặn đất", "Phải chống văng nhà hàng xóm"]
+};
+
+// ================= CÁC TÙY CHỌN CHO CẢI TẠO & HÌNH HỌC =================
+const RENO_OPTIONS = {
+    beamColumnStatus: ["Bình thường, chịu lực tốt", "Nứt chân chim lớp vữa", "Nứt kết cấu, lòi thép han gỉ"],
+    waterproofing: ["Không thấm", "Thấm tường ngoài", "Thấm sàn mái / Sê-nô", "Thấm vách giáp ranh hàng xóm"],
+    oldFoundation: ["Khung BTCT (Đập tường thoải mái)", "Tường chịu lực 220 (Cấm đập)", "Không xác định rõ (Cần đục thăm dò)"],
+    reusableMats: ["Bỏ hết (Đập trắng)", "Tận dụng cửa, thiết bị vệ sinh", "Tận dụng ngói, xà gồ mái"],
+    landComparison: ["Khớp 100% với Sổ đỏ", "Thực tế NHỎ HƠN sổ (Bị lấn chiếm)", "Thực tế LỚN HƠN sổ (Đất dư)"],
+    landShape: ["Vuông vức", "Nở hậu (Tốt)", "Thóp hậu (Cần xử lý kiến trúc/phong thủy)", "Đa giác phức tạp"],
+    boundary: ["Đã xây tường rào rõ rệt", "Chỉ cắm cọc tạm", "Chưa xác định rõ, cần địa chính đo lại"]
+};
 
 function SubmitResultButton() {
     const { pending } = useFormStatus();
@@ -34,20 +72,49 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const [isViewMode, setIsViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
 
+    const [status, setStatus] = useState<string>("completed");
+    const [cost, setCost] = useState<number>(0);
+    const [resultText, setResultText] = useState<string>("");
+    const [analysisJson, setAnalysisJson] = useState<string>("");
+
+    // State Phong Thủy
     const [ownerName, setOwnerName] = useState<string>("");
     const [birthYear, setBirthYear] = useState<number>(1990);
     const [buildYear, setBuildYear] = useState<number>(new Date().getFullYear());
     const [gender, setGender] = useState<'nam' | 'nu'>('nam');
-    const [resultText, setResultText] = useState<string>("");
-    const [status, setStatus] = useState<string>("completed");
-    const [cost, setCost] = useState<number>(0);
-    const [analysisJson, setAnalysisJson] = useState<string>("");
-
-    // State Dữ liệu Cao cấp
     const [fsAnalysis, setFsAnalysis] = useState<FullFengShuiAnalysis | null>(null);
     const [selectedLoanDau, setSelectedLoanDau] = useState<string[]>([]);
     const [flyingStars, setFlyingStars] = useState<Record<string, FlyingStarResult> | null>(null);
     const [thanSat, setThanSat] = useState<ThanSatResult[] | null>(null);
+
+    // State Địa chất & Logistics
+    const defaultGeoData = {
+        isDrilling: false,
+        roadAccess: GEO_OPTIONS.roadAccess[1], storage: GEO_OPTIONS.storage[0], elevation: GEO_OPTIONS.elevation[1],
+        soilType: GEO_OPTIONS.soilType[0], waterLevel: GEO_OPTIONS.waterLevel[0],
+        electricity: GEO_OPTIONS.electricity[0], water: GEO_OPTIONS.water[0], drainage: GEO_OPTIONS.drainage[0],
+        neighborLeft: GEO_OPTIONS.neighbor[0], neighborRight: GEO_OPTIONS.neighbor[0], neighborBack: GEO_OPTIONS.neighbor[2],
+        workingHours: GEO_OPTIONS.workingHours[0], vehicleLimit: GEO_OPTIONS.vehicleLimit[0], sanitation: GEO_OPTIONS.sanitation[0],
+        drillingHoles: 3, drillingDepth: 30, drillingWaterLevel: 2.5, drillingSpt: "Có thực hiện 2m / 1 nhát",
+        drillingMethod: "Khoan xoay bơm rửa bằng bentonite", foundationLayer: "Sét pha trạng thái dẻo cứng", loadCapacity: "15 - 20 Tấn/m2"
+    };
+    const [geoData, setGeoData] = useState(defaultGeoData);
+
+    // State Địa hình
+    const defaultTopoData = {
+        obstaclesAir: TOPO_OPTIONS.obstaclesAir[0], obstaclesUnderground: TOPO_OPTIONS.obstaclesUnderground[0],
+        demolition: TOPO_OPTIONS.demolition[0], debris: TOPO_OPTIONS.debris[0],
+        foundationEquip: TOPO_OPTIONS.foundationEquip[0], diggingMethod: TOPO_OPTIONS.diggingMethod[0],
+    };
+    const [topoData, setTopoData] = useState(defaultTopoData);
+
+    // State Kết cấu & Cải tạo
+    const defaultRenoData = {
+        beamColumnStatus: RENO_OPTIONS.beamColumnStatus[0], waterproofing: RENO_OPTIONS.waterproofing[0],
+        oldFoundation: RENO_OPTIONS.oldFoundation[0], reusableMats: RENO_OPTIONS.reusableMats[0],
+        landComparison: RENO_OPTIONS.landComparison[0], landShape: RENO_OPTIONS.landShape[0], boundary: RENO_OPTIONS.boundary[0]
+    };
+    const [renoData, setRenoData] = useState(defaultRenoData);
 
     const [existingImages, setExistingImages] = useState<string[]>([]);
     const [selectedImages, setSelectedImages] = useState<{ file: File, preview: string }[]>([]);
@@ -55,8 +122,23 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const reportRef = useRef<HTMLDivElement>(null);
 
     // Phân loại Task
-    const isFengShuiTask = task?.title?.toUpperCase().includes("HƯỚNG") || task?.title?.toUpperCase().includes("PHONG THỦY");
-    const isLoanDauTask = task?.title?.toUpperCase().includes("LOAN ĐẦU") || task?.title?.toUpperCase().includes("CẢNH QUAN");
+    const titleUpper = task?.title?.toUpperCase() || "";
+    const isFengShuiTask = titleUpper.includes("HƯỚNG") || titleUpper.includes("PHONG THỦY");
+    const isLoanDauTask = titleUpper.includes("LOAN ĐẦU") || titleUpper.includes("CẢNH QUAN");
+    const isDiaChatTask = titleUpper.includes("ĐỊA CHẤT") || titleUpper.includes("HẠ TẦNG");
+    const isDiaHinhTask = titleUpper.includes("ĐỊA HÌNH") || titleUpper.includes("HIỆN TRẠNG");
+    const isCaiTaoTask = titleUpper.includes("CẢI TẠO") || titleUpper.includes("SỬA CHỮA") || titleUpper.includes("KẾT CẤU") || titleUpper.includes("ĐO ĐẠC");
+
+    // ✅ BỔ SUNG: HÀM GET MÃ SỐ BIỂU MẪU ĐỘNG
+    const getFormCode = () => {
+        if (isCaiTaoTask) return "BM-KS-05";
+        if (isDiaHinhTask) return "BM-KS-04";
+        if (isDiaChatTask) return "BM-KS-03";
+        if (isLoanDauTask) return "BM-KS-02";
+        if (isFengShuiTask) return "BM-KS-01";
+        return "BM-KS-00"; // Form mặc định nếu không khớp
+    };
+    const formCode = getFormCode();
 
     useEffect(() => {
         if (isOpen) {
@@ -66,15 +148,16 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
             if (task?.result_data?.analysis) {
                 const data = task.result_data.analysis;
                 if (data.owner) {
-                    setOwnerName(data.owner.name || "");
-                    setBirthYear(data.owner.birthYear || 1990);
-                    setBuildYear(data.owner.buildYear || new Date().getFullYear());
-                    setGender(data.owner.gender || 'nam');
+                    setOwnerName(data.owner.name || ""); setBirthYear(data.owner.birthYear || 1990);
+                    setBuildYear(data.owner.buildYear || new Date().getFullYear()); setGender(data.owner.gender || 'nam');
                 }
                 setFsAnalysis(data.fengshui || null);
-                setFlyingStars(data.flyingStars || null);
-                setThanSat(data.thanSat || null);
+                setFlyingStars(data.flyingStars || null); setThanSat(data.thanSat || null);
                 if (data.loanDau) setSelectedLoanDau(data.loanDau);
+
+                if (data.geoData) setGeoData({ ...defaultGeoData, ...data.geoData });
+                if (data.topoData) setTopoData({ ...defaultTopoData, ...data.topoData });
+                if (data.renoData) setRenoData({ ...defaultRenoData, ...data.renoData });
 
                 setAnalysisJson(JSON.stringify(data));
             }
@@ -101,13 +184,15 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
         const taskId = task?.id || task?._id;
         if (!taskId) return { success: false, message: "ID không hợp lệ" };
 
-        let finalAnalysisJson = analysisJson;
-        if (isLoanDauTask) {
-            let currentData = {};
-            try { currentData = analysisJson ? JSON.parse(analysisJson) : {}; } catch (e) { }
-            (currentData as any).loanDau = selectedLoanDau;
-            finalAnalysisJson = JSON.stringify(currentData);
-        }
+        let currentData = {};
+        try { currentData = analysisJson ? JSON.parse(analysisJson) : {}; } catch (e) { }
+
+        if (isLoanDauTask) (currentData as any).loanDau = selectedLoanDau;
+        if (isDiaChatTask) (currentData as any).geoData = geoData;
+        if (isDiaHinhTask) (currentData as any).topoData = topoData;
+        if (isCaiTaoTask) (currentData as any).renoData = renoData;
+
+        const finalAnalysisJson = JSON.stringify(currentData);
 
         formData.delete('taskId'); formData.delete('projectId'); formData.delete('analysis_json'); formData.delete('status'); formData.delete('images');
         formData.append('taskId', String(taskId));
@@ -116,12 +201,12 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
         formData.append('analysis_json', finalAnalysisJson || "");
         formData.append('existing_attachments', JSON.stringify(existingImages));
         selectedImages.forEach((item) => formData.append('images', item.file));
+
         return updateSurveyTaskResult(state, formData);
     };
 
     const [state, formAction] = useActionState(wrappedAction as any, { success: false, message: "" });
 
-    // HÀM XUẤT PDF
     const handleExportPDF = async () => {
         if (!reportRef.current) return;
         setIsExporting(true);
@@ -132,29 +217,25 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
             const element = reportRef.current;
             const opt = {
                 margin: [15, 10, 20, 10] as [number, number, number, number],
-                filename: `BM_KS_${projectCode || 'DA'}_${task?.title?.replace(/\s+/g, '_')}.pdf`,
+                filename: `${formCode}_${projectCode || 'DA'}_${task?.title?.replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg' as const, quality: 1 },
                 html2canvas: { scale: 4, useCORS: true, letterRendering: true, windowWidth: 800, width: 794 },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+                // Thêm thuộc tính này để chống việc tạo trang trắng tự động
+                pagebreak: { mode: ['css', 'legacy'] }
             };
 
             await (html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf: any) => {
                 const totalPages = pdf.internal.getNumberOfPages();
                 for (let i = 1; i <= totalPages; i++) {
-                    pdf.setPage(i);
-                    pdf.setFontSize(9);
-                    pdf.setTextColor(100);
+                    pdf.setPage(i); pdf.setFontSize(9); pdf.setTextColor(100);
                     pdf.text(`Trang: ${i}/${totalPages}`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 10, { align: 'center' });
                 }
                 return pdf;
             }) as any).save();
 
             toast.success("Thành công!", { id: toastId });
-        } catch (error) {
-            toast.error("Lỗi xuất PDF", { id: toastId });
-        } finally {
-            setIsExporting(false);
-        }
+        } catch (error) { toast.error("Lỗi xuất PDF", { id: toastId }); } finally { setIsExporting(false); }
     };
 
     const processImageWithWatermark = async (file: File): Promise<File> => {
@@ -213,37 +294,25 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const handleCompassSave = (data: any) => {
         const fsResult = evaluateFengShui(birthYear, gender, data.heading);
         setFsAnalysis(fsResult);
-
         const fsFlyingStars = calculateFlyingStars(buildYear, data.heading);
         const fsThanSat = calculateThanSat(data.heading, birthYear);
-
-        setFlyingStars(fsFlyingStars);
-        setThanSat(fsThanSat);
+        setFlyingStars(fsFlyingStars); setThanSat(fsThanSat);
 
         const fullReport = generateFengShuiReportText(ownerName, birthYear, gender, fsResult);
         setResultText(fullReport);
-
         setAnalysisJson(JSON.stringify({
             owner: { name: ownerName, birthYear, buildYear, gender },
-            compass: data,
-            fengshui: fsResult,
-            flyingStars: fsFlyingStars,
-            thanSat: fsThanSat,
+            compass: data, fengshui: fsResult, flyingStars: fsFlyingStars, thanSat: fsThanSat,
             generated_at: new Date().toISOString()
         }));
         setShowCompass(false);
         toast.success("Đã phân tích Bát Trạch, Phi Tinh & Thần Sát!");
     };
 
-    // HÀM RENDER KHỐI PHI TINH & THẦN SÁT
     const renderAdvancedFengShui = () => {
         if (!flyingStars || !thanSat) return null;
         return (
-            // ✅ ĐÃ SỬA: Xóa bỏ style={{ pageBreakInside: 'avoid' }} ở thẻ div ngoài cùng
-            // Để cho phép khối này tự động đứt gãy lấp đầy trang
             <div className="mt-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
-
-                {/* 1. KHỐI TRẬN ĐỒ 9 Ô (Khối này bắt buộc bọc avoid để cái bảng không bị cắt ngang làm đôi) */}
                 <div style={{ pageBreakInside: 'avoid' }}>
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
@@ -253,18 +322,13 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             Nhà Vận {flyingStars['CENTER']?.period || 9} (Xây năm {buildYear})
                         </span>
                     </div>
-
                     <div className="grid grid-cols-3 gap-2 aspect-square max-w-sm mx-auto mb-6">
                         {['SE', 'S', 'SW', 'E', 'CENTER', 'W', 'NE', 'N', 'NW'].map((dirId, idx) => {
                             const starData = flyingStars[dirId];
                             if (!starData) return <div key={idx} />;
                             const isCenter = dirId === 'CENTER';
-                            // ✅ TỪ ĐIỂN VIỆT HÓA TÊN CUNG
-                            const dirNamesVi: Record<string, string> = {
-                                'NW': 'Tây Bắc', 'N': 'Bắc', 'NE': 'Đông Bắc',
-                                'W': 'Tây', 'CENTER': 'Trung Cung', 'E': 'Đông',
-                                'SW': 'Tây Nam', 'S': 'Nam', 'SE': 'Đông Nam'
-                            };
+                            const dirNamesVi: Record<string, string> = { 'NW': 'Tây Bắc', 'N': 'Bắc', 'NE': 'Đông Bắc', 'W': 'Tây', 'CENTER': 'Trung Cung', 'E': 'Đông', 'SW': 'Tây Nam', 'S': 'Nam', 'SE': 'Đông Nam' };
+
                             return (
                                 <div key={idx} className={`relative flex flex-col items-center justify-center p-2 border-2 rounded-xl shadow-sm ${isCenter ? 'bg-indigo-100 border-indigo-300' : 'bg-white border-slate-200'}`}>
                                     <span className="absolute top-1 left-2 text-sm font-black text-slate-800">{starData.mountainStar}</span>
@@ -277,14 +341,12 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                     </div>
                 </div>
 
-                {/* 2. KHỐI THẦN SÁT (Cho phép tự do trôi sang trang sau để lấp khoảng trống) */}
                 <div className="pt-5 border-t border-slate-200">
                     <h4 className="text-xs font-black text-slate-700 uppercase mb-3 flex items-center gap-2" style={{ pageBreakInside: 'avoid' }}>
                         <Crosshair className="w-4 h-4 text-amber-600" /> Tọa độ Thần Sát (Cắt cổng, Mở cửa)
                     </h4>
                     <div className="space-y-2">
                         {thanSat.map((item, idx) => (
-                            // ✅ ĐÃ SỬA: Chỉ bọc avoid cho từng Thẻ thông tin nhỏ
                             <div key={idx} className={`flex items-start gap-3 p-3 border rounded-lg ${item.isGood ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`} style={{ pageBreakInside: 'avoid' }}>
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 text-xs text-center leading-tight ${item.isGood ? 'bg-amber-200 text-amber-700' : 'bg-red-200 text-red-700'}`}>
                                     {item.type.includes("Sát") || item.type.includes("Vong") ? "SÁT" : "CÁT"}
@@ -297,20 +359,18 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                         ))}
                     </div>
                 </div>
-
             </div>
         );
     };
 
-    // Kiểm tra xem ghi chú có phải là text tự động không
     const hasManualNotes = task?.notes && !task.notes.includes("[BÁO CÁO PHONG THỦY") && !task.notes.includes("[BÁO CÁO KHẢO SÁT LOAN ĐẦU");
     const isCompleted = task?.status === 'completed';
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className={`gap-2 h-8 transition-all ${task?.status === 'completed' ? 'border-blue-200 bg-blue-50/50 text-blue-700' : 'border-green-200 bg-green-50/50 text-green-700'}`}>
-                    {task?.status === 'completed' ? <><Eye className="h-3.5 w-3.5" /> Xem kết quả</> : <><Edit3 className="h-3.5 w-3.5" /> Ghi kết quả</>}
+                <Button variant="outline" size="sm" className={`gap-2 h-8 transition-all ${isCompleted ? 'border-blue-200 bg-blue-50/50 text-blue-700' : 'border-green-200 bg-green-50/50 text-green-700'}`}>
+                    {isCompleted ? <><Eye className="h-3.5 w-3.5" /> Xem kết quả</> : <><Edit3 className="h-3.5 w-3.5" /> Ghi kết quả</>}
                 </Button>
             </DialogTrigger>
 
@@ -318,8 +378,10 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
                 {/* ================= PDF TEMPLATE (HIDDEN) ================= */}
                 <div style={{ position: 'absolute', top: 0, left: 0, opacity: 0, pointerEvents: 'none', zIndex: -50 }}>
-                    <div ref={reportRef} className="bg-white text-slate-900 font-sans" style={{ width: '794px', minHeight: '1123px', padding: '40px', boxSizing: 'border-box' }}>
-                        {/* ✅ HEADER */}
+                    {/* ✅ ĐÃ SỬA LỖI 1: Bỏ minHeight, vuốt lại padding dưới thành 10px để không bị tràn 1 pixel sinh ra trang trắng */}
+                    <div ref={reportRef} className="bg-white text-slate-900 font-sans" style={{ width: '794px', padding: '40px 40px 10px 40px', boxSizing: 'border-box' }}>
+
+                        {/* ✅ ĐÃ SỬA LỖI 2: HEADER IN ĐỘNG MÃ SỐ BIỂU MẪU */}
                         <table className="w-full mb-8 border-collapse border border-slate-900" style={{ tableLayout: 'fixed', width: '100%', pageBreakInside: 'avoid' }}>
                             <tbody>
                                 <tr>
@@ -338,14 +400,14 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                             <span className="shrink-0">Ngày lập:</span><span className="font-bold text-right leading-normal">{new Date().toLocaleDateString('vi-VN')}</span>
                                         </div>
                                         <div className="flex justify-between items-center gap-2">
-                                            <span className="shrink-0">Mã số BM:</span><span className="font-bold text-right leading-normal">BM-KS-01</span>
+                                            <span className="shrink-0">Mã số BM:</span><span className="font-bold text-red-700 text-right leading-normal">{formCode}</span>
                                         </div>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
 
-                        <div className="text-center mb-8" style={{ pageBreakInside: 'avoid' }}>
+                        <div className="text-center mb-6" style={{ pageBreakInside: 'avoid' }}>
                             <h2 className="text-[22px] font-black uppercase text-red-700 tracking-wide mb-2">{task?.title || "BÁO CÁO KHẢO SÁT HIỆN TRẠNG"}</h2>
                             <p className="text-sm font-bold text-slate-800 bg-slate-100 inline-block px-5 py-2 rounded-full border border-slate-300 shadow-sm break-words max-w-full">
                                 Dự án: {projectName || "Tên dự án chưa được cập nhật"}
@@ -355,7 +417,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                         {/* RENDER BÁT TRẠCH & CỬU CUNG */}
                         {fsAnalysis && (
                             <>
-                                {/* KHỐI I: Để chảy tự nhiên (Không dùng avoid bọc ngoài) */}
                                 <div className="mb-6">
                                     <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">I. KẾT QUẢ ĐO VÀ PHÂN TÍCH THỰC ĐỊA</h3>
                                     <div className="border border-blue-900/20 p-4 rounded-b-md rounded-tr-md bg-blue-50/30 text-sm space-y-4">
@@ -386,7 +447,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     </div>
                                 </div>
 
-                                {/* KHỐI II: Bảng Bát Trạch */}
                                 <div className="mb-8">
                                     <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">II. CHI TIẾT 8 HƯỚNG BÁT TRẠCH</h3>
                                     <table className="w-full border-collapse border border-slate-400 text-xs" style={{ tableLayout: 'fixed', width: '100%' }}>
@@ -398,7 +458,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                         </thead>
                                         <tbody>
                                             {fsAnalysis.allDirections.map((d, idx) => (
-                                                /* TR giữ avoid để chữ trong hàng không bị cắt làm đôi */
                                                 <tr key={idx} className="text-center" style={{ pageBreakInside: 'avoid' }}>
                                                     <td className="border border-slate-400 p-2 font-bold bg-slate-50 break-words">{d.dirName} ({d.degree}°)</td>
                                                     <td className={`border border-slate-400 p-2 font-bold ${d.type === 'good' ? 'text-green-700' : 'text-red-700'} break-words`}>{d.star}</td>
@@ -410,10 +469,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     </table>
                                 </div>
 
-                                {/* KHỐI III: Sơ đồ Cửu Cung */}
                                 <div className="mb-10 pb-4">
                                     <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>III. SƠ ĐỒ CỬU CUNG BỐ TRÍ MẶT BẰNG</h3>
-                                    {/* ✅ Đã bỏ h-[350px] để khối tự động co giãn, không bị tràn đè chữ */}
                                     <div className="border border-slate-300 bg-slate-50 rounded-xl p-4 max-w-[400px] mx-auto" style={{ pageBreakInside: 'avoid' }}>
                                         <div className="grid grid-cols-3 gap-2">
                                             {['NW', 'N', 'NE', 'W', 'CENTER', 'E', 'SW', 'S', 'SE'].map((dirId, idx) => {
@@ -469,9 +526,105 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         )}
 
-                        {/* ẨN GHI CHÚ TEXT THÔ TRONG PDF, CHỈ HIỆN GHI CHÚ TỰ GÕ HOẶC TASK BÌNH THƯỜNG */}
-                        {(!isFengShuiTask && !isLoanDauTask) || hasManualNotes ? (
-                            <div className="mb-10 pb-4" style={{ pageBreakInside: 'avoid' }}>
+                        {/* ĐỊA CHẤT & LOGISTICS TRONG PDF */}
+                        {isDiaChatTask && (
+                            <div className="mb-6">
+                                <h3 className="text-sm font-bold text-white bg-amber-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT ĐỊA CHẤT & HẠ TẦNG</h3>
+                                <div className="border border-slate-300 rounded-lg overflow-hidden mb-6">
+                                    <table className="w-full text-sm text-left border-collapse">
+                                        <tbody>
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Giao thông & Điều kiện thi công</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Đường tiếp cận</td><td className="p-2 border-b border-slate-200">{geoData.roadAccess}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Bãi tập kết vật tư</td><td className="p-2 border-b border-slate-200">{geoData.storage}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Cốt nền hiện trạng</td><td className="p-2 border-b border-slate-200">{geoData.elevation}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Giờ giấc thi công</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.workingHours}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Hạn chế xe cơ giới</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.vehicleLimit}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Quy định Vệ sinh/Môi trường</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.sanitation}</td></tr>
+
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Địa chất sơ bộ & Điện nước</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Loại đất bề mặt</td><td className="p-2 border-b border-slate-200">{geoData.soilType}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Mực nước ngầm</td><td className="p-2 border-b border-slate-200">{geoData.waterLevel}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Nguồn điện</td><td className="p-2 border-b border-slate-200">{geoData.electricity}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Nguồn nước</td><td className="p-2 border-b border-slate-200">{geoData.water}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hệ thống thoát nước</td><td className="p-2 border-b border-slate-200">{geoData.drainage}</td></tr>
+
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Khảo sát công trình giáp ranh</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Bên Trái</td><td className="p-2 border-b border-slate-200">{geoData.neighborLeft}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Bên Phải</td><td className="p-2 border-b border-slate-200">{geoData.neighborRight}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Phía Sau</td><td className="p-2 border-b border-slate-200">{geoData.neighborBack}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {geoData.isDrilling && (
+                                    <div style={{ pageBreakInside: 'avoid' }}>
+                                        <h4 className="text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">THÔNG SỐ KHOAN ĐỊA CHẤT (TCVN 9363:2012)</h4>
+                                        <table className="w-full text-sm text-left border-collapse border border-red-200">
+                                            <tbody>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 w-1/3 font-medium">Tổng số hố khoan</td><td className="p-2 border-b border-red-200 font-bold">{geoData.drillingHoles} hố</td></tr>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Chiều sâu thiết kế</td><td className="p-2 border-b border-red-200">{geoData.drillingDepth} mét</td></tr>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Mực nước tĩnh</td><td className="p-2 border-b border-red-200">Độ sâu {geoData.drillingWaterLevel} mét</td></tr>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Thí nghiệm SPT</td><td className="p-2 border-b border-red-200">{geoData.drillingSpt}</td></tr>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Phương pháp khoan</td><td className="p-2 border-b border-red-200">{geoData.drillingMethod}</td></tr>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium text-red-800">Lớp đất đặt mũi cọc</td><td className="p-2 border-b border-red-200 font-bold text-red-800">{geoData.foundationLayer}</td></tr>
+                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium text-red-800">Sức chịu tải (Rtc)</td><td className="p-2 border-b border-red-200 font-bold text-red-800">{geoData.loadCapacity}</td></tr>
+                                            </tbody>
+                                        </table>
+                                        <p className="text-[10px] text-slate-500 italic mt-2 mb-6">Kết quả dựa trên hồ sơ Báo cáo Khảo sát Địa chất có pháp nhân.</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ĐỊA HÌNH TRONG PDF */}
+                        {isDiaHinhTask && (
+                            <div className="mb-6">
+                                <h3 className="text-sm font-bold text-white bg-teal-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT ĐỊA HÌNH & HIỆN TRẠNG</h3>
+                                <div className="border border-slate-300 rounded-lg overflow-hidden mb-6">
+                                    <table className="w-full text-sm text-left border-collapse">
+                                        <tbody>
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Chướng ngại vật (Không gian & Ngầm)</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Không gian trên không</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{topoData.obstaclesAir}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hiện trạng ngầm</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{topoData.obstaclesUnderground}</td></tr>
+
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Công tác Tháo dỡ & Giải phóng mặt bằng</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hiện trạng công trình</td><td className="p-2 border-b border-slate-200">{topoData.demolition}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Dọn dẹp mặt bằng</td><td className="p-2 border-b border-slate-200">{topoData.debris}</td></tr>
+
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Định hướng Biện pháp thi công</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Thiết bị thi công móng</td><td className="p-2 border-b border-slate-200 font-bold text-teal-800">{topoData.foundationEquip}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Đào đất & Giữ vách móng</td><td className="p-2 border-b border-slate-200 font-bold text-teal-800">{topoData.diggingMethod}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* CẢI TẠO VÀ HÌNH HỌC TRONG PDF */}
+                        {isCaiTaoTask && (
+                            <div className="mb-6">
+                                <h3 className="text-sm font-bold text-white bg-rose-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO HIỆN TRẠNG KẾT CẤU & HÌNH HỌC</h3>
+                                <div className="border border-slate-300 rounded-lg overflow-hidden mb-6">
+                                    <table className="w-full text-sm text-left border-collapse">
+                                        <tbody>
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Hiện trạng Kết cấu công trình cũ</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Tình trạng Dầm/Cột</td><td className="p-2 border-b border-slate-200 font-bold text-rose-700">{renoData.beamColumnStatus}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Khảo sát Thấm dột</td><td className="p-2 border-b border-slate-200 font-bold text-rose-700">{renoData.waterproofing}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Kết cấu chịu tải chính</td><td className="p-2 border-b border-slate-200">{renoData.oldFoundation}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Tận dụng vật tư</td><td className="p-2 border-b border-slate-200">{renoData.reusableMats}</td></tr>
+
+                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Hình học khu đất & Ranh mốc</th></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Sổ đỏ vs Thực tế</td><td className="p-2 border-b border-slate-200 font-bold text-indigo-700">{renoData.landComparison}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hình dáng khu đất</td><td className="p-2 border-b border-slate-200">{renoData.landShape}</td></tr>
+                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Tình trạng ranh mốc</td><td className="p-2 border-b border-slate-200">{renoData.boundary}</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {(!isFengShuiTask && !isLoanDauTask && !isDiaChatTask && !isDiaHinhTask && !isCaiTaoTask) || hasManualNotes ? (
+                            <div style={{ pageBreakInside: 'avoid' }}>
                                 <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">
                                     Ghi chú bổ sung
                                 </h3>
@@ -487,13 +640,13 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
                         {/* SECTION ẢNH PDF */}
                         {existingImages.length > 0 && (
-                            <div className="mb-6">
-                                <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>
-                                    {isLoanDauTask || !fsAnalysis ? "II. HÌNH ẢNH HIỆN TRẠNG THỰC ĐỊA" : "IV. HÌNH ẢNH HIỆN TRẠNG THỰC ĐỊA"}
+                            <div style={{ pageBreakInside: 'avoid', paddingTop: '20px' }}>
+                                <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md">
+                                    HÌNH ẢNH HIỆN TRẠNG THỰC ĐỊA
                                 </h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     {existingImages.map((url, i) => (
-                                        <div key={i} className="rounded-md border border-slate-400 bg-slate-100 flex items-center justify-center p-1 overflow-hidden" style={{ height: '280px', pageBreakInside: 'avoid' }}>
+                                        <div key={i} className="rounded-md border border-slate-400 bg-slate-100 flex items-center justify-center p-1 overflow-hidden" style={{ height: '260px', pageBreakInside: 'avoid' }}>
                                             <img src={url} alt={`Hiện trạng ${i + 1}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} crossOrigin="anonymous" />
                                         </div>
                                     ))}
@@ -502,10 +655,9 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                         )}
                     </div>
                 </div>
-                {/* ================= KẾT THÚC PDF TEMPLATE ================= */}
 
                 {/* ================= GIAO DIỆN APP HIỂN THỊ ================= */}
-                <div className={`p-6 text-white shrink-0 relative overflow-hidden ${isViewMode ? (isLoanDauTask ? 'bg-emerald-700' : 'bg-blue-700') : 'bg-slate-900'}`}>
+                <div className={`p-6 text-white shrink-0 relative overflow-hidden ${isViewMode ? (isLoanDauTask ? 'bg-emerald-700' : isDiaChatTask ? 'bg-amber-700' : isDiaHinhTask ? 'bg-teal-700' : isCaiTaoTask ? 'bg-rose-700' : 'bg-blue-700') : 'bg-slate-900'}`}>
                     <DialogTitle className="text-xl font-black uppercase flex items-center gap-3 relative z-10">
                         {isViewMode ? 'Chi tiết kết quả' : task?.title}
                     </DialogTitle>
@@ -527,65 +679,12 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     <div><p className="text-[10px] text-slate-400 uppercase font-bold">Cung Mệnh</p><p className="font-black text-blue-600">{fsAnalysis.cung} ({fsAnalysis.nhom})</p></div>
                                     <div><p className="text-[10px] text-slate-400 uppercase font-bold">Hướng nhà</p><p className="font-black text-blue-600">{fsAnalysis.currentDirection.name} ({fsAnalysis.currentDirection.degree}°)</p></div>
                                 </div>
-                                <div className="space-y-3 relative z-10">
-                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">1. Cung Sao & Luận giải</p>
-                                        <p className="text-sm font-medium text-slate-800">
-                                            <span className={fsAnalysis.currentDirection.isGood ? 'text-green-600 font-black' : 'text-red-600 font-black'}>{fsAnalysis.currentDirection.star} ({fsAnalysis.currentDirection.isGood ? 'CÁT' : 'HUNG'})</span> - {fsAnalysis.currentDirection.desc}
-                                        </p>
-                                    </div>
-                                    {fsAnalysis?.currentDirection?.climateAnalysis && (
-                                        <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-                                            <p className="text-[10px] text-blue-600 uppercase font-bold mb-1">2. Phân tích Vi khí hậu</p>
-                                            <div className="text-[13px] text-slate-700 italic font-medium whitespace-pre-line leading-relaxed">{fsAnalysis.currentDirection.climateAnalysis}</div>
-                                        </div>
-                                    )}
-                                    {fsAnalysis?.currentDirection?.remedy && (
-                                        <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100">
-                                            <p className="text-[10px] text-amber-600 uppercase font-bold mb-1">3. Lời khuyên & Hóa giải</p>
-                                            <div className="text-[13px] text-amber-900 font-medium whitespace-pre-line leading-relaxed">{fsAnalysis.currentDirection.remedy}</div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="p-4 bg-slate-100/80 rounded-xl border border-slate-200 mt-4">
-                                    <p className="text-[11px] text-slate-500 uppercase font-black mb-3 text-center tracking-widest">Sơ đồ Cửu Cung gợi ý định vị công năng</p>
-                                    <div className="grid grid-cols-3 gap-2 aspect-square max-w-sm mx-auto">
-                                        {['NW', 'N', 'NE', 'W', 'CENTER', 'E', 'SW', 'S', 'SE'].map((dirId, idx) => {
-                                            if (dirId === 'CENTER') {
-                                                return (
-                                                    <div key={idx} className="flex flex-col items-center justify-center p-1 bg-amber-100 border-2 border-amber-300 rounded-lg shadow-inner h-full relative overflow-hidden">
-                                                        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-amber-500 to-transparent"></div>
-                                                        <span className="font-black text-amber-800 text-[10px] sm:text-xs z-10">TRUNG CUNG</span>
-                                                        <span className="text-[8px] text-amber-700 text-center mt-1 leading-tight font-medium z-10">Giếng trời<br />Sảnh chung</span>
-                                                    </div>
-                                                );
-                                            }
-                                            const dirData = fsAnalysis?.allDirections?.find(d => d.dirId === dirId);
-                                            if (!dirData) return <div key={idx} />;
-
-                                            const isGood = dirData.type === 'good';
-                                            return (
-                                                <div key={idx} className={`flex flex-col items-center justify-center p-1 border rounded-lg shadow-sm h-full transition-all hover:scale-105 ${isGood ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
-                                                    <span className="text-[9px] font-bold text-slate-500 uppercase">{dirData.dirName}</span>
-                                                    <span className={`font-black text-[10px] sm:text-xs uppercase text-center leading-tight mt-0.5 ${isGood ? 'text-green-700' : 'text-red-700'}`}>
-                                                        {dirData.star}
-                                                    </span>
-                                                    <span className="text-[8px] text-slate-600 text-center mt-1 font-medium leading-tight px-1">
-                                                        {isGood ? '🚪 Cửa, Thờ\n🛏️ Ngủ, Khách' : '🚽 WC, Kho\n🔥 Bếp'}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
                             </div>
                         )}
 
-                        {/* RENDER PHI TINH TRÊN MÀN HÌNH APP */}
                         {renderAdvancedFengShui()}
 
-                        {/* ================= THẺ LOAN ĐẦU (VIEW MODE) ================= */}
+                        {/* ================= LOAN ĐẦU UI ================= */}
                         {isLoanDauTask && selectedLoanDau.length > 0 && (
                             <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm relative overflow-hidden mb-6 mt-6">
                                 <div className="absolute top-0 right-0 p-3 opacity-5"><Eye size={100} className="text-emerald-500" /></div>
@@ -600,9 +699,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                             <div key={id} className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                                                 <p className="text-sm font-black text-emerald-900 mb-1.5">{item.name}</p>
                                                 <p className="text-xs text-slate-700 mb-2 leading-relaxed"><strong>Hiện trạng:</strong> {item.desc}</p>
-                                                <p className="text-xs text-amber-800 font-medium leading-relaxed bg-amber-100/50 p-2 rounded-lg border border-amber-200">
-                                                    <strong>Hóa giải:</strong> {item.remedy}
-                                                </p>
                                             </div>
                                         )
                                     })}
@@ -610,8 +706,117 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         )}
 
-                        {/* ✅ ẨN Ô TEXT THÔ NẾU LÀ TASK PHONG THỦY / LOAN ĐẦU (CHỈ HIỆN GHI CHÚ NẾU CÓ CHỈNH SỬA TAY HOẶC LÀ TASK KHÁC) */}
-                        {(!isFengShuiTask && !isLoanDauTask) ? (
+                        {/* ================= ĐỊA CHẤT & LOGISTICS UI (VIEW) ================= */}
+                        {isDiaChatTask && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm relative overflow-hidden mt-6">
+                                    <div className="absolute top-0 right-0 p-3 opacity-5"><Map size={100} className="text-amber-600" /></div>
+                                    <h3 className="text-xs font-black text-amber-700 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
+                                        <FileBadge className="w-4 h-4" /> HỒ SƠ ĐỊA CHẤT & HẠ TẦNG
+                                    </h3>
+                                    <div className="space-y-4 relative z-10">
+                                        <div className="grid grid-cols-2 gap-4 bg-amber-50 p-4 rounded-xl border border-amber-100">
+                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Giao thông</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.roadAccess}</p></div>
+                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Bãi tập kết</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.storage}</p></div>
+                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Đất bề mặt</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.soilType}</p></div>
+                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Thoát nước</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.drainage}</p></div>
+                                        </div>
+                                        {geoData.isDrilling && (
+                                            <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                                                <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-2 flex items-center gap-1"><Pickaxe className="w-3 h-3" /> ĐÃ KHOAN ĐỊA CHẤT TCVN</p>
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <p><span className="text-slate-500">Số hố:</span> <b>{geoData.drillingHoles} hố</b></p>
+                                                    <p><span className="text-slate-500">Chiều sâu:</span> <b>{geoData.drillingDepth}m</b></p>
+                                                    <p><span className="text-slate-500">Lớp tốt:</span> <b>{geoData.foundationLayer}</b></p>
+                                                    <p><span className="text-slate-500">Rtc:</span> <b className="text-red-600">{geoData.loadCapacity}</b></p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-200 shadow-sm">
+                                    <h3 className="text-xs font-black text-orange-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <Clock className="w-4 h-4" /> ĐIỀU KIỆN THI CÔNG & LOGISTICS
+                                    </h3>
+                                    <ul className="space-y-2 text-xs font-medium text-slate-700">
+                                        <li className="flex gap-2 items-start"><span className="text-orange-500 mt-0.5">•</span> <span><b>Giờ giấc:</b> <span className="text-orange-700">{geoData.workingHours}</span></span></li>
+                                        <li className="flex gap-2 items-start"><span className="text-orange-500 mt-0.5">•</span> <span><b>Giới hạn xe:</b> <span className="text-orange-700">{geoData.vehicleLimit}</span></span></li>
+                                        <li className="flex gap-2 items-start"><span className="text-orange-500 mt-0.5">•</span> <span><b>Yêu cầu môi trường:</b> {geoData.sanitation}</span></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ================= ĐỊA HÌNH HIỆN TRẠNG UI (VIEW) ================= */}
+                        {isDiaHinhTask && (
+                            <div className="bg-white p-5 rounded-2xl border border-teal-200 shadow-sm relative overflow-hidden mt-6">
+                                <div className="absolute top-0 right-0 p-3 opacity-5"><Mountain size={100} className="text-teal-600" /></div>
+                                <h3 className="text-xs font-black text-teal-700 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
+                                    <Mountain className="w-4 h-4" /> HỒ SƠ ĐỊA HÌNH & HIỆN TRẠNG
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                                    <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200 shadow-sm">
+                                        <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3" /> CHƯỚNG NGẠI VẬT & THÁO DỠ
+                                        </h4>
+                                        <ul className="space-y-2 text-xs font-medium text-slate-700">
+                                            <li className="flex gap-2 items-start"><span className="text-amber-500 mt-0.5">•</span> <span><b>Trên không:</b> <span className="text-amber-700">{topoData.obstaclesAir}</span></span></li>
+                                            <li className="flex gap-2 items-start"><span className="text-amber-500 mt-0.5">•</span> <span><b>Ngầm:</b> <span className="text-amber-700">{topoData.obstaclesUnderground}</span></span></li>
+                                            <li className="flex gap-2 items-start"><span className="text-amber-500 mt-0.5">•</span> <span><b>Tháo dỡ:</b> {topoData.demolition}</span></li>
+                                        </ul>
+                                    </div>
+                                    <div className="bg-teal-50/50 p-4 rounded-xl border border-teal-200 shadow-sm">
+                                        <h4 className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                            <Hammer className="w-3 h-3" /> BIỆN PHÁP THI CÔNG
+                                        </h4>
+                                        <ul className="space-y-3 text-xs font-medium text-slate-700">
+                                            <li className="bg-white p-2 rounded-lg border border-teal-100 shadow-sm">
+                                                <span className="text-[9px] text-teal-500 uppercase font-bold block mb-0.5">Thiết bị Móng</span>
+                                                <span className="text-teal-800 font-bold">{topoData.foundationEquip}</span>
+                                            </li>
+                                            <li className="bg-white p-2 rounded-lg border border-teal-100 shadow-sm">
+                                                <span className="text-[9px] text-teal-500 uppercase font-bold block mb-0.5">Đào đất & Vách móng</span>
+                                                <span className="text-teal-800 font-bold">{topoData.diggingMethod}</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ================= HIỆN TRẠNG KẾT CẤU & CẢI TẠO UI (VIEW) ================= */}
+                        {isCaiTaoTask && (
+                            <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-sm relative overflow-hidden mt-6">
+                                <div className="absolute top-0 right-0 p-3 opacity-5"><Wrench size={100} className="text-rose-600" /></div>
+                                <h3 className="text-xs font-black text-rose-700 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
+                                    <Wrench className="w-4 h-4" /> HỒ SƠ KẾT CẤU & HÌNH HỌC (CẢI TẠO)
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                                    <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-200 shadow-sm">
+                                        <h4 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                            <ShieldAlert className="w-3 h-3" /> KHÁM BỆNH KẾT CẤU
+                                        </h4>
+                                        <ul className="space-y-2 text-xs font-medium text-slate-700">
+                                            <li className="flex gap-2 items-start"><span className="text-rose-500 mt-0.5">•</span> <span><b>Cột/Dầm:</b> <span className="text-rose-700 font-bold">{renoData.beamColumnStatus}</span></span></li>
+                                            <li className="flex gap-2 items-start"><span className="text-rose-500 mt-0.5">•</span> <span><b>Thấm dột:</b> <span className="text-rose-700 font-bold">{renoData.waterproofing}</span></span></li>
+                                            <li className="flex gap-2 items-start"><span className="text-rose-500 mt-0.5">•</span> <span><b>Kết cấu chính:</b> {renoData.oldFoundation}</span></li>
+                                        </ul>
+                                    </div>
+                                    <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-200 shadow-sm">
+                                        <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                            <Ruler className="w-3 h-3" /> HÌNH HỌC & RANH MỐC
+                                        </h4>
+                                        <ul className="space-y-2 text-xs font-medium text-slate-700">
+                                            <li className="flex gap-2 items-start"><span className="text-indigo-500 mt-0.5">•</span> <span><b>Sổ đỏ vs Thực tế:</b> <span className="text-indigo-700 font-bold">{renoData.landComparison}</span></span></li>
+                                            <li className="flex gap-2 items-start"><span className="text-indigo-500 mt-0.5">•</span> <span><b>Hình dáng đất:</b> {renoData.landShape}</span></li>
+                                            <li className="flex gap-2 items-start"><span className="text-indigo-500 mt-0.5">•</span> <span><b>Ranh mốc:</b> {renoData.boundary}</span></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(!isFengShuiTask && !isLoanDauTask && !isDiaChatTask && !isDiaHinhTask && !isCaiTaoTask) ? (
                             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mt-6">
                                 <Label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 block">GHI CHÚ & KẾT QUẢ</Label>
                                 <div className="text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -627,7 +832,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         ) : null}
 
-                        {/* SECTION ẢNH (VIEW MODE) */}
                         {existingImages.length > 0 && (
                             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mt-6">
                                 <Label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 block">ẢNH HIỆN TRẠNG KÈM TỌA ĐỘ</Label>
@@ -635,9 +839,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     {existingImages.map((url: string, i: number) => (
                                         <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group shadow-sm hover:shadow-lg transition-all hover:-translate-y-1">
                                             <Image src={url} alt={`Ảnh ${i + 1}`} fill className="object-cover transition-transform duration-500 group-hover:scale-110" />
-                                            <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center">
-                                                <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 drop-shadow-md" />
-                                            </div>
+                                            <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center"><Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 drop-shadow-md" /></div>
                                         </a>
                                     ))}
                                 </div>
@@ -655,7 +857,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                         </div>
                     </div>
                 ) : (
-                    // FORM NHẬP LIỆU (EDIT MODE)
+                    // ================= FORM NHẬP LIỆU (EDIT MODE) =================
                     <form action={formAction} className="p-6 space-y-6 bg-white">
                         <input type="hidden" name="taskId" value={task?.id || ""} />
                         <input type="hidden" name="projectId" value={projectId || ""} />
@@ -663,6 +865,200 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                         <input type="hidden" name="status" value={status} />
                         <input type="file" name="images" multiple accept="image/*" hidden ref={fileInputRef} onChange={handleImageChange} />
 
+                        {/* ĐỊA CHẤT & LOGISTICS FORM NHẬP LIỆU */}
+                        {isDiaChatTask && (
+                            <div className="space-y-6">
+                                <div className="p-5 bg-amber-50/50 border border-amber-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-amber-800 font-black text-sm uppercase tracking-widest border-b border-amber-200 pb-2">
+                                        <Map className="w-4 h-4 text-amber-600" /> THÔNG TIN HẠ TẦNG & MẶT BẰNG
+                                    </Label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1"><Truck className="w-3 h-3" /> Giao thông</span>
+                                            <Select value={geoData.roadAccess} onValueChange={v => setGeoData({ ...geoData, roadAccess: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.roadAccess.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase">Bãi tập kết vật tư</span>
+                                            <Select value={geoData.storage} onValueChange={v => setGeoData({ ...geoData, storage: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.storage.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase">Cốt nền</span>
+                                            <Select value={geoData.elevation} onValueChange={v => setGeoData({ ...geoData, elevation: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.elevation.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase">Đất bề mặt</span>
+                                            <Select value={geoData.soilType} onValueChange={v => setGeoData({ ...geoData, soilType: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.soilType.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-orange-50/50 border border-orange-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-orange-800 font-black text-sm uppercase tracking-widest border-b border-orange-200 pb-2">
+                                        <Clock className="w-4 h-4 text-orange-600" /> ĐIỀU KIỆN THI CÔNG & LOGISTICS
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-orange-700 uppercase">Giờ giấc thi công</span>
+                                            <Select value={geoData.workingHours} onValueChange={v => setGeoData({ ...geoData, workingHours: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.workingHours.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-orange-700 uppercase">Giới hạn phương tiện</span>
+                                            <Select value={geoData.vehicleLimit} onValueChange={v => setGeoData({ ...geoData, vehicleLimit: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.vehicleLimit.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-orange-700 uppercase">Yêu cầu môi trường/vệ sinh</span>
+                                            <Select value={geoData.sanitation} onValueChange={v => setGeoData({ ...geoData, sanitation: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.sanitation.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-blue-50/50 border border-blue-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-blue-800 font-black text-sm uppercase tracking-widest border-b border-blue-200 pb-2">
+                                        <Droplets className="w-4 h-4 text-blue-600" /> ĐIỆN NƯỚC THI CÔNG
+                                    </Label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-blue-700 uppercase flex items-center gap-1"><Zap className="w-3 h-3" /> Nguồn điện</span>
+                                            <Select value={geoData.electricity} onValueChange={v => setGeoData({ ...geoData, electricity: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.electricity.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-blue-700 uppercase">Nguồn nước</span>
+                                            <Select value={geoData.water} onValueChange={v => setGeoData({ ...geoData, water: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.water.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5 sm:col-span-2">
+                                            <span className="text-[10px] font-bold text-blue-700 uppercase">Cống thoát nước</span>
+                                            <Select value={geoData.drainage} onValueChange={v => setGeoData({ ...geoData, drainage: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.drainage.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-red-50/50 border border-red-200 rounded-2xl shadow-inner">
+                                    <div className="flex items-center justify-between border-b border-red-200 pb-4 mb-4">
+                                        <Label className="flex items-center gap-2 text-red-800 font-black text-sm uppercase tracking-widest">
+                                            <Pickaxe className="w-4 h-4 text-red-600" /> KHOAN ĐỊA CHẤT TCVN
+                                        </Label>
+                                        <Switch checked={geoData.isDrilling} onCheckedChange={(v) => setGeoData({ ...geoData, isDrilling: v })} />
+                                    </div>
+
+                                    {geoData.isDrilling && (
+                                        <div className="grid grid-cols-2 gap-4 animate-in fade-in zoom-in duration-300">
+                                            <div className="space-y-1.5">
+                                                <span className="text-[10px] font-bold text-red-700 uppercase">Số hố khoan</span>
+                                                <Input type="number" value={geoData.drillingHoles} onChange={e => setGeoData({ ...geoData, drillingHoles: Number(e.target.value) })} className="h-10 bg-white" />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <span className="text-[10px] font-bold text-red-700 uppercase">Độ sâu (m)</span>
+                                                <Input type="number" value={geoData.drillingDepth} onChange={e => setGeoData({ ...geoData, drillingDepth: Number(e.target.value) })} className="h-10 bg-white" />
+                                            </div>
+                                            <div className="space-y-1.5 col-span-2">
+                                                <span className="text-[10px] font-bold text-red-700 uppercase">Lớp đất đặt mũi cọc (Lớp tốt)</span>
+                                                <Input value={geoData.foundationLayer} onChange={e => setGeoData({ ...geoData, foundationLayer: e.target.value })} className="h-10 bg-white border-red-300 text-red-800 font-bold" />
+                                            </div>
+                                            <div className="space-y-1.5 col-span-2">
+                                                <span className="text-[10px] font-bold text-red-700 uppercase">Sức chịu tải Rtc (Tấn/m2)</span>
+                                                <Input value={geoData.loadCapacity} onChange={e => setGeoData({ ...geoData, loadCapacity: e.target.value })} className="h-10 bg-white border-red-300 font-bold" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ĐỊA HÌNH FORM NHẬP LIỆU */}
+                        {isDiaHinhTask && (
+                            <div className="space-y-6">
+                                <div className="p-5 bg-amber-50/50 border border-amber-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-amber-800 font-black text-sm uppercase tracking-widest border-b border-amber-200 pb-2">
+                                        <AlertCircle className="w-4 h-4 text-amber-600" /> CHƯỚNG NGẠI VẬT & MẶT BẰNG
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">Không gian trên không</span>
+                                            <Select value={topoData.obstaclesAir} onValueChange={v => setTopoData({ ...topoData, obstaclesAir: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{TOPO_OPTIONS.obstaclesAir.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">Hiện trạng ngầm</span>
+                                            <Select value={topoData.obstaclesUnderground} onValueChange={v => setTopoData({ ...topoData, obstaclesUnderground: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{TOPO_OPTIONS.obstaclesUnderground.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">Tình trạng tháo dỡ</span>
+                                            <Select value={topoData.demolition} onValueChange={v => setTopoData({ ...topoData, demolition: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{TOPO_OPTIONS.demolition.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">Dọn dẹp xà bần/cây</span>
+                                            <Select value={topoData.debris} onValueChange={v => setTopoData({ ...topoData, debris: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{TOPO_OPTIONS.debris.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-teal-50/50 border border-teal-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-teal-800 font-black text-sm uppercase tracking-widest border-b border-teal-200 pb-2">
+                                        <Hammer className="w-4 h-4 text-teal-600" /> ĐỊNH HƯỚNG BIỆN PHÁP THI CÔNG
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-teal-700 uppercase flex items-center gap-1">Thiết bị thi công móng</span>
+                                            <Select value={topoData.foundationEquip} onValueChange={v => setTopoData({ ...topoData, foundationEquip: v })}><SelectTrigger className="h-10 bg-white font-bold text-teal-800"><SelectValue /></SelectTrigger><SelectContent>{TOPO_OPTIONS.foundationEquip.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-teal-700 uppercase flex items-center gap-1">Đào đất & Giữ vách</span>
+                                            <Select value={topoData.diggingMethod} onValueChange={v => setTopoData({ ...topoData, diggingMethod: v })}><SelectTrigger className="h-10 bg-white font-bold text-teal-800"><SelectValue /></SelectTrigger><SelectContent>{TOPO_OPTIONS.diggingMethod.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* CẢI TẠO & HÌNH HỌC FORM NHẬP LIỆU */}
+                        {isCaiTaoTask && (
+                            <div className="space-y-6">
+                                <div className="p-5 bg-rose-50/50 border border-rose-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-rose-800 font-black text-sm uppercase tracking-widest border-b border-rose-200 pb-2">
+                                        <ShieldAlert className="w-4 h-4 text-rose-600" /> HIỆN TRẠNG KẾT CẤU CŨ
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-rose-700 uppercase">Tình trạng Dầm / Cột</span>
+                                            <Select value={renoData.beamColumnStatus} onValueChange={v => setRenoData({ ...renoData, beamColumnStatus: v })}><SelectTrigger className="h-10 bg-white font-bold text-rose-800"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.beamColumnStatus.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-rose-700 uppercase">Tình trạng Thấm dột</span>
+                                            <Select value={renoData.waterproofing} onValueChange={v => setRenoData({ ...renoData, waterproofing: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.waterproofing.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-rose-700 uppercase">Kết cấu chịu tải chính</span>
+                                            <Select value={renoData.oldFoundation} onValueChange={v => setRenoData({ ...renoData, oldFoundation: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.oldFoundation.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-rose-700 uppercase">Khả năng tận dụng vật tư</span>
+                                            <Select value={renoData.reusableMats} onValueChange={v => setRenoData({ ...renoData, reusableMats: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.reusableMats.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-indigo-50/50 border border-indigo-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-indigo-800 font-black text-sm uppercase tracking-widest border-b border-indigo-200 pb-2">
+                                        <Ruler className="w-4 h-4 text-indigo-600" /> HÌNH HỌC KẾT CẤU & RANH MỐC
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Đối chiếu Sổ đỏ vs Thực tế</span>
+                                            <Select value={renoData.landComparison} onValueChange={v => setRenoData({ ...renoData, landComparison: v })}><SelectTrigger className="h-10 bg-white font-bold text-indigo-800"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.landComparison.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Hình dáng khu đất</span>
+                                            <Select value={renoData.landShape} onValueChange={v => setRenoData({ ...renoData, landShape: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.landShape.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Tình trạng ranh mốc</span>
+                                            <Select value={renoData.boundary} onValueChange={v => setRenoData({ ...renoData, boundary: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.boundary.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* PHONG THỦY FORM */}
                         {isFengShuiTask && (
                             <div className="space-y-4 p-5 bg-orange-50/50 border border-orange-100 rounded-2xl shadow-inner">
                                 <div className="flex items-center justify-between">
@@ -693,11 +1089,10 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         )}
 
+                        {/* LOAN ĐẦU FORM */}
                         {isLoanDauTask && (
                             <div className="space-y-4 p-5 bg-emerald-50/50 border border-emerald-100 rounded-2xl shadow-inner">
-                                <Label className="flex items-center gap-2 text-emerald-800 font-bold text-sm mb-2">
-                                    <Eye className="w-4 h-4 text-emerald-500" /> CHECKLIST KHẢO SÁT LOAN ĐẦU (CẢNH QUAN)
-                                </Label>
+                                <Label className="flex items-center gap-2 text-emerald-800 font-bold text-sm mb-2"><Eye className="w-4 h-4 text-emerald-500" /> CHECKLIST KHẢO SÁT LOAN ĐẦU</Label>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {LOAN_DAU_DICTIONARY.map(item => {
                                         const isChecked = selectedLoanDau.includes(item.id);
@@ -709,7 +1104,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                                     let newSelected = [...selectedLoanDau];
                                                     if (isChecked) newSelected = newSelected.filter(id => id !== item.id);
                                                     else newSelected.push(item.id);
-
                                                     setSelectedLoanDau(newSelected);
                                                     setResultText(generateLoanDauReportText(newSelected));
                                                 }}
@@ -728,12 +1122,9 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         )}
 
-                        {/* Ô NHẬP TEXT VẪN GIỮ ĐỂ DEV / KỸ SƯ CÓ THỂ COPY HOẶC GÕ THÊM */}
                         <div className="space-y-2">
-                            <Label className="text-xs font-black text-slate-500 uppercase tracking-widest">
-                                {isLoanDauTask || isFengShuiTask ? "Ghi chú & Data Ẩn (Sẽ bị ẩn khi Xem/In)" : "Ghi chú & Kết quả đo"}
-                            </Label>
-                            <Textarea name="result_data_text" rows={7} value={resultText} onChange={(e) => setResultText(e.target.value)} className="text-sm font-medium border-slate-200 rounded-xl bg-slate-50" />
+                            <Label className="text-xs font-black text-slate-500 uppercase tracking-widest">Ghi chú & Data Ẩn</Label>
+                            <Textarea name="result_data_text" rows={5} value={resultText} onChange={(e) => setResultText(e.target.value)} className="text-sm font-medium border-slate-200 rounded-xl bg-slate-50" />
                         </div>
 
                         <div className="space-y-3">
