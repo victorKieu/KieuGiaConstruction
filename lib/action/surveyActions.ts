@@ -403,7 +403,7 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
                 const { error: surveyError } = await supabase
                     .from("project_surveys")
                     .update({
-                        progress: progressPercent,
+                        //progress: progressPercent,
                         status: surveyStatus
                     })
                     .eq("id", surveyId);

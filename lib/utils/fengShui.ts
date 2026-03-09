@@ -45,37 +45,37 @@ export const getDirectionName = (degree: number) => DIRECTIONS.find(d => degree 
 
 // ✅ 2. HÀM PHÂN TÍCH VI KHÍ HẬU (MỚI)
 export const analyzeClimate = (degree: number): string => {
-    // Bắc
+    // Bắc (337.5 - 22.5)
     if (degree >= 337.5 || degree < 22.5)
-        return "☀️ Nắng: Cường độ bức xạ thấp, ít nắng, mùa đông thường thiếu sáng.\n🍃 Gió: Chịu trực diện gió mùa Đông Bắc lạnh. Cần thiết kế mặt sau kín, sử dụng cửa kính hộp cách nhiệt.";
+        return "☀️ Nắng: Cường độ bức xạ thấp, dễ thiếu sáng tự nhiên.\n🍃 Gió: Đón gió mùa Đông Bắc. ⚠️ Lưu ý: Phía Nam (sau nhà) sẽ hình thành 'Vùng quẩn gió' (áp lực âm), cần chừa khoảng lùi phía sau đủ rộng để thoát khí, tránh tụ khí tù đọng.";
 
-    // Đông Bắc
+    // Đông Bắc (22.5 - 67.5)
     if (degree >= 22.5 && degree < 67.5)
-        return "⛅ Nắng: Đón nắng nhẹ buổi sáng, năng lượng ổn định.\n❄️ Gió: Luồng gió mùa khô lạnh. Nên bố trí các không gian đệm như sảnh, ban công để ngăn khí lạnh tràn vào nhà.";
+        return "⛅ Nắng: Nhận nắng sớm cường độ trung bình.\n🍃 Gió: Hướng gió mùa lạnh. ⚠️ Lưu ý: Phía Tây Nam sau nhà chịu hiệu ứng quẩn gió, hạn chế đặt cửa xả khí uế (WC, bếp) tại vùng áp lực âm này vì khí sẽ bị hút ngược lại.";
 
-    // Đông
+    // Đông (67.5 - 112.5)
     if (degree >= 67.5 && degree < 112.5)
-        return "☀️ Nắng: Đón ánh sáng bình minh (Sinh khí) rất tốt cho sức khỏe.\n🍃 Gió: Đón gió biển thổi vào, lưu thông không khí tốt. Nên mở ô thoáng lớn để nạp khí tươi.";
+        return "🌅 Nắng: Đón nắng bình minh rất tốt, nhưng tích nhiệt nhanh.\n🍃 Gió: Gió lưu thông tốt. ⚠️ Lưu ý: Mặt Tây phía sau nhà nằm trong vùng khuất gió, cần mở ô thoáng đối diện mặt Đông để tạo chênh lệch áp suất, kích hoạt thông gió xuyên phòng.";
 
-    // Đông Nam
+    // Đông Nam (112.5 - 157.5)
     if (degree >= 112.5 && degree < 157.5)
-        return "⛅ Nắng: Ánh sáng chan hòa, không quá gắt.\n🍃 Gió: Hướng gió lý tưởng nhất, mát mẻ quanh năm. Cần ưu tiên bố trí cửa chính hoặc ban công tại đây.";
+        return "⛅ Nắng: Ánh sáng chan hòa, bức xạ nhiệt vừa phải.\n🍃 Gió: Đón gió nồm mát nhất mùa hè. ⚠️ Lưu ý: Phía Tây Bắc sau nhà sẽ tạo ra 'Vùng quẩn gió' lớn, cần tính toán chiều cao nhà hợp lý để dòng khí vuợt qua được, không quẩn lại sân sau.";
 
-    // Nam
+    // Nam (157.5 - 202.5)
     if (degree >= 157.5 && degree < 202.5)
-        return "☀️ Nắng: Bức xạ mặt trời cao nhưng ổn định. Cần mái hiên rộng để che chắn.\n🌊 Gió: Đón gió nồm mát mẻ vào mùa hè. Đây là hướng giúp ngôi nhà 'đông ấm hè mát'.";
+        return "☀️ Nắng: Bức xạ mặt trời cao nhưng chiếu góc đứng. Cần mái hiên rộng.\n🍃 Gió: Đón gió cực mát. ⚠️ Lưu ý: Lưng nhà phía Bắc sẽ là vùng khí động học tĩnh (vận tốc gió thấp), cần kết hợp giếng trời ở giữa nhà để hỗ trợ hút khí lên trên (hiệu ứng ống khói).";
 
-    // Tây Nam
+    // Tây Nam (202.5 - 247.5)
     if (degree >= 202.5 && degree < 247.5)
-        return "⛅ Nắng: Bắt đầu gắt vào buổi chiều muộn, dễ tích nhiệt.\n🔥 Gió: Thường gặp gió Lào khô nóng. Cần bố trí nhiều cây xanh hoặc tiểu cảnh nước phía trước để giảm nhiệt.";
+        return "🌇 Nắng: Bắt đầu gắt vào trưa chiều, gây tích nhiệt lớn bề mặt.\n🍃 Gió: Dễ gặp gió Tây Nam (gió Lào) khô nóng. ⚠️ Lưu ý: Cần bố trí tiểu cảnh nước hoặc hàng cây cản gió phía trước mặt tiền để làm mát luồng khí trước khi nạp vào nhà.";
 
-    // Tây
+    // Tây (247.5 - 292.5)
     if (degree >= 247.5 && degree < 292.5)
-        return "☀️ Nắng: Nắng quái chiều cực gắt, gây hư hại nội thất và nóng bức. Cần dùng tường đôi, lam chắn nắng hoặc kính phản quang.\n💨 Gió: Khô hanh, khí bị quẩn. Cần giải pháp thông gió xuyên phòng (Cross Ventilation).";
+        return "🔥 Nắng: Hướng xấu nhất, nắng quái chiều cực gắt. Cần lam chắn nắng 45° hoặc tường đôi.\n🍃 Gió: Hướng khuất của các gió chủ đạo mùa hè. Lượng thông gió tự nhiên kém, bắt buộc phải sử dụng quạt thông gió cưỡng bức và các mảng xanh che chắn.";
 
-    // Tây Bắc
+    // Tây Bắc (292.5 - 337.5)
     if (degree >= 292.5 && degree < 337.5)
-        return "⛅ Nắng: Nắng chiều muộn tích nhiệt lâu trong tường. Cần sơn chống nóng hoặc làm mặt đứng kép (double skin).\n💨 Gió: Gió lạnh về đêm vào mùa đông và khô vào mùa hè. Cần kiểm soát kín kẽ hệ thống cửa.";
+        return "🌇 Nắng: Tích nhiệt lâu vào kết cấu bao che.\n🍃 Gió: Đón gió lạnh về đêm. ⚠️ Lưu ý: Phía Đông Nam sau nhà sẽ là vùng quẩn gió, tuyệt đối không đặt hố ga hay bãi rác ở khu vực này để tránh uế khí cuộn ngược vào không gian sống.";
 
     return "Đang phân tích...";
 };
@@ -83,16 +83,16 @@ export const analyzeClimate = (degree: number): string => {
 // 3. Bổ sung Hàm lấy nội dung Hóa Giải (Dễ dàng update nội dung tại đây)
 export const getRemedy = (star: string): string => {
     const remedies: Record<string, string> = {
-        "Tuyệt Mệnh": "Hướng cực xấu. Hóa giải bằng cách đặt bếp hướng Thiên Y (Thiên Y chế Tuyệt Mệnh). Sử dụng vật phẩm hành Hỏa hoặc Kim lồi để trấn áp.",
-        "Ngũ Quỷ": "Dễ gặp tai họa. Hóa giải bằng cách đặt bếp hướng Sinh Khí (Sinh Khí giáng Ngũ Quỷ). Dùng vật phẩm hành Thủy (hồ cá, màu xanh biển) để tiết chế Hỏa của Ngũ Quỷ.",
-        "Lục Sát": "Gây xáo trộn quan hệ. Hóa giải bằng cách đặt bếp hướng Diên Niên. Sử dụng vật phẩm hành Thổ (đồ gốm sứ, đá phong thủy) để khắc chế.",
-        "Họa Hại": "Gặp điều thị phi, khó khăn. Hóa giải bằng cách đặt bếp hướng Phục Vị. Sử dụng vật phẩm hành Kim (chuông gió đồng) để làm suy yếu Thổ của Họa Hại.",
-        "Sinh Khí": "Hướng đại cát. Cần giữ gìn sạch sẽ, mở cửa chính hoặc đặt ban thờ để đón tài lộc.",
-        "Thiên Y": "Tốt cho sức khỏe. Phù hợp đặt phòng ngủ hoặc giường ngủ để giải trừ bệnh tật.",
-        "Diên Niên": "Tốt cho gia đạo. Phù hợp làm phòng khách, phòng làm việc để tăng sự hòa thuận.",
-        "Phục Vị": "Hướng bình an. Phù hợp làm phòng thờ hoặc nơi thiền định, học tập."
+        "Tuyệt Mệnh": "Phong thủy: Đặt bếp hướng Thiên Y để trấn áp. Kiến trúc: Sử dụng vật liệu cách nhiệt và khối nhiệt dày để giữ 'quán tính nhiệt', tránh thất thoát dương khí[cite: 266, 267].",
+        "Ngũ Quỷ": "Phong thủy: Đặt bếp hướng Sinh Khí. Kiến trúc: Tăng cường thông gió xuyên phòng bằng sân trong hoặc giếng trời để giải phóng khí uẩn và nhiệt thừa[cite: 349, 363].",
+        "Lục Sát": "Phong thủy: Đặt bếp hướng Diên Niên. Kiến trúc: Bố trí không gian đệm như ban công, lô gia để giảm tác động trực tiếp của bức xạ mặt trời vào phòng ngủ[cite: 193, 347].",
+        "Họa Hại": "Phong thủy: Đặt bếp hướng Phục Vị. Kiến trúc: Sử dụng lam chắn nắng (ngang hoặc đứng) để điều tiết ánh sáng tán xạ, tránh chói lóa mất tiện nghi nhìn[cite: 212, 353, 358].",
+        "Sinh Khí": "Hướng đại cát. Ưu tiên mở cửa kính lớn lấy sáng tự nhiên, đảm bảo diện tích mở cửa tối thiểu 5% diện tích sàn để nạp vượng khí[cite: 258, 357].",
+        "Thiên Y": "Hướng tốt cho sức khỏe. Phù hợp đặt phòng ngủ để đón nắng sớm nhẹ nhàng, giúp diệt khuẩn và tăng cường vitamin D cho gia chủ[cite: 206, 208].",
+        "Diên Niên": "Hướng hòa thuận. Phù hợp làm phòng khách hoặc không gian sinh hoạt chung để tận dụng hướng gió mát chủ đạo[cite: 320, 323].",
+        "Phục Vị": "Hướng bình an. Thích hợp làm phòng làm việc hoặc phòng thờ, nơi cần sự yên tĩnh và ánh sáng ổn định[cite: 207]."
     };
-    return remedies[star] || "Cần tham khảo ý kiến chuyên gia để bố trí công năng phù hợp.";
+    return remedies[star] || "Tham khảo ý kiến kiến trúc sư của Kiều Gia.";
 };
 
 // 4. Bảng Ma Trận Bát Trạch
@@ -252,4 +252,29 @@ CHI TIẾT 8 HƯỚNG BÁT TRẠCH:
 ${analysis.allDirections.map(d => `- Hướng ${d.dirName} (${d.degree}°): ${d.star} -> ${d.type === 'good' ? '✅ Tốt' : '❌ Xấu'}`).join("\n")}
 -----------------------------------------
 Thiết Kế Bởi Kiều Gia Construction - We Build - You Live`;
+};
+
+// 8. TỪ ĐIỂN KHẢO SÁT LOAN ĐẦU (CẢNH QUAN)
+export const LOAN_DAU_DICTIONARY = [
+    { id: "lo_xung", name: "Lộ xung sát (Đường đâm)", desc: "Đường thẳng/hẻm đâm trực diện vào mặt tiền nhà, gây sát khí mạnh, tổn đinh hao tài.", remedy: "Xây bình phong chắn khí, dùng gương bát quái lồi, hoặc trồng cây lớn trước nhà." },
+    { id: "giac_sat", name: "Giác sát (Góc nhọn)", desc: "Góc nhọn của mái nhà, tường nhà hàng xóm hoặc công trình lớn chĩa thẳng vào cửa.", remedy: "Treo gương bát quái lõm để thu sát, rèm che chắn hoặc đặt chậu cây gai góc (xương rồng)." },
+    { id: "co_duong", name: "Cô dương sát", desc: "Có cột điện, trạm biến áp, hoặc cây to đơn lập nằm ngay chính giữa trước mặt tiền.", remedy: "Đặt cặp tỳ hưu đá, trồng cây dâm bụt/cây leo để hóa giải hỏa khí/sát khí." },
+    { id: "thien_tram", name: "Thiên trảm sát", desc: "Nhà nằm đối diện khe hở hẹp giữa 2 tòa nhà cao tầng (gió lùa qua khe như đao chém).", remedy: "Dùng rèm cửa dày che chắn, đặt đồng tiền xu ngũ đế hoặc quả cầu pha lê ở bậu cửa." },
+    { id: "phan_cung", name: "Phản cung sát", desc: "Đường cong, sông lượn hoặc cầu vượt rẽ ngoặt quay lưng vào nhà (như lưỡi liềm chém).", remedy: "Đặt chậu cây lớn rậm rạp, treo gương lồi hoặc đôi sư tử đá trấn yểm mặt tiền." },
+    { id: "cat_cuoc", name: "Cắt cước sát", desc: "Nhà ở ngay sát mép đường cao tốc hoặc đường ray xe lửa, không có vỉa hè lưu không, khí bị cuốn đi mất.", remedy: "Tạo vùng đệm (sân vườn nhỏ phía trước), làm tường rào cách âm, thường xuyên đóng kín cửa mặt tiền." }
+];
+
+export const generateLoanDauReportText = (selectedIds: string[]): string => {
+    const selectedItems = LOAN_DAU_DICTIONARY.filter(item => selectedIds.includes(item.id));
+
+    if (selectedItems.length === 0) {
+        return `[BÁO CÁO KHẢO SÁT LOAN ĐẦU]\nKết luận: Cảnh quan xung quanh hài hòa, chưa phát hiện các hình thế sát khí nghiêm trọng tác động đến công trình. Đủ điều kiện thuận lợi để triển khai thiết kế.`;
+    }
+
+    let report = `[BÁO CÁO KHẢO SÁT LOAN ĐẦU - CẢNH QUAN]\nPhát hiện các yếu tố Hình Sát ảnh hưởng đến công trình:\n\n`;
+    selectedItems.forEach((item, idx) => {
+        report += `${idx + 1}. ${item.name.toUpperCase()}\n- Đánh giá: ${item.desc}\n- Đề xuất hóa giải: ${item.remedy}\n\n`;
+    });
+
+    return report + `-----------------------------------------\nLưu ý: Thiết kế kiến trúc cần tích hợp các biện pháp hóa giải nêu trên vào hồ sơ kỹ thuật.`;
 };
