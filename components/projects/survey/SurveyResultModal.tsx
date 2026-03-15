@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { updateSurveyTaskResult } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
-import { Loader2, Edit3, Compass, Sparkles, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Building2, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, ShieldAlert } from "lucide-react";
+import { Loader2, Edit3, Compass, Sparkles, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Building2, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, ShieldAlert, Clock, Wrench, ClipboardList, Plus, Trash2 } from "lucide-react";
 import FengShuiCompass from "./FengShuiCompass";
 import { toast } from "sonner";
 import Image from "next/image";
@@ -102,10 +102,12 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     };
     const [topoData, setTopoData] = useState(defaultTopoData);
 
+    // Tích hợp thêm mảng repairItems để lưu danh sách hạng mục sửa chữa
     const defaultRenoData = {
         beamColumnStatus: RENO_OPTIONS.beamColumnStatus[0], waterproofing: RENO_OPTIONS.waterproofing[0],
         oldFoundation: RENO_OPTIONS.oldFoundation[0], reusableMats: RENO_OPTIONS.reusableMats[0],
-        landComparison: RENO_OPTIONS.landComparison[0], landShape: RENO_OPTIONS.landShape[0], boundary: RENO_OPTIONS.boundary[0]
+        landComparison: RENO_OPTIONS.landComparison[0], landShape: RENO_OPTIONS.landShape[0], boundary: RENO_OPTIONS.boundary[0],
+        repairItems: [] as { id: string, area: string, task: string, volume: string }[]
     };
     const [renoData, setRenoData] = useState(defaultRenoData);
 
@@ -122,7 +124,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
     let activeForm = "DEFAULT";
 
-    if (taskCode === "PHON_THUY" || taskTitleOrName.includes("PHONG THỦY") || taskTitleOrName.includes("HƯỚNG VỊ")) {
+    if (taskCode === "PHON_THUY" || taskTitleOrName.includes("PHONG THỦY") || taskTitleOrName.includes("HƯỚNG VỊ") || taskTitleOrName.includes("LA BÀN")) {
         activeForm = "FENG_SHUI";
     } else if (taskCode === "CT_SC" || taskTitleOrName.includes("CẢI TẠO") || taskTitleOrName.includes("SỬA CHỮA") || taskTitleOrName.includes("KẾT CẤU")) {
         activeForm = "CAI_TAO";
@@ -168,7 +170,10 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
                 if (data.geoData) setGeoData({ ...defaultGeoData, ...data.geoData });
                 if (data.topoData) setTopoData({ ...defaultTopoData, ...data.topoData });
-                if (data.renoData) setRenoData({ ...defaultRenoData, ...data.renoData });
+                if (data.renoData) {
+                    // Đảm bảo repairItems luôn là array khi load từ db
+                    setRenoData({ ...defaultRenoData, ...data.renoData, repairItems: data.renoData.repairItems || [] });
+                }
 
                 setAnalysisJson(JSON.stringify(data));
             }
@@ -219,6 +224,30 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const [state, formAction] = useActionState(wrappedAction as any, { success: false, message: "" });
 
     // ==============================================================
+    // ✅ HÀM QUẢN LÝ BẢNG KÊ HẠNG MỤC SỬA CHỮA
+    // ==============================================================
+    const addRepairItem = () => {
+        setRenoData({
+            ...renoData,
+            repairItems: [...renoData.repairItems, { id: Date.now().toString(), area: '', task: '', volume: '' }]
+        });
+    };
+
+    const removeRepairItem = (id: string) => {
+        setRenoData({
+            ...renoData,
+            repairItems: renoData.repairItems.filter(item => item.id !== id)
+        });
+    };
+
+    const handleRepairItemChange = (id: string, field: 'area' | 'task' | 'volume', value: string) => {
+        setRenoData({
+            ...renoData,
+            repairItems: renoData.repairItems.map(item => item.id === id ? { ...item, [field]: value } : item)
+        });
+    };
+
+    // ==============================================================
     // ✅ HÀM XUẤT PDF (TRUY XUẤT TRỰC TIẾP TỪ VIEW MODE)
     // ==============================================================
     const handleExportPDF = async () => {
@@ -233,8 +262,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                 margin: [15, 10, 20, 10] as [number, number, number, number],
                 filename: `${formCode}_${projectCode || 'DA'}_${finalTaskTitle.replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg' as const, quality: 1 },
-                html2canvas: { scale: 3, useCORS: true, letterRendering: true }, // Tăng scale cho nét
-                pagebreak: { mode: ['css', 'legacy'] }, // Cho phép ngắt trang qua CSS
+                html2canvas: { scale: 8, useCORS: true, letterRendering: true },
+                pagebreak: { mode: ['css', 'legacy'] },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
             };
 
@@ -539,7 +568,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                             <p className="text-center text-[11px] text-slate-600 font-medium italic mt-4">Sơ đồ ma trận 9 ô (Cửu cung) giúp định vị sơ bộ các khối chức năng trên mặt bằng khu đất.</p>
                                         </div>
 
-                                        {/* ✅ ÉP KHỐI PHI TINH SANG TRANG MỚI NẾU PDF IN RA */}
                                         <div className="html2pdf__page-break"></div>
                                         {flyingStars && thanSat && (
                                             <div className="mb-8" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
@@ -647,7 +675,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                 {isCaiTaoTask && (
                                     <div className="mb-8">
                                         <h3 className="text-sm font-bold text-white bg-rose-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO HIỆN TRẠNG KẾT CẤU & HÌNH HỌC</h3>
-                                        <div className="border border-slate-300 rounded-lg overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
+                                        <div className="border border-slate-300 rounded-lg overflow-hidden mb-6" style={{ pageBreakInside: 'avoid' }}>
                                             <table className="w-full text-sm text-left border-collapse">
                                                 <tbody>
                                                     <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Hiện trạng Kết cấu công trình cũ</th></tr>
@@ -663,6 +691,31 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                                 </tbody>
                                             </table>
                                         </div>
+
+                                        {/* BẢNG KÊ CHI TIẾT HẠNG MỤC SỬA CHỮA TRONG PDF */}
+                                        {renoData.repairItems && renoData.repairItems.length > 0 && (
+                                            <div className="border border-slate-300 rounded-lg overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
+                                                <table className="w-full text-sm text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-slate-100"><th colSpan={3} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Bảng kê chi tiết hạng mục cần sửa chữa</th></tr>
+                                                        <tr className="bg-slate-50 text-slate-600 text-xs">
+                                                            <th className="p-2 border-b border-r border-slate-200 w-1/4">Khu vực / Phòng</th>
+                                                            <th className="p-2 border-b border-r border-slate-200 w-1/2">Nội dung công việc đề xuất</th>
+                                                            <th className="p-2 border-b border-slate-200 w-1/4">KL Sơ bộ</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {renoData.repairItems.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50">
+                                                                <td className="p-2 border-b border-r border-slate-200 font-medium text-slate-800">{item.area || "-"}</td>
+                                                                <td className="p-2 border-b border-r border-slate-200 text-slate-700">{item.task || "-"}</td>
+                                                                <td className="p-2 border-b border-slate-200 text-slate-700">{item.volume || "-"}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -684,7 +737,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
                                 {/* ============ KHỐI ẢNH ĐÍNH KÈM ============ */}
                                 {existingImages.length > 0 && (
-                                    <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }} className="mt-6 mb-6">
+                                    <div style={{ pageBreakInside: 'avoid' }}>
                                         <h3 className="text-sm font-bold bg-slate-800 text-white px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md">
                                             HÌNH ẢNH HIỆN TRẠNG THỰC ĐỊA
                                         </h3>
@@ -781,26 +834,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                         <div className="space-y-1.5 sm:col-span-2">
                                             <span className="text-[10px] font-bold text-blue-700 uppercase">Cống thoát nước</span>
                                             <Select value={geoData.drainage} onValueChange={v => setGeoData({ ...geoData, drainage: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.drainage.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="p-5 bg-indigo-50/50 border border-indigo-200 rounded-2xl shadow-inner space-y-4">
-                                    <Label className="flex items-center gap-2 text-indigo-800 font-black text-sm uppercase tracking-widest border-b border-indigo-200 pb-2">
-                                        <Building2 className="w-4 h-4 text-indigo-600" /> HIỆN TRẠNG NHÀ HÀNG XÓM
-                                    </Label>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <div className="space-y-1.5">
-                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Bên Trái</span>
-                                            <Select value={geoData.neighborLeft} onValueChange={v => setGeoData({ ...geoData, neighborLeft: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.neighbor.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Bên Phải</span>
-                                            <Select value={geoData.neighborRight} onValueChange={v => setGeoData({ ...geoData, neighborRight: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.neighbor.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Phía Sau</span>
-                                            <Select value={geoData.neighborBack} onValueChange={v => setGeoData({ ...geoData, neighborBack: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.neighbor.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
                                         </div>
                                     </div>
                                 </div>
@@ -926,6 +959,31 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                             <span className="text-[10px] font-bold text-indigo-700 uppercase">Tình trạng ranh mốc</span>
                                             <Select value={renoData.boundary} onValueChange={v => setRenoData({ ...renoData, boundary: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{RENO_OPTIONS.boundary.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
                                         </div>
+                                    </div>
+                                </div>
+
+                                {/* CHI TIẾT HẠNG MỤC SỬA CHỮA (DYNAMIC LIST) */}
+                                <div className="p-5 bg-emerald-50/50 border border-emerald-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-emerald-800 font-black text-sm uppercase tracking-widest border-b border-emerald-200 pb-2">
+                                        <ClipboardList className="w-4 h-4 text-emerald-600" /> BẢNG CHI TIẾT HẠNG MỤC SỬA CHỮA
+                                    </Label>
+                                    <div className="space-y-3">
+                                        {renoData.repairItems.length === 0 && (
+                                            <p className="text-xs text-emerald-600 italic text-center py-2">Chưa có hạng mục sửa chữa nào. Bấm thêm hạng mục để tạo bảng dự toán.</p>
+                                        )}
+                                        {renoData.repairItems.map((item) => (
+                                            <div key={item.id} className="flex gap-2 items-center bg-white p-2 rounded-lg border border-emerald-100 shadow-sm transition-all hover:border-emerald-300">
+                                                <Input placeholder="Khu vực (VD: Phòng Khách)" value={item.area} onChange={(e) => handleRepairItemChange(item.id, 'area', e.target.value)} className="w-1/3 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Công tác (VD: Đập gạch cũ, lát lại)" value={item.task} onChange={(e) => handleRepairItemChange(item.id, 'task', e.target.value)} className="w-1/2 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Khối lượng sơ bộ" value={item.volume} onChange={(e) => handleRepairItemChange(item.id, 'volume', e.target.value)} className="w-1/4 text-xs bg-slate-50 focus:bg-white" />
+                                                <Button type="button" variant="ghost" size="icon" className="text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => removeRepairItem(item.id)}>
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                        <Button type="button" variant="outline" size="sm" onClick={addRepairItem} className="w-full border-dashed border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors">
+                                            <Plus className="w-4 h-4 mr-2" /> Thêm hạng mục
+                                        </Button>
                                     </div>
                                 </div>
                             </div>
