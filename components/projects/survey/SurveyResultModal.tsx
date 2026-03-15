@@ -11,14 +11,14 @@ import { Switch } from "@/components/ui/switch";
 import { updateSurveyTaskResult } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
-import { Loader2, Edit3, Compass, Sparkles, Home, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Building2, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, Wrench, Clock, ShieldAlert } from "lucide-react";
+import { Loader2, Edit3, Compass, Sparkles, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Building2, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, ShieldAlert } from "lucide-react";
 import FengShuiCompass from "./FengShuiCompass";
 import { toast } from "sonner";
 import Image from "next/image";
 import { evaluateFengShui, generateFengShuiReportText, type FullFengShuiAnalysis, LOAN_DAU_DICTIONARY, generateLoanDauReportText } from "@/lib/utils/fengShui";
 import { calculateFlyingStars, calculateThanSat, type FlyingStarResult, type ThanSatResult } from "@/lib/utils/advancedFengShui";
 
-// ================= CÁC TÙY CHỌN CHO KHẢO SÁT ĐỊA CHẤT & LOGISTICS =================
+// ================= CÁC TÙY CHỌN CHO KHẢO SÁT =================
 const GEO_OPTIONS = {
     roadAccess: ["Ngõ < 2m (Chỉ xe ba gác)", "Ngõ 2-3m (Xe tải 1 tấn)", "Đường > 3m (Xe cẩu, bê tông vào tận nơi)"],
     storage: ["Có bãi tập kết rộng", "Phải để vật tư ngoài đường", "Rất chật, phải vận chuyển vật tư theo ngày"],
@@ -34,7 +34,6 @@ const GEO_OPTIONS = {
     sanitation: ["Bình thường", "Phải quây bạt kín 100%", "Khu vực khắt khe về tiếng ồn/bụi"]
 };
 
-// ================= CÁC TÙY CHỌN CHO ĐỊA HÌNH =================
 const TOPO_OPTIONS = {
     obstaclesAir: ["Không vướng mắc", "Vướng dây điện/Cáp viễn thông chằng chịt", "Vướng cây xanh lớn, ban công nhà đối diện"],
     obstaclesUnderground: ["Đất nguyên thổ", "Có hầm tự hoại/bể nước ngầm cũ", "Có giếng khoan cũ", "Có đường ống nước/cáp ngầm chạy ngang"],
@@ -44,7 +43,6 @@ const TOPO_OPTIONS = {
     diggingMethod: ["Đào mở trần tự do", "Phải đóng cừ tràm/Cừ Larsen chặn đất", "Phải chống văng nhà hàng xóm"]
 };
 
-// ================= CÁC TÙY CHỌN CHO CẢI TẠO & HÌNH HỌC =================
 const RENO_OPTIONS = {
     beamColumnStatus: ["Bình thường, chịu lực tốt", "Nứt chân chim lớp vữa", "Nứt kết cấu, lòi thép han gỉ"],
     waterproofing: ["Không thấm", "Thấm tường ngoài", "Thấm sàn mái / Sê-nô", "Thấm vách giáp ranh hàng xóm"],
@@ -87,12 +85,9 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const [flyingStars, setFlyingStars] = useState<Record<string, FlyingStarResult> | null>(null);
     const [thanSat, setThanSat] = useState<ThanSatResult[] | null>(null);
 
-    // State Địa chất & Logistics
     const defaultGeoData = {
-        isDrilling: false,
-        roadAccess: GEO_OPTIONS.roadAccess[1], storage: GEO_OPTIONS.storage[0], elevation: GEO_OPTIONS.elevation[1],
-        soilType: GEO_OPTIONS.soilType[0], waterLevel: GEO_OPTIONS.waterLevel[0],
-        electricity: GEO_OPTIONS.electricity[0], water: GEO_OPTIONS.water[0], drainage: GEO_OPTIONS.drainage[0],
+        isDrilling: false, roadAccess: GEO_OPTIONS.roadAccess[1], storage: GEO_OPTIONS.storage[0], elevation: GEO_OPTIONS.elevation[1],
+        soilType: GEO_OPTIONS.soilType[0], waterLevel: GEO_OPTIONS.waterLevel[0], electricity: GEO_OPTIONS.electricity[0], water: GEO_OPTIONS.water[0], drainage: GEO_OPTIONS.drainage[0],
         neighborLeft: GEO_OPTIONS.neighbor[0], neighborRight: GEO_OPTIONS.neighbor[0], neighborBack: GEO_OPTIONS.neighbor[2],
         workingHours: GEO_OPTIONS.workingHours[0], vehicleLimit: GEO_OPTIONS.vehicleLimit[0], sanitation: GEO_OPTIONS.sanitation[0],
         drillingHoles: 3, drillingDepth: 30, drillingWaterLevel: 2.5, drillingSpt: "Có thực hiện 2m / 1 nhát",
@@ -100,7 +95,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     };
     const [geoData, setGeoData] = useState(defaultGeoData);
 
-    // State Địa hình
     const defaultTopoData = {
         obstaclesAir: TOPO_OPTIONS.obstaclesAir[0], obstaclesUnderground: TOPO_OPTIONS.obstaclesUnderground[0],
         demolition: TOPO_OPTIONS.demolition[0], debris: TOPO_OPTIONS.debris[0],
@@ -108,7 +102,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     };
     const [topoData, setTopoData] = useState(defaultTopoData);
 
-    // State Kết cấu & Cải tạo
     const defaultRenoData = {
         beamColumnStatus: RENO_OPTIONS.beamColumnStatus[0], waterproofing: RENO_OPTIONS.waterproofing[0],
         oldFoundation: RENO_OPTIONS.oldFoundation[0], reusableMats: RENO_OPTIONS.reusableMats[0],
@@ -121,24 +114,42 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const fileInputRef = useRef<HTMLInputElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
 
-    // Phân loại Task
-    const titleUpper = task?.title?.toUpperCase() || "";
-    const isFengShuiTask = titleUpper.includes("HƯỚNG") || titleUpper.includes("PHONG THỦY");
-    const isLoanDauTask = titleUpper.includes("LOAN ĐẦU") || titleUpper.includes("CẢNH QUAN");
-    const isDiaChatTask = titleUpper.includes("ĐỊA CHẤT") || titleUpper.includes("HẠ TẦNG");
-    const isDiaHinhTask = titleUpper.includes("ĐỊA HÌNH") || titleUpper.includes("HIỆN TRẠNG");
-    const isCaiTaoTask = titleUpper.includes("CẢI TẠO") || titleUpper.includes("SỬA CHỮA") || titleUpper.includes("KẾT CẤU") || titleUpper.includes("ĐO ĐẠC");
+    // ==============================================================
+    // ✅ THUẬT TOÁN NHẬN DIỆN TASK ĐỘC QUYỀN
+    // ==============================================================
+    const taskCode = (task?.code || "").toUpperCase();
+    const taskTitleOrName = (task?.title || task?.name || "").toUpperCase();
 
-    // ✅ BỔ SUNG: HÀM GET MÃ SỐ BIỂU MẪU ĐỘNG
+    let activeForm = "DEFAULT";
+
+    if (taskCode === "PHON_THUY" || taskTitleOrName.includes("PHONG THỦY") || taskTitleOrName.includes("HƯỚNG VỊ")) {
+        activeForm = "FENG_SHUI";
+    } else if (taskCode === "CT_SC" || taskTitleOrName.includes("CẢI TẠO") || taskTitleOrName.includes("SỬA CHỮA") || taskTitleOrName.includes("KẾT CẤU")) {
+        activeForm = "CAI_TAO";
+    } else if (taskCode === "DIA_CHAT" || taskTitleOrName.includes("ĐỊA CHẤT") || taskTitleOrName.includes("HẠ TẦNG")) {
+        activeForm = "DIA_CHAT";
+    } else if (taskCode === "DIA_HINH" || taskTitleOrName.includes("ĐỊA HÌNH") || taskTitleOrName.includes("HIỆN TRẠNG")) {
+        activeForm = "DIA_HINH";
+    } else if (taskCode === "LOAN_DAU" || taskTitleOrName.includes("LOAN ĐẦU") || taskTitleOrName.includes("CẢNH QUAN")) {
+        activeForm = "LOAN_DAU";
+    }
+
+    const isFengShuiTask = activeForm === "FENG_SHUI";
+    const isCaiTaoTask = activeForm === "CAI_TAO";
+    const isDiaChatTask = activeForm === "DIA_CHAT";
+    const isDiaHinhTask = activeForm === "DIA_HINH";
+    const isLoanDauTask = activeForm === "LOAN_DAU";
+
     const getFormCode = () => {
         if (isCaiTaoTask) return "BM-KS-05";
         if (isDiaHinhTask) return "BM-KS-04";
         if (isDiaChatTask) return "BM-KS-03";
         if (isLoanDauTask) return "BM-KS-02";
         if (isFengShuiTask) return "BM-KS-01";
-        return "BM-KS-00"; // Form mặc định nếu không khớp
+        return "BM-KS-00";
     };
     const formCode = getFormCode();
+    const finalTaskTitle = task?.title || task?.name || "BÁO CÁO KHẢO SÁT HIỆN TRẠNG";
 
     useEffect(() => {
         if (isOpen) {
@@ -207,6 +218,9 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
     const [state, formAction] = useActionState(wrappedAction as any, { success: false, message: "" });
 
+    // ==============================================================
+    // ✅ HÀM XUẤT PDF (TRUY XUẤT TRỰC TIẾP TỪ VIEW MODE)
+    // ==============================================================
     const handleExportPDF = async () => {
         if (!reportRef.current) return;
         setIsExporting(true);
@@ -217,12 +231,11 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
             const element = reportRef.current;
             const opt = {
                 margin: [15, 10, 20, 10] as [number, number, number, number],
-                filename: `${formCode}_${projectCode || 'DA'}_${task?.title?.replace(/\s+/g, '_')}.pdf`,
+                filename: `${formCode}_${projectCode || 'DA'}_${finalTaskTitle.replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg' as const, quality: 1 },
-                html2canvas: { scale: 4, useCORS: true, letterRendering: true, windowWidth: 800, width: 794 },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-                // Thêm thuộc tính này để chống việc tạo trang trắng tự động
-                pagebreak: { mode: ['css', 'legacy'] }
+                html2canvas: { scale: 3, useCORS: true, letterRendering: true }, // Tăng scale cho nét
+                pagebreak: { mode: ['css', 'legacy'] }, // Cho phép ngắt trang qua CSS
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
             };
 
             await (html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf: any) => {
@@ -312,8 +325,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     const renderAdvancedFengShui = () => {
         if (!flyingStars || !thanSat) return null;
         return (
-            <div className="mt-8 bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                <div style={{ pageBreakInside: 'avoid' }}>
+            <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }} className="mt-6 mb-6">
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
                             <Sparkles className="w-5 h-5" /> Trận Đồ Huyền Không Phi Tinh
@@ -339,24 +352,24 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             );
                         })}
                     </div>
-                </div>
 
-                <div className="pt-5 border-t border-slate-200">
-                    <h4 className="text-xs font-black text-slate-700 uppercase mb-3 flex items-center gap-2" style={{ pageBreakInside: 'avoid' }}>
-                        <Crosshair className="w-4 h-4 text-amber-600" /> Tọa độ Thần Sát (Cắt cổng, Mở cửa)
-                    </h4>
-                    <div className="space-y-2">
-                        {thanSat.map((item, idx) => (
-                            <div key={idx} className={`flex items-start gap-3 p-3 border rounded-lg ${item.isGood ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`} style={{ pageBreakInside: 'avoid' }}>
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 text-xs text-center leading-tight ${item.isGood ? 'bg-amber-200 text-amber-700' : 'bg-red-200 text-red-700'}`}>
-                                    {item.type.includes("Sát") || item.type.includes("Vong") ? "SÁT" : "CÁT"}
+                    <div className="pt-5 border-t border-slate-200">
+                        <h4 className="text-xs font-black text-slate-700 uppercase mb-3 flex items-center gap-2">
+                            <Crosshair className="w-4 h-4 text-amber-600" /> Tọa độ Thần Sát (Cắt cổng, Mở cửa)
+                        </h4>
+                        <div className="space-y-2">
+                            {thanSat.map((item, idx) => (
+                                <div key={idx} className={`flex items-start gap-3 p-3 border rounded-lg ${item.isGood ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 text-xs text-center leading-tight ${item.isGood ? 'bg-amber-200 text-amber-700' : 'bg-red-200 text-red-700'}`}>
+                                        {item.type.includes("Sát") || item.type.includes("Vong") ? "SÁT" : "CÁT"}
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-800">{item.type}: <span className="text-red-600">{item.degree}</span></p>
+                                        <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">{item.desc}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs font-bold text-slate-800">{item.type}: <span className="text-red-600">{item.degree}</span></p>
-                                    <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">{item.desc}</p>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -374,498 +387,338 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="sm:max-w-2xl max-h-[95vh] overflow-y-auto !p-0 gap-0 border-none shadow-2xl bg-slate-50">
+            <DialogContent aria-describedby={undefined} className="sm:max-w-[900px] w-[95vw] max-h-[95vh] overflow-hidden !p-0 gap-0 border-none shadow-2xl bg-slate-200 flex flex-col">
 
-                {/* ================= PDF TEMPLATE (HIDDEN) ================= */}
-                <div style={{ position: 'absolute', top: 0, left: 0, opacity: 0, pointerEvents: 'none', zIndex: -50 }}>
-                    {/* ✅ ĐÃ SỬA LỖI 1: Bỏ minHeight, vuốt lại padding dưới thành 10px để không bị tràn 1 pixel sinh ra trang trắng */}
-                    <div ref={reportRef} className="bg-white text-slate-900 font-sans" style={{ width: '794px', padding: '40px 40px 10px 40px', boxSizing: 'border-box' }}>
-
-                        {/* ✅ ĐÃ SỬA LỖI 2: HEADER IN ĐỘNG MÃ SỐ BIỂU MẪU */}
-                        <table className="w-full mb-8 border-collapse border border-slate-900" style={{ tableLayout: 'fixed', width: '100%', pageBreakInside: 'avoid' }}>
-                            <tbody>
-                                <tr>
-                                    <td className="w-[20%] p-2 border border-slate-900 text-center align-middle">
-                                        <img src="/images/logo.png" alt="Logo" style={{ maxHeight: '150px', margin: '0 auto', objectFit: 'contain' }} crossOrigin="anonymous" />
-                                    </td>
-                                    <td className="w-[50%] p-2 border border-slate-900 text-center align-middle overflow-hidden">
-                                        <h1 className="text-lg font-black text-blue-900 uppercase tracking-widest leading-tight">{COMPANY_NAME}</h1>
-                                        <p className="text-xs font-bold text-slate-600 mt-1 uppercase">Hồ sơ khảo sát & Tư vấn thiết kế</p>
-                                    </td>
-                                    <td className="w-[30%] p-3 border border-slate-900 text-[11px] text-slate-800 align-middle">
-                                        <div className="flex justify-between items-center border-b border-slate-300 pb-1 mb-1 gap-2">
-                                            <span className="shrink-0">Mã DA:</span><span className="font-bold text-blue-900 text-right text-[10px] leading-normal">{projectCode || "N/A"}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center border-b border-slate-300 pb-1 mb-1 gap-2">
-                                            <span className="shrink-0">Ngày lập:</span><span className="font-bold text-right leading-normal">{new Date().toLocaleDateString('vi-VN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center gap-2">
-                                            <span className="shrink-0">Mã số BM:</span><span className="font-bold text-red-700 text-right leading-normal">{formCode}</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-
-                        <div className="text-center mb-6" style={{ pageBreakInside: 'avoid' }}>
-                            <h2 className="text-[22px] font-black uppercase text-red-700 tracking-wide mb-2">{task?.title || "BÁO CÁO KHẢO SÁT HIỆN TRẠNG"}</h2>
-                            <p className="text-sm font-bold text-slate-800 bg-slate-100 inline-block px-5 py-2 rounded-full border border-slate-300 shadow-sm break-words max-w-full">
-                                Dự án: {projectName || "Tên dự án chưa được cập nhật"}
-                            </p>
+                {/* ========================================================================= */}
+                {/* ✅ MÀN HÌNH VIEW MODE (CHẾ ĐỘ IN A4 TRỰC QUAN - WYSIWYG) */}
+                {/* ========================================================================= */}
+                {isViewMode ? (
+                    <>
+                        {/* THANH CÔNG CỤ (ACTION BAR) */}
+                        <div className="shrink-0 flex items-center justify-between p-4 bg-slate-900 text-white shadow-md z-10">
+                            <div>
+                                <DialogTitle className="text-lg font-black uppercase flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-blue-400" /> BẢN XEM TRƯỚC BÁO CÁO
+                                </DialogTitle>
+                                <p className="text-xs text-slate-400 mt-1 truncate max-w-sm">{finalTaskTitle}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" className="border-slate-600 bg-slate-800 hover:bg-slate-700 text-white" onClick={() => setIsOpen(false)}>
+                                    Đóng
+                                </Button>
+                                <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg" onClick={() => setIsViewMode(false)}>
+                                    <Edit3 className="w-4 h-4 mr-2" /> Chỉnh sửa
+                                </Button>
+                                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg" onClick={handleExportPDF} disabled={isExporting}>
+                                    {isExporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileText className="w-4 h-4 mr-2" />} Xuất PDF
+                                </Button>
+                            </div>
                         </div>
 
-                        {/* RENDER BÁT TRẠCH & CỬU CUNG */}
-                        {fsAnalysis && (
-                            <>
-                                <div className="mb-6">
-                                    <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">I. KẾT QUẢ ĐO VÀ PHÂN TÍCH THỰC ĐỊA</h3>
-                                    <div className="border border-blue-900/20 p-4 rounded-b-md rounded-tr-md bg-blue-50/30 text-sm space-y-4">
-                                        <div className="grid grid-cols-2 gap-y-2 gap-x-8">
-                                            <p><strong>Gia chủ:</strong> {ownerName || "Đang cập nhật"}</p><p><strong>Năm sinh:</strong> {birthYear} ({gender === 'nam' ? 'Nam' : 'Nữ'})</p>
-                                            <p><strong>Cung mệnh:</strong> <span className="text-red-700 font-bold">{fsAnalysis.cung}</span></p><p><strong>Nhóm mệnh:</strong> <span className="text-red-700 font-bold">{fsAnalysis.nhom}</span></p>
-                                        </div>
-                                        <div className="pt-3 border-t border-blue-900/10">
-                                            <p className="text-blue-900 font-bold mb-1">1. Luận giải Cung Sao:</p>
-                                            <ul className="list-disc list-inside ml-2 space-y-1 text-slate-800">
-                                                <li><strong>Hướng đo:</strong> {fsAnalysis.currentDirection.name} ({fsAnalysis.currentDirection.degree}°)</li>
-                                                <li><strong>Cung Sao:</strong> <span className={fsAnalysis.currentDirection.isGood ? 'text-green-700 font-bold' : 'text-red-700 font-bold'}>{fsAnalysis.currentDirection.star} ({fsAnalysis.currentDirection.isGood ? 'CÁT' : 'HUNG'})</span></li>
-                                                <li><strong>Luận giải:</strong> {fsAnalysis.currentDirection.desc}</li>
-                                            </ul>
-                                        </div>
-                                        {fsAnalysis?.currentDirection?.climateAnalysis && (
-                                            <div className="pt-3 border-t border-blue-900/10">
-                                                <p className="text-blue-900 font-bold mb-1">2. Phân tích Vi khí hậu (Nắng & Gió):</p>
-                                                <div className="italic text-slate-800 leading-normal whitespace-pre-line text-[12px]">{fsAnalysis.currentDirection.climateAnalysis}</div>
-                                            </div>
-                                        )}
-                                        {fsAnalysis?.currentDirection?.remedy && (
-                                            <div className="pt-3 border-t border-blue-900/10">
-                                                <p className="text-blue-900 font-bold mb-1">3. Lời khuyên & Hóa giải:</p>
-                                                <div className="text-slate-800 font-medium leading-normal whitespace-pre-line text-[12px]">{fsAnalysis.currentDirection.remedy}</div>
-                                            </div>
-                                        )}
-                                    </div>
+                        {/* VÙNG CHỨA TỜ GIẤY A4 */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200">
+                            {/* TỜ GIẤY A4 (Bản in PDF sẽ bám đúng vào khung div này) */}
+                            <div
+                                ref={reportRef}
+                                className="bg-white mx-auto shadow-xl text-slate-900 font-sans"
+                                style={{ maxWidth: '794px', width: '100%', padding: '40px' }}
+                            >
+                                {/* HEADER BÁO CÁO */}
+                                <table className="w-full mb-8 border-collapse border border-slate-900" style={{ tableLayout: 'fixed', width: '100%', pageBreakInside: 'avoid' }}>
+                                    <tbody>
+                                        <tr>
+                                            <td className="w-[20%] p-2 border border-slate-900 text-center align-middle">
+                                                <img src="/images/logo.png" alt="Logo" style={{ maxHeight: '150px', margin: '0 auto', objectFit: 'contain' }} crossOrigin="anonymous" />
+                                            </td>
+                                            <td className="w-[50%] p-2 border border-slate-900 text-center align-middle overflow-hidden">
+                                                <h1 className="text-lg font-black text-blue-900 uppercase tracking-widest leading-tight">{COMPANY_NAME}</h1>
+                                                <p className="text-xs font-bold text-slate-600 mt-1 uppercase">Hồ sơ khảo sát & Tư vấn thiết kế</p>
+                                            </td>
+                                            <td className="w-[30%] p-3 border border-slate-900 text-[11px] text-slate-800 align-middle">
+                                                <div className="flex justify-between items-center border-b border-slate-300 pb-1 mb-1 gap-2">
+                                                    <span className="shrink-0">Mã DA:</span><span className="font-bold text-blue-900 text-right text-[10px] leading-normal">{projectCode || "N/A"}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center border-b border-slate-300 pb-1 mb-1 gap-2">
+                                                    <span className="shrink-0">Ngày lập:</span><span className="font-bold text-right leading-normal">{new Date().toLocaleDateString('vi-VN')}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center gap-2">
+                                                    <span className="shrink-0">Mã số BM:</span><span className="font-bold text-red-700 text-right leading-normal">{formCode}</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <div className="text-center mb-8" style={{ pageBreakInside: 'avoid' }}>
+                                    <h2 className="text-[22px] font-black uppercase text-red-700 tracking-wide mb-2">{finalTaskTitle}</h2>
+                                    <p className="text-sm font-bold text-slate-800 bg-slate-100 inline-block px-5 py-2 rounded-full border border-slate-300 shadow-sm break-words max-w-full">
+                                        Dự án: {projectName || "Tên dự án chưa được cập nhật"}
+                                    </p>
                                 </div>
 
-                                <div className="mb-8">
-                                    <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">II. CHI TIẾT 8 HƯỚNG BÁT TRẠCH</h3>
-                                    <table className="w-full border-collapse border border-slate-400 text-xs" style={{ tableLayout: 'fixed', width: '100%' }}>
-                                        <thead>
-                                            <tr className="bg-slate-200 text-slate-900">
-                                                <th className="border border-slate-400 p-2 text-center" style={{ width: '15%' }}>Hướng</th><th className="border border-slate-400 p-2 text-center" style={{ width: '20%' }}>Cung Sao</th>
-                                                <th className="border border-slate-400 p-2 text-center" style={{ width: '15%' }}>Đánh giá</th><th className="border border-slate-400 p-2 text-left" style={{ width: '50%' }}>Gợi ý bố trí công năng</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {fsAnalysis.allDirections.map((d, idx) => (
-                                                <tr key={idx} className="text-center" style={{ pageBreakInside: 'avoid' }}>
-                                                    <td className="border border-slate-400 p-2 font-bold bg-slate-50 break-words">{d.dirName} ({d.degree}°)</td>
-                                                    <td className={`border border-slate-400 p-2 font-bold ${d.type === 'good' ? 'text-green-700' : 'text-red-700'} break-words`}>{d.star}</td>
-                                                    <td className="border border-slate-400 p-2 font-bold">{d.type === 'good' ? 'CÁT' : 'HUNG'}</td>
-                                                    <td className="border border-slate-400 p-2 text-left whitespace-normal break-words leading-relaxed">{d.type === 'good' ? 'Cửa chính, Ban thờ, Phòng ngủ, Phòng khách' : 'Nhà vệ sinh, Kho chứa đồ, Bếp (Tọa hung hướng cát)'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                {/* ============ KHỐI 1: PHONG THỦY ============ */}
+                                {fsAnalysis && isFengShuiTask && (
+                                    <>
+                                        <div className="mb-6" style={{ pageBreakInside: 'avoid' }}>
+                                            <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">I. KẾT QUẢ ĐO VÀ PHÂN TÍCH THỰC ĐỊA</h3>
+                                            <div className="border border-blue-900/20 p-4 rounded-b-md rounded-tr-md bg-blue-50/30 text-sm space-y-4">
+                                                <div className="grid grid-cols-2 gap-y-2 gap-x-8">
+                                                    <p><strong>Gia chủ:</strong> {ownerName || "Đang cập nhật"}</p><p><strong>Năm sinh:</strong> {birthYear} ({gender === 'nam' ? 'Nam' : 'Nữ'})</p>
+                                                    <p><strong>Cung mệnh:</strong> <span className="text-red-700 font-bold">{fsAnalysis.cung}</span></p><p><strong>Nhóm mệnh:</strong> <span className="text-red-700 font-bold">{fsAnalysis.nhom}</span></p>
+                                                </div>
+                                                <div className="pt-3 border-t border-blue-900/10">
+                                                    <p className="text-blue-900 font-bold mb-1">1. Luận giải Cung Sao:</p>
+                                                    <ul className="list-disc list-inside ml-2 space-y-1 text-slate-800">
+                                                        <li><strong>Hướng đo:</strong> {fsAnalysis.currentDirection.name} ({fsAnalysis.currentDirection.degree}°)</li>
+                                                        <li><strong>Cung Sao:</strong> <span className={fsAnalysis.currentDirection.isGood ? 'text-green-700 font-bold' : 'text-red-700 font-bold'}>{fsAnalysis.currentDirection.star} ({fsAnalysis.currentDirection.isGood ? 'CÁT' : 'HUNG'})</span></li>
+                                                        <li><strong>Luận giải:</strong> {fsAnalysis.currentDirection.desc}</li>
+                                                    </ul>
+                                                </div>
+                                                {fsAnalysis?.currentDirection?.climateAnalysis && (
+                                                    <div className="pt-3 border-t border-blue-900/10">
+                                                        <p className="text-blue-900 font-bold mb-1">2. Phân tích Vi khí hậu (Nắng & Gió):</p>
+                                                        <div className="italic text-slate-800 leading-normal whitespace-pre-line text-[12px]">{fsAnalysis.currentDirection.climateAnalysis}</div>
+                                                    </div>
+                                                )}
+                                                {fsAnalysis?.currentDirection?.remedy && (
+                                                    <div className="pt-3 border-t border-blue-900/10">
+                                                        <p className="text-blue-900 font-bold mb-1">3. Lời khuyên & Hóa giải:</p>
+                                                        <div className="text-slate-800 font-medium leading-normal whitespace-pre-line text-[12px]">{fsAnalysis.currentDirection.remedy}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
 
-                                <div className="mb-10 pb-4">
-                                    <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>III. SƠ ĐỒ CỬU CUNG BỐ TRÍ MẶT BẰNG</h3>
-                                    <div className="border border-slate-300 bg-slate-50 rounded-xl p-4 max-w-[400px] mx-auto" style={{ pageBreakInside: 'avoid' }}>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {['NW', 'N', 'NE', 'W', 'CENTER', 'E', 'SW', 'S', 'SE'].map((dirId, idx) => {
-                                                if (dirId === 'CENTER') {
-                                                    return (
-                                                        <div key={idx} className="flex flex-col items-center justify-center p-4 bg-amber-100 border-2 border-amber-300 rounded-lg">
-                                                            <span className="font-black text-amber-800 text-xs">TRUNG CUNG</span><span className="text-[9px] text-amber-700 text-center mt-1 font-medium">Lõi giao thông<br />Giếng trời</span>
-                                                        </div>
-                                                    );
-                                                }
-                                                const dirData = fsAnalysis?.allDirections?.find(d => d.dirId === dirId);
-                                                if (!dirData) return <div key={idx} />;
-                                                const isGood = dirData.type === 'good';
+                                        <div className="mb-8">
+                                            <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">II. CHI TIẾT 8 HƯỚNG BÁT TRẠCH</h3>
+                                            <table className="w-full border-collapse border border-slate-400 text-xs" style={{ tableLayout: 'fixed', width: '100%' }}>
+                                                <thead>
+                                                    <tr className="bg-slate-200 text-slate-900">
+                                                        <th className="border border-slate-400 p-2 text-center" style={{ width: '15%' }}>Hướng</th><th className="border border-slate-400 p-2 text-center" style={{ width: '20%' }}>Cung Sao</th>
+                                                        <th className="border border-slate-400 p-2 text-center" style={{ width: '15%' }}>Đánh giá</th><th className="border border-slate-400 p-2 text-left" style={{ width: '50%' }}>Gợi ý bố trí công năng</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {fsAnalysis.allDirections.map((d, idx) => (
+                                                        <tr key={idx} className="text-center" style={{ pageBreakInside: 'avoid' }}>
+                                                            <td className="border border-slate-400 p-2 font-bold bg-slate-50 break-words">{d.dirName} ({d.degree}°)</td>
+                                                            <td className={`border border-slate-400 p-2 font-bold ${d.type === 'good' ? 'text-green-700' : 'text-red-700'} break-words`}>{d.star}</td>
+                                                            <td className="border border-slate-400 p-2 font-bold">{d.type === 'good' ? 'CÁT' : 'HUNG'}</td>
+                                                            <td className="border border-slate-400 p-2 text-left whitespace-normal break-words leading-relaxed">{d.type === 'good' ? 'Cửa chính, Ban thờ, Phòng ngủ, Phòng khách' : 'Nhà vệ sinh, Kho chứa đồ, Bếp (Tọa hung hướng cát)'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
+                                            <h3 className="text-sm font-bold text-white bg-blue-900 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md">III. SƠ ĐỒ CỬU CUNG BỐ TRÍ MẶT BẰNG</h3>
+                                            <div className="border border-slate-300 bg-slate-50 rounded-xl p-4 max-w-[400px] mx-auto">
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {['NW', 'N', 'NE', 'W', 'CENTER', 'E', 'SW', 'S', 'SE'].map((dirId, idx) => {
+                                                        if (dirId === 'CENTER') {
+                                                            return (
+                                                                <div key={idx} className="flex flex-col items-center justify-center p-4 bg-amber-100 border-2 border-amber-300 rounded-lg">
+                                                                    <span className="font-black text-amber-800 text-xs">TRUNG CUNG</span><span className="text-[9px] text-amber-700 text-center mt-1 font-medium">Lõi giao thông<br />Giếng trời</span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        const dirData = fsAnalysis?.allDirections?.find(d => d.dirId === dirId);
+                                                        if (!dirData) return <div key={idx} />;
+                                                        const isGood = dirData.type === 'good';
+                                                        return (
+                                                            <div key={idx} className={`flex flex-col items-center justify-center p-3 border-2 rounded-lg ${isGood ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
+                                                                <span className="text-[10px] font-bold text-slate-600 uppercase">{dirData.dirName}</span>
+                                                                <span className={`font-black text-xs uppercase text-center mt-1 ${isGood ? 'text-green-700' : 'text-red-700'}`}>{dirData.star}</span>
+                                                                <span className="text-[9px] text-slate-800 text-center mt-1.5 font-medium whitespace-pre-line leading-relaxed">{isGood ? 'Cửa chính\nPhòng thờ\nPhòng ngủ' : 'Nhà vệ sinh\nPhòng Kho\nBếp (Tọa)'}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <p className="text-center text-[11px] text-slate-600 font-medium italic mt-4">Sơ đồ ma trận 9 ô (Cửu cung) giúp định vị sơ bộ các khối chức năng trên mặt bằng khu đất.</p>
+                                        </div>
+
+                                        {/* ✅ ÉP KHỐI PHI TINH SANG TRANG MỚI NẾU PDF IN RA */}
+                                        <div className="html2pdf__page-break"></div>
+                                        {flyingStars && thanSat && (
+                                            <div className="mb-8" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+                                                {renderAdvancedFengShui()}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* ============ KHỐI 2: LOAN ĐẦU ============ */}
+                                {isLoanDauTask && selectedLoanDau.length > 0 && (
+                                    <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
+                                        <h3 className="text-sm font-bold text-white bg-emerald-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md">I. KHẢO SÁT LOAN ĐẦU (CẢNH QUAN)</h3>
+                                        <div className="space-y-4">
+                                            {selectedLoanDau.map((id, index) => {
+                                                const item = LOAN_DAU_DICTIONARY.find(d => d.id === id);
+                                                if (!item) return null;
                                                 return (
-                                                    <div key={idx} className={`flex flex-col items-center justify-center p-3 border-2 rounded-lg ${isGood ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
-                                                        <span className="text-[10px] font-bold text-slate-600 uppercase">{dirData.dirName}</span>
-                                                        <span className={`font-black text-xs uppercase text-center mt-1 ${isGood ? 'text-green-700' : 'text-red-700'}`}>{dirData.star}</span>
-                                                        <span className="text-[9px] text-slate-800 text-center mt-1.5 font-medium whitespace-pre-line leading-relaxed">{isGood ? 'Cửa chính\nPhòng thờ\nPhòng ngủ' : 'Nhà vệ sinh\nPhòng Kho\nBếp (Tọa)'}</span>
+                                                    <div key={id} className="border border-emerald-700/20 p-4 rounded-xl bg-emerald-50/50 text-sm">
+                                                        <p className="font-black text-emerald-800 mb-2 uppercase">{index + 1}. {item.name}</p>
+                                                        <p className="text-slate-700 mb-1.5 leading-relaxed"><strong>Hiện trạng:</strong> {item.desc}</p>
+                                                        <p className="text-amber-700 font-medium leading-relaxed"><strong>Giải pháp:</strong> {item.remedy}</p>
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     </div>
-                                    <p className="text-center text-[11px] text-slate-600 font-medium italic mt-4" style={{ pageBreakInside: 'avoid' }}>Sơ đồ ma trận 9 ô (Cửu cung) giúp định vị sơ bộ các khối chức năng trên mặt bằng khu đất.</p>
-                                </div>
-                            </>
-                        )}
-
-                        {/* RENDER PHI TINH TRONG PDF */}
-                        {flyingStars && thanSat && (
-                            <div className="mb-10 pb-4">
-                                {renderAdvancedFengShui()}
-                            </div>
-                        )}
-
-                        {/* LOAN ĐẦU TRONG PDF */}
-                        {isLoanDauTask && selectedLoanDau.length > 0 && (
-                            <div className="mb-10 pb-4">
-                                <h3 className="text-sm font-bold text-white bg-emerald-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. KHẢO SÁT LOAN ĐẦU (CẢNH QUAN)</h3>
-                                <div className="space-y-4">
-                                    {selectedLoanDau.map((id, index) => {
-                                        const item = LOAN_DAU_DICTIONARY.find(d => d.id === id);
-                                        if (!item) return null;
-                                        return (
-                                            <div key={id} className="border border-emerald-700/20 p-4 rounded-xl bg-emerald-50/50 text-sm" style={{ pageBreakInside: 'avoid' }}>
-                                                <p className="font-black text-emerald-800 mb-2 uppercase">{index + 1}. {item.name}</p>
-                                                <p className="text-slate-700 mb-1.5 leading-relaxed"><strong>Hiện trạng:</strong> {item.desc}</p>
-                                                <p className="text-amber-700 font-medium leading-relaxed"><strong>Giải pháp:</strong> {item.remedy}</p>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ĐỊA CHẤT & LOGISTICS TRONG PDF */}
-                        {isDiaChatTask && (
-                            <div className="mb-6">
-                                <h3 className="text-sm font-bold text-white bg-amber-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT ĐỊA CHẤT & HẠ TẦNG</h3>
-                                <div className="border border-slate-300 rounded-lg overflow-hidden mb-6">
-                                    <table className="w-full text-sm text-left border-collapse">
-                                        <tbody>
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Giao thông & Điều kiện thi công</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Đường tiếp cận</td><td className="p-2 border-b border-slate-200">{geoData.roadAccess}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Bãi tập kết vật tư</td><td className="p-2 border-b border-slate-200">{geoData.storage}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Cốt nền hiện trạng</td><td className="p-2 border-b border-slate-200">{geoData.elevation}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Giờ giấc thi công</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.workingHours}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Hạn chế xe cơ giới</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.vehicleLimit}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Quy định Vệ sinh/Môi trường</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.sanitation}</td></tr>
-
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Địa chất sơ bộ & Điện nước</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Loại đất bề mặt</td><td className="p-2 border-b border-slate-200">{geoData.soilType}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Mực nước ngầm</td><td className="p-2 border-b border-slate-200">{geoData.waterLevel}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Nguồn điện</td><td className="p-2 border-b border-slate-200">{geoData.electricity}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Nguồn nước</td><td className="p-2 border-b border-slate-200">{geoData.water}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hệ thống thoát nước</td><td className="p-2 border-b border-slate-200">{geoData.drainage}</td></tr>
-
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Khảo sát công trình giáp ranh</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Bên Trái</td><td className="p-2 border-b border-slate-200">{geoData.neighborLeft}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Bên Phải</td><td className="p-2 border-b border-slate-200">{geoData.neighborRight}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Phía Sau</td><td className="p-2 border-b border-slate-200">{geoData.neighborBack}</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                {geoData.isDrilling && (
-                                    <div style={{ pageBreakInside: 'avoid' }}>
-                                        <h4 className="text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">THÔNG SỐ KHOAN ĐỊA CHẤT (TCVN 9363:2012)</h4>
-                                        <table className="w-full text-sm text-left border-collapse border border-red-200">
-                                            <tbody>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 w-1/3 font-medium">Tổng số hố khoan</td><td className="p-2 border-b border-red-200 font-bold">{geoData.drillingHoles} hố</td></tr>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Chiều sâu thiết kế</td><td className="p-2 border-b border-red-200">{geoData.drillingDepth} mét</td></tr>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Mực nước tĩnh</td><td className="p-2 border-b border-red-200">Độ sâu {geoData.drillingWaterLevel} mét</td></tr>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Thí nghiệm SPT</td><td className="p-2 border-b border-red-200">{geoData.drillingSpt}</td></tr>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Phương pháp khoan</td><td className="p-2 border-b border-red-200">{geoData.drillingMethod}</td></tr>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium text-red-800">Lớp đất đặt mũi cọc</td><td className="p-2 border-b border-red-200 font-bold text-red-800">{geoData.foundationLayer}</td></tr>
-                                                <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium text-red-800">Sức chịu tải (Rtc)</td><td className="p-2 border-b border-red-200 font-bold text-red-800">{geoData.loadCapacity}</td></tr>
-                                            </tbody>
-                                        </table>
-                                        <p className="text-[10px] text-slate-500 italic mt-2 mb-6">Kết quả dựa trên hồ sơ Báo cáo Khảo sát Địa chất có pháp nhân.</p>
-                                    </div>
                                 )}
-                            </div>
-                        )}
 
-                        {/* ĐỊA HÌNH TRONG PDF */}
-                        {isDiaHinhTask && (
-                            <div className="mb-6">
-                                <h3 className="text-sm font-bold text-white bg-teal-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT ĐỊA HÌNH & HIỆN TRẠNG</h3>
-                                <div className="border border-slate-300 rounded-lg overflow-hidden mb-6">
-                                    <table className="w-full text-sm text-left border-collapse">
-                                        <tbody>
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Chướng ngại vật (Không gian & Ngầm)</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Không gian trên không</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{topoData.obstaclesAir}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hiện trạng ngầm</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{topoData.obstaclesUnderground}</td></tr>
+                                {/* ============ KHỐI 3: ĐỊA CHẤT & LOGISTICS ============ */}
+                                {isDiaChatTask && (
+                                    <div className="mb-8">
+                                        <h3 className="text-sm font-bold text-white bg-amber-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT ĐỊA CHẤT & HẠ TẦNG</h3>
+                                        <div className="border border-slate-300 rounded-lg overflow-hidden mb-6" style={{ pageBreakInside: 'avoid' }}>
+                                            <table className="w-full text-sm text-left border-collapse">
+                                                <tbody>
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Giao thông & Điều kiện thi công</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Đường tiếp cận</td><td className="p-2 border-b border-slate-200">{geoData.roadAccess}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Bãi tập kết vật tư</td><td className="p-2 border-b border-slate-200">{geoData.storage}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Cốt nền hiện trạng</td><td className="p-2 border-b border-slate-200">{geoData.elevation}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Giờ giấc thi công</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.workingHours}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Hạn chế xe cơ giới</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.vehicleLimit}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium text-amber-700">Quy định Vệ sinh/Môi trường</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{geoData.sanitation}</td></tr>
 
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Công tác Tháo dỡ & Giải phóng mặt bằng</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hiện trạng công trình</td><td className="p-2 border-b border-slate-200">{topoData.demolition}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Dọn dẹp mặt bằng</td><td className="p-2 border-b border-slate-200">{topoData.debris}</td></tr>
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Địa chất sơ bộ & Điện nước</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Loại đất bề mặt</td><td className="p-2 border-b border-slate-200">{geoData.soilType}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Mực nước ngầm</td><td className="p-2 border-b border-slate-200">{geoData.waterLevel}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Nguồn điện</td><td className="p-2 border-b border-slate-200">{geoData.electricity}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Nguồn nước</td><td className="p-2 border-b border-slate-200">{geoData.water}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Hệ thống thoát nước</td><td className="p-2 border-b border-slate-200">{geoData.drainage}</td></tr>
 
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Định hướng Biện pháp thi công</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Thiết bị thi công móng</td><td className="p-2 border-b border-slate-200 font-bold text-teal-800">{topoData.foundationEquip}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Đào đất & Giữ vách móng</td><td className="p-2 border-b border-slate-200 font-bold text-teal-800">{topoData.diggingMethod}</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* CẢI TẠO VÀ HÌNH HỌC TRONG PDF */}
-                        {isCaiTaoTask && (
-                            <div className="mb-6">
-                                <h3 className="text-sm font-bold text-white bg-rose-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO HIỆN TRẠNG KẾT CẤU & HÌNH HỌC</h3>
-                                <div className="border border-slate-300 rounded-lg overflow-hidden mb-6">
-                                    <table className="w-full text-sm text-left border-collapse">
-                                        <tbody>
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Hiện trạng Kết cấu công trình cũ</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Tình trạng Dầm/Cột</td><td className="p-2 border-b border-slate-200 font-bold text-rose-700">{renoData.beamColumnStatus}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Khảo sát Thấm dột</td><td className="p-2 border-b border-slate-200 font-bold text-rose-700">{renoData.waterproofing}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Kết cấu chịu tải chính</td><td className="p-2 border-b border-slate-200">{renoData.oldFoundation}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Tận dụng vật tư</td><td className="p-2 border-b border-slate-200">{renoData.reusableMats}</td></tr>
-
-                                            <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Hình học khu đất & Ranh mốc</th></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Sổ đỏ vs Thực tế</td><td className="p-2 border-b border-slate-200 font-bold text-indigo-700">{renoData.landComparison}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Hình dáng khu đất</td><td className="p-2 border-b border-slate-200">{renoData.landShape}</td></tr>
-                                            <tr style={{ pageBreakInside: 'avoid' }}><td className="p-2 border-b border-r border-slate-200 font-medium">Tình trạng ranh mốc</td><td className="p-2 border-b border-slate-200">{renoData.boundary}</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {(!isFengShuiTask && !isLoanDauTask && !isDiaChatTask && !isDiaHinhTask && !isCaiTaoTask) || hasManualNotes ? (
-                            <div style={{ pageBreakInside: 'avoid' }}>
-                                <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">
-                                    Ghi chú bổ sung
-                                </h3>
-                                <div className="border border-slate-400 p-4 text-sm leading-relaxed min-h-[60px] bg-slate-50/50 rounded-b-md rounded-tr-md">
-                                    {task?.notes?.split('\n').map((line: string, index: number) => (
-                                        <p key={index} style={{ marginBottom: '4px', whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                                            {line || '\u00A0'}
-                                        </p>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {/* SECTION ẢNH PDF */}
-                        {existingImages.length > 0 && (
-                            <div style={{ pageBreakInside: 'avoid', paddingTop: '20px' }}>
-                                <h3 className="text-sm font-bold bg-blue-900 text-white px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md">
-                                    HÌNH ẢNH HIỆN TRẠNG THỰC ĐỊA
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    {existingImages.map((url, i) => (
-                                        <div key={i} className="rounded-md border border-slate-400 bg-slate-100 flex items-center justify-center p-1 overflow-hidden" style={{ height: '260px', pageBreakInside: 'avoid' }}>
-                                            <img src={url} alt={`Hiện trạng ${i + 1}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} crossOrigin="anonymous" />
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Khảo sát công trình giáp ranh</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Bên Trái</td><td className="p-2 border-b border-slate-200">{geoData.neighborLeft}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Bên Phải</td><td className="p-2 border-b border-slate-200">{geoData.neighborRight}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Giáp ranh Phía Sau</td><td className="p-2 border-b border-slate-200">{geoData.neighborBack}</td></tr>
+                                                </tbody>
+                                            </table>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
 
-                {/* ================= GIAO DIỆN APP HIỂN THỊ ================= */}
-                <div className={`p-6 text-white shrink-0 relative overflow-hidden ${isViewMode ? (isLoanDauTask ? 'bg-emerald-700' : isDiaChatTask ? 'bg-amber-700' : isDiaHinhTask ? 'bg-teal-700' : isCaiTaoTask ? 'bg-rose-700' : 'bg-blue-700') : 'bg-slate-900'}`}>
-                    <DialogTitle className="text-xl font-black uppercase flex items-center gap-3 relative z-10">
-                        {isViewMode ? 'Chi tiết kết quả' : task?.title}
-                    </DialogTitle>
-                </div>
-
-                {isViewMode ? (
-                    <div className="p-6 space-y-6">
-
-                        {/* ================= BÁT TRẠCH UI ================= */}
-                        {fsAnalysis && (
-                            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-3 opacity-5"><Compass size={100} /></div>
-                                <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4" /> KẾT QUẢ ĐO & PHÂN TÍCH THỰC ĐỊA
-                                </h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 relative z-10 mb-5">
-                                    <div><p className="text-[10px] text-slate-400 uppercase font-bold">Gia chủ</p><p className="font-black text-slate-800">{ownerName}</p></div>
-                                    <div><p className="text-[10px] text-slate-400 uppercase font-bold">Năm sinh</p><p className="font-black text-slate-800">{birthYear} ({gender === 'nam' ? 'Nam' : 'Nữ'})</p></div>
-                                    <div><p className="text-[10px] text-slate-400 uppercase font-bold">Cung Mệnh</p><p className="font-black text-blue-600">{fsAnalysis.cung} ({fsAnalysis.nhom})</p></div>
-                                    <div><p className="text-[10px] text-slate-400 uppercase font-bold">Hướng nhà</p><p className="font-black text-blue-600">{fsAnalysis.currentDirection.name} ({fsAnalysis.currentDirection.degree}°)</p></div>
-                                </div>
-                            </div>
-                        )}
-
-                        {renderAdvancedFengShui()}
-
-                        {/* ================= LOAN ĐẦU UI ================= */}
-                        {isLoanDauTask && selectedLoanDau.length > 0 && (
-                            <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm relative overflow-hidden mb-6 mt-6">
-                                <div className="absolute top-0 right-0 p-3 opacity-5"><Eye size={100} className="text-emerald-500" /></div>
-                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
-                                    <AlertTriangle className="w-4 h-4" /> CÁC HÌNH THẾ SÁT KHÍ PHÁT HIỆN
-                                </h3>
-                                <div className="grid grid-cols-1 gap-3 relative z-10">
-                                    {selectedLoanDau.map(id => {
-                                        const item = LOAN_DAU_DICTIONARY.find(d => d.id === id);
-                                        if (!item) return null;
-                                        return (
-                                            <div key={id} className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                                                <p className="text-sm font-black text-emerald-900 mb-1.5">{item.name}</p>
-                                                <p className="text-xs text-slate-700 mb-2 leading-relaxed"><strong>Hiện trạng:</strong> {item.desc}</p>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ================= ĐỊA CHẤT & LOGISTICS UI (VIEW) ================= */}
-                        {isDiaChatTask && (
-                            <div className="space-y-6">
-                                <div className="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm relative overflow-hidden mt-6">
-                                    <div className="absolute top-0 right-0 p-3 opacity-5"><Map size={100} className="text-amber-600" /></div>
-                                    <h3 className="text-xs font-black text-amber-700 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
-                                        <FileBadge className="w-4 h-4" /> HỒ SƠ ĐỊA CHẤT & HẠ TẦNG
-                                    </h3>
-                                    <div className="space-y-4 relative z-10">
-                                        <div className="grid grid-cols-2 gap-4 bg-amber-50 p-4 rounded-xl border border-amber-100">
-                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Giao thông</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.roadAccess}</p></div>
-                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Bãi tập kết</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.storage}</p></div>
-                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Đất bề mặt</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.soilType}</p></div>
-                                            <div><p className="text-[10px] text-amber-600 uppercase font-bold">Thoát nước</p><p className="font-medium text-slate-800 text-xs mt-1">{geoData.drainage}</p></div>
-                                        </div>
                                         {geoData.isDrilling && (
-                                            <div className="bg-red-50 p-4 rounded-xl border border-red-200">
-                                                <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-2 flex items-center gap-1"><Pickaxe className="w-3 h-3" /> ĐÃ KHOAN ĐỊA CHẤT TCVN</p>
-                                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                                    <p><span className="text-slate-500">Số hố:</span> <b>{geoData.drillingHoles} hố</b></p>
-                                                    <p><span className="text-slate-500">Chiều sâu:</span> <b>{geoData.drillingDepth}m</b></p>
-                                                    <p><span className="text-slate-500">Lớp tốt:</span> <b>{geoData.foundationLayer}</b></p>
-                                                    <p><span className="text-slate-500">Rtc:</span> <b className="text-red-600">{geoData.loadCapacity}</b></p>
-                                                </div>
+                                            <div style={{ pageBreakInside: 'avoid' }}>
+                                                <h4 className="text-xs font-bold text-red-800 bg-red-100 px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">THÔNG SỐ KHOAN ĐỊA CHẤT (TCVN 9363:2012)</h4>
+                                                <table className="w-full text-sm text-left border-collapse border border-red-200">
+                                                    <tbody>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 w-1/3 font-medium">Tổng số hố khoan</td><td className="p-2 border-b border-red-200 font-bold">{geoData.drillingHoles} hố</td></tr>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Chiều sâu thiết kế</td><td className="p-2 border-b border-red-200">{geoData.drillingDepth} mét</td></tr>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Mực nước tĩnh</td><td className="p-2 border-b border-red-200">Độ sâu {geoData.drillingWaterLevel} mét</td></tr>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Thí nghiệm SPT</td><td className="p-2 border-b border-red-200">{geoData.drillingSpt}</td></tr>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium">Phương pháp khoan</td><td className="p-2 border-b border-red-200">{geoData.drillingMethod}</td></tr>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium text-red-800">Lớp đất đặt mũi cọc</td><td className="p-2 border-b border-red-200 font-bold text-red-800">{geoData.foundationLayer}</td></tr>
+                                                        <tr><td className="p-2 border-b border-r border-red-200 bg-red-50 font-medium text-red-800">Sức chịu tải (Rtc)</td><td className="p-2 border-b border-red-200 font-bold text-red-800">{geoData.loadCapacity}</td></tr>
+                                                    </tbody>
+                                                </table>
+                                                <p className="text-[10px] text-slate-500 italic mt-2">Kết quả dựa trên hồ sơ Báo cáo Khảo sát Địa chất có pháp nhân.</p>
                                             </div>
                                         )}
                                     </div>
-                                </div>
-                                <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-200 shadow-sm">
-                                    <h3 className="text-xs font-black text-orange-700 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                        <Clock className="w-4 h-4" /> ĐIỀU KIỆN THI CÔNG & LOGISTICS
-                                    </h3>
-                                    <ul className="space-y-2 text-xs font-medium text-slate-700">
-                                        <li className="flex gap-2 items-start"><span className="text-orange-500 mt-0.5">•</span> <span><b>Giờ giấc:</b> <span className="text-orange-700">{geoData.workingHours}</span></span></li>
-                                        <li className="flex gap-2 items-start"><span className="text-orange-500 mt-0.5">•</span> <span><b>Giới hạn xe:</b> <span className="text-orange-700">{geoData.vehicleLimit}</span></span></li>
-                                        <li className="flex gap-2 items-start"><span className="text-orange-500 mt-0.5">•</span> <span><b>Yêu cầu môi trường:</b> {geoData.sanitation}</span></li>
-                                    </ul>
-                                </div>
-                            </div>
-                        )}
+                                )}
 
-                        {/* ================= ĐỊA HÌNH HIỆN TRẠNG UI (VIEW) ================= */}
-                        {isDiaHinhTask && (
-                            <div className="bg-white p-5 rounded-2xl border border-teal-200 shadow-sm relative overflow-hidden mt-6">
-                                <div className="absolute top-0 right-0 p-3 opacity-5"><Mountain size={100} className="text-teal-600" /></div>
-                                <h3 className="text-xs font-black text-teal-700 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
-                                    <Mountain className="w-4 h-4" /> HỒ SƠ ĐỊA HÌNH & HIỆN TRẠNG
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                                    <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200 shadow-sm">
-                                        <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-3 flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3" /> CHƯỚNG NGẠI VẬT & THÁO DỠ
-                                        </h4>
-                                        <ul className="space-y-2 text-xs font-medium text-slate-700">
-                                            <li className="flex gap-2 items-start"><span className="text-amber-500 mt-0.5">•</span> <span><b>Trên không:</b> <span className="text-amber-700">{topoData.obstaclesAir}</span></span></li>
-                                            <li className="flex gap-2 items-start"><span className="text-amber-500 mt-0.5">•</span> <span><b>Ngầm:</b> <span className="text-amber-700">{topoData.obstaclesUnderground}</span></span></li>
-                                            <li className="flex gap-2 items-start"><span className="text-amber-500 mt-0.5">•</span> <span><b>Tháo dỡ:</b> {topoData.demolition}</span></li>
-                                        </ul>
+                                {/* ============ KHỐI 4: ĐỊA HÌNH & HIỆN TRẠNG ============ */}
+                                {isDiaHinhTask && (
+                                    <div className="mb-8">
+                                        <h3 className="text-sm font-bold text-white bg-teal-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT ĐỊA HÌNH & HIỆN TRẠNG</h3>
+                                        <div className="border border-slate-300 rounded-lg overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
+                                            <table className="w-full text-sm text-left border-collapse">
+                                                <tbody>
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Chướng ngại vật (Không gian & Ngầm)</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Không gian trên không</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{topoData.obstaclesAir}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Hiện trạng ngầm</td><td className="p-2 border-b border-slate-200 font-medium text-amber-700">{topoData.obstaclesUnderground}</td></tr>
+
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Công tác Tháo dỡ & Giải phóng mặt bằng</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Hiện trạng công trình</td><td className="p-2 border-b border-slate-200">{topoData.demolition}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Dọn dẹp mặt bằng</td><td className="p-2 border-b border-slate-200">{topoData.debris}</td></tr>
+
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Định hướng Biện pháp thi công</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Thiết bị thi công móng</td><td className="p-2 border-b border-slate-200 font-bold text-teal-800">{topoData.foundationEquip}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Đào đất & Giữ vách móng</td><td className="p-2 border-b border-slate-200 font-bold text-teal-800">{topoData.diggingMethod}</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                    <div className="bg-teal-50/50 p-4 rounded-xl border border-teal-200 shadow-sm">
-                                        <h4 className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-3 flex items-center gap-1">
-                                            <Hammer className="w-3 h-3" /> BIỆN PHÁP THI CÔNG
-                                        </h4>
-                                        <ul className="space-y-3 text-xs font-medium text-slate-700">
-                                            <li className="bg-white p-2 rounded-lg border border-teal-100 shadow-sm">
-                                                <span className="text-[9px] text-teal-500 uppercase font-bold block mb-0.5">Thiết bị Móng</span>
-                                                <span className="text-teal-800 font-bold">{topoData.foundationEquip}</span>
-                                            </li>
-                                            <li className="bg-white p-2 rounded-lg border border-teal-100 shadow-sm">
-                                                <span className="text-[9px] text-teal-500 uppercase font-bold block mb-0.5">Đào đất & Vách móng</span>
-                                                <span className="text-teal-800 font-bold">{topoData.diggingMethod}</span>
-                                            </li>
-                                        </ul>
+                                )}
+
+                                {/* ============ KHỐI 5: KẾT CẤU & CẢI TẠO ============ */}
+                                {isCaiTaoTask && (
+                                    <div className="mb-8">
+                                        <h3 className="text-sm font-bold text-white bg-rose-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO HIỆN TRẠNG KẾT CẤU & HÌNH HỌC</h3>
+                                        <div className="border border-slate-300 rounded-lg overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
+                                            <table className="w-full text-sm text-left border-collapse">
+                                                <tbody>
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Hiện trạng Kết cấu công trình cũ</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Tình trạng Dầm/Cột</td><td className="p-2 border-b border-slate-200 font-bold text-rose-700">{renoData.beamColumnStatus}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Khảo sát Thấm dột</td><td className="p-2 border-b border-slate-200 font-bold text-rose-700">{renoData.waterproofing}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Kết cấu chịu tải chính</td><td className="p-2 border-b border-slate-200">{renoData.oldFoundation}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Tận dụng vật tư</td><td className="p-2 border-b border-slate-200">{renoData.reusableMats}</td></tr>
+
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Hình học khu đất & Ranh mốc</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Sổ đỏ vs Thực tế</td><td className="p-2 border-b border-slate-200 font-bold text-indigo-700">{renoData.landComparison}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Hình dáng khu đất</td><td className="p-2 border-b border-slate-200">{renoData.landShape}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Tình trạng ranh mốc</td><td className="p-2 border-b border-slate-200">{renoData.boundary}</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        )}
+                                )}
 
-                        {/* ================= HIỆN TRẠNG KẾT CẤU & CẢI TẠO UI (VIEW) ================= */}
-                        {isCaiTaoTask && (
-                            <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-sm relative overflow-hidden mt-6">
-                                <div className="absolute top-0 right-0 p-3 opacity-5"><Wrench size={100} className="text-rose-600" /></div>
-                                <h3 className="text-xs font-black text-rose-700 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
-                                    <Wrench className="w-4 h-4" /> HỒ SƠ KẾT CẤU & HÌNH HỌC (CẢI TẠO)
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                                    <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-200 shadow-sm">
-                                        <h4 className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-3 flex items-center gap-1">
-                                            <ShieldAlert className="w-3 h-3" /> KHÁM BỆNH KẾT CẤU
-                                        </h4>
-                                        <ul className="space-y-2 text-xs font-medium text-slate-700">
-                                            <li className="flex gap-2 items-start"><span className="text-rose-500 mt-0.5">•</span> <span><b>Cột/Dầm:</b> <span className="text-rose-700 font-bold">{renoData.beamColumnStatus}</span></span></li>
-                                            <li className="flex gap-2 items-start"><span className="text-rose-500 mt-0.5">•</span> <span><b>Thấm dột:</b> <span className="text-rose-700 font-bold">{renoData.waterproofing}</span></span></li>
-                                            <li className="flex gap-2 items-start"><span className="text-rose-500 mt-0.5">•</span> <span><b>Kết cấu chính:</b> {renoData.oldFoundation}</span></li>
-                                        </ul>
+                                {/* ============ KHỐI GHI CHÚ CHUNG ============ */}
+                                {hasManualNotes && (
+                                    <div className="mb-8" style={{ pageBreakInside: 'avoid' }}>
+                                        <h3 className="text-sm font-bold bg-slate-800 text-white px-3 py-1.5 uppercase mb-2 inline-block rounded-t-md">
+                                            Ghi chú bổ sung
+                                        </h3>
+                                        <div className="border border-slate-400 p-4 text-sm leading-relaxed min-h-[60px] bg-slate-50 rounded-b-md rounded-tr-md">
+                                            {task?.notes?.split('\n').map((line: string, index: number) => (
+                                                <p key={index} style={{ marginBottom: '4px', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                                                    {line || '\u00A0'}
+                                                </p>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-200 shadow-sm">
-                                        <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-3 flex items-center gap-1">
-                                            <Ruler className="w-3 h-3" /> HÌNH HỌC & RANH MỐC
-                                        </h4>
-                                        <ul className="space-y-2 text-xs font-medium text-slate-700">
-                                            <li className="flex gap-2 items-start"><span className="text-indigo-500 mt-0.5">•</span> <span><b>Sổ đỏ vs Thực tế:</b> <span className="text-indigo-700 font-bold">{renoData.landComparison}</span></span></li>
-                                            <li className="flex gap-2 items-start"><span className="text-indigo-500 mt-0.5">•</span> <span><b>Hình dáng đất:</b> {renoData.landShape}</span></li>
-                                            <li className="flex gap-2 items-start"><span className="text-indigo-500 mt-0.5">•</span> <span><b>Ranh mốc:</b> {renoData.boundary}</span></li>
-                                        </ul>
+                                )}
+
+                                {/* ============ KHỐI ẢNH ĐÍNH KÈM ============ */}
+                                {existingImages.length > 0 && (
+                                    <div style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }} className="mt-6 mb-6">
+                                        <h3 className="text-sm font-bold bg-slate-800 text-white px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md">
+                                            HÌNH ẢNH HIỆN TRẠNG THỰC ĐỊA
+                                        </h3>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {existingImages.map((url, i) => (
+                                                <div key={i} className="rounded-md border border-slate-400 bg-slate-100 flex items-center justify-center p-1 overflow-hidden" style={{ height: '260px', pageBreakInside: 'avoid' }}>
+                                                    <img src={url} alt={`Hiện trạng ${i + 1}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} crossOrigin="anonymous" />
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
-                        )}
-
-                        {(!isFengShuiTask && !isLoanDauTask && !isDiaChatTask && !isDiaHinhTask && !isCaiTaoTask) ? (
-                            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mt-6">
-                                <Label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 block">GHI CHÚ & KẾT QUẢ</Label>
-                                <div className="text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                    {task?.notes || <span className="italic text-slate-400">Không có ghi chú nào được lưu.</span>}
-                                </div>
-                            </div>
-                        ) : hasManualNotes ? (
-                            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mt-6">
-                                <Label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 block">GHI CHÚ BỔ SUNG</Label>
-                                <div className="text-[13px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                    {task?.notes}
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {existingImages.length > 0 && (
-                            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mt-6">
-                                <Label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 block">ẢNH HIỆN TRẠNG KÈM TỌA ĐỘ</Label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                    {existingImages.map((url: string, i: number) => (
-                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group shadow-sm hover:shadow-lg transition-all hover:-translate-y-1">
-                                            <Image src={url} alt={`Ảnh ${i + 1}`} fill className="object-cover transition-transform duration-500 group-hover:scale-110" />
-                                            <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-all flex items-center justify-center"><Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 drop-shadow-md" /></div>
-                                        </a>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex justify-end pt-4 border-t border-slate-200 mt-6 gap-2">
-                            <Button variant="ghost" onClick={() => setIsOpen(false)}>Đóng</Button>
-                            <Button className="bg-red-600 hover:bg-red-700 text-white font-bold" onClick={handleExportPDF} disabled={isExporting}>
-                                {isExporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileText className="w-4 h-4 mr-2" />} Xuất PDF
-                            </Button>
-                            <Button className="bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={() => setIsViewMode(false)}>
-                                <Edit3 className="w-4 h-4 mr-2" /> Chỉnh sửa
-                            </Button>
                         </div>
-                    </div>
+                    </>
                 ) : (
-                    // ================= FORM NHẬP LIỆU (EDIT MODE) =================
-                    <form action={formAction} className="p-6 space-y-6 bg-white">
+                    // =========================================================================
+                    // ✅ MÀN HÌNH EDIT MODE (FORM NHẬP LIỆU)
+                    // =========================================================================
+                    <form action={formAction} className="p-6 space-y-6 bg-white overflow-y-auto h-full">
+                        <div className="flex items-center justify-between border-b pb-4 mb-4">
+                            <DialogTitle className="text-xl font-black uppercase flex items-center gap-3 text-slate-800">
+                                <Edit3 className="w-5 h-5 text-blue-600" /> CẬP NHẬT KẾT QUẢ KHẢO SÁT
+                            </DialogTitle>
+                            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}><X className="h-5 w-5 text-slate-500" /></Button>
+                        </div>
+
                         <input type="hidden" name="taskId" value={task?.id || ""} />
                         <input type="hidden" name="projectId" value={projectId || ""} />
                         <input type="hidden" name="analysis_json" value={analysisJson} />
                         <input type="hidden" name="status" value={status} />
                         <input type="file" name="images" multiple accept="image/*" hidden ref={fileInputRef} onChange={handleImageChange} />
 
-                        {/* ĐỊA CHẤT & LOGISTICS FORM NHẬP LIỆU */}
+                        {/* ĐỊA CHẤT FORM */}
                         {isDiaChatTask && (
                             <div className="space-y-6">
                                 <div className="p-5 bg-amber-50/50 border border-amber-200 rounded-2xl shadow-inner space-y-4">
@@ -932,6 +785,26 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     </div>
                                 </div>
 
+                                <div className="p-5 bg-indigo-50/50 border border-indigo-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-indigo-800 font-black text-sm uppercase tracking-widest border-b border-indigo-200 pb-2">
+                                        <Building2 className="w-4 h-4 text-indigo-600" /> HIỆN TRẠNG NHÀ HÀNG XÓM
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Bên Trái</span>
+                                            <Select value={geoData.neighborLeft} onValueChange={v => setGeoData({ ...geoData, neighborLeft: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.neighbor.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Bên Phải</span>
+                                            <Select value={geoData.neighborRight} onValueChange={v => setGeoData({ ...geoData, neighborRight: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.neighbor.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-indigo-700 uppercase">Phía Sau</span>
+                                            <Select value={geoData.neighborBack} onValueChange={v => setGeoData({ ...geoData, neighborBack: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{GEO_OPTIONS.neighbor.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="p-5 bg-red-50/50 border border-red-200 rounded-2xl shadow-inner">
                                     <div className="flex items-center justify-between border-b border-red-200 pb-4 mb-4">
                                         <Label className="flex items-center gap-2 text-red-800 font-black text-sm uppercase tracking-widest">
@@ -964,7 +837,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         )}
 
-                        {/* ĐỊA HÌNH FORM NHẬP LIỆU */}
+                        {/* ĐỊA HÌNH FORM */}
                         {isDiaHinhTask && (
                             <div className="space-y-6">
                                 <div className="p-5 bg-amber-50/50 border border-amber-200 rounded-2xl shadow-inner space-y-4">
@@ -1009,7 +882,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         )}
 
-                        {/* CẢI TẠO & HÌNH HỌC FORM NHẬP LIỆU */}
+                        {/* CẢI TẠO FORM */}
                         {isCaiTaoTask && (
                             <div className="space-y-6">
                                 <div className="p-5 bg-rose-50/50 border border-rose-200 rounded-2xl shadow-inner space-y-4">
@@ -1174,10 +1047,10 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         </div>
 
-                        <DialogFooter className="pt-4">
-                            {isCompleted && <Button type="button" variant="outline" onClick={() => setIsViewMode(true)}>Hủy sửa</Button>}
+                        <div className="pt-4 flex justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Đóng</Button>
                             <SubmitResultButton />
-                        </DialogFooter>
+                        </div>
                     </form>
                 )}
 
