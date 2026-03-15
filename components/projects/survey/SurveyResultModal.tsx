@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { updateSurveyTaskResult } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
-import { Loader2, Edit3, Compass, Sparkles, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Building2, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, ShieldAlert, Clock, Wrench, ClipboardList, Plus, Trash2 } from "lucide-react";
+import { Loader2, Edit3, Compass, Sparkles, CheckCircle2, X, ImagePlus, Camera, Eye, FileText, AlertTriangle, Crosshair, Map, Truck, Droplets, Zap, Pickaxe, FileBadge, AlertCircle, Hammer, Mountain, Ruler, ShieldAlert, Clock, ClipboardList, Plus, Trash2, Sofa, Palette, Grid, Layout } from "lucide-react";
 import FengShuiCompass from "./FengShuiCompass";
 import { toast } from "sonner";
 import Image from "next/image";
@@ -51,6 +51,15 @@ const RENO_OPTIONS = {
     landComparison: ["Khớp 100% với Sổ đỏ", "Thực tế NHỎ HƠN sổ (Bị lấn chiếm)", "Thực tế LỚN HƠN sổ (Đất dư)"],
     landShape: ["Vuông vức", "Nở hậu (Tốt)", "Thóp hậu (Cần xử lý kiến trúc/phong thủy)", "Đa giác phức tạp"],
     boundary: ["Đã xây tường rào rõ rệt", "Chỉ cắm cọc tạm", "Chưa xác định rõ, cần địa chính đo lại"]
+};
+
+const INTERIOR_OPTIONS = {
+    designStyle: ["Hiện đại (Modern)", "Tân cổ điển (Neoclassic)", "Đông Dương (Indochine)", "Tối giản (Minimalist)", "Bắc Âu / Japandi", "Chưa xác định"],
+    ceilingState: ["Trần thạch cao phẳng (Giữ nguyên)", "Trần giật cấp cũ (Cần sửa/thay)", "Trần bê tông nguyên thủy", "Trần nhựa/nhôm (Cần tháo dỡ)"],
+    floorState: ["Gạch men cũ (Cần đập bỏ cán nền)", "Gạch men/Đá mới (Giữ nguyên)", "Sàn gỗ công nghiệp (Cần lột bỏ)", "Sàn gỗ tự nhiên (Bảo dưỡng lại)", "Sàn bê tông thô"],
+    wallState: ["Tường sơn bả tốt (Chỉ sơn lại)", "Tường bong tróc, ẩm mốc (Cần chống thấm)", "Tường dán giấy/ốp nhựa (Cần lột bỏ)"],
+    kitchenState: ["Chưa có gì (Làm mới hoàn toàn)", "Tủ bếp cũ (Giữ khung, thay cánh)", "Tủ bếp hỏng (Đập bỏ làm mới)", "Hiện trạng tốt (Giữ nguyên)"],
+    wcState: ["Thiết bị tốt, ốp lát đẹp (Giữ lại)", "Cần thay thiết bị vệ sinh mới", "Cần đập phá ốp lát, đi lại điện nước"]
 };
 
 function SubmitResultButton() {
@@ -102,7 +111,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     };
     const [topoData, setTopoData] = useState(defaultTopoData);
 
-    // Tích hợp thêm mảng repairItems để lưu danh sách hạng mục sửa chữa
     const defaultRenoData = {
         beamColumnStatus: RENO_OPTIONS.beamColumnStatus[0], waterproofing: RENO_OPTIONS.waterproofing[0],
         oldFoundation: RENO_OPTIONS.oldFoundation[0], reusableMats: RENO_OPTIONS.reusableMats[0],
@@ -110,6 +118,19 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
         repairItems: [] as { id: string, area: string, task: string, volume: string }[]
     };
     const [renoData, setRenoData] = useState(defaultRenoData);
+
+    // State Nội thất
+    const defaultInteriorData = {
+        designStyle: INTERIOR_OPTIONS.designStyle[0],
+        ceilingState: INTERIOR_OPTIONS.ceilingState[0],
+        floorState: INTERIOR_OPTIONS.floorState[0],
+        wallState: INTERIOR_OPTIONS.wallState[0],
+        kitchenState: INTERIOR_OPTIONS.kitchenState[0],
+        wcState: INTERIOR_OPTIONS.wcState[0],
+        // Dữ liệu bóc tách chi tiết hạng mục nội thất
+        interiorItems: [] as { id: string, name: string, dimensions: string, material: string, notes: string }[]
+    };
+    const [interiorData, setInteriorData] = useState(defaultInteriorData);
 
     const [existingImages, setExistingImages] = useState<string[]>([]);
     const [selectedImages, setSelectedImages] = useState<{ file: File, preview: string }[]>([]);
@@ -126,6 +147,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
     if (taskCode === "PHON_THUY" || taskTitleOrName.includes("PHONG THỦY") || taskTitleOrName.includes("HƯỚNG VỊ") || taskTitleOrName.includes("LA BÀN")) {
         activeForm = "FENG_SHUI";
+    } else if (taskCode === "NOI_THAT" || taskTitleOrName.includes("NỘI THẤT") || taskTitleOrName.includes("INTERIOR")) {
+        activeForm = "NOI_THAT";
     } else if (taskCode === "CT_SC" || taskTitleOrName.includes("CẢI TẠO") || taskTitleOrName.includes("SỬA CHỮA") || taskTitleOrName.includes("KẾT CẤU")) {
         activeForm = "CAI_TAO";
     } else if (taskCode === "DIA_CHAT" || taskTitleOrName.includes("ĐỊA CHẤT") || taskTitleOrName.includes("HẠ TẦNG")) {
@@ -137,12 +160,14 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
     }
 
     const isFengShuiTask = activeForm === "FENG_SHUI";
+    const isNoiThatTask = activeForm === "NOI_THAT";
     const isCaiTaoTask = activeForm === "CAI_TAO";
     const isDiaChatTask = activeForm === "DIA_CHAT";
     const isDiaHinhTask = activeForm === "DIA_HINH";
     const isLoanDauTask = activeForm === "LOAN_DAU";
 
     const getFormCode = () => {
+        if (isNoiThatTask) return "BM-KS-06";
         if (isCaiTaoTask) return "BM-KS-05";
         if (isDiaHinhTask) return "BM-KS-04";
         if (isDiaChatTask) return "BM-KS-03";
@@ -170,10 +195,8 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
                 if (data.geoData) setGeoData({ ...defaultGeoData, ...data.geoData });
                 if (data.topoData) setTopoData({ ...defaultTopoData, ...data.topoData });
-                if (data.renoData) {
-                    // Đảm bảo repairItems luôn là array khi load từ db
-                    setRenoData({ ...defaultRenoData, ...data.renoData, repairItems: data.renoData.repairItems || [] });
-                }
+                if (data.renoData) setRenoData({ ...defaultRenoData, ...data.renoData, repairItems: data.renoData.repairItems || [] });
+                if (data.interiorData) setInteriorData({ ...defaultInteriorData, ...data.interiorData, interiorItems: data.interiorData.interiorItems || [] });
 
                 setAnalysisJson(JSON.stringify(data));
             }
@@ -207,6 +230,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
         if (isDiaChatTask) (currentData as any).geoData = geoData;
         if (isDiaHinhTask) (currentData as any).topoData = topoData;
         if (isCaiTaoTask) (currentData as any).renoData = renoData;
+        if (isNoiThatTask) (currentData as any).interiorData = interiorData;
 
         const finalAnalysisJson = JSON.stringify(currentData);
 
@@ -223,33 +247,16 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
 
     const [state, formAction] = useActionState(wrappedAction as any, { success: false, message: "" });
 
-    // ==============================================================
-    // ✅ HÀM QUẢN LÝ BẢNG KÊ HẠNG MỤC SỬA CHỮA
-    // ==============================================================
-    const addRepairItem = () => {
-        setRenoData({
-            ...renoData,
-            repairItems: [...renoData.repairItems, { id: Date.now().toString(), area: '', task: '', volume: '' }]
-        });
-    };
+    // HÀM QUẢN LÝ BẢNG KÊ CẢI TẠO
+    const addRepairItem = () => setRenoData({ ...renoData, repairItems: [...renoData.repairItems, { id: Date.now().toString(), area: '', task: '', volume: '' }] });
+    const removeRepairItem = (id: string) => setRenoData({ ...renoData, repairItems: renoData.repairItems.filter(item => item.id !== id) });
+    const handleRepairItemChange = (id: string, field: 'area' | 'task' | 'volume', value: string) => setRenoData({ ...renoData, repairItems: renoData.repairItems.map(item => item.id === id ? { ...item, [field]: value } : item) });
 
-    const removeRepairItem = (id: string) => {
-        setRenoData({
-            ...renoData,
-            repairItems: renoData.repairItems.filter(item => item.id !== id)
-        });
-    };
+    // HÀM QUẢN LÝ BẢNG KÊ NỘI THẤT
+    const addInteriorItem = () => setInteriorData({ ...interiorData, interiorItems: [...interiorData.interiorItems, { id: Date.now().toString(), name: '', dimensions: '', material: '', notes: '' }] });
+    const removeInteriorItem = (id: string) => setInteriorData({ ...interiorData, interiorItems: interiorData.interiorItems.filter(item => item.id !== id) });
+    const handleInteriorItemChange = (id: string, field: 'name' | 'dimensions' | 'material' | 'notes', value: string) => setInteriorData({ ...interiorData, interiorItems: interiorData.interiorItems.map(item => item.id === id ? { ...item, [field]: value } : item) });
 
-    const handleRepairItemChange = (id: string, field: 'area' | 'task' | 'volume', value: string) => {
-        setRenoData({
-            ...renoData,
-            repairItems: renoData.repairItems.map(item => item.id === id ? { ...item, [field]: value } : item)
-        });
-    };
-
-    // ==============================================================
-    // ✅ HÀM XUẤT PDF (TRUY XUẤT TRỰC TIẾP TỪ VIEW MODE)
-    // ==============================================================
     const handleExportPDF = async () => {
         if (!reportRef.current) return;
         setIsExporting(true);
@@ -262,7 +269,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                 margin: [15, 10, 20, 10] as [number, number, number, number],
                 filename: `${formCode}_${projectCode || 'DA'}_${finalTaskTitle.replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg' as const, quality: 1 },
-                html2canvas: { scale: 8, useCORS: true, letterRendering: true },
+                html2canvas: { scale: 3, useCORS: true, letterRendering: true },
                 pagebreak: { mode: ['css', 'legacy'] },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
             };
@@ -423,7 +430,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                 {/* ========================================================================= */}
                 {isViewMode ? (
                     <>
-                        {/* THANH CÔNG CỤ (ACTION BAR) */}
                         <div className="shrink-0 flex items-center justify-between p-4 bg-slate-900 text-white shadow-md z-10">
                             <div>
                                 <DialogTitle className="text-lg font-black uppercase flex items-center gap-2">
@@ -444,9 +450,7 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                             </div>
                         </div>
 
-                        {/* VÙNG CHỨA TỜ GIẤY A4 */}
                         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200">
-                            {/* TỜ GIẤY A4 (Bản in PDF sẽ bám đúng vào khung div này) */}
                             <div
                                 ref={reportRef}
                                 className="bg-white mx-auto shadow-xl text-slate-900 font-sans"
@@ -692,7 +696,6 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                             </table>
                                         </div>
 
-                                        {/* BẢNG KÊ CHI TIẾT HẠNG MỤC SỬA CHỮA TRONG PDF */}
                                         {renoData.repairItems && renoData.repairItems.length > 0 && (
                                             <div className="border border-slate-300 rounded-lg overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
                                                 <table className="w-full text-sm text-left border-collapse">
@@ -710,6 +713,57 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                                                 <td className="p-2 border-b border-r border-slate-200 font-medium text-slate-800">{item.area || "-"}</td>
                                                                 <td className="p-2 border-b border-r border-slate-200 text-slate-700">{item.task || "-"}</td>
                                                                 <td className="p-2 border-b border-slate-200 text-slate-700">{item.volume || "-"}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* ============ KHỐI 6: KHẢO SÁT NỘI THẤT ============ */}
+                                {isNoiThatTask && (
+                                    <div className="mb-8">
+                                        <h3 className="text-sm font-bold text-white bg-violet-700 px-3 py-1.5 uppercase mb-4 inline-block rounded-t-md" style={{ pageBreakInside: 'avoid' }}>I. BÁO CÁO KHẢO SÁT HIỆN TRẠNG NỘI THẤT</h3>
+                                        <div className="border border-slate-300 rounded-lg overflow-hidden mb-6" style={{ pageBreakInside: 'avoid' }}>
+                                            <table className="w-full text-sm text-left border-collapse">
+                                                <tbody>
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">1. Định hướng Thiết kế (Concept)</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 w-[35%] font-medium">Phong cách mong muốn</td><td className="p-2 border-b border-slate-200 font-bold text-violet-700">{interiorData.designStyle}</td></tr>
+
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">2. Hiện trạng Phần thô Nội thất (Fit-out)</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Trần nhà</td><td className="p-2 border-b border-slate-200">{interiorData.ceilingState}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Sàn nhà</td><td className="p-2 border-b border-slate-200">{interiorData.floorState}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Tường bao</td><td className="p-2 border-b border-slate-200">{interiorData.wallState}</td></tr>
+
+                                                    <tr className="bg-slate-100"><th colSpan={2} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">3. Hiện trạng Đồ gỗ & Thiết bị</th></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Khu vực Bếp</td><td className="p-2 border-b border-slate-200 font-medium text-orange-700">{interiorData.kitchenState}</td></tr>
+                                                    <tr><td className="p-2 border-b border-r border-slate-200 font-medium">Khu vực Vệ sinh</td><td className="p-2 border-b border-slate-200 font-medium text-orange-700">{interiorData.wcState}</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* BẢNG KÊ CHI TIẾT HẠNG MỤC NỘI THẤT TRONG PDF */}
+                                        {interiorData.interiorItems && interiorData.interiorItems.length > 0 && (
+                                            <div className="border border-slate-300 rounded-lg overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
+                                                <table className="w-full text-sm text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-slate-100"><th colSpan={4} className="p-2 border-b border-slate-300 font-bold text-slate-800 uppercase text-xs">4. Bảng kê chi tiết hạng mục đồ Nội thất dự kiến</th></tr>
+                                                        <tr className="bg-slate-50 text-slate-600 text-xs">
+                                                            <th className="p-2 border-b border-r border-slate-200 w-1/4">Tên hạng mục</th>
+                                                            <th className="p-2 border-b border-r border-slate-200 w-1/4">Kích thước (D x R x C)</th>
+                                                            <th className="p-2 border-b border-r border-slate-200 w-1/4">Vật liệu</th>
+                                                            <th className="p-2 border-b border-slate-200 w-1/4">Ghi chú thêm</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {interiorData.interiorItems.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50">
+                                                                <td className="p-2 border-b border-r border-slate-200 font-bold text-violet-700">{item.name || "-"}</td>
+                                                                <td className="p-2 border-b border-r border-slate-200 text-slate-700">{item.dimensions || "-"}</td>
+                                                                <td className="p-2 border-b border-r border-slate-200 text-slate-700">{item.material || "-"}</td>
+                                                                <td className="p-2 border-b border-slate-200 text-slate-700">{item.notes || "-"}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -962,20 +1016,20 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                     </div>
                                 </div>
 
-                                {/* CHI TIẾT HẠNG MỤC SỬA CHỮA (DYNAMIC LIST) */}
+                                {/* BẢNG KÊ SỬA CHỮA DYNAMIC */}
                                 <div className="p-5 bg-emerald-50/50 border border-emerald-200 rounded-2xl shadow-inner space-y-4">
                                     <Label className="flex items-center gap-2 text-emerald-800 font-black text-sm uppercase tracking-widest border-b border-emerald-200 pb-2">
-                                        <ClipboardList className="w-4 h-4 text-emerald-600" /> BẢNG CHI TIẾT HẠNG MỤC SỬA CHỮA
+                                        <ClipboardList className="w-4 h-4 text-emerald-600" /> BẢNG CHI TIẾT HẠNG MỤC CẦN SỬA CHỮA
                                     </Label>
                                     <div className="space-y-3">
                                         {renoData.repairItems.length === 0 && (
-                                            <p className="text-xs text-emerald-600 italic text-center py-2">Chưa có hạng mục sửa chữa nào. Bấm thêm hạng mục để tạo bảng dự toán.</p>
+                                            <p className="text-xs text-emerald-600 italic text-center py-2">Chưa có hạng mục sửa chữa nào. Bấm thêm hạng mục để tạo bảng dự toán sơ bộ.</p>
                                         )}
                                         {renoData.repairItems.map((item) => (
                                             <div key={item.id} className="flex gap-2 items-center bg-white p-2 rounded-lg border border-emerald-100 shadow-sm transition-all hover:border-emerald-300">
-                                                <Input placeholder="Khu vực (VD: Phòng Khách)" value={item.area} onChange={(e) => handleRepairItemChange(item.id, 'area', e.target.value)} className="w-1/3 text-xs bg-slate-50 focus:bg-white" />
-                                                <Input placeholder="Công tác (VD: Đập gạch cũ, lát lại)" value={item.task} onChange={(e) => handleRepairItemChange(item.id, 'task', e.target.value)} className="w-1/2 text-xs bg-slate-50 focus:bg-white" />
-                                                <Input placeholder="Khối lượng sơ bộ" value={item.volume} onChange={(e) => handleRepairItemChange(item.id, 'volume', e.target.value)} className="w-1/4 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Khu vực (VD: WC Tầng 1)" value={item.area} onChange={(e) => handleRepairItemChange(item.id, 'area', e.target.value)} className="w-1/3 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Công tác (VD: Đập gạch cũ, lát nền mới)" value={item.task} onChange={(e) => handleRepairItemChange(item.id, 'task', e.target.value)} className="w-1/2 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="KL Sơ bộ (VD: 15m2)" value={item.volume} onChange={(e) => handleRepairItemChange(item.id, 'volume', e.target.value)} className="w-1/4 text-xs bg-slate-50 focus:bg-white" />
                                                 <Button type="button" variant="ghost" size="icon" className="text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => removeRepairItem(item.id)}>
                                                     <Trash2 className="w-4 h-4" />
                                                 </Button>
@@ -983,6 +1037,85 @@ export default function SurveyResultModal({ task, projectId, projectCode = "", p
                                         ))}
                                         <Button type="button" variant="outline" size="sm" onClick={addRepairItem} className="w-full border-dashed border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors">
                                             <Plus className="w-4 h-4 mr-2" /> Thêm hạng mục
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* NỘI THẤT FORM */}
+                        {isNoiThatTask && (
+                            <div className="space-y-6">
+                                <div className="p-5 bg-violet-50/50 border border-violet-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-violet-800 font-black text-sm uppercase tracking-widest border-b border-violet-200 pb-2">
+                                        <Palette className="w-4 h-4 text-violet-600" /> ĐỊNH HƯỚNG THIẾT KẾ (CONCEPT)
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-violet-700 uppercase">Phong cách thiết kế dự kiến</span>
+                                            <Select value={interiorData.designStyle} onValueChange={v => setInteriorData({ ...interiorData, designStyle: v })}><SelectTrigger className="h-10 bg-white font-bold text-violet-800"><SelectValue /></SelectTrigger><SelectContent>{INTERIOR_OPTIONS.designStyle.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-slate-50/50 border border-slate-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-slate-800 font-black text-sm uppercase tracking-widest border-b border-slate-200 pb-2">
+                                        <Grid className="w-4 h-4 text-slate-600" /> HIỆN TRẠNG PHẦN THÔ NỘI THẤT
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-slate-700 uppercase">Hiện trạng Trần</span>
+                                            <Select value={interiorData.ceilingState} onValueChange={v => setInteriorData({ ...interiorData, ceilingState: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{INTERIOR_OPTIONS.ceilingState.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-slate-700 uppercase">Hiện trạng Sàn</span>
+                                            <Select value={interiorData.floorState} onValueChange={v => setInteriorData({ ...interiorData, floorState: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{INTERIOR_OPTIONS.floorState.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-slate-700 uppercase">Hiện trạng Tường</span>
+                                            <Select value={interiorData.wallState} onValueChange={v => setInteriorData({ ...interiorData, wallState: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{INTERIOR_OPTIONS.wallState.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-orange-50/50 border border-orange-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-orange-800 font-black text-sm uppercase tracking-widest border-b border-orange-200 pb-2">
+                                        <Layout className="w-4 h-4 text-orange-600" /> HIỆN TRẠNG ĐỒ GỖ & THIẾT BỊ
+                                    </Label>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-orange-700 uppercase">Khu vực Bếp</span>
+                                            <Select value={interiorData.kitchenState} onValueChange={v => setInteriorData({ ...interiorData, kitchenState: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{INTERIOR_OPTIONS.kitchenState.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <span className="text-[10px] font-bold text-orange-700 uppercase">Khu vực Vệ sinh (WC)</span>
+                                            <Select value={interiorData.wcState} onValueChange={v => setInteriorData({ ...interiorData, wcState: v })}><SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger><SelectContent>{INTERIOR_OPTIONS.wcState.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent></Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* BẢNG KÊ NỘI THẤT DYNAMIC */}
+                                <div className="p-5 bg-violet-50/50 border border-violet-200 rounded-2xl shadow-inner space-y-4">
+                                    <Label className="flex items-center gap-2 text-violet-800 font-black text-sm uppercase tracking-widest border-b border-violet-200 pb-2">
+                                        <Sofa className="w-4 h-4 text-violet-600" /> BẢNG KÊ CHI TIẾT HẠNG MỤC NỘI THẤT
+                                    </Label>
+                                    <div className="space-y-3">
+                                        {interiorData.interiorItems.length === 0 && (
+                                            <p className="text-xs text-violet-600 italic text-center py-2">Chưa có đồ nội thất nào được liệt kê.</p>
+                                        )}
+                                        {interiorData.interiorItems.map((item) => (
+                                            <div key={item.id} className="flex gap-2 items-center bg-white p-2 rounded-lg border border-violet-100 shadow-sm transition-all hover:border-violet-300">
+                                                <Input placeholder="Tên Hạng mục (Vd: Hệ vách Tivi)" value={item.name} onChange={(e) => handleInteriorItemChange(item.id, 'name', e.target.value)} className="w-1/4 text-xs font-bold text-violet-800 bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Kích thước (Dài x Rộng x Cao)" value={item.dimensions} onChange={(e) => handleInteriorItemChange(item.id, 'dimensions', e.target.value)} className="w-1/4 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Vật liệu (Vd: MDF chống ẩm)" value={item.material} onChange={(e) => handleInteriorItemChange(item.id, 'material', e.target.value)} className="w-1/4 text-xs bg-slate-50 focus:bg-white" />
+                                                <Input placeholder="Ghi chú (Vd: Cắt khoét công tắc)" value={item.notes} onChange={(e) => handleInteriorItemChange(item.id, 'notes', e.target.value)} className="w-1/4 text-xs bg-slate-50 focus:bg-white" />
+                                                <Button type="button" variant="ghost" size="icon" className="text-red-400 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => removeInteriorItem(item.id)}>
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                        <Button type="button" variant="outline" size="sm" onClick={addInteriorItem} className="w-full border-dashed border-violet-300 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors">
+                                            <Plus className="w-4 h-4 mr-2" /> Thêm hạng mục nội thất
                                         </Button>
                                     </div>
                                 </div>
