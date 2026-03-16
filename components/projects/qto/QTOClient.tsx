@@ -2,16 +2,19 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Calculator, Plus, Trash2, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Calculator, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FilePlus2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { deleteQTOItem, deleteQTODetail, calculateMaterialBudget, updateQTODetail, updateQTODetailText, addQTODetail, updateQTONormCode } from "@/lib/action/qtoActions";
+import { deleteQTOItem, deleteQTODetail, calculateMaterialBudget, updateQTODetail, updateQTODetailText, addQTODetail, updateQTONormCode, addManualQTOItem } from "@/lib/action/qtoActions";
 import { getNorms } from "@/lib/action/normActions";
-import AutoEstimateWizard from "./AutoEstimateWizard"; // 🔴 Đã đổi sang WIZARD
-import { createClient } from "@/lib/supabase/client"; // 🔴 Supabase Client để Bypass Cache
+import AutoEstimateWizard from "./AutoEstimateWizard";
+import { createClient } from "@/lib/supabase/client";
 
 interface Props {
     projectId: string;
@@ -24,11 +27,24 @@ function toRoman(num: number): string {
     return roman[num] || num.toString();
 }
 
+// ✅ HÀM RENDER NHÃN (BADGE) PHÂN LOẠI ITEM CHO TRỰC QUAN
+function renderItemTypeBadge(type: string) {
+    switch (type) {
+        case 'task': return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Công tác</span>;
+        case 'material': return <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Vật tư</span>;
+        case 'labor': return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Nhân công</span>;
+        case 'equipment': return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Máy TC</span>;
+        case 'subcontractor': return <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Thầu phụ</span>;
+        case 'other': return <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Khác</span>;
+        default: return null;
+    }
+}
+
 function AsyncNormSelector({
     taskId,
     projectId,
     defaultCode,
-    onUpdate // Nhận lệnh Refresh từ Cha
+    onUpdate
 }: {
     taskId: string;
     projectId: string;
@@ -61,7 +77,7 @@ function AsyncNormSelector({
 
         if (res.success) {
             toast.success("Đã gắn mã thành công!", { id: toastId });
-            onUpdate(); // Yêu cầu Cha kéo Data mới
+            onUpdate();
         } else {
             toast.error("Lỗi khi gắn mã!", { id: toastId });
         }
@@ -97,16 +113,20 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const router = useRouter();
     const [calcLoading, setCalcLoading] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-
-    // 🔴 LƯU STATE ĐỂ BYPASS CACHE
     const [localItems, setLocalItems] = useState(items);
 
-    // Đồng bộ nếu Server thực sự nhả props mới
+    const [isManualAddModalOpen, setIsManualAddModalOpen] = useState(false);
+    const [manualSectionId, setManualSectionId] = useState<string>("NEW");
+    const [newSectionName, setNewSectionName] = useState("");
+    const [manualItemName, setManualItemName] = useState("");
+    const [manualUnit, setManualUnit] = useState("m2");
+    const [manualItemType, setManualItemType] = useState("task");
+    const [isAddingManual, setIsAddingManual] = useState(false);
+
     useEffect(() => {
         setLocalItems(items);
     }, [items]);
 
-    // 🔴 KÉO DATA TRỰC TIẾP TỪ DB, ÉP DIỆN MẠO PHẢI THAY ĐỔI MÀ KHÔNG CẦN ROUTER.REFRESH
     const fetchLatestData = async () => {
         const supabase = createClient();
         const { data } = await supabase
@@ -134,7 +154,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     };
 
     const handleDeleteItem = async (itemId: string) => {
-        if (!confirm("Bạn có chắc muốn xóa?")) return;
+        if (!confirm("Bạn có chắc muốn xóa? Toàn bộ chi tiết bên trong cũng sẽ bị xóa!")) return;
         await deleteQTOItem(itemId, projectId);
         fetchLatestData();
     };
@@ -171,23 +191,137 @@ export default function QTOClient({ projectId, items, norms }: Props) {
         }
     };
 
-    // 🔴 RENDER TỪ MẢNG LOCAL ITEMS
-    const sections = localItems.filter(i => !i.parent_id);
+    const handleSaveManualItem = async () => {
+        if (!manualItemName.trim()) {
+            toast.error("Vui lòng nhập tên công tác!");
+            return;
+        }
+        if (manualSectionId === "NEW" && !newSectionName.trim()) {
+            toast.error("Vui lòng nhập tên Hạng mục mới!");
+            return;
+        }
+        if (!manualItemType) {
+            toast.error("Vui lòng chọn Phân loại công tác!");
+            return;
+        }
+
+        setIsAddingManual(true)
+
+        const res = await addManualQTOItem(
+            projectId,
+            manualSectionId,
+            newSectionName.trim(),
+            manualItemName.trim(),
+            manualUnit.trim(),
+            manualItemType
+        );
+
+        if (res.success) {
+            toast.success("Thêm công tác thủ công thành công!");
+            setIsManualAddModalOpen(false);
+            setManualItemName("");
+            setNewSectionName("");
+            fetchLatestData();
+        } else {
+            toast.error("Có lỗi xảy ra: " + res.error);
+        }
+
+        setIsAddingManual(false);
+    };
+
+    // ✅ KIỂM TRA ITEM_TYPE ĐỂ LẤY ĐÚNG SECTION
+    const sections = localItems.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end bg-white p-3 rounded-lg border shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-lg border shadow-sm gap-3">
+                <div className="flex items-center gap-2">
+                    <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="border-teal-500 text-teal-700 hover:bg-teal-50 font-bold bg-teal-50/50">
+                                <FilePlus2 className="w-4 h-4 mr-2" /> Thêm tiên lượng thủ công
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle className="text-teal-700 flex items-center gap-2">
+                                    <FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công
+                                </DialogTitle>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạng mục (Section)</Label>
+                                    <Select value={manualSectionId} onValueChange={setManualSectionId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Chọn hạng mục..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectItem value="NEW" className="font-bold text-teal-600">+ Tạo Hạng Mục Mới</SelectItem>
+                                                {sections.map(sec => (
+                                                    <SelectItem key={sec.id} value={sec.id}>{sec.item_name}</SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                {/* 🔴 SỬ DỤNG WIZARD XỊN VÀ GẮN LỆNH KÉO DATA VÀO ĐÂY */}
-                <AutoEstimateWizard
-                    projectId={projectId}
-                    onSuccess={fetchLatestData}
-                />
+                                {manualSectionId === "NEW" && (
+                                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tên hạng mục mới</Label>
+                                        <Input placeholder="Vd: Công tác thi công Trát tường..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} />
+                                    </div>
+                                )}
 
-                <Button className="bg-blue-600 hover:bg-blue-700 ml-2" onClick={handleCalculate} disabled={calcLoading}>
-                    {calcLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
-                    Phân tích Vật tư & Chuyển Dự toán
-                </Button>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tên công tác chi tiết</Label>
+                                    <Input placeholder="Vd: Trát tường trong nhà chiều dày 1.5cm..." value={manualItemName} onChange={e => setManualItemName(e.target.value)} />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Đơn vị tính</Label>
+                                        <Input placeholder="Vd: m2, m3, Cái, Bộ..." value={manualUnit} onChange={e => setManualUnit(e.target.value)} />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Phân loại (Type)</Label>
+                                        <Select value={manualItemType} onValueChange={setManualItemType}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Phân loại..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectGroup>
+                                                    <SelectItem value="task">Công tác (Task)</SelectItem>
+                                                    <SelectItem value="material">Vật tư (Material)</SelectItem>
+                                                    <SelectItem value="labor">Nhân công (Labor)</SelectItem>
+                                                    <SelectItem value="equipment">Máy thi công (Equipment)</SelectItem>
+                                                    <SelectItem value="subcontractor">Thầu phụ (Subcontractor)</SelectItem>
+                                                    <SelectItem value="other">Khác (Other)</SelectItem>
+                                                </SelectGroup>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsManualAddModalOpen(false)}>Hủy</Button>
+                                <Button onClick={handleSaveManualItem} disabled={isAddingManual} className="bg-teal-600 hover:bg-teal-700 text-white">
+                                    {isAddingManual && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                    Lưu công tác
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <AutoEstimateWizard projectId={projectId} onSuccess={fetchLatestData} />
+                    <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto" onClick={handleCalculate} disabled={calcLoading}>
+                        {calcLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
+                        Phân tích Vật tư & Chuyển Dự toán
+                    </Button>
+                </div>
             </div>
 
             <Card className="border-none shadow-none bg-transparent">
@@ -195,7 +329,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                     <TableHeader>
                         <TableRow className="bg-slate-100 hover:bg-slate-100">
                             <TableHead className="w-[60px] text-center font-bold">STT</TableHead>
-                            <TableHead className="font-bold">Danh mục công việc (Từ AI)</TableHead>
+                            <TableHead className="font-bold">Danh mục công việc / Công tác</TableHead>
                             <TableHead className="w-[80px] text-center font-bold">ĐVT</TableHead>
                             <TableHead className="w-[120px] text-right font-bold">Khối lượng</TableHead>
                             <TableHead className="w-[200px] text-center font-bold">Mã Định Mức</TableHead>
@@ -204,9 +338,10 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                     </TableHeader>
                     <TableBody>
                         {sections.length === 0 ? (
-                            <TableRow><TableCell colSpan={6} className="text-center py-8">Chưa có dữ liệu bóc tách.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
                         ) : sections.map((section, secIdx) => {
-                            const tasks = localItems.filter(i => i.parent_id === section.id);
+                            // ✅ KIỂM TRA LẤY CON CỦA SECTION
+                            const tasks = localItems.filter(i => i.parent_id === section.id && i.item_type !== 'section');
 
                             return (
                                 <React.Fragment key={section.id}>
@@ -238,9 +373,11 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                                 {expandedRows[task.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                             </Button>
                                                             <span>{task.item_name}</span>
+                                                            {/* ✅ HIỂN THỊ BADGE TƯƠNG ỨNG VỚI LOẠI ITEM */}
+                                                            {renderItemTypeBadge(task.item_type)}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="text-center">{task.unit}</TableCell>
+                                                    <TableCell className="text-center text-slate-600">{task.unit}</TableCell>
                                                     <TableCell className="text-right font-bold text-blue-700 text-base">
                                                         {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>

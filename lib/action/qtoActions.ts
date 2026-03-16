@@ -129,115 +129,94 @@ export async function deleteQTODetail(id: string, projectId: string) {
 
 // --- 6. LOGIC TÍNH TOÁN VẬT TƯ (ĐÃ NÂNG CẤP THEO 3 BẢNG DICTIONARY CHUẨN) ---
 export async function calculateMaterialBudget(projectId: string) {
+    const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
 
     try {
-        // A. Lấy QTO Items
-        const { data: qtoItems, error: qtoError } = await supabase
-            .from("qto_items")
-            .select(`id, item_name, norm_code, details:qto_item_details (length, width, height, quantity_factor)`)
-            .eq("project_id", projectId)
-            .not("norm_code", "is", null);
+        // 1. DỌN DẸP BẢNG DỰ TOÁN CŨ CỦA DỰ ÁN NÀY
+        const { error: delErr } = await supabase
+            .from('estimation_items')
+            .delete()
+            .eq('project_id', projectId);
 
-        if (qtoError) throw new Error("Lỗi lấy QTO: " + qtoError.message);
-        if (!qtoItems || qtoItems.length === 0) {
-            return { success: false, error: "Chưa có Hạng mục nào được gắn mã định mức!" };
-        }
+        if (delErr) throw new Error("Lỗi xóa dự toán cũ: " + delErr.message);
 
-        const uniqueNormCodes = Array.from(new Set(qtoItems.map(i => i.norm_code).filter(Boolean)));
+        // 2. KÉO DỮ LIỆU QTO
+        const { data: qtoItems } = await supabase
+            .from('qto_items')
+            .select('*, details:qto_item_details(*)')
+            .eq('project_id', projectId);
 
-        // B. Lấy thông tin Định mức
-        const { data: normDefs, error: defError } = await supabase
-            .from("norms").select("id, code").in("code", uniqueNormCodes);
+        if (!qtoItems) throw new Error("Không có dữ liệu bóc tách");
 
-        if (defError) throw new Error("Lỗi lấy định mức: " + defError.message);
-
-        const normIdMap = new Map(normDefs?.map(n => [n.code, n.id]));
-        const normIds = Array.from(normIdMap.values());
-
-        // C. Lấy chi tiết Hao phí
-        const { data: normDetailsList, error: detailError } = await supabase
-            .from("norm_details")
-            .select(`norm_id, quantity, resource:resources (name, unit)`)
-            .in("norm_id", normIds);
-
-        if (detailError) throw new Error("Lỗi lấy chi tiết hao phí: " + detailError.message);
-
-        // D. Phân rã vật tư (Resource Explosion)
-        const groupedMap: Record<string, any> = {};
-
-        qtoItems.forEach(item => {
-            if (!item.norm_code) return;
-
-            let itemTotal = 0;
-            item.details?.forEach((d: any) => {
-                const len = Number(d.length) || 0;
-                const wid = Number(d.width) || 0;
-                const hei = Number(d.height) || 0;
-                const fac = Number(d.quantity_factor) || 0;
-
-                if (len === 0 && wid === 0 && hei === 0) {
-                    itemTotal += fac;
-                } else {
-                    itemTotal += ((len || 1) * (wid || 1) * (hei || 1) * (fac || 1));
-                }
-            });
-
-            if (itemTotal <= 0) return;
-
-            const normId = normIdMap.get(item.norm_code);
-            const ingredients = normDetailsList?.filter(d => d.norm_id === normId) || [];
-
-            // Gộp Hạng mục
-            const categoryName = `[${item.norm_code}] ${item.item_name || 'Hạng mục chung'}`;
-
-            ingredients.forEach((ing: any) => {
-                const requiredQty = itemTotal * Number(ing.quantity);
-                if (requiredQty > 0 && ing.resource) {
-                    const matName = ing.resource.name;
-                    const key = `${categoryName}_${matName}`;
-
-                    if (!groupedMap[key]) {
-                        groupedMap[key] = {
-                            project_id: projectId,
-                            category: categoryName, // Nếu DB sếp chưa có cột category, lệnh Insert sẽ báo lỗi ngay lập tức để sếp biết!
-                            material_name: matName,
-                            unit: ing.resource.unit,
-                            budget_quantity: 0,
-                            last_updated: new Date().toISOString()
-                        };
-                    }
-                    groupedMap[key].budget_quantity += requiredQty;
-                }
-            });
-        });
-
-        const budgetRecords = Object.values(groupedMap);
-
-        // 🔴 KIỂM TRA CHẶT CHẼ TRƯỚC KHI XÓA & LƯU
-        if (budgetRecords.length === 0) {
-            return {
-                success: false,
-                error: "Tính toán ra 0 vật tư. Nguyên nhân: Mã định mức sếp chọn chưa có bảng hao phí vật liệu bên trong (Rỗng)!"
-            };
-        }
-
-        // Xóa cũ và Lưu mới
-        await supabase.from("project_material_budget").delete().eq("project_id", projectId);
-
-        const { error: insertError } = await supabase.from("project_material_budget").insert(budgetRecords);
-        if (insertError) {
-            throw new Error(`Lỗi Insert Database: ${insertError.message} (Có thể do sếp chưa tạo cột 'category' trong bảng project_material_budget)`);
-        }
-
-        return {
-            success: true,
-            message: `🎉 Thành công! Đã bóc tách được ${budgetRecords.length} dòng vật tư.`
+        const getVolume = (details: any[]) => {
+            if (!details || details.length === 0) return 0;
+            return details.reduce((sum: number, d: any) => {
+                const l = parseFloat(d.length) || 0, w = parseFloat(d.width) || 0, h = parseFloat(d.height) || 0, f = parseFloat(d.quantity_factor) || 0;
+                if (l === 0 && w === 0 && h === 0) return sum + f;
+                return sum + ((l !== 0 ? l : 1) * (w !== 0 ? w : 1) * (h !== 0 ? h : 1) * (f !== 0 ? f : 1));
+            }, 0);
         };
 
-    } catch (e: any) {
-        console.error("🔥 Calculate Error:", e.message);
-        return { success: false, error: e.message };
+        const estimationArray: any[] = [];
+
+        // 3. XỬ LÝ PHÂN TÍCH TỪNG CÔNG TÁC (KHÔNG GỘP CHUNG NỮA)
+        for (const item of qtoItems) {
+            if (item.item_type === 'section' || (!item.parent_id && !item.item_type)) continue;
+
+            const itemVolume = getVolume(item.details);
+            if (itemVolume === 0) continue;
+
+            if (item.item_type === 'task' && item.norm_code) {
+                // Kéo định mức của công tác này
+                const { data: normDetails } = await supabase
+                    .from('norm_details')
+                    .select('*')
+                    .eq('norm_code', item.norm_code);
+
+                if (normDetails && normDetails.length > 0) {
+                    // a. Add Vật liệu, Nhân công, Máy
+                    for (const nd of normDetails) {
+                        estimationArray.push({
+                            project_id: projectId,
+                            qto_item_id: item.id, // Gắn chặt với ID công tác
+                            material_code: nd.resource_code || null,
+                            material_name: nd.material_name,
+                            unit: nd.unit,
+                            quantity: itemVolume * parseFloat(nd.quantity_per_unit), // Khối lượng = KL Công tác x Định mức
+                            unit_price: nd.price || 0,
+                            category: nd.category, // 'material', 'labor', 'equipment'
+                            section_name: item.item_name // Dùng cột này để lưu tên công tác tạm
+                        });
+                    }
+
+                    // b. Add các dòng Chi phí Đuôi (GT, LN, VAT) theo chuẩn Dự toán
+                    // (Lưu ý: Quantity để là 1, unit_price sẽ được tính bằng % của tổng trực tiếp ở Frontend/SQL)
+                    estimationArray.push(
+                        { project_id: projectId, qto_item_id: item.id, material_name: "Chi phí gián tiếp (quản lý, lán trại...)", unit: "%", quantity: 1, unit_price: 0, category: "GT" },
+                        { project_id: projectId, qto_item_id: item.id, material_name: "Lợi nhuận dự kiến", unit: "%", quantity: 1, unit_price: 0, category: "LN" },
+                        { project_id: projectId, qto_item_id: item.id, material_name: "Thuế giá trị gia tăng (VAT)", unit: "%", quantity: 1, unit_price: 0, category: "VAT" }
+                    );
+                }
+            } else if (['material', 'labor', 'equipment'].includes(item.item_type)) {
+                // Các công tác nhập tay
+                estimationArray.push({
+                    project_id: projectId, qto_item_id: item.id, material_name: item.item_name, unit: item.unit,
+                    quantity: itemVolume, unit_price: item.unit_price || 0, category: item.item_type, section_name: item.item_name
+                });
+            }
+        }
+
+        // 4. LƯU VÀO DATABASE BẢNG CHI TIẾT
+        if (estimationArray.length > 0) {
+            const { error: insertErr } = await supabase.from('estimation_items').insert(estimationArray);
+            if (insertErr) throw new Error("Lỗi khi lưu Bảng phân tích: " + insertErr.message);
+        }
+
+        return { success: true, message: `Đã phân tích chi tiết ${estimationArray.length} dòng hao phí!` };
+
+    } catch (err: any) {
+        return { success: false, error: err.message };
     }
 }
 
@@ -252,4 +231,57 @@ export async function getMaterialBudget(projectId: string) {
 
     if (error) return [];
     return data || [];
+}
+
+// --- 8. ADD LẤY DỮ LIỆU THỦ CÔNG ---
+export async function addManualQTOItem(
+    projectId: string,
+    sectionId: string,
+    newSectionName: string,
+    taskName: string,
+    unit: string,
+    itemType: string
+) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    try {
+        let targetSectionId = sectionId;
+
+        // 1. Tạo Hạng mục mẹ (Section)
+        if (sectionId === "NEW") {
+            const { data: newSec, error: secErr } = await supabase
+                .from('qto_items')
+                .insert({
+                    project_id: projectId,
+                    item_name: newSectionName,
+                    parent_id: null,
+                    unit: "",
+                    item_type: "section" // ✅ PHẢI GHI CỨNG LÀ "section" THEO ĐÚNG DATABASE
+                })
+                .select()
+                .single();
+
+            if (secErr) throw secErr;
+            targetSectionId = newSec.id;
+        }
+
+        // 2. Tạo công tác con (Task, Material, Labor...)
+        const { error: taskErr } = await supabase
+            .from('qto_items')
+            .insert({
+                project_id: projectId,
+                parent_id: targetSectionId,
+                item_name: taskName,
+                unit: unit || "Cái",
+                item_type: itemType // ✅ Nhận giá trị từ form ("task", "material"...)
+            });
+
+        if (taskErr) throw taskErr;
+
+        return { success: true };
+    } catch (err: any) {
+        console.error("Lỗi addManualQTOItem:", err);
+        return { success: false, error: err.message };
+    }
 }

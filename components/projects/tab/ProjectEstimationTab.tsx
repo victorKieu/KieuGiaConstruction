@@ -3,93 +3,110 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import {
-    Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2,
-    Link as LinkIcon, Plus
-} from "lucide-react";
-import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter
-} from "@/components/ui/dialog";
+import { Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2, Plus, Calculator } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency } from "@/lib/utils/utils"; //
+import { formatCurrency } from "@/lib/utils/utils";
 
 import {
-    createEstimationFromBudget,
     updateEstimationPrice,
-    getEstimationItems,
     deleteEstimationItem,
-    createManualEstimationItem
+    createManualEstimationItem,
+    analyzeQTOAndGenerateEstimation,
+    updateEstimationQuantity
 } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
-import QTOClient from "@/components/projects/qto/QTOClient";
 
-interface Props {
-    projectId: string;
-}
-
-interface SelectedMaterialData {
-    id: string;
-    code: string;
-    name: string;
-    unit: string;
-    ref_price: number;
-}
+interface Props { projectId: string; }
 
 export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any) {
     const router = useRouter();
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
-    const [items, setItems] = useState<any[]>([]);
+
+    const [qtoTasks, setQtoTasks] = useState<any[]>([]);
+    const [estItems, setEstItems] = useState<any[]>([]);
     const [initLoaded, setInitLoaded] = useState(false);
+
     const [openManualDialog, setOpenManualDialog] = useState(false);
     const [newItemLoading, setNewItemLoading] = useState(false);
 
-    useEffect(() => {
-        loadData();
-    }, []);
+    useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
-        const res = await getEstimationItems(projectId);
-        if (res.success) {
-            setItems(res.data);
-        }
+        const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
+        const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
+
+        setQtoTasks(qtoData || []);
+        setEstItems(estData || []);
         setInitLoaded(true);
     };
 
-    // Hàm gọi khi AI hoàn thành phân tích
-    const handleAnalysisComplete = async () => {
-        setLoading(true); // Bật hiệu ứng loading của bảng
-
-        // 1. Tự động đồng bộ dữ liệu từ bảng project_qto sang bảng estimation_items
-        const syncRes = await createEstimationFromBudget(projectId);
-
-        if (syncRes.success) {
-            toast.success("Đã đồng bộ khối lượng AI vào bảng dự toán!");
-        }
-
-        // 2. Tải lại dữ liệu lên bảng
-        await loadData();
-        router.refresh();
-
+    const handleSync = async () => {
+        setLoading(true);
+        const res = await analyzeQTOAndGenerateEstimation(projectId);
+        if (res.success) { toast.success(res.message); await loadData(); router.refresh(); }
+        else { toast.error(res.error); }
         setLoading(false);
     };
 
+    const handleDelete = async (id: string, name: string) => {
+        if (!confirm(`Xóa mục này?`)) return;
+        const res = await deleteEstimationItem(id, projectId);
+        if (res.success) { toast.success(res.message); await loadData(); router.refresh(); }
+        else { toast.error(res.error); }
+    };
+
+    const handlePriceChange = async (id: string, newPrice: string) => {
+        const price = parseFloat(newPrice) || 0;
+        setEstItems(prev => prev.map(item => item.id === id ? { ...item, unit_price: price, total_cost: item.quantity * price } : item));
+        await updateEstimationPrice(id, projectId, price);
+        router.refresh();
+    };
+
+    const handleRateChange = async (id: string, newRate: string) => {
+        const rate = parseFloat(newRate) || 0;
+        setEstItems(prev => prev.map(item => item.id === id ? { ...item, quantity: rate } : item));
+        await updateEstimationQuantity(id, projectId, rate);
+        router.refresh();
+    };
+
+    const handleMaterialSelect = async (itemId: string, mat: any) => {
+        const { error } = await supabase.from('estimation_items').update({
+            is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0
+        }).eq('id', itemId);
+
+        if (!error) {
+            setEstItems(prev => prev.map(item => item.id === itemId ? { ...item, is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0, total_cost: (item.quantity || 0) * (mat.ref_price || 0) } : item));
+            router.refresh();
+        } else { toast.error("Lỗi cập nhật: " + error.message); }
+    };
+
+    const handleCreateManual = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setNewItemLoading(true);
+        const formData = new FormData(e.currentTarget);
+        const data = { name: formData.get("name"), unit: formData.get("unit"), quantity: formData.get("quantity"), unit_price: formData.get("unit_price") };
+        const res = await createManualEstimationItem(projectId, data);
+        if (res.success) { toast.success(res.message); setOpenManualDialog(false); loadData(); router.refresh(); }
+        else { toast.error(res.error); }
+        setNewItemLoading(false);
+    };
+
     const handleDownloadTemplate = () => {
-        const header = ["STT", "Mã hiệu (Bắt buộc)", "Tên công việc / Vật tư (Bắt buộc)", "ĐVT", "Dài", "Rộng", "Cao", "Hệ số", "Khối lượng", "Đơn giá", "Thành tiền", "Ghi chú"];
+        const header = ["STT", "Mã hiệu (Bắt buộc)", "Tên công việc / Vật tư (Bắt buộc)", "ĐVT", "Dài", "Rộng", "Cao", "Khối lượng", "Đơn giá", "Thành tiền", "Ghi chú"];
         const sampleData = [
-            ["", "", "I. PHẦN MÓNG", "", "", "", "", "", "", "", "", "Hạng mục"],
-            [1, "BT-LOT", "Bê tông lót móng đá 4x6", "m3", "", "", "", "", 10, 1200000, "", ""],
+            ["", "", "I. PHẦN MÓNG", "", "", "", "", "", "", "", "Hạng mục"],
+            [1, "BT-LOT", "Bê tông lót móng đá 4x6", "m3", "", "", "", 10, 1200000, "", ""],
         ];
         const ws = XLSX.utils.aoa_to_sheet([header, ...sampleData]);
         ws['!cols'] = [{ wch: 5 }, { wch: 15 }, { wch: 40 }, { wch: 10 }];
@@ -107,297 +124,280 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
         formData.append("file", file);
         try {
             const res = await importBOQFromExcel(projectId, formData);
-            if (res.success) {
-                toast.success(res.message);
-                loadData();
-                router.refresh();
-            } else {
-                toast.error(res.error);
-            }
+            if (res.success) { toast.success(res.message); loadData(); router.refresh(); }
+            else { toast.error(res.error); }
         } catch (error) { toast.error("Lỗi hệ thống."); }
         finally { setIsImporting(false); e.target.value = ""; }
     };
 
-    const handleSync = async () => {
-        setLoading(true);
-        const res = await createEstimationFromBudget(projectId);
-        if (res.success) {
-            toast.success(res.message);
-            await loadData();
-            router.refresh();
-        } else { toast.error(res.error); }
-        setLoading(false);
-    };
+    // PHÂN TÁCH DỮ LIỆU
+    const normalItems = estItems.filter(i => !['GT', 'LN', 'VAT'].includes(i.category));
+    const globalParams = estItems.filter(i => ['GT', 'LN', 'VAT'].includes(i.category));
 
-    const handleDelete = async (id: string, name: string) => {
-        if (!confirm(`Xóa mục "${name}"?`)) return;
-        const oldItems = [...items];
-        setItems(prev => prev.filter(i => i.id !== id));
-        const res = await deleteEstimationItem(id, projectId);
-        if (res.success) {
-            toast.success(res.message);
-            router.refresh();
-        } else {
-            toast.error(res.error);
-            setItems(oldItems);
-        }
-    };
+    const gtParam = globalParams.find(i => i.category === 'GT') || { quantity: 10, id: 'temp-gt' };
+    const lnParam = globalParams.find(i => i.category === 'LN') || { quantity: 12, id: 'temp-ln' };
+    const vatParam = globalParams.find(i => i.category === 'VAT') || { quantity: 10, id: 'temp-vat' };
 
-    const handlePriceChange = async (id: string, newPrice: string) => {
-        const price = parseFloat(newPrice) || 0;
-        setItems(prev => prev.map(item => item.id === id ? { ...item, unit_price: price, total_cost: item.quantity * price } : item));
-        await updateEstimationPrice(id, projectId, price);
-        router.refresh();
-    };
+    const standaloneItems = normalItems.filter(i => !i.qto_item_id);
 
-    const handleMaterialSelect = async (itemId: string, mat: any) => {
-        const { error } = await supabase
-            .from('estimation_items')
-            .update({
-                is_mapped: true,
-                material_code: mat.code,
-                material_name: mat.name,
-                unit: mat.unit,
-                unit_price: mat.ref_price || 0
-            })
-            .eq('id', itemId);
-
-        if (!error) {
-            setItems(prev => prev.map(item =>
-                item.id === itemId
-                    ? {
-                        ...item,
-                        is_mapped: true,
-                        material_code: mat.code,
-                        material_name: mat.name,
-                        unit: mat.unit,
-                        unit_price: mat.ref_price || 0,
-                        total_cost: (item.quantity || 0) * (mat.ref_price || 0)
-                    }
-                    : item
-            ));
-            router.refresh();
-        } else {
-            toast.error("Lỗi cập nhật: " + error.message);
-        }
-    };
-
-    const handleCreateManual = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setNewItemLoading(true);
-        const formData = new FormData(e.currentTarget);
-
-        const data = {
-            name: formData.get("name"),
-            unit: formData.get("unit"),
-            quantity: formData.get("quantity"),
-            unit_price: formData.get("unit_price")
-        };
-
-        const res = await createManualEstimationItem(projectId, data);
-
-        if (res.success) {
-            toast.success(res.message);
-            setOpenManualDialog(false);
-            loadData();
-            router.refresh();
-        } else {
-            toast.error(res.error);
-        }
-        setNewItemLoading(false);
-    };
-
-    const totalEstimate = items.reduce((sum, item) => sum + (item.total_cost || 0), 0);
-
-    const sortedItems = React.useMemo(() => {
-        return [...items].sort((a, b) => {
-            const secA = (a.section_name || "").toString().trim();
-            const secB = (b.section_name || "").toString().trim();
-            const secCompare = secA.localeCompare(secB, 'vi');
-            if (secCompare !== 0) return secCompare;
-            const nameA = (a.original_name || a.material_name || "").toString().trim();
-            const nameB = (b.original_name || b.material_name || "").toString().trim();
-            return nameA.localeCompare(nameB, 'vi');
-        });
-    }, [items]);
+    // TÍNH TOÁN
+    const T = normalItems.reduce((sum, item) => sum + (item.total_cost || 0), 0);
+    const GT = T * (gtParam.quantity / 100);
+    const TL = (T + GT) * (lnParam.quantity / 100);
+    const Gxd = T + GT + TL;
+    const VAT = Gxd * (vatParam.quantity / 100);
+    const TotalProject = Gxd + VAT;
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-500">
-
+        <div className="space-y-6 animate-in fade-in duration-500">
             {/* HEADER */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-card p-4 rounded-lg border border-border shadow-sm">
                 <div>
                     <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                        <DollarSign className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                        Bảng Dự toán & Chuẩn hóa
+                        <DollarSign className="w-5 h-5 text-blue-600" />
+                        Dự Toán & Tổng Hợp Kinh Phí
                     </h3>
-                    <p className="text-sm text-muted-foreground">Chuẩn hóa dữ liệu Import và quản lý chi phí.</p>
+                    <p className="text-sm text-muted-foreground">Thiết lập tỉ lệ % và chuẩn hóa đơn giá vật tư.</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="bg-purple-50 dark:bg-purple-900/20 px-3 py-1.5 rounded border border-purple-100 dark:border-purple-900 text-right mr-2">
-                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold uppercase block">Tổng cộng</span>
-                        <span className="text-lg font-bold text-purple-700 dark:text-purple-300">{formatCurrency(totalEstimate)}</span>
-                    </div>
-
                     <Dialog open={openManualDialog} onOpenChange={setOpenManualDialog}>
-                        <DialogTrigger asChild>
-                            <Button className="h-9 bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white shadow-sm">
-                                <Plus className="w-4 h-4 mr-2" /> Thêm dòng
-                            </Button>
-                        </DialogTrigger>
+                        <DialogTrigger asChild><Button className="h-9 bg-green-600 hover:bg-green-700 text-white shadow-sm"><Plus className="w-4 h-4 mr-2" /> Thêm dòng</Button></DialogTrigger>
                         <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Thêm mục chi phí mới</DialogTitle>
-                            </DialogHeader>
+                            <DialogHeader><DialogTitle>Thêm mục chi phí bổ sung</DialogTitle></DialogHeader>
                             <form onSubmit={handleCreateManual} className="space-y-4 py-2">
-                                <div>
-                                    <Label>Tên công việc / Vật tư <span className="text-red-500">*</span></Label>
-                                    <Input name="name" required placeholder="VD: Cát xây tô" />
-                                </div>
+                                <div><Label>Tên công việc / Vật tư <span className="text-red-500">*</span></Label><Input name="name" required placeholder="VD: Cát xây tô" /></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label>Đơn vị tính</Label>
-                                        <Input name="unit" placeholder="m3, kg..." />
-                                    </div>
-                                    <div>
-                                        <Label>Khối lượng <span className="text-red-500">*</span></Label>
-                                        <Input name="quantity" type="number" step="0.01" required placeholder="0" />
-                                    </div>
+                                    <div><Label>Đơn vị tính</Label><Input name="unit" placeholder="m3, kg..." /></div>
+                                    <div><Label>Khối lượng <span className="text-red-500">*</span></Label><Input name="quantity" type="number" step="0.01" required placeholder="0" /></div>
                                 </div>
                                 <div>
-                                    <Label>Đơn giá tạm tính</Label>
-                                    <Input name="unit_price" type="number" placeholder="0" />
-                                    <p className="text-[11px] text-muted-foreground mt-1">* Có thể để trống, cập nhật sau khi map mã chuẩn.</p>
+                                    <Label>Đơn giá tạm tính</Label><Input name="unit_price" type="number" placeholder="0" />
                                 </div>
                                 <DialogFooter>
                                     <Button type="button" variant="outline" onClick={() => setOpenManualDialog(false)}>Hủy</Button>
-                                    <Button type="submit" disabled={newItemLoading}>
-                                        {newItemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu lại"}
-                                    </Button>
+                                    <Button type="submit" disabled={newItemLoading}>{newItemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu lại"}</Button>
                                 </DialogFooter>
                             </form>
                         </DialogContent>
                     </Dialog>
 
-                    <Button variant="outline" onClick={handleDownloadTemplate} className="h-9 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                    <Button variant="outline" onClick={handleDownloadTemplate} className="h-9 border-green-200 text-green-700 hover:bg-green-50">
                         <FileSpreadsheet className="w-4 h-4 mr-2" /> Template
                     </Button>
 
                     <div className="relative">
-                        <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" />
+                        <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" disabled={isImporting} className="h-9 border-border">
                             {isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
                             Import Excel
                         </Button>
                     </div>
 
-                    <Button onClick={handleSync} disabled={loading} className="h-9 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white">
-                        {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                        Đồng bộ QTO
+                    <Button onClick={handleSync} disabled={loading} className="h-9 bg-blue-600 hover:bg-blue-700 text-white">
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />} Đồng bộ QTO
                     </Button>
                 </div>
             </div>
 
-            {/* TABLE */}
-            <Card className="border-none shadow-none bg-card">
-                <Table className="border rounded-md">
+            {/* BẢNG TỔNG HỢP KINH PHÍ */}
+            <Card className="border border-blue-200 shadow-md bg-white overflow-hidden">
+                <div className="bg-blue-50 border-b border-blue-100 p-3 flex items-center gap-2">
+                    <Calculator className="w-5 h-5 text-blue-600" />
+                    <h4 className="font-bold text-blue-800 uppercase tracking-wide text-sm">Bảng Tổng Hợp Kinh Phí</h4>
+                </div>
+                <Table>
                     <TableHeader>
-                        <TableRow className="bg-muted/50">
-                            <TableHead className="w-[50px] text-center">STT</TableHead>
-                            <TableHead className="min-w-[250px]">Thông tin Gốc (Từ Excel/Nhập tay)</TableHead>
-                            <TableHead className="w-[120px] text-right">Khối lượng</TableHead>
-                            <TableHead className="w-[50px] text-center"></TableHead>
-                            <TableHead className="min-w-[250px]">Mã Chuẩn (Master Data)</TableHead>
-                            <TableHead className="w-[130px] text-right">Đơn giá</TableHead>
-                            <TableHead className="w-[130px] text-right">Thành tiền</TableHead>
+                        <TableRow className="bg-slate-50">
+                            <TableHead className="w-[60px] text-center font-bold">STT</TableHead>
+                            <TableHead className="font-bold">Khoản mục chi phí</TableHead>
+                            <TableHead className="w-[150px] text-center font-bold">Ký hiệu</TableHead>
+                            <TableHead className="w-[120px] text-center font-bold">Tỉ lệ (%)</TableHead>
+                            <TableHead className="w-[200px] text-right font-bold">Thành tiền (VNĐ)</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow>
+                            <TableCell className="text-center font-medium">1</TableCell>
+                            <TableCell className="font-bold text-slate-700">Chi phí trực tiếp (VL + NC + M)</TableCell>
+                            <TableCell className="text-center font-medium">T</TableCell>
+                            <TableCell className="text-center text-slate-400">100%</TableCell>
+                            <TableCell className="text-right font-bold text-slate-800">{formatCurrency(T)}</TableCell>
+                        </TableRow>
+                        <TableRow className="bg-slate-50/50">
+                            <TableCell className="text-center font-medium">2</TableCell>
+                            <TableCell className="font-medium text-slate-600">Chi phí gián tiếp (Quản lý, lán trại...)</TableCell>
+                            <TableCell className="text-center font-medium text-slate-500">GT = T x %</TableCell>
+                            <TableCell className="p-1"><Input type="number" className="h-8 text-center text-blue-700 font-bold border-blue-200 bg-white" defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, e.target.value)} /></TableCell>
+                            <TableCell className="text-right font-medium text-slate-700">{formatCurrency(GT)}</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell className="text-center font-medium">3</TableCell>
+                            <TableCell className="font-medium text-slate-600">Thu nhập chịu thuế tính trước (Lợi nhuận)</TableCell>
+                            <TableCell className="text-center font-medium text-slate-500">TL = (T+GT) x %</TableCell>
+                            <TableCell className="p-1"><Input type="number" className="h-8 text-center text-blue-700 font-bold border-blue-200 bg-white" defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, e.target.value)} /></TableCell>
+                            <TableCell className="text-right font-medium text-slate-700">{formatCurrency(TL)}</TableCell>
+                        </TableRow>
+                        <TableRow className="bg-orange-50/30">
+                            <TableCell className="text-center font-medium">4</TableCell>
+                            <TableCell className="font-bold text-orange-800">Chi phí xây dựng trước thuế</TableCell>
+                            <TableCell className="text-center font-bold text-orange-800">G = T+GT+TL</TableCell>
+                            <TableCell className="text-center text-slate-400">-</TableCell>
+                            <TableCell className="text-right font-bold text-orange-700">{formatCurrency(Gxd)}</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell className="text-center font-medium">5</TableCell>
+                            <TableCell className="font-medium text-slate-600">Thuế giá trị gia tăng (VAT)</TableCell>
+                            <TableCell className="text-center font-medium text-slate-500">VAT = G x %</TableCell>
+                            <TableCell className="p-1"><Input type="number" className="h-8 text-center text-blue-700 font-bold border-blue-200 bg-white" defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, e.target.value)} /></TableCell>
+                            <TableCell className="text-right font-medium text-slate-700">{formatCurrency(VAT)}</TableCell>
+                        </TableRow>
+                        <TableRow className="bg-blue-600">
+                            <TableCell className="text-center font-bold text-white">6</TableCell>
+                            <TableCell colSpan={3} className="font-bold text-white text-base uppercase tracking-wider">Tổng Cộng Chi Phí Xây Dựng (Sau Thuế)</TableCell>
+                            <TableCell className="text-right font-extrabold text-white text-lg">{formatCurrency(TotalProject)}</TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+            </Card>
+
+            {/* BẢNG DỰ TOÁN CHI TIẾT */}
+            <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden">
+                <div className="bg-slate-100 border-b border-slate-200 p-3">
+                    <h4 className="font-bold text-slate-700 uppercase tracking-wide text-sm">Bảng Phân Tích Vật Tư & Chi Phí Trực Tiếp</h4>
+                </div>
+                <Table className="bg-white">
+                    <TableHeader>
+                        <TableRow className="bg-slate-50 border-b-2 border-slate-200">
+                            <TableHead className="w-[50px] text-center font-bold text-slate-800">STT</TableHead>
+                            <TableHead className="w-[100px] font-bold text-center text-slate-800">Mã hiệu</TableHead>
+                            <TableHead className="w-[90px] font-bold text-center text-slate-800">Loại</TableHead>
+                            <TableHead className="min-w-[350px] font-bold text-slate-800">Tên công việc / Hao phí</TableHead>
+                            <TableHead className="w-[120px] text-right font-bold text-slate-800">Định mức</TableHead>
+                            <TableHead className="w-[140px] text-right font-bold text-slate-800">Đơn giá</TableHead>
+                            <TableHead className="w-[150px] text-right font-bold text-slate-800">Thành tiền</TableHead>
                             <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {!initLoaded ? (
                             <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
-                        ) : sortedItems.length === 0 ? (
-                            <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground italic">Chưa có dữ liệu. Hãy Import Excel, Dùng AI hoặc Thêm mới.</TableCell></TableRow>
                         ) : (
-                            sortedItems.map((item, index) => (
-                                <TableRow key={item.id} className={item.is_mapped ? "bg-green-50/20 dark:bg-green-900/10 hover:bg-green-50/40 dark:hover:bg-green-900/20" : "hover:bg-muted/50"}>
-                                    <TableCell className="text-center text-muted-foreground text-xs">{index + 1}</TableCell>
+                            <>
+                                {/* CÔNG TÁC QTO */}
+                                {qtoTasks.filter(q => q.parent_id && q.item_type !== 'section').map((task, index) => {
+                                    const children = estItems.filter(i => i.qto_item_id === task.id);
+                                    const taskTotal = children.reduce((sum, item) => sum + (item.total_cost || 0), 0);
 
-                                    {/* CỘT THÔNG TIN GỐC */}
-                                    <TableCell>
-                                        <div className="font-medium text-foreground">{item.original_name || item.material_name}</div>
-                                        {item.section_name && <div className="text-[10px] text-muted-foreground italic">{item.section_name}</div>}
-                                    </TableCell>
+                                    let taskVol = Number(task.quantity) || 0;
+                                    if (taskVol === 0 && task.details && task.details.length > 0) {
+                                        taskVol = task.details.reduce((sum: number, d: any) => {
+                                            const l = parseFloat(d.length) || 0, w = parseFloat(d.width) || 0, h = parseFloat(d.height) || 0, f = parseFloat(d.quantity_factor) || 0;
+                                            if (l === 0 && w === 0 && h === 0) return sum + f;
+                                            return sum + ((l !== 0 ? l : 1) * (w !== 0 ? w : 1) * (h !== 0 ? h : 1) * (f !== 0 ? f : 1));
+                                        }, 0);
+                                    }
 
-                                    <TableCell className="text-right font-semibold text-muted-foreground">
-                                        {Number(item.quantity).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                                        <span className="text-[10px] ml-1 text-muted-foreground font-normal">{item.unit}</span>
-                                    </TableCell>
+                                    return (
+                                        <React.Fragment key={task.id}>
+                                            <TableRow className="bg-slate-100/50 border-b-2 border-slate-200">
+                                                <TableCell className="text-center font-bold border-r border-slate-200 text-slate-600">{index + 1}</TableCell>
+                                                <TableCell className="font-bold border-r border-slate-200 text-center text-blue-700">{task.norm_code}</TableCell>
+                                                <TableCell className="border-r border-slate-200"></TableCell>
+                                                <TableCell className="font-bold text-blue-900 border-r border-slate-200">{task.item_name}</TableCell>
+                                                <TableCell className="text-right font-bold text-slate-700 border-r border-slate-200">KL: {taskVol.toLocaleString('en-US', { maximumFractionDigits: 2 })}</TableCell>
+                                                <TableCell className="border-r border-slate-200"></TableCell>
+                                                <TableCell className="text-right font-bold text-blue-700">{formatCurrency(taskTotal)}</TableCell>
+                                                <TableCell></TableCell>
+                                            </TableRow>
 
-                                    {/* ICON LIÊN KẾT */}
-                                    <TableCell className="text-center">
-                                        <LinkIcon className={`w-4 h-4 ${item.is_mapped ? "text-green-500" : "text-muted-foreground"}`} />
-                                    </TableCell>
+                                            {children.map(child => {
+                                                const savedNorm = child.dimensions?.norm;
+                                                const dinhmuc = savedNorm !== undefined ? savedNorm : (taskVol > 0 ? (child.quantity / taskVol) : child.quantity);
 
-                                    {/* CỘT MAPPING */}
-                                    <TableCell>
-                                        {item.is_mapped ? (
-                                            <div className="flex flex-col group relative cursor-pointer">
-                                                <div className="flex items-center gap-1">
-                                                    <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 px-1 py-0 h-5 text-[10px]">{item.material_code}</Badge>
-                                                </div>
-                                                <span className="text-sm text-green-800 dark:text-green-300 line-clamp-1">{item.material_name}</span>
+                                                return (
+                                                    <TableRow key={child.id} className={child.is_mapped ? "hover:bg-green-50/50" : "hover:bg-muted/30"}>
+                                                        <TableCell className="border-r border-slate-200"></TableCell>
+                                                        <TableCell className="border-r border-slate-200"></TableCell>
+                                                        <TableCell className="text-center font-medium border-r border-slate-200">
+                                                            {child.is_mapped ? <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-none px-1 text-[10px]">{child.material_code}</Badge> : (child.category || "Khác")}
+                                                        </TableCell>
+                                                        <TableCell className="border-r border-slate-200 text-slate-700 pl-6">
+                                                            <div className="flex justify-between items-center group relative">
+                                                                <span className={child.is_mapped ? "text-green-800 font-medium" : ""}>- {child.original_name || child.material_name}</span>
+                                                                {child.is_mapped ? (
+                                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-0 bg-white">
+                                                                        <MaterialSelector onSelect={(mat) => handleMaterialSelect(child.id, mat)} defaultSearch={child.original_name} trigger={<Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600">Sửa mã</Button>} />
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center">
+                                                                        <span className="text-xs text-amber-600 italic mr-2">Chưa khớp</span>
+                                                                        <MaterialSelector onSelect={(mat) => handleMaterialSelect(child.id, mat)} defaultSearch={child.original_name} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right border-r border-slate-200 text-slate-600 font-mono text-sm">
+                                                            {Number(dinhmuc).toLocaleString('en-US', { maximumFractionDigits: 5 })} <span className="text-[10px] text-slate-400 ml-1">{child.unit}</span>
+                                                        </TableCell>
+                                                        <TableCell className="text-right border-r border-slate-200 p-1">
+                                                            <Input type="number" className="h-8 text-right text-sm bg-transparent border-transparent hover:border-slate-300 focus:bg-white focus:ring-1" defaultValue={child.unit_price} onBlur={(e) => handlePriceChange(child.id, e.target.value)} />
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-medium">{formatCurrency(child.total_cost || 0)}</TableCell>
+                                                        <TableCell className="text-center p-1"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(child.id, child.material_name)}><Trash2 className="w-4 h-4" /></Button></TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </React.Fragment>
+                                    );
+                                })}
 
-                                                <div className="absolute right-0 top-0 hidden group-hover:block bg-popover shadow-sm rounded border border-border z-10">
-                                                    <MaterialSelector
-                                                        onSelect={(mat) => handleMaterialSelect(item.id, mat)}
-                                                        defaultSearch={item.original_name}
-                                                        trigger={
-                                                            <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 p-0 w-full justify-start pl-2">
-                                                                Sửa mã
-                                                            </Button>
-                                                        }
-                                                    />
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs text-amber-600 dark:text-amber-400 italic mr-2">Chưa khớp</span>
-                                                <MaterialSelector
-                                                    onSelect={(mat) => handleMaterialSelect(item.id, mat)}
-                                                    defaultSearch={item.original_name}
-                                                />
-                                            </div>
-                                        )}
-                                    </TableCell>
-
-                                    {/* CỘT GIÁ */}
-                                    <TableCell className="text-right p-1">
-                                        <Input
-                                            type="number"
-                                            className="text-right h-8 font-medium focus:ring-purple-500 border-input bg-background"
-                                            defaultValue={item.unit_price}
-                                            onBlur={(e) => handlePriceChange(item.id, e.target.value)}
-                                            placeholder="0"
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-right font-bold text-foreground">
-                                        {formatCurrency(item.total_cost || 0)}
-                                    </TableCell>
-
-                                    {/* CỘT XÓA */}
-                                    <TableCell className="text-center">
-                                        <Button
-                                            variant="ghost" size="icon"
-                                            className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                            onClick={() => handleDelete(item.id, item.material_name)}
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                                {/* HẠNG MỤC IMPORT / THÊM TAY */}
+                                {standaloneItems.length > 0 && (
+                                    <>
+                                        <TableRow className="bg-orange-50 border-b-2 border-slate-200">
+                                            <TableCell className="text-center font-bold border-r border-slate-200 text-orange-700">*</TableCell>
+                                            <TableCell className="font-bold border-r border-slate-200 text-center text-orange-700">IMPORT</TableCell>
+                                            <TableCell className="border-r border-slate-200"></TableCell>
+                                            <TableCell className="font-bold text-orange-700 border-r border-slate-200">CHI PHÍ BỔ SUNG / IMPORT EXCEL</TableCell>
+                                            <TableCell className="border-r border-slate-200"></TableCell>
+                                            <TableCell className="border-r border-slate-200"></TableCell>
+                                            <TableCell className="text-right font-bold text-orange-700">{formatCurrency(standaloneItems.reduce((s, i) => s + (i.total_cost || 0), 0))}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {standaloneItems.map(child => (
+                                            <TableRow key={child.id} className={child.is_mapped ? "hover:bg-green-50/50" : "hover:bg-muted/30"}>
+                                                <TableCell className="border-r border-slate-200"></TableCell>
+                                                <TableCell className="border-r border-slate-200"></TableCell>
+                                                <TableCell className="text-center font-medium border-r border-slate-200">{child.is_mapped ? <Badge className="bg-green-100 text-green-700 border-none px-1 text-[10px]">{child.material_code}</Badge> : (child.category || "Khác")}</TableCell>
+                                                <TableCell className="border-r border-slate-200 text-slate-700 pl-6">
+                                                    <div className="flex justify-between items-center group relative">
+                                                        <span className={child.is_mapped ? "text-green-800 font-medium" : ""}>- {child.original_name || child.material_name}</span>
+                                                        {child.is_mapped ? (
+                                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-0 bg-white">
+                                                                <MaterialSelector onSelect={(mat) => handleMaterialSelect(child.id, mat)} defaultSearch={child.original_name} trigger={<Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600">Sửa mã</Button>} />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center">
+                                                                <span className="text-xs text-amber-600 italic mr-2">Chưa khớp</span>
+                                                                <MaterialSelector onSelect={(mat) => handleMaterialSelect(child.id, mat)} defaultSearch={child.original_name} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right border-r border-slate-200 text-slate-600 font-mono text-sm">
+                                                    {Number(child.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })} <span className="text-[10px] text-slate-400 ml-1">{child.unit}</span>
+                                                </TableCell>
+                                                <TableCell className="text-right border-r border-slate-200 p-1">
+                                                    <Input type="number" className="h-8 text-right text-sm bg-transparent border-transparent hover:border-slate-300 focus:bg-white focus:ring-1" defaultValue={child.unit_price} onBlur={(e) => handlePriceChange(child.id, e.target.value)} />
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium">{formatCurrency(child.total_cost || 0)}</TableCell>
+                                                <TableCell className="text-center p-1"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(child.id, child.material_name)}><Trash2 className="w-4 h-4" /></Button></TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </>
+                                )}
+                            </>
                         )}
                     </TableBody>
                 </Table>

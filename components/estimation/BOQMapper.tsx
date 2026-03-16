@@ -180,7 +180,7 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                     <TableHeader>
                         <TableRow className="bg-slate-100">
                             <TableHead className="w-[50px] text-center">STT</TableHead>
-                            <TableHead className="min-w-[250px]">Thông tin Gốc (Từ Excel)</TableHead>
+                            <TableHead className="min-w-[250px]">Thông tin Gốc</TableHead>
                             <TableHead className="w-[120px] text-right">Khối lượng</TableHead>
                             <TableHead className="w-[50px] text-center"></TableHead>
                             <TableHead className="min-w-[250px]">Mã Chuẩn (Master Data)</TableHead>
