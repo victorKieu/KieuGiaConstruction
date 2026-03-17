@@ -289,3 +289,20 @@ export async function analyzeQTOAndGenerateEstimation(projectId: string) {
         return { success: false, error: e.message };
     }
 }
+
+// ✅ HÀM MỚI: Áp giá hàng loạt từ Bảng Tổng hợp Vật tư/Nhân công/Máy
+export async function updateEstimationPriceByGroup(projectId: string, materialName: string, category: string, price: number) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    // Cập nhật toàn bộ các dòng có cùng tên vật tư và cùng category (VL/NC/M)
+    const { error } = await supabase
+        .from('estimation_items')
+        .update({ unit_price: price })
+        .eq('project_id', projectId)
+        .eq('material_name', materialName)
+        .eq('category', category);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
