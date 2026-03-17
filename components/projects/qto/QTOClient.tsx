@@ -11,10 +11,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { deleteQTOItem, deleteQTODetail, calculateMaterialBudget, updateQTODetail, updateQTODetailText, addQTODetail, updateQTONormCode, addManualQTOItem } from "@/lib/action/qtoActions";
+import { createClient } from "@/lib/supabase/client";
+
+// ✅ IMPORT THÊM updateQTOItem
+import {
+    deleteQTOItem, deleteQTODetail, calculateMaterialBudget,
+    updateQTODetail, updateQTODetailText, addQTODetail,
+    updateQTONormCode, addManualQTOItem, updateQTOItem
+} from "@/lib/action/qtoActions";
 import { getNorms } from "@/lib/action/normActions";
 import AutoEstimateWizard from "./AutoEstimateWizard";
-import { createClient } from "@/lib/supabase/client";
 
 interface Props {
     projectId: string;
@@ -27,30 +33,19 @@ function toRoman(num: number): string {
     return roman[num] || num.toString();
 }
 
-// ✅ HÀM RENDER NHÃN (BADGE) PHÂN LOẠI ITEM CHO TRỰC QUAN
 function renderItemTypeBadge(type: string) {
     switch (type) {
-        case 'task': return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Công tác</span>;
-        case 'material': return <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Vật tư</span>;
-        case 'labor': return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Nhân công</span>;
-        case 'equipment': return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Máy TC</span>;
-        case 'subcontractor': return <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Thầu phụ</span>;
-        case 'other': return <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Khác</span>;
+        case 'task': return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Công tác</span>;
+        case 'material': return <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Vật tư</span>;
+        case 'labor': return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Nhân công</span>;
+        case 'equipment': return <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Máy TC</span>;
+        case 'subcontractor': return <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Thầu phụ</span>;
+        case 'other': return <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Khác</span>;
         default: return null;
     }
 }
 
-function AsyncNormSelector({
-    taskId,
-    projectId,
-    defaultCode,
-    onUpdate
-}: {
-    taskId: string;
-    projectId: string;
-    defaultCode: string;
-    onUpdate: () => void;
-}) {
+function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: () => void; }) {
     const [query, setQuery] = useState(defaultCode || "");
     const [results, setResults] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
@@ -58,10 +53,7 @@ function AsyncNormSelector({
 
     const handleSearch = async (text: string) => {
         setQuery(text);
-        if (text.trim().length < 2) {
-            setIsOpen(false);
-            return;
-        }
+        if (text.trim().length < 2) { setIsOpen(false); return; }
         setIsSearching(true);
         const res = await getNorms(text, 1, 20);
         setResults(res.data || []);
@@ -74,13 +66,8 @@ function AsyncNormSelector({
         setIsOpen(false);
         const toastId = toast.loading("Đang lưu mã định mức...");
         const res = await updateQTONormCode(taskId, projectId, code);
-
-        if (res.success) {
-            toast.success("Đã gắn mã thành công!", { id: toastId });
-            onUpdate();
-        } else {
-            toast.error("Lỗi khi gắn mã!", { id: toastId });
-        }
+        if (res.success) { toast.success("Đã gắn mã thành công!", { id: toastId }); onUpdate(); }
+        else { toast.error("Lỗi khi gắn mã!", { id: toastId }); }
     };
 
     return (
@@ -123,34 +110,35 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const [manualItemType, setManualItemType] = useState("task");
     const [isAddingManual, setIsAddingManual] = useState(false);
 
-    useEffect(() => {
-        setLocalItems(items);
-    }, [items]);
+    useEffect(() => { setLocalItems(items); }, [items]);
 
     const fetchLatestData = async () => {
         const supabase = createClient();
-        const { data } = await supabase
-            .from('qto_items')
-            .select('*, details:qto_item_details(*)')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: true });
-
-        if (data) {
-            setLocalItems(data);
-        }
+        const { data } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
+        if (data) { setLocalItems(data); }
     };
 
-    const toggleRow = (id: string) => {
-        setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
-    };
+    const toggleRow = (id: string) => { setExpandedRows(prev => ({ ...prev, [id]: !prev[id] })); };
 
     const calculateDisplayVol = (l: any, w: any, h: any, f: any) => {
-        const len = parseFloat(l) || 0;
-        const wid = parseFloat(w) || 0;
-        const hei = parseFloat(h) || 0;
-        const fac = parseFloat(f) || 0;
+        const len = parseFloat(l) || 0, wid = parseFloat(w) || 0, hei = parseFloat(h) || 0, fac = parseFloat(f) || 0;
         if (len === 0 && wid === 0 && hei === 0) return fac;
         return (len !== 0 ? len : 1) * (wid !== 0 ? wid : 1) * (hei !== 0 ? hei : 1) * (fac !== 0 ? fac : 1);
+    };
+
+    // ✅ HÀM MỚI: Xử lý khi sửa Tên/Đơn vị trực tiếp trên bảng
+    const handleUpdateItemField = async (itemId: string, field: string, value: string) => {
+        if (!value.trim()) return; // Không cho phép sửa thành rỗng
+
+        // Update local state ngay cho mượt
+        setLocalItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
+
+        // Bắn xuống Backend
+        const res = await updateQTOItem(itemId, projectId, field, value);
+        if (!res.success) {
+            toast.error("Lỗi khi cập nhật!");
+            fetchLatestData(); // Rollback nếu lỗi
+        }
     };
 
     const handleDeleteItem = async (itemId: string) => {
@@ -183,57 +171,31 @@ export default function QTOClient({ projectId, items, norms }: Props) {
         setCalcLoading(true);
         const res = await calculateMaterialBudget(projectId);
         setCalcLoading(false);
-        if (res.success) {
-            toast.success(res.message);
-            router.refresh();
-        } else {
-            toast.error(res.error);
-        }
+        if (res.success) { toast.success(res.message); router.refresh(); }
+        else { toast.error(res.error); }
     };
 
     const handleSaveManualItem = async () => {
-        if (!manualItemName.trim()) {
-            toast.error("Vui lòng nhập tên công tác!");
-            return;
-        }
-        if (manualSectionId === "NEW" && !newSectionName.trim()) {
-            toast.error("Vui lòng nhập tên Hạng mục mới!");
-            return;
-        }
-        if (!manualItemType) {
-            toast.error("Vui lòng chọn Phân loại công tác!");
-            return;
-        }
+        if (!manualItemName.trim()) { toast.error("Vui lòng nhập tên công tác!"); return; }
+        if (manualSectionId === "NEW" && !newSectionName.trim()) { toast.error("Vui lòng nhập tên Hạng mục mới!"); return; }
+        if (!manualItemType) { toast.error("Vui lòng chọn Phân loại công tác!"); return; }
 
-        setIsAddingManual(true)
-
-        const res = await addManualQTOItem(
-            projectId,
-            manualSectionId,
-            newSectionName.trim(),
-            manualItemName.trim(),
-            manualUnit.trim(),
-            manualItemType
-        );
+        setIsAddingManual(true);
+        const res = await addManualQTOItem(projectId, manualSectionId, newSectionName.trim(), manualItemName.trim(), manualUnit.trim(), manualItemType);
 
         if (res.success) {
             toast.success("Thêm công tác thủ công thành công!");
-            setIsManualAddModalOpen(false);
-            setManualItemName("");
-            setNewSectionName("");
+            setIsManualAddModalOpen(false); setManualItemName(""); setNewSectionName("");
             fetchLatestData();
-        } else {
-            toast.error("Có lỗi xảy ra: " + res.error);
-        }
-
+        } else { toast.error("Có lỗi xảy ra: " + res.error); }
         setIsAddingManual(false);
     };
 
-    // ✅ KIỂM TRA ITEM_TYPE ĐỂ LẤY ĐÚNG SECTION
     const sections = localItems.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
 
     return (
         <div className="space-y-4">
+            {/* Thanh công cụ */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-lg border shadow-sm gap-3">
                 <div className="flex items-center gap-2">
                     <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
@@ -243,53 +205,36 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle className="text-teal-700 flex items-center gap-2">
-                                    <FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công
-                                </DialogTitle>
-                            </DialogHeader>
+                            <DialogHeader><DialogTitle className="text-teal-700 flex items-center gap-2"><FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công</DialogTitle></DialogHeader>
                             <div className="grid gap-4 py-4">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạng mục (Section)</Label>
                                     <Select value={manualSectionId} onValueChange={setManualSectionId}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Chọn hạng mục..." />
-                                        </SelectTrigger>
+                                        <SelectTrigger><SelectValue placeholder="Chọn hạng mục..." /></SelectTrigger>
                                         <SelectContent>
                                             <SelectGroup>
                                                 <SelectItem value="NEW" className="font-bold text-teal-600">+ Tạo Hạng Mục Mới</SelectItem>
-                                                {sections.map(sec => (
-                                                    <SelectItem key={sec.id} value={sec.id}>{sec.item_name}</SelectItem>
-                                                ))}
+                                                {sections.map(sec => <SelectItem key={sec.id} value={sec.id}>{sec.item_name}</SelectItem>)}
                                             </SelectGroup>
                                         </SelectContent>
                                     </Select>
                                 </div>
-
                                 {manualSectionId === "NEW" && (
                                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                                         <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tên hạng mục mới</Label>
                                         <Input placeholder="Vd: Công tác thi công Trát tường..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} />
                                     </div>
                                 )}
-
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tên công tác chi tiết</Label>
                                     <Input placeholder="Vd: Trát tường trong nhà chiều dày 1.5cm..." value={manualItemName} onChange={e => setManualItemName(e.target.value)} />
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Đơn vị tính</Label>
-                                        <Input placeholder="Vd: m2, m3, Cái, Bộ..." value={manualUnit} onChange={e => setManualUnit(e.target.value)} />
-                                    </div>
-
+                                    <div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Đơn vị tính</Label><Input placeholder="Vd: m2, m3, Cái, Bộ..." value={manualUnit} onChange={e => setManualUnit(e.target.value)} /></div>
                                     <div className="space-y-2">
                                         <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Phân loại (Type)</Label>
                                         <Select value={manualItemType} onValueChange={setManualItemType}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Phân loại..." />
-                                            </SelectTrigger>
+                                            <SelectTrigger><SelectValue placeholder="Phân loại..." /></SelectTrigger>
                                             <SelectContent>
                                                 <SelectGroup>
                                                     <SelectItem value="task">Công tác (Task)</SelectItem>
@@ -307,8 +252,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setIsManualAddModalOpen(false)}>Hủy</Button>
                                 <Button onClick={handleSaveManualItem} disabled={isAddingManual} className="bg-teal-600 hover:bg-teal-700 text-white">
-                                    {isAddingManual && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                    Lưu công tác
+                                    {isAddingManual ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Lưu công tác"}
                                 </Button>
                             </DialogFooter>
                         </DialogContent>
@@ -318,12 +262,12 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                     <AutoEstimateWizard projectId={projectId} onSuccess={fetchLatestData} />
                     <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto" onClick={handleCalculate} disabled={calcLoading}>
-                        {calcLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />}
-                        Phân tích Vật tư & Chuyển Dự toán
+                        {calcLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />} Phân tích Vật tư & Chuyển Dự toán
                     </Button>
                 </div>
             </div>
 
+            {/* BẢNG BÓC TÁCH */}
             <Card className="border-none shadow-none bg-transparent">
                 <Table className="bg-white rounded-md border">
                     <TableHeader>
@@ -340,23 +284,27 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                         {sections.length === 0 ? (
                             <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
                         ) : sections.map((section, secIdx) => {
-                            // ✅ KIỂM TRA LẤY CON CỦA SECTION
                             const tasks = localItems.filter(i => i.parent_id === section.id && i.item_type !== 'section');
 
                             return (
                                 <React.Fragment key={section.id}>
                                     <TableRow className="bg-slate-100 hover:bg-slate-200">
                                         <TableCell className="text-center font-bold text-slate-800">{toRoman(secIdx + 1)}</TableCell>
-                                        <TableCell className="font-bold text-slate-800 uppercase tracking-wide">{section.item_name}</TableCell>
-                                        <TableCell></TableCell>
-                                        <TableCell></TableCell>
-                                        <TableCell className="text-center">
-                                            <span className="text-slate-400 text-xs font-mono">###{section.item_name.substring(0, 4)}</span>
+
+                                        {/* ✅ Ô EDIT TÊN HẠNG MỤC */}
+                                        <TableCell className="p-1">
+                                            <Input
+                                                defaultValue={section.item_name}
+                                                onBlur={(e) => handleUpdateItemField(section.id, 'item_name', e.target.value)}
+                                                className="font-bold text-slate-800 uppercase tracking-wide h-8 border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none"
+                                            />
                                         </TableCell>
+
+                                        <TableCell></TableCell>
+                                        <TableCell></TableCell>
+                                        <TableCell className="text-center"><span className="text-slate-400 text-xs font-mono">###{section.item_name.substring(0, 4)}</span></TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:bg-red-50" onClick={() => handleDeleteItem(section.id)}>
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:bg-red-50" onClick={() => handleDeleteItem(section.id)}><Trash2 className="w-4 h-4" /></Button>
                                         </TableCell>
                                     </TableRow>
 
@@ -367,35 +315,43 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                             <React.Fragment key={task.id}>
                                                 <TableRow className="hover:bg-slate-50 transition-colors">
                                                     <TableCell className="text-center font-medium text-slate-600">{taskIdx + 1}</TableCell>
-                                                    <TableCell className="font-medium text-slate-800">
-                                                        <div className="flex items-center gap-2">
+
+                                                    {/* ✅ Ô EDIT TÊN CÔNG TÁC */}
+                                                    <TableCell className="p-1">
+                                                        <div className="flex items-center gap-1 w-full">
                                                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 hover:bg-blue-100 shrink-0" onClick={() => toggleRow(task.id)}>
                                                                 {expandedRows[task.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                             </Button>
-                                                            <span>{task.item_name}</span>
-                                                            {/* ✅ HIỂN THỊ BADGE TƯƠNG ỨNG VỚI LOẠI ITEM */}
+                                                            <Input
+                                                                defaultValue={task.item_name}
+                                                                onBlur={(e) => handleUpdateItemField(task.id, 'item_name', e.target.value)}
+                                                                className="flex-1 font-medium text-slate-800 h-8 border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none px-2"
+                                                            />
                                                             {renderItemTypeBadge(task.item_type)}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="text-center text-slate-600">{task.unit}</TableCell>
-                                                    <TableCell className="text-right font-bold text-blue-700 text-base">
+
+                                                    {/* ✅ Ô EDIT ĐƠN VỊ TÍNH */}
+                                                    <TableCell className="p-1 text-center">
+                                                        <Input
+                                                            defaultValue={task.unit}
+                                                            onBlur={(e) => handleUpdateItemField(task.id, 'unit', e.target.value)}
+                                                            className="h-8 w-16 mx-auto text-center border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none text-slate-600 px-1"
+                                                        />
+                                                    </TableCell>
+
+                                                    <TableCell className="text-right font-bold text-blue-700 text-base pr-4">
                                                         {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <AsyncNormSelector
-                                                            taskId={task.id}
-                                                            projectId={projectId}
-                                                            defaultCode={task.norm_code}
-                                                            onUpdate={fetchLatestData}
-                                                        />
+                                                        <AsyncNormSelector taskId={task.id} projectId={projectId} defaultCode={task.norm_code} onUpdate={fetchLatestData} />
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-red-500" onClick={() => handleDeleteItem(task.id)}>
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </Button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-red-500" onClick={() => handleDeleteItem(task.id)}><Trash2 className="w-4 h-4" /></Button>
                                                     </TableCell>
                                                 </TableRow>
 
+                                                {/* CHI TIẾT BÊN TRONG CỦA TỪNG CÔNG TÁC GIỮ NGUYÊN */}
                                                 {expandedRows[task.id] && (
                                                     <TableRow className="bg-white">
                                                         <TableCell colSpan={6} className="p-0">

@@ -285,3 +285,18 @@ export async function addManualQTOItem(
         return { success: false, error: err.message };
     }
 }
+
+// ✅ HÀM MỚI: Sửa trực tiếp thông tin QTO Item (Tên, Đơn vị tính...)
+export async function updateQTOItem(itemId: string, projectId: string, field: string, value: string) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from('qto_items')
+        .update({ [field]: value })
+        .eq('id', itemId);
+
+    if (error) return { success: false, error: error.message };
+
+    return { success: true };
+}
