@@ -51,14 +51,26 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
     const [isOpen, setIsOpen] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
 
-    const handleSearch = async (text: string) => {
-        setQuery(text);
-        if (text.trim().length < 2) { setIsOpen(false); return; }
-        setIsSearching(true);
-        const res = await getNorms(text, 1, 20);
-        setResults(res.data || []);
-        setIsOpen(true);
-        setIsSearching(false);
+    // ✅ CHỈ GỌI API KHI NGƯỜI DÙNG NHẤN ENTER
+    const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Ngăn chặn form submit mặc định
+            if (query.trim().length < 2) {
+                setIsOpen(false);
+                toast.error("Vui lòng nhập ít nhất 2 ký tự để tìm kiếm!");
+                return;
+            }
+
+            setIsSearching(true);
+            setIsOpen(false); // Ẩn dropdown cũ trong lúc tìm
+
+            // Gọi API lấy dữ liệu
+            const res = await getNorms(query, 1, 20);
+
+            setResults(res.data || []);
+            setIsOpen(true);
+            setIsSearching(false);
+        }
     };
 
     const handleSelect = async (code: string) => {
@@ -74,22 +86,33 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
         <div className="relative w-full">
             <div className="relative">
                 <Input
-                    placeholder="🔍 Gõ mã hoặc tên VT..."
+                    placeholder="🔍 Gõ mã/tên + Nhấn Enter..."
                     value={query}
-                    onChange={(e) => handleSearch(e.target.value)}
+                    onChange={(e) => setQuery(e.target.value)} // ✅ Chỉ cập nhật State chữ, không gọi API
+                    onKeyDown={handleKeyDown} // ✅ Bắt sự kiện Enter tại đây
                     onFocus={() => { if (results.length > 0) setIsOpen(true) }}
                     onBlur={() => setTimeout(() => setIsOpen(false), 200)}
                     className="h-8 border-orange-300 bg-orange-50/50 text-xs focus-visible:ring-orange-500"
                 />
                 {isSearching && <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2.5 text-orange-500" />}
             </div>
+
+            {/* Hiển thị kết quả tìm kiếm */}
             {isOpen && results.length > 0 && (
-                <div className="absolute z-50 w-[300px] right-0 mt-1 max-h-[250px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
+                <div className="absolute z-50 w-[350px] right-0 mt-1 max-h-[300px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-2xl">
                     {results.map((r) => (
-                        <div key={r.id} onClick={() => handleSelect(r.code)} className="px-3 py-2 text-xs hover:bg-orange-50 cursor-pointer border-b">
-                            <span className="font-bold text-blue-600">{r.code}</span> - <span className="text-slate-600">{r.name}</span>
+                        <div key={r.id} onClick={() => handleSelect(r.code)} className="px-3 py-2 text-xs hover:bg-orange-50 cursor-pointer border-b flex flex-col gap-1">
+                            <span className="font-bold text-blue-700">{r.code}</span>
+                            <span className="text-slate-600 line-clamp-2">{r.name}</span>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Thông báo nếu không tìm thấy (Chỉ hiện khi đã search xong và mảng rỗng) */}
+            {isOpen && results.length === 0 && !isSearching && (
+                <div className="absolute z-50 w-[350px] right-0 mt-1 p-3 rounded-md border border-slate-200 bg-white shadow-xl text-center text-xs text-slate-500 italic">
+                    Không tìm thấy định mức nào khớp với từ khóa "{query}"
                 </div>
             )}
         </div>

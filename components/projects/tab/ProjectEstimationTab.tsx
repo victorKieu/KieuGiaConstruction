@@ -48,7 +48,7 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
 
     const loadData = async () => {
         const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
-        const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
+        const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId).order('material_name', { ascending: true });
         setQtoTasks(qtoData || []);
         setEstItems(estData || []);
         setInitLoaded(true);
