@@ -238,52 +238,37 @@ export async function addManualQTOItem(
     projectId: string,
     sectionId: string,
     newSectionName: string,
-    taskName: string,
+    itemName: string,
     unit: string,
-    itemType: string
+    itemType: string,
+    normCode: string = "" // ✅ Thêm tham số này
 ) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
 
-    try {
-        let targetSectionId = sectionId;
+    let finalSectionId = sectionId;
 
-        // 1. Tạo Hạng mục mẹ (Section)
-        if (sectionId === "NEW") {
-            const { data: newSec, error: secErr } = await supabase
-                .from('qto_items')
-                .insert({
-                    project_id: projectId,
-                    item_name: newSectionName,
-                    parent_id: null,
-                    unit: "",
-                    item_type: "section" // ✅ PHẢI GHI CỨNG LÀ "section" THEO ĐÚNG DATABASE
-                })
-                .select()
-                .single();
-
-            if (secErr) throw secErr;
-            targetSectionId = newSec.id;
-        }
-
-        // 2. Tạo công tác con (Task, Material, Labor...)
-        const { error: taskErr } = await supabase
-            .from('qto_items')
-            .insert({
-                project_id: projectId,
-                parent_id: targetSectionId,
-                item_name: taskName,
-                unit: unit || "Cái",
-                item_type: itemType // ✅ Nhận giá trị từ form ("task", "material"...)
-            });
-
-        if (taskErr) throw taskErr;
-
-        return { success: true };
-    } catch (err: any) {
-        console.error("Lỗi addManualQTOItem:", err);
-        return { success: false, error: err.message };
+    // Nếu tạo hạng mục mới
+    if (sectionId === "NEW") {
+        const { data: newSec, error: secErr } = await supabase.from('qto_items').insert({
+            project_id: projectId, item_name: newSectionName, unit: '', item_type: 'section'
+        }).select().single();
+        if (secErr) return { success: false, error: secErr.message };
+        finalSectionId = newSec.id;
     }
+
+    // ✅ Lưu thêm cột norm_code
+    const { error } = await supabase.from('qto_items').insert({
+        project_id: projectId,
+        parent_id: finalSectionId,
+        item_name: itemName,
+        unit: unit,
+        item_type: itemType,
+        norm_code: normCode || null // ✅ Lưu mã định mức vào đây
+    });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
 }
 
 // ✅ HÀM MỚI: Sửa trực tiếp thông tin QTO Item (Tên, Đơn vị tính...)
