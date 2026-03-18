@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Calculator, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FilePlus2 } from "lucide-react";
+import { Calculator, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FilePlus2, FoldVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -109,7 +109,7 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
                 </div>
             )}
 
-            {/* Thông báo nếu không tìm thấy (Chỉ hiện khi đã search xong và mảng rỗng) */}
+            {/* Thông báo nếu không tìm thấy */}
             {isOpen && results.length === 0 && !isSearching && (
                 <div className="absolute z-50 w-[350px] right-0 mt-1 p-3 rounded-md border border-slate-200 bg-white shadow-xl text-center text-xs text-slate-500 italic">
                     Không tìm thấy định mức nào khớp với từ khóa "{query}"
@@ -122,7 +122,13 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
 export default function QTOClient({ projectId, items, norms }: Props) {
     const router = useRouter();
     const [calcLoading, setCalcLoading] = useState(false);
+
+    // ✅ STATE: Quản lý gập/mở Chi tiết cấu kiện của Công tác
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+    // ✅ STATE MỚI: Quản lý gập/mở các Hạng mục mẹ (Section)
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+
     const [localItems, setLocalItems] = useState(items);
 
     const [isManualAddModalOpen, setIsManualAddModalOpen] = useState(false);
@@ -143,24 +149,38 @@ export default function QTOClient({ projectId, items, norms }: Props) {
 
     const toggleRow = (id: string) => { setExpandedRows(prev => ({ ...prev, [id]: !prev[id] })); };
 
+    // ✅ HÀM TOGGLE CHO HẠNG MỤC (SECTION)
+    const toggleSection = (id: string) => {
+        setExpandedSections(prev => ({ ...prev, [id]: prev[id] === undefined ? false : !prev[id] }));
+    };
+
+    // ✅ HÀM MỞ/ĐÓNG TẤT CẢ HẠNG MỤC
+    const handleToggleAllSections = () => {
+        const sections = localItems.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
+        const isAnyCollapsed = sections.some(s => expandedSections[s.id] === false);
+
+        if (isAnyCollapsed) {
+            setExpandedSections({}); // Mở tất cả
+        } else {
+            const newState: Record<string, boolean> = {};
+            sections.forEach(s => newState[s.id] = false);
+            setExpandedSections(newState); // Đóng tất cả
+        }
+    };
+
     const calculateDisplayVol = (l: any, w: any, h: any, f: any) => {
         const len = parseFloat(l) || 0, wid = parseFloat(w) || 0, hei = parseFloat(h) || 0, fac = parseFloat(f) || 0;
         if (len === 0 && wid === 0 && hei === 0) return fac;
         return (len !== 0 ? len : 1) * (wid !== 0 ? wid : 1) * (hei !== 0 ? hei : 1) * (fac !== 0 ? fac : 1);
     };
 
-    // ✅ HÀM MỚI: Xử lý khi sửa Tên/Đơn vị trực tiếp trên bảng
     const handleUpdateItemField = async (itemId: string, field: string, value: string) => {
-        if (!value.trim()) return; // Không cho phép sửa thành rỗng
-
-        // Update local state ngay cho mượt
+        if (!value.trim()) return;
         setLocalItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
-
-        // Bắn xuống Backend
         const res = await updateQTOItem(itemId, projectId, field, value);
         if (!res.success) {
             toast.error("Lỗi khi cập nhật!");
-            fetchLatestData(); // Rollback nếu lỗi
+            fetchLatestData();
         }
     };
 
@@ -292,7 +312,16 @@ export default function QTOClient({ projectId, items, norms }: Props) {
 
             {/* BẢNG BÓC TÁCH */}
             <Card className="border-none shadow-none bg-transparent">
-                <Table className="bg-white rounded-md border">
+                {/* ✅ THANH ĐIỀU KHIỂN ĐÓNG MỞ NHANH TRÊN ĐẦU BẢNG */}
+                <div className="bg-slate-50 border border-b-0 border-slate-200 rounded-t-md p-2 flex items-center justify-between">
+                    <h4 className="font-bold text-slate-700 uppercase tracking-wide text-sm ml-2">Bảng Tiên lượng & Bóc tách</h4>
+                    <Button variant="outline" size="sm" onClick={handleToggleAllSections} className="h-7 text-xs bg-white hover:bg-slate-100 text-slate-600 border-slate-300">
+                        <FoldVertical className="w-3 h-3 mr-1" />
+                        {Object.values(expandedSections).some(v => v === false) ? "Mở rộng tất cả hạng mục" : "Thu gọn tất cả hạng mục"}
+                    </Button>
+                </div>
+
+                <Table className="bg-white rounded-b-md border">
                     <TableHeader>
                         <TableRow className="bg-slate-100 hover:bg-slate-100">
                             <TableHead className="w-[60px] text-center font-bold">STT</TableHead>
@@ -309,18 +338,26 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                         ) : sections.map((section, secIdx) => {
                             const tasks = localItems.filter(i => i.parent_id === section.id && i.item_type !== 'section');
 
+                            // ✅ Lấy trạng thái của Hạng mục này (Mặc định là mở)
+                            const isSectionExpanded = expandedSections[section.id] !== false;
+
                             return (
                                 <React.Fragment key={section.id}>
-                                    <TableRow className="bg-slate-100 hover:bg-slate-200">
+                                    <TableRow className="bg-slate-100 hover:bg-slate-200 border-b-2 border-slate-200">
                                         <TableCell className="text-center font-bold text-slate-800">{toRoman(secIdx + 1)}</TableCell>
 
-                                        {/* ✅ Ô EDIT TÊN HẠNG MỤC */}
+                                        {/* ✅ Ô TÊN HẠNG MỤC & NÚT ĐÓNG MỞ */}
                                         <TableCell className="p-1">
-                                            <Input
-                                                defaultValue={section.item_name}
-                                                onBlur={(e) => handleUpdateItemField(section.id, 'item_name', e.target.value)}
-                                                className="font-bold text-slate-800 uppercase tracking-wide h-8 border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none"
-                                            />
+                                            <div className="flex items-center gap-1 w-full">
+                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-600 hover:bg-slate-300 shrink-0" onClick={() => toggleSection(section.id)}>
+                                                    {isSectionExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                                </Button>
+                                                <Input
+                                                    defaultValue={section.item_name}
+                                                    onBlur={(e) => handleUpdateItemField(section.id, 'item_name', e.target.value)}
+                                                    className="font-bold text-slate-800 uppercase tracking-wide h-8 border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none flex-1"
+                                                />
+                                            </div>
                                         </TableCell>
 
                                         <TableCell></TableCell>
@@ -331,7 +368,8 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                         </TableCell>
                                     </TableRow>
 
-                                    {tasks.map((task, taskIdx) => {
+                                    {/* ✅ CHỈ RENDER CÁC CÔNG TÁC (TASKS) KHI HẠNG MỤC ĐANG MỞ */}
+                                    {isSectionExpanded && tasks.map((task, taskIdx) => {
                                         const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
 
                                         return (
@@ -339,10 +377,10 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                 <TableRow className="hover:bg-slate-50 transition-colors">
                                                     <TableCell className="text-center font-medium text-slate-600">{taskIdx + 1}</TableCell>
 
-                                                    {/* ✅ Ô EDIT TÊN CÔNG TÁC */}
+                                                    {/* Ô EDIT TÊN CÔNG TÁC */}
                                                     <TableCell className="p-1">
                                                         <div className="flex items-center gap-1 w-full">
-                                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 hover:bg-blue-100 shrink-0" onClick={() => toggleRow(task.id)}>
+                                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 hover:bg-blue-100 shrink-0 ml-4" onClick={() => toggleRow(task.id)}>
                                                                 {expandedRows[task.id] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                             </Button>
                                                             <Input
@@ -354,7 +392,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                         </div>
                                                     </TableCell>
 
-                                                    {/* ✅ Ô EDIT ĐƠN VỊ TÍNH */}
+                                                    {/* Ô EDIT ĐƠN VỊ TÍNH */}
                                                     <TableCell className="p-1 text-center">
                                                         <Input
                                                             defaultValue={task.unit}
@@ -374,11 +412,11 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                     </TableCell>
                                                 </TableRow>
 
-                                                {/* CHI TIẾT BÊN TRONG CỦA TỪNG CÔNG TÁC GIỮ NGUYÊN */}
+                                                {/* CHI TIẾT BÊN TRONG CỦA TỪNG CÔNG TÁC (Kích thước) */}
                                                 {expandedRows[task.id] && (
                                                     <TableRow className="bg-white">
                                                         <TableCell colSpan={6} className="p-0">
-                                                            <div className="pl-16 pr-4 py-3 border-b bg-slate-50/50 shadow-inner">
+                                                            <div className="pl-20 pr-4 py-3 border-b bg-slate-50/50 shadow-inner">
                                                                 <table className="w-full text-sm">
                                                                     <thead className="text-xs text-slate-500 font-semibold border-b border-slate-200">
                                                                         <tr>
