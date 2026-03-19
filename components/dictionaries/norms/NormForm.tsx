@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { saveNorm } from "@/lib/action/normActions";
 import { toast } from "sonner";
 import { MaterialCombobox } from "@/components/dictionaries/norms/MaterialCombobox";
@@ -23,9 +24,7 @@ export default function NormForm({
 }) {
     const [loading, setLoading] = useState(false);
 
-    // Chuyển đổi dữ liệu cũ (nếu đang Edit) thành format của Form
     const defaultDetails = initialData?.details?.map((d: any) => ({
-        // Trong chế độ Edit, d.resource chứa data được join từ bảng resources
         resource_id: d.resource?.id || d.resource_id || "",
         resource_code: d.resource?.code || "",
         resource_name: d.resource?.name || "",
@@ -39,7 +38,7 @@ export default function NormForm({
             code: initialData?.code || "",
             name: initialData?.name || "",
             unit: initialData?.unit || "",
-            // Khởi tạo ít nhất 1 dòng trống nếu là Thêm mới
+            type: initialData?.type || "company", // ✅ Thêm trường type vào Form
             details: defaultDetails.length > 0 ? defaultDetails : [{ resource_id: "", resource_code: "", resource_name: "", unit: "", quantity: 0 }]
         }
     });
@@ -52,7 +51,6 @@ export default function NormForm({
     const onSubmit = async (data: any) => {
         setLoading(true);
 
-        // Lọc bỏ những dòng hao phí trống (chưa chọn vật tư hoặc số lượng = 0)
         const cleanData = {
             ...data,
             details: data.details.filter((d: any) => d.resource_id && Number(d.quantity) > 0)
@@ -72,8 +70,8 @@ export default function NormForm({
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                {/* --- Phần Header (Mã, Tên, ĐVT) --- */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* --- Phần Header (Mã, Tên, ĐVT, Loại) --- */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <FormField control={form.control} name="code" render={({ field }) => (
                         <FormItem>
                             <FormLabel>Mã hiệu <span className="text-red-500">*</span></FormLabel>
@@ -83,7 +81,22 @@ export default function NormForm({
                     <FormField control={form.control} name="unit" render={({ field }) => (
                         <FormItem>
                             <FormLabel>Đơn vị tính</FormLabel>
-                            <FormControl><Input {...field} placeholder="VD: m3, m2..." /></FormControl>
+                            <FormControl><Input {...field} placeholder="VD: 100m3, m2..." /></FormControl>
+                        </FormItem>
+                    )} />
+                    {/* ✅ Thêm Dropdown chọn Loại Định mức */}
+                    <FormField control={form.control} name="type" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Loại định mức</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                    <SelectTrigger><SelectValue placeholder="Chọn loại..." /></SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    <SelectItem value="company">Định mức Nội bộ</SelectItem>
+                                    <SelectItem value="state">Định mức Nhà nước</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </FormItem>
                     )} />
                 </div>
@@ -118,20 +131,16 @@ export default function NormForm({
                                 {fields.map((item, index) => (
                                     <TableRow key={item.id}>
                                         <TableCell className="p-2 pl-4 align-top">
-                                            {/* Combobox chọn Vật tư (từ bảng resources) */}
                                             <MaterialCombobox
                                                 materials={resources}
-                                                // Dùng code để hiển thị giá trị hiện tại
                                                 value={form.watch(`details.${index}.resource_code`)}
                                                 onChange={(mat) => {
-                                                    // Khi chọn, lấy UUID (id) lưu ngầm, và lấy code/name/unit để hiển thị
                                                     form.setValue(`details.${index}.resource_id`, mat.id);
                                                     form.setValue(`details.${index}.resource_code`, mat.code);
                                                     form.setValue(`details.${index}.resource_name`, mat.name);
                                                     form.setValue(`details.${index}.unit`, mat.unit);
                                                 }}
                                             />
-                                            {/* Input ẩn để lưu UUID của resource */}
                                             <input type="hidden" {...form.register(`details.${index}.resource_id`)} />
                                         </TableCell>
 

@@ -9,10 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import {
-    Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2, Plus, Calculator,
-    Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical
-} from "lucide-react";
+import { Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -20,7 +17,7 @@ import { formatCurrency } from "@/lib/utils/utils";
 
 import {
     updateEstimationPrice, deleteEstimationItem, createManualEstimationItem,
-    analyzeQTOAndGenerateEstimation, updateEstimationQuantity, updateEstimationPriceByGroup
+    analyzeQTOAndGenerateEstimation, updateEstimationQuantity, updateEstimationPriceByGroup, updateEstimationMaterialByGroup
 } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
@@ -40,7 +37,6 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
     const [openManualDialog, setOpenManualDialog] = useState(false);
     const [newItemLoading, setNewItemLoading] = useState(false);
 
-    // Quản lý Modal Tổng hợp
     const [activeModal, setActiveModal] = useState<'total' | 'VL' | 'NC' | 'M' | null>(null);
 
     // Quản lý Đóng/Mở Group
@@ -65,12 +61,12 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
         const isAnyCollapsed = sections.some(s => expandedSections[s.id] === false);
 
         if (isAnyCollapsed) {
-            setExpandedSections({}); // Mở tất cả
+            setExpandedSections({});
         } else {
             const newState: Record<string, boolean> = {};
             sections.forEach(s => newState[s.id] = false);
             newState['standalone'] = false;
-            setExpandedSections(newState); // Đóng tất cả
+            setExpandedSections(newState);
         }
     };
 
@@ -98,9 +94,29 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
 
     const handleBulkPriceChange = async (materialName: string, category: string, newPrice: string) => {
         const price = parseFloat(newPrice) || 0;
-        setEstItems(prev => prev.map(item => (item.material_name === materialName && item.category === category) ? { ...item, unit_price: price, total_cost: item.quantity * price } : item));
+        setEstItems(prev => prev.map(item =>
+            (item.material_name === materialName && item.category === category)
+                ? { ...item, unit_price: price, total_cost: item.quantity * price } : item
+        ));
         const res = await updateEstimationPriceByGroup(projectId, materialName, category, price);
         if (!res.success) toast.error("Lỗi áp giá: " + res.error);
+        router.refresh();
+    };
+
+    // ✅ HÀM MỚI: Xử lý khi người dùng chọn Đổi mã vật tư trong bảng Tổng hợp
+    const handleBulkMaterialSelect = async (oldMaterialName: string, category: string, mat: any) => {
+        // Cập nhật UI ngay lập tức cho mượt
+        setEstItems(prev => prev.map(item =>
+            (item.material_name === oldMaterialName && item.category === category)
+                ? { ...item, is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0, total_cost: (item.quantity || 0) * (mat.ref_price || 0) }
+                : item
+        ));
+
+        // Gọi Backend lưu xuống DB
+        const res = await updateEstimationMaterialByGroup(projectId, oldMaterialName, category, mat);
+        if (!res.success) toast.error("Lỗi đổi mã vật tư: " + res.error);
+        else toast.success(`Đã đổi đồng loạt thành: ${mat.name}`);
+
         router.refresh();
     };
 
@@ -112,7 +128,10 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
     };
 
     const handleMaterialSelect = async (itemId: string, mat: any) => {
-        const { error } = await supabase.from('estimation_items').update({ is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0 }).eq('id', itemId);
+        const { error } = await supabase.from('estimation_items').update({
+            is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0
+        }).eq('id', itemId);
+
         if (!error) {
             setEstItems(prev => prev.map(item => item.id === itemId ? { ...item, is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0, total_cost: (item.quantity || 0) * (mat.ref_price || 0) } : item));
             router.refresh();
@@ -147,6 +166,11 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
         } catch (error) { toast.error("Lỗi hệ thống."); } finally { setIsImporting(false); e.target.value = ""; }
     };
 
+    function toRoman(num: number): string {
+        const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+        return roman[num] || num.toString();
+    }
+
     // PHÂN TÁCH DỮ LIỆU
     const normalItems = estItems.filter(i => !['GT', 'LN', 'VAT'].includes(i.category));
     const globalParams = estItems.filter(i => ['GT', 'LN', 'VAT'].includes(i.category));
@@ -156,7 +180,6 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
     const standaloneItems = normalItems.filter(i => !i.qto_item_id);
     const sections = qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
 
-    // TÍNH TOÁN KINH PHÍ TỔNG
     const T = normalItems.reduce((sum, item) => sum + (item.total_cost || 0), 0);
     const GT = T * (gtParam.quantity / 100);
     const TL = (T + GT) * (lnParam.quantity / 100);
@@ -179,14 +202,9 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
         return Array.from(map.values()).sort((a, b) => a.material_name.localeCompare(b.material_name));
     };
 
-    function toRoman(num: number): string {
-        const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-        return roman[num] || num.toString();
-    }
-
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            {/* HEADER */}
+            {/* HEADER TOOLBAR */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-card p-4 rounded-lg border border-border shadow-sm">
                 <div>
                     <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -222,7 +240,7 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                 </div>
             </div>
 
-            {/* ✅ BẢNG TÍNH TOÁN THÔNG SỐ KINH PHÍ (ĐÃ TRẢ LẠI THEO YÊU CẦU) */}
+            {/* BẢNG TÍNH TOÁN THÔNG SỐ KINH PHÍ */}
             <Card className="border border-blue-200 shadow-md bg-white overflow-hidden">
                 <div className="bg-blue-50 border-b border-blue-100 p-3 flex items-center gap-2">
                     <Calculator className="w-5 h-5 text-blue-600" />
@@ -276,7 +294,7 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                 <Button variant="ghost" onClick={() => setActiveModal('M')} className="font-bold text-slate-700 hover:bg-white hover:text-purple-600 hover:shadow-sm transition-all"><Tractor className="w-4 h-4 mr-2 text-purple-500" /> Tổng hợp Máy TC</Button>
             </div>
 
-            {/* BẢNG DỰ TOÁN CHI TIẾT */}
+            {/* ✅ BẢNG DỰ TOÁN CHI TIẾT (ĐÃ THIẾT KẾ LẠI CÁC CỘT CHO CHUẨN) */}
             <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden">
                 <div className="bg-slate-50 border-b border-slate-200 p-2 flex items-center justify-between">
                     <h4 className="font-bold text-slate-700 uppercase tracking-wide text-sm ml-2">Bảng Phân Tích Vật Tư & Chi Phí Trực Tiếp</h4>
@@ -291,19 +309,21 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                             <TableHead className="w-[50px] text-center font-bold text-slate-800">STT</TableHead>
                             <TableHead className="w-[100px] font-bold text-center text-slate-800">Mã hiệu</TableHead>
                             <TableHead className="w-[90px] font-bold text-center text-slate-800">Loại</TableHead>
-                            <TableHead className="min-w-[350px] font-bold text-slate-800">Tên công việc / Hao phí</TableHead>
-                            <TableHead className="w-[120px] text-right font-bold text-slate-800">Định mức</TableHead>
-                            <TableHead className="w-[140px] text-right font-bold text-slate-800">Đơn giá</TableHead>
-                            <TableHead className="w-[150px] text-right font-bold text-slate-800">Thành tiền</TableHead>
+                            <TableHead className="min-w-[250px] font-bold text-slate-800">Tên công việc / Hao phí</TableHead>
+                            <TableHead className="w-[60px] text-center font-bold text-slate-800">ĐVT</TableHead>
+                            <TableHead className="w-[60px] text-center font-bold text-slate-800" title="Hệ số quy đổi">Hệ số</TableHead>
+                            <TableHead className="w-[90px] text-right font-bold text-slate-800">Định mức</TableHead>
+                            <TableHead className="w-[110px] text-right font-bold text-blue-700">Tổng KL</TableHead>
+                            <TableHead className="w-[120px] text-right font-bold text-slate-800">Đơn giá</TableHead>
+                            <TableHead className="w-[140px] text-right font-bold text-slate-800">Thành tiền</TableHead>
                             <TableHead className="w-[40px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {!initLoaded ? (
-                            <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={11} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
                         ) : (
                             <>
-                                {/* CÔNG TÁC QTO */}
                                 {sections.map((section, secIdx) => {
                                     const tasks = qtoTasks.filter(i => i.parent_id === section.id && i.item_type !== 'section');
                                     const isSectionExpanded = expandedSections[section.id] !== false;
@@ -312,7 +332,7 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                         <React.Fragment key={section.id}>
                                             <TableRow className="bg-slate-200 border-b-2 border-slate-300">
                                                 <TableCell className="text-center font-bold text-slate-800">{toRoman(secIdx + 1)}</TableCell>
-                                                <TableCell className="p-1" colSpan={7}>
+                                                <TableCell className="p-1" colSpan={10}>
                                                     <div className="flex items-center gap-1 w-full">
                                                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-700 hover:bg-slate-300 shrink-0" onClick={() => toggleSection(section.id)}>
                                                             {isSectionExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -339,6 +359,7 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
 
                                                 return (
                                                     <React.Fragment key={task.id}>
+                                                        {/* ✅ DÒNG CỦA CÔNG TÁC */}
                                                         <TableRow className="bg-slate-100/50 border-b border-slate-200">
                                                             <TableCell className="text-center font-bold border-r border-slate-200 text-slate-600">{taskIdx + 1}</TableCell>
                                                             <TableCell className="font-bold border-r border-slate-200 text-center text-blue-700">{task.norm_code}</TableCell>
@@ -351,15 +372,21 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                                                     <span className="leading-tight">{task.item_name}</span>
                                                                 </div>
                                                             </TableCell>
-                                                            <TableCell className="text-right font-bold text-slate-700 border-r border-slate-200">KL: {taskVol.toLocaleString('en-US', { maximumFractionDigits: 2 })}</TableCell>
+                                                            <TableCell className="text-center font-bold text-slate-700 border-r border-slate-200">{task.unit}</TableCell>
+                                                            <TableCell className="border-r border-slate-200 bg-slate-100/50"></TableCell>
+                                                            <TableCell className="border-r border-slate-200 bg-slate-100/50"></TableCell>
+                                                            <TableCell className="text-right font-bold text-blue-700 border-r border-slate-200 bg-blue-50/50 text-base">
+                                                                {taskVol.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                                                            </TableCell>
                                                             <TableCell className="border-r border-slate-200"></TableCell>
                                                             <TableCell className="text-right font-bold text-blue-700">{formatCurrency(taskTotal)}</TableCell>
                                                             <TableCell></TableCell>
                                                         </TableRow>
 
+                                                        {/* ✅ DÒNG CỦA TỪNG VẬT TƯ (HAO PHÍ) */}
                                                         {isTaskExpanded && children.map(child => {
-                                                            const savedNorm = child.dimensions?.norm;
-                                                            const dinhmuc = savedNorm !== undefined ? savedNorm : (taskVol > 0 ? (child.quantity / taskVol) : child.quantity);
+                                                            const savedNorm = child.dimensions?.norm || 0;
+                                                            const factor = child.dimensions?.factor || 1;
 
                                                             return (
                                                                 <TableRow key={child.id} className={child.is_mapped ? "hover:bg-green-50/50" : "hover:bg-muted/30"}>
@@ -383,8 +410,18 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                                                             )}
                                                                         </div>
                                                                     </TableCell>
-                                                                    <TableCell className="text-right border-r border-slate-200 text-slate-600 font-mono text-sm">{Number(dinhmuc).toLocaleString('en-US', { maximumFractionDigits: 5 })} <span className="text-[10px] text-slate-400 ml-1">{child.unit}</span></TableCell>
-                                                                    <TableCell className="text-right border-r border-slate-200 p-1"><Input type="number" className="h-7 text-right text-sm bg-transparent border-transparent hover:border-slate-300 focus:bg-white focus:ring-1" defaultValue={child.unit_price} onBlur={(e) => handlePriceChange(child.id, e.target.value)} /></TableCell>
+                                                                    <TableCell className="text-center border-r border-slate-200 text-slate-600 text-xs">{child.unit}</TableCell>
+                                                                    <TableCell className="text-center border-r border-slate-200 text-slate-400 font-mono text-xs bg-slate-50/50">{factor !== 1 ? `/${factor}` : "-"}</TableCell>
+                                                                    <TableCell className="text-right border-r border-slate-200 text-slate-600 font-mono text-sm bg-slate-50/50">{savedNorm > 0 ? Number(savedNorm).toLocaleString('en-US', { maximumFractionDigits: 5 }) : "-"}</TableCell>
+
+                                                                    {/* ✅ ĐÂY LÀ CỘT TỔNG KHỐI LƯỢNG VẬT TƯ (ĐÃ ĐƯỢC TÍNH CHUẨN) */}
+                                                                    <TableCell className="text-right border-r border-slate-200 font-bold text-blue-700 bg-blue-50/20">
+                                                                        {Number(child.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                                                                    </TableCell>
+
+                                                                    <TableCell className="text-right border-r border-slate-200 p-1">
+                                                                        <Input type="number" className="h-7 text-right text-sm bg-transparent border-transparent hover:border-slate-300 focus:bg-white focus:ring-1" defaultValue={child.unit_price} onBlur={(e) => handlePriceChange(child.id, e.target.value)} />
+                                                                    </TableCell>
                                                                     <TableCell className="text-right font-medium">{formatCurrency(child.total_cost || 0)}</TableCell>
                                                                     <TableCell className="text-center p-1"><Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(child.id, child.material_name)}><Trash2 className="w-4 h-4" /></Button></TableCell>
                                                                 </TableRow>
@@ -402,19 +439,26 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                     <React.Fragment key="standalone">
                                         <TableRow className="bg-orange-50 border-b-2 border-slate-200">
                                             <TableCell className="text-center font-bold border-r border-slate-200 text-orange-700">*</TableCell>
-                                            <TableCell className="p-1" colSpan={6}>
-                                                <div className="flex items-center gap-1 w-full">
-                                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-orange-700 hover:bg-orange-200 shrink-0" onClick={() => toggleSection('standalone')}>
-                                                        {expandedSections['standalone'] !== false ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                            <TableCell className="font-bold border-r border-slate-200 text-center text-orange-700">IMPORT</TableCell>
+                                            <TableCell className="border-r border-slate-200"></TableCell>
+                                            <TableCell className="font-bold text-orange-700 border-r border-slate-200 cursor-pointer hover:bg-orange-100/50 transition-colors" onClick={() => toggleRow('standalone')}>
+                                                <div className="flex items-start gap-1">
+                                                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0 mt-0.5 text-orange-700 hover:bg-orange-200 shrink-0">
+                                                        {expandedRows['standalone'] !== false ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                     </Button>
-                                                    <span className="font-bold text-orange-700 uppercase tracking-wide px-2">CHI PHÍ BỔ SUNG / IMPORT EXCEL</span>
+                                                    <span className="leading-tight">CHI PHÍ BỔ SUNG / IMPORT EXCEL</span>
                                                 </div>
                                             </TableCell>
+                                            <TableCell className="border-r border-slate-200"></TableCell>
+                                            <TableCell className="border-r border-slate-200 bg-slate-100/50"></TableCell>
+                                            <TableCell className="border-r border-slate-200 bg-slate-100/50"></TableCell>
+                                            <TableCell className="border-r border-slate-200 bg-blue-50/50"></TableCell>
+                                            <TableCell className="border-r border-slate-200"></TableCell>
                                             <TableCell className="text-right font-bold text-orange-700">{formatCurrency(standaloneItems.reduce((s, i) => s + (i.total_cost || 0), 0))}</TableCell>
                                             <TableCell></TableCell>
                                         </TableRow>
 
-                                        {expandedSections['standalone'] !== false && standaloneItems.map(child => (
+                                        {expandedRows['standalone'] !== false && standaloneItems.map(child => (
                                             <TableRow key={child.id} className={child.is_mapped ? "hover:bg-green-50/50" : "hover:bg-muted/30"}>
                                                 <TableCell className="border-r border-slate-200"></TableCell>
                                                 <TableCell className="border-r border-slate-200"></TableCell>
@@ -434,10 +478,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                                         )}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="text-right border-r border-slate-200 text-slate-600 font-mono text-sm">{Number(child.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })} <span className="text-[10px] text-slate-400 ml-1">{child.unit}</span></TableCell>
+                                                <TableCell className="text-center border-r border-slate-200 text-slate-600 text-xs">{child.unit}</TableCell>
+                                                <TableCell className="text-center border-r border-slate-200 text-slate-500 font-mono text-xs bg-slate-50/50">-</TableCell>
+                                                <TableCell className="text-right border-r border-slate-200 text-slate-600 font-mono text-sm bg-slate-50/50">-</TableCell>
+                                                <TableCell className="text-right border-r border-slate-200 font-bold text-blue-700 bg-blue-50/20">{Number(child.quantity).toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
                                                 <TableCell className="text-right border-r border-slate-200 p-1"><Input type="number" className="h-7 text-right text-sm bg-transparent border-transparent hover:border-slate-300 focus:bg-white focus:ring-1" defaultValue={child.unit_price} onBlur={(e) => handlePriceChange(child.id, e.target.value)} /></TableCell>
                                                 <TableCell className="text-right font-medium">{formatCurrency(child.total_cost || 0)}</TableCell>
-                                                <TableCell className="text-center p-1"><Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(child.id, child.material_name)}><Trash2 className="w-4 h-4" /></Button></TableCell>
+                                                <TableCell className="text-center p-1"><Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 hover:bg-red-50" onClick={() => handleDelete(child.id, child.material_name)}><Trash2 className="w-3 h-3" /></Button></TableCell>
                                             </TableRow>
                                         ))}
                                     </React.Fragment>
@@ -478,7 +525,27 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                 <TableBody>
                                     {getSummaryByCategory(activeModal!).map((mat: any, idx) => (
                                         <TableRow key={idx} className="hover:bg-muted/50">
-                                            <TableCell className="text-center text-slate-500">{idx + 1}</TableCell><TableCell className="font-medium text-slate-800">{mat.material_name}</TableCell><TableCell className="text-center text-slate-500">{mat.unit}</TableCell><TableCell className="text-right font-semibold text-slate-700">{Number(mat.total_quantity).toLocaleString('en-US', { maximumFractionDigits: 3 })}</TableCell>
+                                            <TableCell className="text-center text-slate-500">{idx + 1}</TableCell>
+
+                                            {/* ✅ ĐÃ SỬA CỘT TÊN VẬT TƯ: THÊM NÚT ĐỔI MÃ VÀ HIỂN THỊ BADGE */}
+                                            <TableCell className="font-medium text-slate-800">
+                                                <div className="flex justify-between items-center group relative pr-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{mat.material_name}</span>
+                                                        {mat.is_mapped && <Badge className="bg-green-100 text-green-700 border-none px-1 text-[10px]">{mat.material_code}</Badge>}
+                                                    </div>
+                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <MaterialSelector
+                                                            onSelect={(newMat) => handleBulkMaterialSelect(mat.material_name, mat.category, newMat)}
+                                                            defaultSearch={mat.original_name || mat.material_name}
+                                                            trigger={<Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 bg-blue-50">Đổi mã</Button>}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+
+                                            <TableCell className="text-center text-slate-500">{mat.unit}</TableCell>
+                                            <TableCell className="text-right font-semibold text-slate-700">{Number(mat.total_quantity).toLocaleString('en-US', { maximumFractionDigits: 3 })}</TableCell>
                                             <TableCell className="text-right p-1 bg-blue-50/30 border-l border-r border-blue-100"><Input type="number" className="h-8 text-right text-sm font-bold text-blue-700 bg-white border-blue-200 focus:ring-blue-500" defaultValue={mat.unit_price} onBlur={(e) => handleBulkPriceChange(mat.material_name, mat.category, e.target.value)} /></TableCell>
                                             <TableCell className="text-right font-bold text-slate-800">{formatCurrency(mat.total_cost_sum)}</TableCell>
                                         </TableRow>

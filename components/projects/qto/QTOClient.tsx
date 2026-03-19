@@ -14,18 +14,16 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
 import {
-    deleteQTOItem, deleteQTODetail, calculateMaterialBudget,
+    deleteQTOItem, deleteQTODetail,
     updateQTODetail, updateQTODetailText, addQTODetail,
     updateQTONormCode, addManualQTOItem, updateQTOItem
 } from "@/lib/action/qtoActions";
+// ✅ GỌI HÀM VỪA ĐƯỢC CHÚNG TA NÂNG CẤP Ở BƯỚC 1
+import { analyzeQTOAndGenerateEstimation } from "@/lib/action/estimationActions";
 import { getNorms } from "@/lib/action/normActions";
 import AutoEstimateWizard from "./AutoEstimateWizard";
 
-interface Props {
-    projectId: string;
-    items: any[];
-    norms: any[];
-}
+interface Props { projectId: string; items: any[]; norms: any[]; }
 
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -44,8 +42,8 @@ function renderItemTypeBadge(type: string) {
     }
 }
 
-// ✅ COMPONENT: TÌM MÃ ĐỊNH MỨC TRONG BẢNG (NHẤN ENTER MỚI TÌM)
-function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: () => void; }) {
+// ✅ ĐÃ SỬA: onUpdate giờ nhận Data trả về để Update giao diện tức thì
+function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: (norm: any) => void; }) {
     const [query, setQuery] = useState(defaultCode || "");
     const [results, setResults] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
@@ -54,38 +52,36 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (query.trim().length < 2) {
-                setIsOpen(false);
-                toast.error("Vui lòng nhập ít nhất 2 ký tự để tìm kiếm!");
-                return;
-            }
-            setIsSearching(true);
-            setIsOpen(false);
+            if (query.trim().length < 2) { setIsOpen(false); toast.error("Nhập ít nhất 2 ký tự!"); return; }
+            setIsSearching(true); setIsOpen(false);
             const res = await getNorms(query, 1, 20);
-            setResults(res.data || []);
-            setIsOpen(true);
-            setIsSearching(false);
+            setResults(res.data || []); setIsOpen(true); setIsSearching(false);
         }
     };
 
-    const handleSelect = async (code: string) => {
-        setQuery(code);
-        setIsOpen(false);
-        const toastId = toast.loading("Đang lưu mã định mức...");
-        const res = await updateQTONormCode(taskId, projectId, code);
-        if (res.success) { toast.success("Đã gắn mã thành công!", { id: toastId }); onUpdate(); }
-        else { toast.error("Lỗi khi gắn mã!", { id: toastId }); }
+    const handleSelect = async (norm: any) => {
+        setQuery(norm.code); setIsOpen(false);
+        const toastId = toast.loading("Đang áp dụng mã định mức...");
+
+        try {
+            const res1 = await updateQTONormCode(taskId, projectId, norm.code);
+            const res2 = await updateQTOItem(taskId, projectId, 'item_name', norm.name);
+            const res3 = await updateQTOItem(taskId, projectId, 'unit', norm.unit);
+
+            if (res1.success && res2.success && res3.success) {
+                toast.success("Đã áp mã và đồng bộ tên, đơn vị!", { id: toastId });
+                // ✅ Truyền Object Norm ra ngoài để UI đổi màu/đổi chữ ngay
+                onUpdate(norm);
+            } else { toast.error("Có lỗi khi đồng bộ chi tiết!", { id: toastId }); }
+        } catch (error) { toast.error("Lỗi hệ thống khi gắn mã!", { id: toastId }); }
     };
 
     return (
         <div className="relative w-full">
             <div className="relative">
                 <Input
-                    placeholder="🔍 Gõ mã/tên + Nhấn Enter..."
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => { if (results.length > 0) setIsOpen(true) }}
+                    placeholder="🔍 Gõ mã/tên + Nhấn Enter..." value={query} onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleKeyDown} onFocus={() => { if (results.length > 0) setIsOpen(true) }}
                     onBlur={() => setTimeout(() => setIsOpen(false), 200)}
                     className="h-8 border-orange-300 bg-orange-50/50 text-xs focus-visible:ring-orange-500"
                 />
@@ -94,18 +90,18 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
 
             {isOpen && results.length > 0 && (
                 <div className="absolute z-50 w-[350px] right-0 mt-1 max-h-[300px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-2xl">
+                    {/* ✅ Gửi nguyên cả cục `r` vào hàm Handle */}
                     {results.map((r) => (
-                        <div key={r.id} onClick={() => handleSelect(r.code)} className="px-3 py-2 text-xs hover:bg-orange-50 cursor-pointer border-b flex flex-col gap-1">
+                        <div key={r.id} onClick={() => handleSelect(r)} className="px-3 py-2 text-xs hover:bg-orange-50 cursor-pointer border-b flex flex-col gap-1">
                             <span className="font-bold text-blue-700">{r.code}</span>
                             <span className="text-slate-600 line-clamp-2">{r.name}</span>
                         </div>
                     ))}
                 </div>
             )}
-
             {isOpen && results.length === 0 && !isSearching && (
                 <div className="absolute z-50 w-[350px] right-0 mt-1 p-3 rounded-md border border-slate-200 bg-white shadow-xl text-center text-xs text-slate-500 italic">
-                    Không tìm thấy định mức nào khớp với từ khóa "{query}"
+                    Không tìm thấy định mức nào khớp.
                 </div>
             )}
         </div>
@@ -116,12 +112,10 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const router = useRouter();
     const [calcLoading, setCalcLoading] = useState(false);
 
-    // ✅ STATE: Quản lý gập/mở Chi tiết cấu kiện và Hạng mục
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
     const [localItems, setLocalItems] = useState(items);
 
-    // ✅ STATE: Cho Modal Thêm thủ công
     const [isManualAddModalOpen, setIsManualAddModalOpen] = useState(false);
     const [manualSectionId, setManualSectionId] = useState<string>("NEW");
     const [newSectionName, setNewSectionName] = useState("");
@@ -130,7 +124,6 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const [manualItemType, setManualItemType] = useState("task");
     const [isAddingManual, setIsAddingManual] = useState(false);
 
-    // ✅ STATE: TÌM KIẾM ĐỊNH MỨC TRONG FORM THÊM MỚI
     const [manualNormCode, setManualNormCode] = useState("");
     const [manualNormQuery, setManualNormQuery] = useState("");
     const [manualNormResults, setManualNormResults] = useState<any[]>([]);
@@ -151,13 +144,11 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const handleToggleAllSections = () => {
         const sections = localItems.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
         const isAnyCollapsed = sections.some(s => expandedSections[s.id] === false);
-
-        if (isAnyCollapsed) {
-            setExpandedSections({}); // Mở tất cả
-        } else {
+        if (isAnyCollapsed) { setExpandedSections({}); }
+        else {
             const newState: Record<string, boolean> = {};
             sections.forEach(s => newState[s.id] = false);
-            setExpandedSections(newState); // Đóng tất cả
+            setExpandedSections(newState);
         }
     };
 
@@ -167,7 +158,6 @@ export default function QTOClient({ projectId, items, norms }: Props) {
         return (len !== 0 ? len : 1) * (wid !== 0 ? wid : 1) * (hei !== 0 ? hei : 1) * (fac !== 0 ? fac : 1);
     };
 
-    // Sửa Tên/Đơn vị trực tiếp trên bảng
     const handleUpdateItemField = async (itemId: string, field: string, value: string) => {
         if (!value.trim()) return;
         setLocalItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
@@ -176,9 +166,8 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     };
 
     const handleDeleteItem = async (itemId: string) => {
-        if (!confirm("Bạn có chắc muốn xóa? Toàn bộ chi tiết bên trong cũng sẽ bị xóa!")) return;
-        await deleteQTOItem(itemId, projectId);
-        fetchLatestData();
+        if (!confirm("Bạn có chắc muốn xóa?")) return;
+        await deleteQTOItem(itemId, projectId); fetchLatestData();
     };
 
     const handleDeleteDetail = async (detailId: string) => { await deleteQTODetail(detailId, projectId); fetchLatestData(); };
@@ -186,27 +175,23 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const handleUpdateText = async (detailId: string, value: string) => { await updateQTODetailText(detailId, projectId, value); };
     const handleAddDetail = async (itemId: string) => {
         await addQTODetail(itemId, { projectId, explanation: "Chi tiết mới", length: 0, width: 0, height: 0, quantity_factor: 1 });
-        if (!expandedRows[itemId]) toggleRow(itemId);
-        fetchLatestData();
+        if (!expandedRows[itemId]) toggleRow(itemId); fetchLatestData();
     };
 
-    // PHÂN TÍCH QTO -> CHUYỂN SANG TAB DỰ TOÁN
     const handleCalculate = async () => {
         setCalcLoading(true);
-        const res = await calculateMaterialBudget(projectId);
+        const res = await analyzeQTOAndGenerateEstimation(projectId);
         setCalcLoading(false);
         if (res.success) { toast.success(res.message); router.refresh(); }
         else { toast.error(res.error); }
     };
 
-    // LƯU CÔNG TÁC THỦ CÔNG
     const handleSaveManualItem = async () => {
         if (!manualItemName.trim()) { toast.error("Vui lòng nhập tên công tác!"); return; }
         if (manualSectionId === "NEW" && !newSectionName.trim()) { toast.error("Vui lòng nhập tên Hạng mục mới!"); return; }
         if (!manualItemType) { toast.error("Vui lòng chọn Phân loại công tác!"); return; }
 
         setIsAddingManual(true);
-        // ✅ Truyền mã định mức (manualNormCode) vào API
         const res = await addManualQTOItem(projectId, manualSectionId, newSectionName.trim(), manualItemName.trim(), manualUnit.trim(), manualItemType, manualNormCode);
 
         if (res.success) {
@@ -222,7 +207,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500">
-            {/* THANH CÔNG CỤ TOOLBAR */}
+            {/* Thanh công cụ */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-lg border shadow-sm gap-3">
                 <div className="flex items-center gap-2">
                     <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
@@ -253,16 +238,13 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                     </div>
                                 )}
 
-                                {/* ✅ Ô TÌM KIẾM ĐỊNH MỨC THÔNG MINH */}
                                 <div className="space-y-2 relative bg-blue-50 p-3 rounded-md border border-blue-100">
                                     <Label className="text-xs font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1">
                                         🔍 Gọi mã định mức (Tùy chọn)
                                     </Label>
                                     <div className="relative">
                                         <Input
-                                            placeholder="Nhập mã hoặc tên công tác + Nhấn Enter..."
-                                            value={manualNormQuery}
-                                            onChange={(e) => setManualNormQuery(e.target.value)}
+                                            placeholder="Nhập mã hoặc tên công tác + Nhấn Enter..." value={manualNormQuery} onChange={(e) => setManualNormQuery(e.target.value)}
                                             onKeyDown={async (e) => {
                                                 if (e.key === 'Enter') {
                                                     e.preventDefault();
@@ -278,30 +260,15 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                         />
                                         {isSearchingManualNorm && <Loader2 className="w-4 h-4 animate-spin absolute right-2 top-2 text-blue-600" />}
                                     </div>
-
-                                    {/* DROPDOWN KẾT QUẢ */}
                                     {isManualNormOpen && manualNormResults.length > 0 && (
                                         <div className="absolute z-50 w-full mt-1 max-h-[200px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl left-0 top-full">
                                             {manualNormResults.map((r) => (
                                                 <div key={r.id} onClick={() => {
-                                                    // ✅ TỰ ĐỘNG ĐIỀN THÔNG TIN KHI CHỌN MÃ
-                                                    setManualNormCode(r.code);
-                                                    setManualItemName(r.name);
-                                                    setManualUnit(r.unit || "Lần");
-                                                    setManualItemType('task');
-                                                    setManualNormQuery(r.code);
-                                                    setIsManualNormOpen(false);
-                                                    toast.success(`Đã chọn mã: ${r.code}`);
+                                                    setManualNormCode(r.code); setManualItemName(r.name); setManualUnit(r.unit || "Lần"); setManualItemType('task'); setManualNormQuery(r.code); setIsManualNormOpen(false); toast.success(`Đã chọn mã: ${r.code}`);
                                                 }} className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b flex flex-col gap-1">
-                                                    <span className="font-bold text-blue-700">{r.code}</span>
-                                                    <span className="text-slate-600 line-clamp-2">{r.name}</span>
+                                                    <span className="font-bold text-blue-700">{r.code}</span><span className="text-slate-600 line-clamp-2">{r.name}</span>
                                                 </div>
                                             ))}
-                                        </div>
-                                    )}
-                                    {isManualNormOpen && manualNormResults.length === 0 && !isSearchingManualNorm && (
-                                        <div className="absolute z-50 w-full mt-1 p-3 rounded-md border border-slate-200 bg-white shadow-xl text-center text-xs text-slate-500 italic left-0 top-full">
-                                            Không tìm thấy kết quả nào.
                                         </div>
                                     )}
                                 </div>
@@ -323,7 +290,6 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                     <SelectItem value="labor">Nhân công (Labor)</SelectItem>
                                                     <SelectItem value="equipment">Máy thi công (Equipment)</SelectItem>
                                                     <SelectItem value="subcontractor">Thầu phụ (Subcontractor)</SelectItem>
-                                                    <SelectItem value="other">Khác (Other)</SelectItem>
                                                 </SelectGroup>
                                             </SelectContent>
                                         </Select>
@@ -348,7 +314,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                 </div>
             </div>
 
-            {/* BẢNG BÓC TÁCH (QTO TABLE) */}
+            {/* BẢNG BÓC TÁCH */}
             <Card className="border-none shadow-none bg-transparent">
                 <div className="bg-slate-50 border border-b-0 border-slate-200 rounded-t-md p-2 flex items-center justify-between">
                     <h4 className="font-bold text-slate-700 uppercase tracking-wide text-sm ml-2">Bảng Tiên lượng & Bóc tách</h4>
@@ -378,7 +344,6 @@ export default function QTOClient({ projectId, items, norms }: Props) {
 
                             return (
                                 <React.Fragment key={section.id}>
-                                    {/* DÒNG HẠNG MỤC MẸ */}
                                     <TableRow className="bg-slate-200 border-b-2 border-slate-300 hover:bg-slate-300/50 transition-colors">
                                         <TableCell className="text-center font-bold text-slate-800">{toRoman(secIdx + 1)}</TableCell>
                                         <TableCell className="p-1">
@@ -386,7 +351,9 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-600 hover:bg-slate-400 shrink-0" onClick={() => toggleSection(section.id)}>
                                                     {isSectionExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                 </Button>
+                                                {/* ✅ THÊM KEY ĐỂ ÉP CẬP NHẬT */}
                                                 <Input
+                                                    key={`sec-name-${section.item_name}`}
                                                     defaultValue={section.item_name}
                                                     onBlur={(e) => handleUpdateItemField(section.id, 'item_name', e.target.value)}
                                                     className="font-bold text-slate-800 uppercase tracking-wide h-8 border-transparent hover:border-slate-400 focus:bg-white bg-transparent shadow-none flex-1"
@@ -395,12 +362,9 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                         </TableCell>
                                         <TableCell></TableCell><TableCell></TableCell>
                                         <TableCell className="text-center"><span className="text-slate-500 text-xs font-mono">###{section.item_name.substring(0, 4)}</span></TableCell>
-                                        <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-100" onClick={() => handleDeleteItem(section.id)}><Trash2 className="w-4 h-4" /></Button>
-                                        </TableCell>
+                                        <TableCell className="text-right"><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-100" onClick={() => handleDeleteItem(section.id)}><Trash2 className="w-4 h-4" /></Button></TableCell>
                                     </TableRow>
 
-                                    {/* CÁC DÒNG CÔNG TÁC CON */}
                                     {isSectionExpanded && tasks.map((task, taskIdx) => {
                                         const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
                                         const isTaskExpanded = expandedRows[task.id] !== false;
@@ -414,7 +378,9 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 hover:bg-blue-100 shrink-0" onClick={() => toggleRow(task.id)}>
                                                                 {isTaskExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                             </Button>
+                                                            {/* ✅ THÊM KEY ĐỂ ÉP CẬP NHẬT KHI ĐỔI TÊN MÃ ĐỊNH MỨC */}
                                                             <Input
+                                                                key={`task-name-${task.item_name}`}
                                                                 defaultValue={task.item_name}
                                                                 onBlur={(e) => handleUpdateItemField(task.id, 'item_name', e.target.value)}
                                                                 className="flex-1 font-medium text-slate-800 h-8 border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none px-2"
@@ -423,7 +389,9 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="p-1 text-center">
+                                                        {/* ✅ THÊM KEY ĐỂ ÉP CẬP NHẬT KHI ĐỔI ĐƠN VỊ TÍNH */}
                                                         <Input
+                                                            key={`task-unit-${task.unit}`}
                                                             defaultValue={task.unit}
                                                             onBlur={(e) => handleUpdateItemField(task.id, 'unit', e.target.value)}
                                                             className="h-8 w-16 mx-auto text-center border-transparent hover:border-slate-300 focus:bg-white bg-transparent shadow-none text-slate-600 px-1"
@@ -433,14 +401,27 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                         {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <AsyncNormSelector taskId={task.id} projectId={projectId} defaultCode={task.norm_code} onUpdate={fetchLatestData} />
+                                                        {/* ✅ TRUYỀN HÀM UPDATE ẢO ĐỂ BẮT UI RENDER NGAY TỨC THÌ */}
+                                                        <AsyncNormSelector
+                                                            taskId={task.id}
+                                                            projectId={projectId}
+                                                            defaultCode={task.norm_code}
+                                                            onUpdate={(norm) => {
+                                                                setLocalItems(prev => prev.map(item =>
+                                                                    item.id === task.id
+                                                                        ? { ...item, norm_code: norm.code, item_name: norm.name, unit: norm.unit }
+                                                                        : item
+                                                                ));
+                                                                fetchLatestData(); // Vẫn load ngầm Database
+                                                            }}
+                                                        />
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-red-500" onClick={() => handleDeleteItem(task.id)}><Trash2 className="w-4 h-4" /></Button>
                                                     </TableCell>
                                                 </TableRow>
 
-                                                {/* CHI TIẾT KÍCH THƯỚC BÊN TRONG */}
+                                                {/* CHI TIẾT BÊN TRONG CỦA CÔNG TÁC (Kích thước) */}
                                                 {isTaskExpanded && (
                                                     <TableRow className="bg-white">
                                                         <TableCell colSpan={6} className="p-0">

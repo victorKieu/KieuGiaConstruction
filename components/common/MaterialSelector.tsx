@@ -39,15 +39,16 @@ export function MaterialSelector({ onSelect, trigger, defaultSearch = "" }: Mate
     }, [open]);
 
     const handleSearch = async () => {
-        const searchTerm = query.trim();
+        // ✅ ĐÃ FIX: Loại bỏ dấu phẩy và ngoặc kép thừa để chống lỗi cú pháp
+        const searchTerm = query.replace(/["']/g, '').replace(/,/g, ' ').trim();
         if (!searchTerm) return;
 
         setLoading(true);
-        // Tìm kiếm tương đối (ilike) trong bảng materials
+        // ✅ ĐÃ FIX: Bọc "%${searchTerm}%" trong dấu ngoặc kép "" để an toàn tuyệt đối
         const { data, error } = await supabase
             .from('materials')
             .select('*')
-            .or(`name.ilike.%${searchTerm}%,code.ilike.%${searchTerm}%`)
+            .or(`name.ilike."%${searchTerm}%",code.ilike."%${searchTerm}%"`)
             .limit(20);
 
         if (error) {

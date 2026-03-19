@@ -4,19 +4,8 @@ import * as React from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils/utils";
 import { Button } from "@/components/ui/button";
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-} from "@/components/ui/command";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface Material {
     id: string;
@@ -40,17 +29,9 @@ export function MaterialCombobox({ value, onChange, materials = [], disabled }: 
     return (
         <Popover open={open} onOpenChange={setOpen} modal={true}>
             <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="w-full justify-between font-normal h-9 px-3"
-                    disabled={disabled}
-                >
+                <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal h-9 px-3" disabled={disabled}>
                     {selectedMaterial ? (
-                        <span className="truncate font-medium text-slate-900">
-                            {selectedMaterial.name}
-                        </span>
+                        <span className="truncate font-medium text-slate-900">{selectedMaterial.name}</span>
                     ) : (
                         <span className="text-muted-foreground">Chọn vật tư...</span>
                     )}
@@ -73,12 +54,7 @@ export function MaterialCombobox({ value, onChange, materials = [], disabled }: 
                                     }}
                                     className="cursor-pointer border-b last:border-0"
                                 >
-                                    <Check
-                                        className={cn(
-                                            "mr-2 h-4 w-4 text-blue-600 shrink-0",
-                                            value === mat.code ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
+                                    <Check className={cn("mr-2 h-4 w-4 text-blue-600 shrink-0", value === mat.code ? "opacity-100" : "opacity-0")} />
                                     <div className="flex flex-col flex-1 overflow-hidden">
                                         <div className="flex justify-between items-center">
                                             <span className="font-medium text-slate-900 truncate">{mat.name}</span>
