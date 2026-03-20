@@ -13,18 +13,17 @@ import {
     DialogTrigger,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast"; // Hoặc import { toast } from "sonner" tùy library bạn dùng
+import { toast } from "sonner"; // ✅ Dùng chung Sonner cho đồng bộ toàn hệ thống
 import { upsertDictionary, DictionaryFormData } from "@/lib/action/dictionaryActions";
 import { Loader2, Plus, Save } from "lucide-react";
 import { formatCategoryCode } from "@/lib/constants/dictionary";
 import { ColorPicker } from "@/components/ui/color-picker";
-import { CategoryCombobox } from "@/components/admin/CategoryCombobox"; // ✅ Import component vừa tạo
+import { CategoryCombobox } from "@/components/admin/CategoryCombobox";
 
 interface Props {
     initialData?: any;
     trigger?: React.ReactNode;
     defaultCategory?: string;
-    // ✅ Cập nhật kiểu dữ liệu: Nhận cả code và name
     existingCategories?: { code: string; name: string }[];
 }
 
@@ -37,7 +36,6 @@ export function DictionaryDialog({
 
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const { toast } = useToast();
 
     const [formData, setFormData] = useState<DictionaryFormData>({
         id: initialData?.id,
@@ -68,9 +66,8 @@ export function DictionaryDialog({
         setLoading(true);
 
         if (!formData.category) {
-            // Xử lý toast lỗi tùy theo thư viện bạn đang dùng (shadcn/ui toast hoặc sonner)
-            // toast({ title: "Lỗi", description: "Vui lòng chọn Phân hệ", variant: "destructive" });
-            alert("Vui lòng chọn Phân hệ");
+            // ✅ ĐÃ FIX: Dùng toast.error thay cho alert thô sơ
+            toast.error("Vui lòng chọn Phân hệ (Category)!");
             setLoading(false);
             return;
         }
@@ -80,10 +77,11 @@ export function DictionaryDialog({
         setLoading(false);
         if (res.success) {
             setOpen(false);
-            // toast({ title: "Thành công", description: "Dữ liệu đã được lưu." });
+            // ✅ ĐÃ FIX: Dùng toast.success
+            toast.success("Lưu dữ liệu từ điển thành công!");
         } else {
-            // toast({ title: "Lỗi", description: res.error, variant: "destructive" });
-            alert(res.error);
+            // ✅ ĐÃ FIX: Dùng toast.error
+            toast.error(res.error || "Có lỗi xảy ra khi lưu dữ liệu.");
         }
     };
 
@@ -111,9 +109,7 @@ export function DictionaryDialog({
                         <div className="col-span-2">
                             <Label>Phân hệ (Category) <span className="text-red-500">*</span></Label>
 
-                            {/* LOGIC HIỂN THỊ */}
                             {defaultCategory || initialData ? (
-                                // 1. Nếu đang Filter hoặc Edit -> Hiện Input Disabled (cho gọn)
                                 <div className="relative">
                                     <Input
                                         value={
@@ -123,11 +119,9 @@ export function DictionaryDialog({
                                         disabled
                                         className="bg-slate-100 font-semibold text-slate-700 mt-1"
                                     />
-                                    {/* Input ẩn để giữ giá trị category code khi submit */}
                                     <input type="hidden" value={formData.category} />
                                 </div>
                             ) : (
-                                // 2. Nếu Thêm mới tự do -> Hiện Combobox tìm kiếm
                                 <div className="mt-1">
                                     <CategoryCombobox
                                         value={formData.category}

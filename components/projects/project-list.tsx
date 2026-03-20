@@ -19,6 +19,7 @@ import {
 import { deleteProject } from "@/lib/action/projectActions"
 import { formatCurrency, formatDate } from "@/lib/utils/utils"
 import type { ProjectWithExtras } from "@/types/project";
+import { toast } from "sonner";
 
 interface ProjectListProps {
     projects: ProjectWithExtras[];

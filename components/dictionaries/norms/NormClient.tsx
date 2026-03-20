@@ -6,9 +6,11 @@ import { Plus, Search, Edit, Trash2, Filter, Upload, Loader2, ChevronLeft, Chevr
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+// ✅ IMPORT THÊM SELECT UI
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteNorm, importNormsCSV } from "@/lib/action/normActions";
 import NormForm from "@/components/dictionaries/norms/NormForm";
 import { toast } from "sonner";
@@ -35,6 +37,9 @@ export default function NormClient({
     const [isOpen, setIsOpen] = useState(false);
     const [editingNorm, setEditingNorm] = useState<any>(null);
     const [isImporting, setIsImporting] = useState(false);
+
+    // ✅ STATE CHỨA LOẠI ĐỊNH MỨC IMPORT
+    const [importType, setImportType] = useState<string>("company");
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
@@ -79,21 +84,24 @@ export default function NormClient({
         if (!file) return;
 
         setIsImporting(true);
-        toast.info("Đang tải file lên và xử lý... Vui lòng không đóng trang.");
+        const toastId = toast.loading(`Đang nạp file thành Định mức ${importType === 'state' ? 'Nhà nước' : 'Nội bộ'}...`);
 
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("type", importType); // ✅ ĐÍNH KÈM THUỘC TÍNH TYPE LÊN BACKEND
 
         try {
             const res = await importNormsCSV(formData) as any;
+
             if (res.success) {
-                toast.success(res.message);
+                toast.success(res.message, { id: toastId, duration: 5000 });
                 setPage(1);
+                router.refresh();
             } else {
-                toast.error(res.error);
+                toast.error(res.error, { id: toastId, duration: 5000 });
             }
         } catch (error: any) {
-            toast.error("Lỗi: " + error.message);
+            toast.error("Lỗi hệ thống: " + error.message, { id: toastId, duration: 5000 });
         } finally {
             setIsImporting(false);
             e.target.value = '';
@@ -109,13 +117,25 @@ export default function NormClient({
                     <Input placeholder="Tìm mã hiệu, tên công tác..." className="pl-8 bg-slate-50" value={searchTerm} onChange={handleSearchChange} />
                 </div>
                 <div className="flex items-center gap-2">
+
+                    {/* ✅ DROPDOWN CHỌN LOẠI ĐỊNH MỨC */}
+                    <Select value={importType} onValueChange={setImportType} disabled={isImporting}>
+                        <SelectTrigger className="w-[180px] h-9 bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Loại định mức" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="company">Định mức Nội bộ</SelectItem>
+                            <SelectItem value="state">Định mức Nhà nước</SelectItem>
+                        </SelectContent>
+                    </Select>
+
                     <div className="relative">
                         <input type="file" accept=".csv" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" />
-                        <Button variant="outline" disabled={isImporting} className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100">
+                        <Button variant="outline" disabled={isImporting} className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 h-9">
                             {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />} Import CSV
                         </Button>
                     </div>
-                    <Button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 shadow-sm">
+                    <Button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 shadow-sm h-9">
                         <Plus className="mr-2 h-4 w-4" /> Thêm định mức mới
                     </Button>
                 </div>
@@ -131,7 +151,6 @@ export default function NormClient({
                                     <Badge variant="secondary" className="font-mono font-bold bg-slate-100 text-slate-700 border-slate-200 w-fit">
                                         {norm.code}
                                     </Badge>
-                                    {/* ✅ Thêm phân loại Nội bộ / Nhà nước */}
                                     <span className="text-[10px] text-muted-foreground uppercase font-semibold">
                                         {norm.type === 'state' ? '🏛️ Định mức Nhà nước' : '🏢 Định mức Nội bộ'}
                                     </span>
@@ -145,7 +164,6 @@ export default function NormClient({
                                 <div className="text-base font-bold mb-1 line-clamp-2 text-slate-800" title={norm.name}>{norm.name}</div>
                                 <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
                                     <span>Đơn vị tính: <span className="font-semibold text-slate-700">{norm.unit}</span></span>
-                                    {/* ✅ Hiển thị cả hệ số cho kỹ sư nắm được */}
                                     <span title="Hệ số quy đổi">Hệ số: <span className="font-semibold text-orange-600">{norm.conversion_factor || 1}</span></span>
                                 </div>
                                 <div className="bg-slate-50/80 p-2 rounded-md text-xs space-y-1 border border-slate-100">
@@ -201,7 +219,7 @@ export default function NormClient({
                         <DialogTitle className="text-xl text-slate-800">{editingNorm ? "Cập nhật định mức" : "Thêm định mức mới"}</DialogTitle>
                     </DialogHeader>
                     <div className="p-6 flex-1">
-                        <NormForm initialData={editingNorm} resources={resources} onSuccess={() => { setIsOpen(false); toast.success("Thành công"); }} />
+                        <NormForm initialData={editingNorm} resources={resources} onSuccess={() => { setIsOpen(false); }} />
                     </div>
                 </DialogContent>
             </Dialog>

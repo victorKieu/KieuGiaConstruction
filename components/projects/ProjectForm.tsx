@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LocateFixed, Loader2 } from "lucide-react";
 import { createProject, updateProject } from "@/lib/action/projectActions";
+import { toast } from "sonner";
 
 interface ProjectFormProps {
     initialData?: any;
@@ -127,6 +128,9 @@ export default function ProjectForm({
                 throw new Error(result.error || "Có lỗi xảy ra");
             }
 
+            // ✅ ĐÃ FIX: Gọi thông báo toast báo thành công tại đây!
+            toast.success(result.message || (form.id ? "Cập nhật dự án thành công!" : "Tạo dự án mới thành công!"));
+
             if (onSuccess) onSuccess();
             else {
                 router.push(form.id ? `/projects/${form.id}` : "/projects");
@@ -142,7 +146,6 @@ export default function ProjectForm({
     }
 
     return (
-        // ✅ FIX: bg-white -> bg-card, border -> border-border
         <form onSubmit={handleSubmit} className="max-w-6xl mx-auto px-6 py-8 space-y-6 bg-card text-card-foreground rounded-lg shadow-sm border border-border">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* CỘT TRÁI */}
@@ -162,7 +165,6 @@ export default function ProjectForm({
                             name="project_manager"
                             value={form.project_manager}
                             onChange={handleChange}
-                            // ✅ FIX: bg-background, text-foreground, border-input
                             className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <option value="">-- Chọn quản lý --</option>
@@ -191,7 +193,6 @@ export default function ProjectForm({
                         />
                     </div>
 
-                    {/* DROPDOWN LOẠI HÌNH XÂY DỰNG */}
                     <div>
                         <Label htmlFor="construction_type_id">Loại hình xây dựng</Label>
                         <select
@@ -248,7 +249,6 @@ export default function ProjectForm({
                         <Input id="end_date" name="end_date" type="date" value={form.end_date?.slice(0, 10) || ""} onChange={handleChange} className="bg-background" />
                     </div>
 
-                    {/* DROPDOWN LOẠI DỰ ÁN */}
                     <div>
                         <Label htmlFor="type_id">Loại dự án</Label>
                         <select
@@ -275,14 +275,12 @@ export default function ProjectForm({
                 <Textarea id="description" name="description" value={form.description} onChange={handleChange} rows={4} placeholder="Thông tin chi tiết về dự án..." className="bg-background" />
             </div>
 
-            {/* ✅ FIX: Giao diện lỗi hỗ trợ Dark Mode */}
             {error && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 rounded-md text-sm text-center">
                     {error}
                 </div>
             )}
 
-            {/* ✅ FIX: Border footer */}
             <div className="flex justify-end gap-4 pt-4 border-t border-border">
                 <Button type="button" variant="outline" onClick={() => router.back()}>Hủy bỏ</Button>
                 <Button type="submit" disabled={loading} className="min-w-[120px]">

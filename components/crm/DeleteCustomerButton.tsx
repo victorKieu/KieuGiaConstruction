@@ -14,8 +14,8 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
 import { deleteCustomer } from "@/lib/action/crmActions";
+import { toast } from "sonner"; // ✅ Chỉ giữ lại Sonner cho đồng bộ và đẹp
 
 interface DeleteCustomerButtonProps {
     id: string;
@@ -25,7 +25,6 @@ interface DeleteCustomerButtonProps {
 export function DeleteCustomerButton({ id, name }: DeleteCustomerButtonProps) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const { toast } = useToast();
 
     const handleDelete = async () => {
         setLoading(true);
@@ -34,36 +33,23 @@ export function DeleteCustomerButton({ id, name }: DeleteCustomerButtonProps) {
             const res = await deleteCustomer(id);
 
             if (res.success) {
-                toast({
-                    title: "Thành công",
-                    description: res.message,
-                    // ✅ FIX: Dùng variant default hoặc class semantic thay vì hardcode màu
-                    className: "bg-green-600 text-white border-none dark:bg-green-800",
-                });
-                setOpen(false); // Chỉ đóng khi thành công để UX tốt hơn (hoặc đóng luôn tùy ý)
+                // ✅ Dùng Sonner: Tự động có màu xanh, icon check mượt mà
+                toast.success(res.message || "Xóa khách hàng thành công!");
+                setOpen(false);
             } else {
-                toast({
-                    title: "Lỗi",
-                    description: res.error,
-                    variant: "destructive",
-                });
+                // ✅ Dùng Sonner: Tự động có màu đỏ báo lỗi
+                toast.error(res.error || "Lỗi khi xóa khách hàng!");
             }
         } catch (error) {
-            toast({
-                title: "Lỗi hệ thống",
-                description: "Đã xảy ra lỗi không mong muốn.",
-                variant: "destructive",
-            });
+            toast.error("Lỗi hệ thống: Đã xảy ra lỗi không mong muốn.");
         } finally {
             setLoading(false);
-            // setOpen(false); // Nếu muốn luôn đóng dialog dù lỗi hay không thì uncomment dòng này
         }
     };
 
     return (
         <AlertDialog open={open} onOpenChange={setOpen}>
             <AlertDialogTrigger asChild>
-                {/* ✅ FIX: Sử dụng semantic colors cho nút xóa */}
                 <Button
                     variant="ghost"
                     size="icon"
@@ -89,7 +75,6 @@ export function DeleteCustomerButton({ id, name }: DeleteCustomerButtonProps) {
                             handleDelete();
                         }}
                         disabled={loading}
-                        // ✅ FIX: Style chuẩn cho nút Destructive trong Dark Mode
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm"
                     >
                         {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

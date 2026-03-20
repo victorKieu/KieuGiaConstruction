@@ -9,31 +9,54 @@ import { checkIsAdmin } from "@/lib/supabase/getUserProfile";
 export async function getNorms(searchTerm: string = "", page: number = 1, pageSize: number = 50) {
     const supabase = await createClient();
 
+    // BƯỚC 1: Query bảng norms trước để lấy Data phân trang và Count (Không Join để chống lag)
     let query = supabase
         .from("norms")
-        .select(`
-            id, code, name, unit, type, conversion_factor, created_at,
-            details:norm_details (
-                id, quantity,
-                resource:resources (id, code, name, unit) 
-            )
-        `, { count: "exact" });
+        .select("id, code, name, unit, type, conversion_factor, created_at", { count: "exact" });
 
+    // Khử nhiễu ký tự để chống lỗi cú pháp
     if (searchTerm) {
-        query = query.or(`code.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%`);
+        const safeText = searchTerm.replace(/["']/g, '').trim();
+        query = query.or(`code.ilike.%${safeText}%,name.ilike.%${safeText}%`);
     }
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const { data, count, error } = await query.order("code", { ascending: true }).range(from, to);
+    // Lấy 50 dòng của trang hiện tại
+    const { data: normsData, count, error } = await query.order("code", { ascending: true }).range(from, to);
 
     if (error) {
         console.error("Lỗi lấy danh sách định mức:", error.message);
         return { data: [], total: 0 };
     }
 
-    return { data: data || [], total: count || 0 };
+    if (!normsData || normsData.length === 0) {
+        return { data: [], total: count || 0 };
+    }
+
+    // BƯỚC 2: Lấy ID của 50 dòng hiện tại để kéo chi tiết hao phí (Rất nhẹ và siêu tốc)
+    const normIds = normsData.map(n => n.id);
+
+    const { data: detailsData, error: detailsErr } = await supabase
+        .from("norm_details")
+        .select(`
+            id, norm_id, quantity,
+            resource:resources (id, code, name, unit)
+        `)
+        .in("norm_id", normIds);
+
+    if (detailsErr) {
+        console.error("Lỗi lấy chi tiết hao phí:", detailsErr.message);
+    }
+
+    // BƯỚC 3: Ghép mảng hao phí vào mảng định mức để trả về UI như cũ
+    const finalData = normsData.map(norm => ({
+        ...norm,
+        details: detailsData ? detailsData.filter(d => d.norm_id === norm.id) : []
+    }));
+
+    return { data: finalData, total: count || 0 };
 }
 
 // --- 2. LẤY DANH SÁCH CÁC NHÓM ---
@@ -141,11 +164,15 @@ export async function importNormsCSV(formData: FormData) {
     if (!isAdmin) return { success: false, error: "Bạn không có quyền Admin!" };
 
     const file = formData.get("file") as File;
+    // Lấy loại định mức (Nhà nước / Nội bộ) từ Giao diện gửi xuống
+    const importType = (formData.get("type") as string) || "company";
+
     if (!file) return { success: false, error: "Không tìm thấy file tải lên!" };
 
     try {
         let text = await file.text();
         const lines = text.split(/\r?\n/);
+        // Tìm dòng tiêu đề thực sự của bảng để bỏ qua các dòng thừa ở trên
         const headerIndex = lines.findIndex(line => line.includes('Mã hiệu đơn giá'));
         if (headerIndex !== -1) { text = lines.slice(headerIndex).join('\n'); }
 
@@ -156,10 +183,12 @@ export async function importNormsCSV(formData: FormData) {
         const supabase = await createClient();
         let currentNormCode = null;
         let currentGroupCode = null;
+
         const normsMap = new Map();
         const resourcesMap = new Map();
         const itemsList: any[] = [];
 
+        // BƯỚC 1: QUÉT VÀ CHUẨN HÓA DỮ LIỆU TỪ CSV
         for (const row of rows) {
             const normCode = row['Mã hiệu đơn giá']?.trim();
             const resCode = row['Mã hiệu VL, NC, M']?.trim();
@@ -170,8 +199,11 @@ export async function importNormsCSV(formData: FormData) {
             let quantity = 0;
             if (rawQty) quantity = parseFloat(String(rawQty).replace(/\s/g, '').replace(',', '.'));
 
+            // Nếu dòng này là Dòng Định mức (Có mã hiệu đơn giá)
             if (normCode) {
                 currentNormCode = normCode;
+
+                // Tự động tính hệ số quy đổi từ Đơn vị tính (vd: 100m2 -> 100)
                 let conversionFactor = 1;
                 const unitMatch = unit?.match(/^(\d+)/);
                 if (unitMatch) conversionFactor = parseInt(unitMatch[1], 10);
@@ -180,12 +212,13 @@ export async function importNormsCSV(formData: FormData) {
                     code: normCode,
                     name: rawName || 'Chưa có tên',
                     unit: unit || '',
-                    type: 'company',
-                    conversion_factor: conversionFactor
+                    type: importType, // Gán loại định mức (state hoặc company)
+                    conversion_factor: conversionFactor // Gán hệ số quy đổi
                 });
                 continue;
             }
 
+            // Phân loại nhóm vật tư (Vật liệu, Nhân công, Máy)
             if (rawName === 'Vật liệu' || rawName === 'Nhân công' || rawName === 'Máy thi công') {
                 if (rawName === 'Vật liệu') currentGroupCode = 'VL';
                 if (rawName === 'Nhân công') currentGroupCode = 'NC';
@@ -193,36 +226,46 @@ export async function importNormsCSV(formData: FormData) {
                 continue;
             }
 
+            // Nếu dòng này là Dòng Vật tư hao phí con
             if (resCode && currentNormCode) {
                 if (!resourcesMap.has(resCode)) {
                     resourcesMap.set(resCode, {
-                        code: resCode, name: rawName?.replace(/^-\s*/, '') || 'Chưa có tên', unit: unit || '',
-                        group_code: currentGroupCode, unit_price: 0
+                        code: resCode,
+                        name: rawName?.replace(/^-\s*/, '') || 'Chưa có tên',
+                        unit: unit || '',
+                        group_code: currentGroupCode,
+                        unit_price: 0
                     });
                 }
-                if (quantity > 0) itemsList.push({ norm_code: currentNormCode, resource_code: resCode, quantity });
+                if (quantity > 0) {
+                    itemsList.push({ norm_code: currentNormCode, resource_code: resCode, quantity });
+                }
             }
         }
 
         const resCodeToId = new Map();
         const normCodeToId = new Map();
 
+        // BƯỚC 2: LƯU DANH SÁCH VẬT TƯ (RESOURCES) VÀO DATABASE (Cắt lô 200 dòng để chống quá tải)
         const resourcesArray = Array.from(resourcesMap.values());
         for (let i = 0; i < resourcesArray.length; i += 200) {
             const chunk = resourcesArray.slice(i, i + 200);
             const { data, error } = await supabase.from('resources').upsert(chunk, { onConflict: 'code' }).select('id, code');
-            if (error) throw new Error("Lỗi nạp Resources: " + error.message);
+            if (error) throw new Error("Lỗi nạp danh mục Vật tư: " + error.message);
             if (data) data.forEach(r => resCodeToId.set(r.code, r.id));
         }
 
+        // BƯỚC 3: LƯU DANH SÁCH ĐỊNH MỨC (NORMS) VÀO DATABASE
         const normsArray = Array.from(normsMap.values());
         for (let i = 0; i < normsArray.length; i += 200) {
             const chunk = normsArray.slice(i, i + 200);
             const { data, error } = await supabase.from('norms').upsert(chunk, { onConflict: 'code' }).select('id, code');
-            if (error) throw new Error("Lỗi nạp Norms: " + error.message);
+            if (error) throw new Error("Lỗi nạp danh mục Định mức: " + error.message);
             if (data) data.forEach(n => normCodeToId.set(n.code, n.id));
         }
 
+        // BƯỚC 4: LƯU CHI TIẾT HAO PHÍ (NORM_DETAILS)
+        // Ánh xạ từ Mã Code sang UUID của Database
         const finalDetails = itemsList.map(item => ({
             norm_id: normCodeToId.get(item.norm_code),
             resource_id: resCodeToId.get(item.resource_code),
@@ -231,17 +274,23 @@ export async function importNormsCSV(formData: FormData) {
 
         if (finalDetails.length > 0) {
             const uniqueNormIds = Array.from(new Set(finalDetails.map(d => d.norm_id)));
+
+            // Xóa hao phí cũ của các định mức này (Nếu đang Import đè để Update)
             for (let i = 0; i < uniqueNormIds.length; i += 100) {
                 await supabase.from('norm_details').delete().in('norm_id', uniqueNormIds.slice(i, i + 100));
             }
+
+            // Insert hao phí mới (Cắt lô 500 dòng)
             for (let i = 0; i < finalDetails.length; i += 500) {
                 const { error } = await supabase.from('norm_details').insert(finalDetails.slice(i, i + 500));
-                if (error) console.error("Lỗi nạp norm_details:", error.message);
+                if (error) console.error("Lỗi nạp chi tiết hao phí:", error.message);
             }
-        } else { return { success: false, error: "Không thể Map UUID. Có thể do RLS chặn quyền Select!" }; }
+        } else {
+            return { success: false, error: "Không thể Map UUID. File CSV có thể bị lỗi cấu trúc hoặc thiếu dữ liệu!" };
+        }
 
         revalidatePath("/admin/dictionaries/norms");
-        return { success: true, message: `Thành công! Đã nạp ${normsMap.size} ĐM, ${resourcesMap.size} VT và ${finalDetails.length} chi tiết.` };
+        return { success: true, message: `Thành công! Đã nạp ${normsMap.size} Định mức, ${resourcesMap.size} Vật tư và ${finalDetails.length} chi tiết hao phí.` };
 
     } catch (e: any) {
         return { success: false, error: e.message };
