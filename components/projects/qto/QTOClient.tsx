@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Calculator, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FilePlus2, FoldVertical } from "lucide-react";
+import { Calculator, Plus, Trash2, ChevronDown, ChevronRight, Loader2, FilePlus2, FoldVertical, Globe, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,13 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { crawlNormFromUrl } from "@/lib/action/crawlerActions"; // ✅ ĐÃ ĐỔI SANG HÀM CÀO BẰNG LINK
+import { saveNorm } from "@/lib/action/normActions";
 
 import {
     deleteQTOItem, deleteQTODetail,
     updateQTODetail, updateQTODetailText, addQTODetail,
     updateQTONormCode, addManualQTOItem, updateQTOItem
 } from "@/lib/action/qtoActions";
-// ✅ GỌI HÀM VỪA ĐƯỢC CHÚNG TA NÂNG CẤP Ở BƯỚC 1
 import { analyzeQTOAndGenerateEstimation } from "@/lib/action/estimationActions";
 import { getNorms } from "@/lib/action/normActions";
 import AutoEstimateWizard from "./AutoEstimateWizard";
@@ -42,12 +43,15 @@ function renderItemTypeBadge(type: string) {
     }
 }
 
-// ✅ ĐÃ SỬA: onUpdate giờ nhận Data trả về để Update giao diện tức thì
 function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: (norm: any) => void; }) {
     const [query, setQuery] = useState(defaultCode || "");
     const [results, setResults] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
+
+    // ✅ STATE CHO MODAL NHẬP LINK BÊN TRONG BẢNG
+    const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+    const [inputUrl, setInputUrl] = useState("");
 
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
@@ -70,10 +74,35 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
 
             if (res1.success && res2.success && res3.success) {
                 toast.success("Đã áp mã và đồng bộ tên, đơn vị!", { id: toastId });
-                // ✅ Truyền Object Norm ra ngoài để UI đổi màu/đổi chữ ngay
                 onUpdate(norm);
             } else { toast.error("Có lỗi khi đồng bộ chi tiết!", { id: toastId }); }
         } catch (error) { toast.error("Lỗi hệ thống khi gắn mã!", { id: toastId }); }
+    };
+
+    // ✅ HÀM CÀO VÀ TỰ ĐỘNG GÁN
+    const handleFetchFromUrl = async () => {
+        if (!inputUrl.trim()) return toast.error("Vui lòng dán link từ DinhMucOnline!");
+        const toastId = toast.loading("Đang lấy dữ liệu từ link...");
+        setIsUrlModalOpen(false); // Đóng popup ngay cho mượt
+
+        try {
+            const fetchRes = await crawlNormFromUrl(inputUrl.trim());
+            if (fetchRes.success) {
+                // Lưu vào database
+                const saveRes = await saveNorm(fetchRes.data);
+                if (saveRes.success) {
+                    toast.success("Tải và lưu định mức thành công!", { id: toastId });
+                    // Tự động chọn luôn cái mã vừa lưu
+                    handleSelect(fetchRes.data);
+                } else {
+                    toast.error("Lưu Database lỗi: " + saveRes.error, { id: toastId });
+                }
+            } else {
+                toast.error(fetchRes.error, { id: toastId });
+            }
+        } catch (error: any) {
+            toast.error("Lỗi hệ thống: " + error.message, { id: toastId });
+        }
     };
 
     return (
@@ -90,7 +119,6 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
 
             {isOpen && results.length > 0 && (
                 <div className="absolute z-50 w-[350px] right-0 mt-1 max-h-[300px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-2xl">
-                    {/* ✅ Gửi nguyên cả cục `r` vào hàm Handle */}
                     {results.map((r) => (
                         <div key={r.id} onClick={() => handleSelect(r)} className="px-3 py-2 text-xs hover:bg-orange-50 cursor-pointer border-b flex flex-col gap-1">
                             <span className="font-bold text-blue-700">{r.code}</span>
@@ -99,11 +127,57 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
                     ))}
                 </div>
             )}
+
+            {/* ✅ NẾU TÌM KHÔNG RA THÌ HIỆN NÚT MỞ POPUP NHẬP LINK */}
             {isOpen && results.length === 0 && !isSearching && (
-                <div className="absolute z-50 w-[350px] right-0 mt-1 p-3 rounded-md border border-slate-200 bg-white shadow-xl text-center text-xs text-slate-500 italic">
-                    Không tìm thấy định mức nào khớp.
+                <div className="absolute z-50 w-[350px] right-0 mt-1 p-3 rounded-md border border-slate-200 bg-white shadow-xl text-center text-xs">
+                    <p className="text-slate-500 italic mb-3">
+                        Database chưa có định mức "{query}"
+                    </p>
+                    <Button
+                        size="sm"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                        onMouseDown={(e) => e.preventDefault()} // Ngăn chặn blur của ô input gốc
+                        onClick={() => {
+                            setIsOpen(false);
+                            setInputUrl("");
+                            setIsUrlModalOpen(true);
+                        }}
+                    >
+                        <LinkIcon className="w-4 h-4 mr-2" />
+                        Tải dữ liệu bằng Link
+                    </Button>
                 </div>
             )}
+
+            {/* ✅ POPUP NHẬP LINK CÀO DỮ LIỆU */}
+            <Dialog open={isUrlModalOpen} onOpenChange={setIsUrlModalOpen}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <LinkIcon className="w-5 h-5 text-indigo-600" /> Nhập link để lấy dữ liệu
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <p className="text-sm text-slate-600 mb-4">
+                            Hệ thống chưa có mã <b className="text-indigo-600 font-mono">{query}</b>. Vui lòng dán đường link chi tiết từ DinhMucOnline vào ô bên dưới:
+                        </p>
+                        <Input
+                            placeholder="VD: https://dinhmuconline.com/dinhmuc/104481"
+                            value={inputUrl}
+                            onChange={(e) => setInputUrl(e.target.value)}
+                            className="bg-slate-50 border-slate-300"
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsUrlModalOpen(false)}>Hủy</Button>
+                        <Button onClick={handleFetchFromUrl} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[140px]">
+                            Bắt đầu tải
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
