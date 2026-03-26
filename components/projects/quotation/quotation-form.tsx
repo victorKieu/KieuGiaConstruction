@@ -16,7 +16,7 @@ import { saveQuotation, type QuotationInput } from "@/lib/action/quotationAction
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { readMoneyToText } from "@/lib/utils/readNumber"
-import { createClient } from "@/lib/supabase/client" // ✅ Import Supabase Client
+import { createClient } from "@/lib/supabase/client"
 
 // --- 1. SCHEMA ---
 const quotationSchema = z.object({
@@ -125,61 +125,159 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
     const totalAmount = preTaxTotal + vatTotal;
 
-    // ✅ HÀM IMPORT DỮ LIỆU TỰ ĐỘNG TỪ BẢNG DỰ TOÁN
+    // ✅ HÀM TỰ ĐỘNG PHÂN BỔ LÃI VÀ KÉO DIỄN GIẢI TỪ TIÊN LƯỢNG
     const handleImportFromEstimation = async () => {
-        if (!confirm("Hành động này sẽ xóa toàn bộ nội dung báo giá hiện tại bên dưới và thay thế bằng dữ liệu từ Dự toán. Bạn có chắc chắn?")) return;
+        if (!confirm("Hành động này sẽ xóa toàn bộ nội dung báo giá hiện tại bên dưới và thay thế bằng dữ liệu Bóc tách & Dự toán. Bạn có chắc chắn?")) return;
 
         const supabase = createClient();
         setIsSubmitting(true);
 
         try {
-            // Lấy dữ liệu đã được chốt giá từ bảng estimation_items
-            const { data, error } = await supabase
+            // 1. Kéo dữ liệu Tiên lượng (QTO) làm Khung xương
+            const { data: qtoData, error: qtoError } = await supabase
+                .from('qto_items')
+                .select('*, details:qto_item_details(*)')
+                .eq('project_id', projectId)
+                .order('created_at', { ascending: true });
+
+            // 2. Kéo dữ liệu Dự toán (Estimation) để lấy Giá vốn & Chi phí
+            const { data: estData, error: estError } = await supabase
                 .from('estimation_items')
                 .select('*')
-                .eq('project_id', projectId)
-                .order('section_name', { ascending: true }); // Sắp xếp theo hạng mục
+                .eq('project_id', projectId);
 
-            if (error) throw error;
+            if (qtoError) throw qtoError;
+            if (estError) throw estError;
 
-            if (!data || data.length === 0) {
-                alert("Chưa có dữ liệu dự toán. Hãy thực hiện AI bóc tách hoặc Đồng bộ QTO trước.");
+            if (!qtoData || qtoData.length === 0 || !estData || estData.length === 0) {
+                alert("Chưa có đủ dữ liệu Tiên lượng & Dự toán. Hãy hoàn thành các bước trước!");
                 return;
             }
 
-            // Xóa sạch các dòng trống hiện hành trong Form
+            // 3. THUẬT TOÁN MARKUP (NHỒI CHI PHÍ)
+            const normalItems = estData.filter(i => !['GT', 'LN', 'VAT'].includes(i.category));
+            const globalParams = estData.filter(i => ['GT', 'LN', 'VAT'].includes(i.category));
+
+            const gtParam = globalParams.find(i => i.category === 'GT') || { quantity: 0 };
+            const lnParam = globalParams.find(i => i.category === 'LN') || { quantity: 0 };
+            const vatParam = globalParams.find(i => i.category === 'VAT') || { quantity: 8 };
+
+            const T = normalItems.reduce((sum, item) => sum + (Number(item.total_cost) || 0), 0);
+            const GT = T * (Number(gtParam.quantity) / 100);
+            const TL = (T + GT) * (Number(lnParam.quantity) / 100);
+            const Gxd = T + GT + TL; // Tổng Giá trị Báo giá Trước Thuế
+
+            // Hệ số nhồi chi phí (Markup Trước Thuế)
+            const markupPreTax = T > 0 ? (Gxd / T) : 1;
+            const vatRate = Number(vatParam.quantity) || 0;
+
+            // Xóa sạch Form cũ
             remove();
 
-            // Auto-fill dữ liệu vào Form
-            let currentSection = "";
-            data.forEach((item) => {
-                // 1. Nếu có tên hạng mục (section_name) mới, tạo 1 dòng Tiêu đề lớn
-                if (item.section_name && item.section_name !== currentSection) {
-                    append({
-                        item_type: 'section',
-                        work_item_name: item.section_name.toUpperCase(),
-                        vat_rate: 0
-                    });
-                    currentSection = item.section_name;
-                }
+            // 4. LẤP ĐẦY FORM DỰA TRÊN KHUNG QTO
+            const sections = qtoData.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
 
-                // 2. Điền chi tiết công việc / vật tư
+            sections.forEach(sec => {
+                // Thêm dòng Hạng Mục
                 append({
-                    item_type: 'item',
-                    work_item_name: item.material_name || item.original_name || "Mục chưa tên",
-                    unit: item.unit || "",
-                    quantity: item.quantity || 0,
-                    unit_price: item.unit_price || 0,
-                    vat_rate: 8, // Mặc định 8%
-                    details: "",
-                    notes: ""
+                    item_type: 'section',
+                    work_item_name: sec.item_name.toUpperCase(),
+                    vat_rate: 0
+                });
+
+                const tasks = qtoData.filter(i => i.parent_id === sec.id && i.item_type !== 'section');
+                tasks.forEach(task => {
+                    let taskVol = Number(task.quantity) || 0;
+                    let detailsText = "";
+
+                    // ✅ TỔNG HỢP CHUỖI DIỄN GIẢI KÍCH THƯỚC TỪ QTO
+                    if (task.details && task.details.length > 0) {
+                        let volSum = 0;
+                        const detailsArr: string[] = [];
+
+                        task.details.forEach((d: any) => {
+                            const exp = d.explanation || "Diễn giải";
+                            const l = parseFloat(d.length) || 0, w = parseFloat(d.width) || 0, h = parseFloat(d.height) || 0, f = parseFloat(d.quantity_factor) || 0;
+
+                            let lineVol = 0;
+                            let dimStr = "";
+
+                            if (l === 0 && w === 0 && h === 0) {
+                                lineVol = f;
+                                dimStr = f.toString();
+                            } else {
+                                lineVol = (l !== 0 ? l : 1) * (w !== 0 ? w : 1) * (h !== 0 ? h : 1) * (f !== 0 ? f : 1);
+                                const dims = [];
+                                if (f !== 0 && f !== 1) dims.push(f);
+                                if (l !== 0) dims.push(l);
+                                if (w !== 0) dims.push(w);
+                                if (h !== 0) dims.push(h);
+                                dimStr = dims.length > 0 ? dims.join(' x ') : f.toString();
+                            }
+
+                            volSum += lineVol;
+                            // Tạo dòng format: "+ Tên cấu kiện: 2 x 5 x 5 = 50"
+                            detailsArr.push(`+ ${exp}: ${dimStr} = ${lineVol.toLocaleString('en-US', { maximumFractionDigits: 3 })}`);
+                        });
+
+                        // Cập nhật lại tổng khối lượng nếu chưa có, ghép nối chuỗi diễn giải
+                        if (taskVol === 0) taskVol = volSum;
+                        detailsText = detailsArr.join('\n');
+                    }
+
+                    // Tính Giá Vốn của riêng công tác này (Tổng vật liệu, nhân công, máy thuộc task này)
+                    const taskResources = normalItems.filter(i => i.qto_item_id === task.id);
+                    const baseCost = taskResources.reduce((sum, item) => sum + (Number(item.total_cost) || 0), 0);
+
+                    // Nhồi chi phí vào Giá Vốn
+                    const quotationCostPreTax = baseCost * markupPreTax;
+                    const unitPrice = taskVol > 0 ? (quotationCostPreTax / taskVol) : quotationCostPreTax;
+
+                    append({
+                        item_type: 'item',
+                        work_item_name: task.item_name,
+                        unit: task.unit || "Lần",
+                        quantity: taskVol,
+                        unit_price: Math.round(unitPrice), // Làm tròn số cho đẹp
+                        vat_rate: vatRate, // Bốc VAT tự động từ bảng Cài đặt
+                        details: detailsText, // ✅ GẮN CHUỖI DIỄN GIẢI VÀO ĐÂY
+                        notes: ""
+                    });
                 });
             });
 
-            alert("✨ Đã tự động lập báo giá thành công từ dữ liệu Dự toán!");
+            // 5. XỬ LÝ CÁC DÒNG IMPORT TAY TRONG TAB DỰ TOÁN (NẾU CÓ)
+            const standaloneItems = normalItems.filter(i => !i.qto_item_id);
+            if (standaloneItems.length > 0) {
+                append({
+                    item_type: 'section',
+                    work_item_name: "CHI PHÍ BỔ SUNG / KHÁC",
+                    vat_rate: 0
+                });
+
+                standaloneItems.forEach(item => {
+                    const baseCost = Number(item.total_cost) || 0;
+                    const quotationCostPreTax = baseCost * markupPreTax;
+                    const qty = Number(item.quantity) || 1;
+                    const unitPrice = qty > 0 ? (quotationCostPreTax / qty) : quotationCostPreTax;
+
+                    append({
+                        item_type: 'item',
+                        work_item_name: item.material_name || item.original_name || "Mục khác",
+                        unit: item.unit || "Gói",
+                        quantity: qty,
+                        unit_price: Math.round(unitPrice),
+                        vat_rate: vatRate,
+                        details: "",
+                        notes: ""
+                    });
+                });
+            }
+
+            alert("✨ Đã tạo bảng Báo Giá Tổng Hợp thành công (Đã kèm diễn giải khối lượng)!");
         } catch (err: any) {
             console.error(err);
-            alert("Lỗi khi tải dữ liệu dự toán: " + err.message);
+            alert("Lỗi khi tải dữ liệu: " + err.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -206,103 +304,249 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             if (item.item_type === 'section') {
                 const roman = romans[sectionIndex] || (sectionIndex + 1);
                 htmlRows += `
-                    <tr style="background-color: #f3f4f6; font-weight: bold;">
+                    <tr class="section-row">
                         <td style="text-align: center;">${roman}</td>
-                        <td colspan="6" style="text-transform: uppercase;">${item.work_item_name}</td>
+                        <td colspan="6">${item.work_item_name}</td>
                     </tr>
                 `;
                 sectionIndex++;
-                itemIndex = 0;
+                itemIndex = 0; // Reset số thứ tự về 1 cho mỗi hạng mục mới
             } else {
                 itemIndex++;
                 const qty = Number(item.quantity) || 0;
                 const price = Number(item.unit_price) || 0;
                 const amount = qty * price;
 
+                // Format chuỗi diễn giải nếu có (xuống dòng đẹp mắt)
+                let detailsHtml = '';
+                if (item.details) {
+                    const lines = item.details.split('\n');
+                    detailsHtml = lines.map((l: string) => `<div class="detail-text">${l}</div>`).join('');
+                }
+
                 htmlRows += `
-                    <tr>
-                        <td style="text-align: center; vertical-align: middle;">${itemIndex}</td>
-                        <td style="vertical-align: middle; white-space: pre-wrap; padding: 6px;">
-                            <div style="font-weight: 500;">${item.work_item_name}</div>
-                            ${item.details ? `<div style="font-size: 11pt; color: #333; margin-top: 2px;">- ${item.details}</div>` : ''}
+                    <tr class="item-row">
+                        <td style="text-align: center; vertical-align: top; padding-top: 8px;">${itemIndex}</td>
+                        <td style="vertical-align: top; padding: 8px;">
+                            <div class="item-name">${item.work_item_name}</div>
+                            ${detailsHtml}
                         </td>
-                        <td style="text-align: center; vertical-align: middle;">${item.unit || ''}</td>
-                        <td style="text-align: center; vertical-align: middle;">${qty > 0 ? qty.toLocaleString('vi-VN') : ''}</td>
-                        <td style="text-align: right; vertical-align: middle;">${price > 0 ? price.toLocaleString('vi-VN') : ''}</td>
-                        <td style="text-align: right; vertical-align: middle; font-weight: bold;">${amount > 0 ? amount.toLocaleString('vi-VN') : ''}</td>
-                        <td style="text-align: left; vertical-align: middle; white-space: pre-wrap;">${item.notes || ''}</td>
+                        <td style="text-align: center; vertical-align: top; padding-top: 8px;">${item.unit || ''}</td>
+                        <td style="text-align: right; vertical-align: top; padding-top: 8px;">${qty > 0 ? qty.toLocaleString('vi-VN', { maximumFractionDigits: 3 }) : ''}</td>
+                        <td style="text-align: right; vertical-align: top; padding-top: 8px;">${price > 0 ? price.toLocaleString('vi-VN') : ''}</td>
+                        <td style="text-align: right; vertical-align: top; padding-top: 8px; font-weight: bold;">${amount > 0 ? amount.toLocaleString('vi-VN') : ''}</td>
+                        <td style="text-align: left; vertical-align: top; padding-top: 8px;">${item.notes || ''}</td>
                     </tr>
                 `;
             }
         });
 
+        // ✅ GIẢI QUYẾT VẤN ĐỀ 1: Dời phần tính Tổng vào trong TBODY để chỉ in 1 lần ở cuối cùng
+        htmlRows += `
+             <tr class="tfoot-row">
+                <td colspan="5">Cộng trước thuế:</td>
+                <td>${preTaxTotal.toLocaleString('vi-VN')}</td>
+                <td></td>
+             </tr>
+             <tr class="tfoot-row">
+                <td colspan="5">Thuế VAT:</td>
+                <td>${vatTotal.toLocaleString('vi-VN')}</td>
+                <td></td>
+             </tr>
+             <tr class="tfoot-row total-row">
+                <td colspan="5">TỔNG CỘNG ĐÃ BAO GỒM THUẾ VAT:</td>
+                <td class="total-amount">${totalAmount.toLocaleString('vi-VN')}</td>
+                <td></td>
+             </tr>
+        `;
+
         const htmlContent = `
+          <!DOCTYPE html>
           <html>
           <head>
+            <meta charset="utf-8">
             <title>Báo Giá - ${data.quotation_number}</title>
             <style>
-              body { font-family: 'Times New Roman', serif; font-size: 12pt; padding: 20px; line-height: 1.3; }
-              .header-table { width: 100%; border: none; margin-bottom: 10px; }
+              /* RESET & CƠ BẢN */
+              body { 
+                font-family: 'Times New Roman', Times, serif; 
+                font-size: 13pt; 
+                line-height: 1.4; 
+                color: #000; 
+                margin: 0; 
+                padding: 0; 
+                background: #e5e7eb; 
+              }
+              
+              /* KHUNG TRANG A4 BẢN PREVIEW - ĐỔI SANG KHỔ NGANG (LANDSCAPE) */
+              .a4-container { 
+                width: 297mm; /* Chiều ngang A4 */
+                min-height: 210mm; /* Chiều dọc A4 */
+                padding: 15mm; 
+                margin: 10mm auto; 
+                background: #fff; 
+                box-shadow: 0 0 10px rgba(0,0,0,0.2); 
+                box-sizing: border-box; 
+              }
+
+              /* CẤU HÌNH MÁY IN THỰC TẾ */
+              @media print { 
+                /* ✅ GIẢI QUYẾT VẤN ĐỀ 3: Ép máy in xoay ngang giấy và cấp lề chuẩn để Chrome tự đánh số trang */
+                @page { size: A4 landscape; margin: 15mm 10mm; } 
+                body { background: #fff; }
+                .a4-container { margin: 0; padding: 0; box-shadow: none; width: 100%; min-height: auto; }
+                
+                /* Ép máy in in màu nền */
+                * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+                
+                /* Tránh ngắt trang vô duyên */
+                table { page-break-inside: auto; }
+                tr { page-break-inside: avoid; page-break-after: auto; }
+                thead { display: table-header-group; }
+                .avoid-break { page-break-inside: avoid; }
+              }
+
+              /* HEADER INFO */
+              .header-table { width: 100%; border: none; margin-bottom: 15px; }
+              .header-table td { border: none; padding: 0; }
               .logo-img { max-height: 70px; width: auto; object-fit: contain; }
-              .info-box { margin-bottom: 15px; }
-              .info-row { display: flex; margin-bottom: 5px; }
-              .info-label { font-weight: bold; width: 110px; flex-shrink: 0; }
-              .title { text-align: center; font-size: 16pt; font-weight: bold; margin: 15px 0; text-transform: uppercase; color: #b91c1c; }
-              .main-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11pt; table-layout: fixed; }
-              .main-table th, .main-table td { border: 1px solid #333; padding: 5px; word-wrap: break-word; }
+              .company-name { font-size: 14pt; font-weight: bold; color: #b91c1c; text-transform: uppercase; margin-bottom: 4px; }
+              .company-info { font-size: 11pt; }
+
+              /* TIÊU ĐỀ */
+              .title-box { text-align: center; margin: 15px 0 25px; }
+              .main-title { font-size: 22pt; font-weight: bold; text-transform: uppercase; color: #b91c1c; margin: 0; letter-spacing: 1px; }
+              .sub-title { font-size: 12pt; font-style: italic; margin-top: 5px; }
+
+              /* THÔNG TIN KHÁCH HÀNG (Sắp xếp lại 2 cột cho tiết kiệm giấy ngang) */
+              .info-grid { display: grid; grid-template-columns: 120px 1fr 120px 1fr; gap: 6px 10px; margin-bottom: 20px; }
+              .info-label { font-weight: bold; }
+              .info-value { font-weight: bold; }
+              .info-value.normal { font-weight: normal; }
+              .full-row { grid-column: 1 / -1; display: grid; grid-template-columns: 120px 1fr; gap: 10px; }
+
+              /* BẢNG BIỂU CHÍNH */
+              .main-table { width: 100%; border-collapse: collapse; font-size: 12pt; table-layout: fixed; }
+              .main-table th, .main-table td { border: 1px solid #000; padding: 6px; }
               .main-table th { background-color: #e5e7eb; text-align: center; font-weight: bold; vertical-align: middle; }
-              .footer-money { margin-top: 10px; font-weight: bold; font-style: italic; text-align: right; }
-              .footer-notes { margin-top: 20px; border: 1px dashed #ccc; padding: 10px; font-size: 11pt; white-space: pre-wrap; text-align: justify; }
-              .sign-box { display: flex; justify-content: space-between; margin-top: 30px; text-align: center; }
-              .col-stt { width: 5%; } .col-name { width: 35%; } .col-unit { width: 8%; } .col-qty { width: 8%; } .col-price { width: 12%; } .col-amount { width: 12%; } .col-note { width: 20%; }
-              @media print { @page { margin: 1cm 1.5cm; } body { -webkit-print-color-adjust: exact; } }
+              
+              /* ĐỘ RỘNG CỘT - ĐIỀU CHỈNH LẠI CHO KHỔ NGANG ĐỂ CỘT GHI CHÚ RỘNG HƠN */
+              .col-stt { width: 5%; } 
+              .col-name { width: 33%; } 
+              .col-unit { width: 6%; } 
+              .col-qty { width: 8%; } 
+              .col-price { width: 12%; } 
+              .col-amount { width: 13%; } 
+              .col-note { width: 23%; } /* Cột ghi chú rộng ra rất nhiều */
+
+              /* CÁC DÒNG ĐẶC BIỆT TRONG BẢNG */
+              .section-row { background-color: #f3f4f6; font-weight: bold; text-transform: uppercase; }
+              .item-name { font-weight: bold; }
+              .detail-text { font-size: 11pt; color: #4b5563; margin-top: 3px; font-style: italic; }
+              
+              .tfoot-row td { text-align: right; font-weight: bold; border: 1px solid #000; padding: 6px; }
+              .total-row td { background-color: #fff7ed; font-size: 14pt; }
+              .total-amount { color: #b91c1c; }
+
+              /* FOOTER & CHỮ KÝ */
+              .text-money { margin-top: 15px; font-weight: bold; font-style: italic; text-align: right; font-size: 13pt; }
+              .notes-box { margin-top: 20px; border: 1px dashed #9ca3af; padding: 15px; font-size: 12pt; white-space: pre-wrap; text-align: justify; background: #fafafa; }
+              .sign-box { display: flex; justify-content: space-around; margin-top: 30px; text-align: center; }
+              .sign-col { width: 40%; }
+              .sign-title { font-weight: bold; font-size: 13pt; }
+              .sign-sub { font-style: italic; font-size: 11pt; margin-bottom: 80px; display: block; }
+              .sign-name { font-weight: bold; font-size: 13pt; text-transform: uppercase; }
             </style>
           </head>
           <body>
-            <table class="header-table">
-              <tr>
-                <td width="120" style="vertical-align: top;">
-                    <img src="${LOGO_URL}" class="logo-img" alt="Logo Kiều Gia" onerror="this.onerror=null; this.src='https://via.placeholder.com/150x70?text=LOGO+ERROR';"/>
-                </td>
-                <td style="padding-left: 15px;">
-                  <div style="font-size: 14pt; font-weight: bold; color: #b91c1c; text-transform: uppercase;">CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</div>
-                  <div>ĐC: 72 Đường số 1, Khu nhà ở Thắng Lợi, KP. Chiêu Liêu, P. Dĩ An, TP.HCM</div>
-                  <div>Email: huy-kq@kieugia-construction.biz.vn - Hotline: 0918 265 365</div>
-                  <div>MST: 3703296412</div>
-                </td>
-              </tr>
-            </table>
+            <div class="a4-container">
+                <table class="header-table">
+                  <tr>
+                    <td width="130" style="vertical-align: middle; text-align: center;">
+                        <img src="${LOGO_URL}" class="logo-img" alt="Logo Kiều Gia" onerror="this.onerror=null; this.src='https://via.placeholder.com/150x70?text=LOGO+ERROR';"/>
+                    </td>
+                    <td style="padding-left: 15px; vertical-align: middle;">
+                      <div class="company-name">CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</div>
+                      <div class="company-info">ĐC: 72 Đường số 1, Khu nhà ở Thắng Lợi, KP. Chiêu Liêu, P. Dĩ An, TP.HCM, Việt Nam</div>
+                      <div class="company-info">Email: huy-kq@kieugia-construction.biz.vn - Hotline: 0918 265 365</div>
+                      <div class="company-info">MST: 3703296412</div>
+                    </td>
+                  </tr>
+                </table>
 
-            <div class="title">BẢNG BÁO GIÁ</div>
-            
-            <div class="info-box">
-                <div class="info-row"><span class="info-label">KÍNH GỬI:</span> <span style="font-weight:bold;">${data.customer_name ? data.customer_name.toUpperCase() : 'QUÝ KHÁCH HÀNG'}</span></div>
-                <div class="info-row"><span class="info-label">CÔNG TRÌNH:</span> <span style="font-weight:bold;">${data.project_name ? data.project_name.toUpperCase() : ''}</span></div>
-                <div class="info-row"><span class="info-label">HẠNG MỤC:</span> <span>${data.title}</span></div>
-                <div class="info-row"><span class="info-label">ĐỊA ĐIỂM:</span> <span>${data.address}</span></div>
-                <div class="info-row"><span class="info-label">SỐ BÁO GIÁ:</span> <span>${data.quotation_number}</span> &nbsp;&nbsp;|&nbsp;&nbsp; <b>${formatDateVN(data.issue_date).toUpperCase()}</b></div>
+                <div class="title-box">
+                    <h1 class="main-title">BẢNG BÁO GIÁ</h1>
+                    <div class="sub-title">Số: ${data.quotation_number} | ${formatDateVN(data.issue_date)}</div>
+                </div>
+                
+                <div class="info-grid">
+                    <div class="info-label">KÍNH GỬI:</div>
+                    <div class="info-value">Ông/ Bà ${data.customer_name ? data.customer_name.toUpperCase() : 'QUÝ KHÁCH HÀNG'}</div>
+                    
+                    <div class="info-label" style="text-align: right;">CÔNG TRÌNH:</div>
+                    <div class="info-value">${data.project_name ? data.project_name.toUpperCase() : ''}</div>
+                    
+                    <div class="full-row">
+                        <div class="info-label">HẠNG MỤC:</div>
+                        <div class="info-value normal">${data.title}</div>
+                    </div>
+                    
+                    <div class="full-row">
+                        <div class="info-label">ĐỊA ĐIỂM:</div>
+                        <div class="info-value normal">${data.address || ''}</div>
+                    </div>
+                </div>
+                
+                <table class="main-table">
+                  <colgroup>
+                    <col class="col-stt">
+                    <col class="col-name">
+                    <col class="col-unit">
+                    <col class="col-qty">
+                    <col class="col-price">
+                    <col class="col-amount">
+                    <col class="col-note">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Danh mục công tác / Diễn giải</th>
+                        <th>ĐVT</th>
+                        <th>Khối lượng</th>
+                        <th>Đơn giá (VNĐ)</th>
+                        <th>Thành tiền (VNĐ)</th>
+                        <th>Ghi chú</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${htmlRows}
+                  </tbody>
+                  </table>
+
+                <div class="avoid-break">
+                    <div class="text-money">Bằng chữ: ${readMoneyToText(totalAmount)}</div>
+
+                    ${data.notes ? `<div class="notes-box"><strong>* Ghi chú / Điều khoản:</strong><br/>${data.notes}</div>` : ''}
+
+                    <div class="sign-box">
+                      <div class="sign-col">
+                          <div class="sign-title">ĐẠI DIỆN KHÁCH HÀNG</div>
+                          <span class="sign-sub">(Ký, ghi rõ họ tên)</span>
+                      </div>
+                      <div class="sign-col">
+                          <div class="sign-title">GIÁM ĐỐC</div>
+                          <span class="sign-sub">(Ký, đóng dấu)</span>
+                          <div class="sign-name">KIỀU QUANG HUY</div>
+                      </div>
+                    </div>
+                </div>
             </div>
-            
-            <table class="main-table">
-              <colgroup><col class="col-stt"><col class="col-name"><col class="col-unit"><col class="col-qty"><col class="col-price"><col class="col-amount"><col class="col-note"></colgroup>
-              <thead><tr><th>STT</th><th>Danh mục công tác / Diễn giải</th><th>ĐVT</th><th>KL</th><th>Đơn giá</th><th>Thành tiền</th><th>Ghi chú</th></tr></thead>
-              <tbody>${htmlRows}</tbody>
-              <tfoot>
-                 <tr><td colspan="5" style="text-align: right; font-weight: bold;">Cộng trước thuế:</td><td style="text-align: right; font-weight: bold;">${preTaxTotal.toLocaleString('vi-VN')}</td><td style="background-color: #eee;"></td></tr>
-                 <tr><td colspan="5" style="text-align: right; font-weight: bold;">Thuế VAT:</td><td style="text-align: right; font-weight: bold;">${vatTotal.toLocaleString('vi-VN')}</td><td style="background-color: #eee;"></td></tr>
-                 <tr style="background-color: #fff7ed;"><td colspan="5" style="text-align: right; font-weight: bold; font-size: 12pt;">TỔNG CỘNG:</td><td style="text-align: right; font-weight: bold; font-size: 12pt; color: #b91c1c;">${totalAmount.toLocaleString('vi-VN')}</td><td style="background-color: #eee;"></td></tr>
-              </tfoot>
-            </table>
-
-            <div class="footer-money">Bằng chữ: ${readMoneyToText(totalAmount)}</div>
-
-            ${data.notes ? `<div class="footer-notes"><strong>* Ghi chú / Điều khoản:</strong><br/>${data.notes}</div>` : ''}
-
-            <div class="sign-box">
-              <div style="width: 40%"><strong>ĐẠI DIỆN KHÁCH HÀNG</strong><br/><i>(Ký, ghi rõ họ tên)</i></div>
-              <div style="width: 40%"><strong>GIÁM ĐỐC</strong><br/><i>(Ký, đóng dấu)</i><br/><br/><br/><br/><strong>KIỀU QUANG HUY</strong></div>
-            </div>
-            <script>window.onload = function() { window.print(); }</script>
+            <script>
+                // Tự động gọi lệnh in khi load xong trang
+                window.onload = function() { 
+                    setTimeout(function() { window.print(); }, 500); 
+                }
+            </script>
           </body>
           </html>
         `;
@@ -446,7 +690,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                 <div className="bg-slate-50 p-3 border-b flex flex-wrap justify-between items-center gap-2">
                     <h3 className="font-semibold text-slate-700 flex items-center"><Calculator className="w-4 h-4 mr-2" /> Chi tiết</h3>
                     <div className="flex gap-2">
-                        {/* ✅ NÚT MỚI: TỰ ĐỘNG FILL TỪ BẢNG DỰ TOÁN */}
                         <Button
                             type="button"
                             size="sm"
@@ -528,8 +771,8 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                             />
                                             <Textarea
                                                 {...form.register(`items.${index}.details`)}
-                                                placeholder="Diễn giải: (5x5)..."
-                                                className="text-gray-600 min-h-[30px] border-dashed border-slate-200 bg-slate-50/50 resize-none"
+                                                placeholder="Diễn giải khối lượng..."
+                                                className="text-gray-600 min-h-[40px] border-dashed border-slate-200 bg-slate-50/50 resize-none overflow-hidden"
                                                 rows={1}
                                                 onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }}
                                             />
