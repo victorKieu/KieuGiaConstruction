@@ -1,6 +1,6 @@
 // app/(app)/finance/page.tsx
 
-import { createClient } from "@/lib/supabase/server";
+//import { createClient } from "@/lib/supabase/server";
 import {
     getFinanceCategories,
     getTransactions,
