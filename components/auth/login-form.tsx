@@ -37,20 +37,21 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
         setErrorMessage(null);
 
+        // ✅ XỬ LÝ NHANH: Kiểm tra lỗi trước, sai thì báo ngay không cần quay loading
         if (!validateEmail(email)) {
             setErrorMessage("Email không đúng định dạng.");
-            setIsLoading(false);
             return;
         }
 
         if (password.length < 6) {
             setErrorMessage("Mật khẩu phải từ 6 ký tự trở lên.");
-            setIsLoading(false);
             return;
         }
+
+        // Bắt đầu quay vòng loading khi thực sự gửi API
+        setIsLoading(true);
 
         try {
             await signIn(email, password);
@@ -63,10 +64,13 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
             toast.success("Đăng nhập thành công!");
 
-            setTimeout(() => {
-                router.push("/dashboard");
-                router.refresh();
-            }, 500);
+            // ✅ TỐI ƯU TỐC ĐỘ: 
+            // 1. Không dùng setTimeout bắt user đợi
+            // 2. Dùng window.location.href để force reload, xóa sạch cache cũ, Next.js sẽ nhận diện Cookie đăng nhập ngay lập tức.
+            window.location.href = "/dashboard";
+
+            // Chú ý: Cố tình KHÔNG set setIsLoading(false) ở đây. 
+            // Để nguyên trạng thái quay loading trong lúc trình duyệt đang chuyển trang cho mượt.
 
         } catch (error: any) {
             console.error("Login Error:", error);
@@ -84,14 +88,15 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
             setErrorMessage(message);
             toast.error(message);
-        } finally {
+
+            // Chỉ tắt loading nếu có lỗi để user nhập lại
             setIsLoading(false);
         }
     };
 
     const handleBiometricSuccess = () => {
         toast.success("Xác thực sinh trắc học thành công!");
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
     };
 
     return (
@@ -116,7 +121,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={isLoading}
-                        // ✅ FIX: Đổi bg-white thành bg-background
                         className="bg-background"
                     />
                 </div>
@@ -140,7 +144,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                             required
                             disabled={isLoading}
                             autoComplete="current-password"
-                            // ✅ FIX: Đổi bg-white thành bg-background
                             className="pr-10 bg-background"
                         />
                         <button
