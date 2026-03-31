@@ -113,6 +113,7 @@ const navItems = [
         permission: "permission:view",
         roles: ["admin"],
         children: [
+            { title: "Thông Tin Công Ty", href: "/admin/settings/company" },
             { title: "Từ điển nhóm dữ liệu", href: "/admin/dictionaries/categories" },
             { title: "Từ điển dữ liệu", href: "/admin/dictionaries/system" },
             { title: "Định mức khối lượng", href: "/admin/dictionaries/norms" },
