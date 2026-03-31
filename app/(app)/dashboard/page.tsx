@@ -24,11 +24,7 @@ import { SourcePieChart } from "@/components/crm/charts/SourcePieChart";
 // ✅ 1. Import formatCurrency từ utils
 import { formatCurrency } from "@/lib/utils/utils";
 
-import {
-    getDashboardSummary, getLowStockItems, getRecentWarehouseActivity,
-    getProductionStats, getCRMStats, getRecentCustomers,
-    getCustomerSourceStats
-} from "@/lib/action/dashboard";
+import { getFullDashboardData } from "@/lib/action/dashboard";
 
 export default function DashboardPage() {
     const [summary, setSummary] = useState<any>(null);
@@ -45,22 +41,17 @@ export default function DashboardPage() {
     useEffect(() => {
         async function load() {
             try {
-                const [sum, prod, low, act, crm, cus, src] = await Promise.all([
-                    getDashboardSummary(),
-                    getProductionStats(),
-                    getLowStockItems(),
-                    getRecentWarehouseActivity(),
-                    getCRMStats(),
-                    getRecentCustomers(),
-                    getCustomerSourceStats()
-                ]);
-                setSummary(sum);
-                setProdStats(prod);
-                setLowStock(low);
-                setActivities(act);
-                setCrmStats(crm);
-                setRecentCustomers(cus);
-                setSourceStats(src || []);
+                // ✅ Chỉ gọi DUY NHẤT 1 hàm này. Nó sẽ thay Server chạy song song mọi thứ.
+                const data = await getFullDashboardData();
+
+                setProdStats(data.prodStats);
+                setCrmStats(data.crmStats);
+                setSourceStats(data.sourceStats);
+                setRecentCustomers(data.recentCustomers);
+                setLowStock(data.lowStock);
+                setActivities(data.activities);
+                setSummary({}); // Nếu không xài thì bỏ trống
+
             } catch (error) {
                 console.error("Lỗi tải Dashboard:", error);
             } finally {
@@ -69,8 +60,6 @@ export default function DashboardPage() {
         }
         load();
     }, []);
-
-    // ❌ Đã xóa hàm formatMoney cục bộ để dùng hàm chung
 
     // Tính toán tài chính
     const revenue = Number(prodStats?.total_revenue || 0);
