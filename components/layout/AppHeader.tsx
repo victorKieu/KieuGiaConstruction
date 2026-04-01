@@ -50,7 +50,7 @@ export default function AppHeader({ user }: AppHeaderProps) {
             <div className="flex items-center gap-2">
 
                 {/* ✅ 2. CHÈN PUSH SETUP VÀO ĐÂY (Nó sẽ chạy ngầm) */}
-                <PushNotificationSetup />
+                <PushNotificationSetup userId={user?.id} />
 
                 <button
                     className="p-2 rounded-full hover:bg-accent hover:text-accent-foreground transition-colors text-foreground"
