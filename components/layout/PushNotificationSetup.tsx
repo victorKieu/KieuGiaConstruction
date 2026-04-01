@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import OneSignal from 'react-onesignal';
-import { useAuth } from '@/lib/auth/auth-context'; // Sếp nhớ trỏ đúng file auth của sếp nhé
+import { useAuth } from '@/lib/auth/auth-context';
 
 export default function PushNotificationSetup() {
     const { user } = useAuth();
-
-    // Dùng useRef để tránh init 2 lần do React Strict Mode
     const isInitTriggered = useRef(false);
-
-    // ✅ THÊM DÒNG NÀY: Dùng state để đánh dấu OneSignal đã khởi tạo xong
     const [isSdkReady, setIsSdkReady] = useState(false);
+
+    // Thêm state để ẩn/hiện nút mồi
+    const [isSubscribed, setIsSubscribed] = useState(true);
 
     useEffect(() => {
         const initOneSignal = async () => {
@@ -19,20 +18,22 @@ export default function PushNotificationSetup() {
             isInitTriggered.current = true;
 
             try {
-                // 1. Khởi tạo OneSignal
                 await OneSignal.init({
-                    appId: "978f37f7-9d77-4f3a-bf57-1a9fcfb3ef8f", // Đừng quên điền mã của sếp lại nhé
-                    notifyButton: {
-                        enable: false
-                    } as any,
+                    appId: "978f37f7-9d77-4f3a-bf57-1a9fcfb3ef8f", // Sếp nhớ điền lại mã nhé
+                    notifyButton: { enable: false } as any,
                     allowLocalhostAsSecureOrigin: true,
                 });
 
-                // ✅ 2. ĐÁNH DẤU SDK ĐÃ SẴN SÀNG
                 setIsSdkReady(true);
 
-                // 3. Xin quyền thông báo
-                await OneSignal.Slidedown.promptPush();
+                // Kiểm tra xem thiết bị này đã đăng ký nhận chuông chưa
+                const hasOptedIn = OneSignal.User.PushSubscription.optedIn;
+                setIsSubscribed(hasOptedIn ?? false);
+
+                // Vẫn thử gọi auto-prompt (có thể bị trình duyệt chặn)
+                if (!hasOptedIn) {
+                    await OneSignal.Slidedown.promptPush();
+                }
 
             } catch (error) {
                 console.error("Lỗi khởi tạo OneSignal:", error);
@@ -42,14 +43,11 @@ export default function PushNotificationSetup() {
         initOneSignal();
     }, []);
 
-    // 4. Quản lý việc Login/Logout thiết bị
     useEffect(() => {
         const linkUserToOneSignal = async () => {
-            // ✅ SỬ DỤNG STATE THAY VÌ OneSignal.initialized
             if (!isSdkReady) return;
 
             if (user?.id) {
-                // Khai báo điện thoại/máy tính này là của user.id
                 await OneSignal.login(user.id);
             } else {
                 await OneSignal.logout();
@@ -57,7 +55,23 @@ export default function PushNotificationSetup() {
         };
 
         linkUserToOneSignal();
-    }, [user, isSdkReady]); // Hook sẽ chạy lại khi user đổi hoặc khi SDK load xong
+    }, [user, isSdkReady]);
 
-    return null;
+    // Hàm gọi thủ công khi sếp bấm nút
+    const handleManualPrompt = async () => {
+        await OneSignal.Slidedown.promptPush({ force: true });
+    };
+
+    // Nếu đã đăng ký rồi hoặc SDK chưa load xong thì không hiện nút
+    //if (isSubscribed || !isSdkReady) return null;
+
+    // Nút "Mồi" hiện ở góc dưới bên trái màn hình
+    return (
+        <button
+            onClick={handleManualPrompt}
+            className="fixed bottom-4 left-4 z-[9999] bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg font-medium text-sm hover:bg-blue-700 animate-bounce"
+        >
+            🔔 Bật thông báo đẩy
+        </button>
+    );
 }
