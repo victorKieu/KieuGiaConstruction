@@ -82,7 +82,7 @@ const navItems = [
         children: [
             { title: "Danh sách nhân viên", href: "/hrm/employees" },
             { title: "Chấm công", href: "/hrm/attendance" },
-            { title: "Nghỉ phép", href: "/hrm/leave" },
+            { title: "Duyệt đơn từ", href: "/hrm/approvals" },
             { title: "Bảng lương", href: "/hrm/payroll" },
             { title: "Tài sản nhân viên", href: "/hrm/assets" },
             { title: "KPIs & Đánh giá", href: "/hrm/kpis" },

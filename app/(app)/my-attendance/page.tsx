@@ -14,8 +14,8 @@ import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
 import { MobileCheckIn } from "@/components/hrm/MobileCheckIn";
 
-// ✅ Import các hàm API Backend thật
-import { getMyAttendanceRecords, submitAttendanceRequest } from "@/lib/action/attendanceActions";
+// Import các hàm API Backend thật
+import { getMyAttendanceRecords, submitAttendanceRequest, getMyRequests } from "@/lib/action/attendanceActions";
 
 export default function AttendancePage() {
     // State chứa dữ liệu chấm công thật
@@ -45,7 +45,14 @@ export default function AttendancePage() {
 
     // Xử lý gửi Đơn Giải trình
     const handleSubmitExplanation = async () => {
-        if (!explForm.date || !explForm.type || !explForm.reason) return toast.error("Vui lòng điền đủ thông tin bắt buộc!");
+        // Validate cơ bản
+        if (!explForm.date || !explForm.type || !explForm.reason) {
+            return toast.error("Vui lòng điền đủ Ngày, Loại giải trình và Lý do!");
+        }
+
+        // Validate logic giờ giấc
+        if (explForm.type === 'forgot_in' && !explForm.inTime) return toast.error("Vui lòng nhập Giờ VÀO thực tế!");
+        if (explForm.type === 'forgot_out' && !explForm.outTime) return toast.error("Vui lòng nhập Giờ RA thực tế!");
 
         setIsSubmitting(true);
         const res = await submitAttendanceRequest({
@@ -70,7 +77,11 @@ export default function AttendancePage() {
     // Xử lý gửi Đơn Xin nghỉ
     const handleSubmitLeave = async () => {
         if (!leaveForm.type || !leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason) {
-            return toast.error("Vui lòng điền đủ thông tin bắt buộc!");
+            return toast.error("Vui lòng điền đầy đủ các thông tin bắt buộc!");
+        }
+
+        if (new Date(leaveForm.startDate) > new Date(leaveForm.endDate)) {
+            return toast.error("Ngày kết thúc không được nhỏ hơn ngày bắt đầu!");
         }
 
         setIsSubmitting(true);
@@ -93,7 +104,7 @@ export default function AttendancePage() {
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-500">
+        <div className="space-y-4 animate-in fade-in duration-500 max-w-6xl mx-auto">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">Quản lý Chấm công & Đơn từ</h1>
@@ -103,86 +114,110 @@ export default function AttendancePage() {
 
             <Tabs defaultValue="checkin" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
-                    <TabsTrigger value="checkin">Chấm công</TabsTrigger>
+                    <TabsTrigger value="checkin">Chấm công GPS</TabsTrigger>
                     <TabsTrigger value="requests">Đơn từ & Phép</TabsTrigger>
                 </TabsList>
 
+                {/* TAB 1: CHẤM CÔNG */}
                 <TabsContent value="checkin" className="space-y-4 mt-4">
-                    {/* GIAO DIỆN MOBILE */}
+                    {/* GIAO DIỆN MOBILE: Form Check-in GPS */}
                     <div className="block md:hidden">
                         <MobileCheckIn />
                     </div>
 
-                    {/* GIAO DIỆN DESKTOP */}
-                    <div className="hidden md:block">
-                        <Card className="shadow-sm border-slate-200">
-                            <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between py-3">
-                                <div>
-                                    <CardTitle className="text-base font-bold text-slate-700 flex items-center">
-                                        <History className="w-4 h-4 mr-2 text-blue-600" /> Lịch sử chấm công của bạn
-                                    </CardTitle>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Dialog open={explOpen} onOpenChange={setExplOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange-50 h-8 text-xs">
-                                                <AlertCircle className="w-3 h-3 mr-1.5" /> Báo quên / Giải trình
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle className="text-orange-600 flex items-center"><FileEdit className="w-5 h-5 mr-2" /> Tạo Đơn Giải Trình</DialogTitle>
-                                            </DialogHeader>
-                                            <div className="space-y-4 py-2">
+                    {/* LỊCH SỬ CHẤM CÔNG (Hiển thị trên cả Desktop và có thanh cuộn ngang trên Mobile) */}
+                    <Card className="shadow-sm border-slate-200">
+                        <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between py-3">
+                            <div>
+                                <CardTitle className="text-base font-bold text-slate-700 flex items-center">
+                                    <History className="w-4 h-4 mr-2 text-blue-600" /> Lịch sử chấm công của bạn
+                                </CardTitle>
+                            </div>
+                            <div className="flex gap-2">
+                                {/* DIALOG BÁO QUÊN / GIẢI TRÌNH */}
+                                <Dialog open={explOpen} onOpenChange={setExplOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange-50 h-8 text-xs">
+                                            <AlertCircle className="w-3 h-3 mr-1.5" /> Báo quên / Giải trình
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="sm:max-w-[450px]">
+                                        <DialogHeader>
+                                            <DialogTitle className="text-orange-600 flex items-center">
+                                                <FileEdit className="w-5 h-5 mr-2" /> Tạo Đơn Giải Trình
+                                            </DialogTitle>
+                                        </DialogHeader>
+                                        <div className="space-y-4 py-2">
+                                            <div className="space-y-2">
+                                                <Label>Ngày cần giải trình <span className="text-red-500">*</span></Label>
+                                                <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Loại giải trình <span className="text-red-500">*</span></Label>
+                                                {/* ✅ FIX: Thêm value={explForm.type} */}
+                                                <Select value={explForm.type} onValueChange={v => setExplForm({ ...explForm, type: v, inTime: "", outTime: "" })}>
+                                                    <SelectTrigger><SelectValue placeholder="Chọn lý do..." /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="forgot_in">Quên chấm công VÀO</SelectItem>
+                                                        <SelectItem value="forgot_out">Quên chấm công RA</SelectItem>
+                                                        <SelectItem value="wrong_time">Chấm công sai giờ / Lỗi máy</SelectItem>
+                                                        <SelectItem value="field_work">Đi công tác thực địa</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <Label>Ngày cần giải trình <span className="text-red-500">*</span></Label>
-                                                    <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} />
+                                                    <Label className={explForm.type === 'forgot_out' ? 'text-slate-400' : ''}>Giờ VÀO thực tế</Label>
+                                                    {/* ✅ FIX: Khóa ô input nếu không cần thiết */}
+                                                    <Input
+                                                        type="time"
+                                                        value={explForm.inTime}
+                                                        onChange={e => setExplForm({ ...explForm, inTime: e.target.value })}
+                                                        disabled={explForm.type === 'forgot_out' || explForm.type === 'field_work'}
+                                                    />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label>Loại giải trình <span className="text-red-500">*</span></Label>
-                                                    <Select onValueChange={v => setExplForm({ ...explForm, type: v })}>
-                                                        <SelectTrigger><SelectValue placeholder="Chọn lý do..." /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="forgot_in">Quên chấm công VÀO</SelectItem>
-                                                            <SelectItem value="forgot_out">Quên chấm công RA</SelectItem>
-                                                            <SelectItem value="wrong_time">Chấm công sai giờ / Lỗi máy</SelectItem>
-                                                            <SelectItem value="field_work">Đi công tác thực địa</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2"><Label>Giờ VÀO thực tế</Label><Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} /></div>
-                                                    <div className="space-y-2"><Label>Giờ RA thực tế</Label><Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} /></div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Lý do chi tiết <span className="text-red-500">*</span></Label>
-                                                    <Textarea placeholder="Trình bày rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} />
+                                                    <Label className={explForm.type === 'forgot_in' ? 'text-slate-400' : ''}>Giờ RA thực tế</Label>
+                                                    {/* ✅ FIX: Khóa ô input nếu không cần thiết */}
+                                                    <Input
+                                                        type="time"
+                                                        value={explForm.outTime}
+                                                        onChange={e => setExplForm({ ...explForm, outTime: e.target.value })}
+                                                        disabled={explForm.type === 'forgot_in' || explForm.type === 'field_work'}
+                                                    />
                                                 </div>
                                             </div>
-                                            <DialogFooter>
-                                                <Button variant="outline" onClick={() => setExplOpen(false)}>Hủy</Button>
-                                                <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 hover:bg-orange-700">
-                                                    {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi duyệt
-                                                </Button>
-                                            </DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
-                                    {/* Nút tải lại bảng */}
-                                    <Button variant="outline" className="h-8 text-xs" onClick={loadRecords} disabled={loadingRecords}>
-                                        {loadingRecords ? <Loader2 className="w-3 h-3 animate-spin" /> : "Làm mới"}
-                                    </Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                {/* ✅ HIỂN THỊ DỮ LIỆU THẬT */}
-                                {loadingRecords ? (
-                                    <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
-                                ) : (
+                                            <div className="space-y-2">
+                                                <Label>Lý do chi tiết <span className="text-red-500">*</span></Label>
+                                                <Textarea placeholder="Trình bày rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} />
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={() => setExplOpen(false)}>Hủy</Button>
+                                            <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 hover:bg-orange-700">
+                                                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi duyệt
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+
+                                {/* Nút tải lại bảng */}
+                                <Button variant="outline" className="h-8 text-xs" onClick={loadRecords} disabled={loadingRecords}>
+                                    {loadingRecords ? <Loader2 className="w-3 h-3 animate-spin" /> : "Làm mới"}
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-0 overflow-x-auto">
+                            {/* HIỂN THỊ DỮ LIỆU THẬT */}
+                            {loadingRecords ? (
+                                <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+                            ) : (
+                                <div className="min-w-[600px]">
                                     <AttendanceTable records={realRecords} />
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP */}
@@ -191,9 +226,11 @@ export default function AttendancePage() {
                         <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between py-3">
                             <div>
                                 <CardTitle className="text-base font-bold text-slate-700 flex items-center">
-                                    <CalendarDays className="w-4 h-4 mr-2 text-emerald-600" /> Danh sách Đơn xin nghỉ
+                                    <CalendarDays className="w-4 h-4 mr-2 text-emerald-600" /> Danh sách Đơn xin nghỉ / Giải trình
                                 </CardTitle>
                             </div>
+
+                            {/* DIALOG XIN NGHỈ PHÉP (GIỮ NGUYÊN CODE DIALOG CŨ Ở ĐÂY) */}
                             <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="bg-emerald-600 hover:bg-emerald-700 h-8 text-xs shadow-sm">
@@ -202,12 +239,14 @@ export default function AttendancePage() {
                                 </DialogTrigger>
                                 <DialogContent className="sm:max-w-[500px]">
                                     <DialogHeader>
-                                        <DialogTitle className="text-emerald-700 flex items-center"><CalendarDays className="w-5 h-5 mr-2" /> Tạo Đơn Xin Nghỉ</DialogTitle>
+                                        <DialogTitle className="text-emerald-700 flex items-center">
+                                            <CalendarDays className="w-5 h-5 mr-2" /> Tạo Đơn Xin Nghỉ
+                                        </DialogTitle>
                                     </DialogHeader>
                                     <div className="space-y-4 py-2">
                                         <div className="space-y-2">
                                             <Label>Loại nghỉ phép <span className="text-red-500">*</span></Label>
-                                            <Select onValueChange={v => setLeaveForm({ ...leaveForm, type: v })}>
+                                            <Select value={leaveForm.type} onValueChange={v => setLeaveForm({ ...leaveForm, type: v })}>
                                                 <SelectTrigger><SelectValue placeholder="Chọn loại phép..." /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="annual">Nghỉ phép năm (Có lương)</SelectItem>
@@ -218,8 +257,14 @@ export default function AttendancePage() {
                                             </Select>
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2"><Label>Từ ngày <span className="text-red-500">*</span></Label><Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} /></div>
-                                            <div className="space-y-2"><Label>Đến ngày <span className="text-red-500">*</span></Label><Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} /></div>
+                                            <div className="space-y-2">
+                                                <Label>Từ ngày <span className="text-red-500">*</span></Label>
+                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Đến ngày <span className="text-red-500">*</span></Label>
+                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} />
+                                            </div>
                                         </div>
                                         <div className="space-y-2">
                                             <Label>Lý do chi tiết <span className="text-red-500">*</span></Label>
@@ -235,13 +280,77 @@ export default function AttendancePage() {
                                 </DialogContent>
                             </Dialog>
                         </CardHeader>
-                        <CardContent className="p-12 text-center text-slate-500">
-                            <CalendarDays className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                            <p>Bạn chưa có đơn xin nghỉ nào (Giao diện hiển thị danh sách đơn sếp có thể mở rộng sau).</p>
+                        <CardContent className="p-0">
+                            <PersonalRequestsList />
                         </CardContent>
                     </Card>
                 </TabsContent>
             </Tabs>
+        </div>
+    );
+}
+// Component hiển thị danh sách đơn cá nhân
+function PersonalRequestsList() {
+    const [requests, setRequests] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchReqs = async () => {
+            const data = await getMyRequests();
+            setRequests(data);
+            setLoading(false);
+        };
+        fetchReqs();
+    }, []);
+
+    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>;
+
+    if (requests.length === 0) return (
+        <div className="p-12 text-center text-slate-500">
+            <CalendarDays className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+            <p>Bạn chưa có đơn từ nào trong hệ thống.</p>
+        </div>
+    );
+
+    const getStatusStyle = (status: string) => {
+        if (status === 'approved') return <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-medium border border-emerald-200">Đã duyệt</span>;
+        if (status === 'rejected') return <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-medium border border-red-200">Từ chối</span>;
+        return <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 font-medium border border-amber-200">Chờ duyệt</span>;
+    };
+
+    return (
+        <div className="divide-y divide-slate-100">
+            {requests.map(req => (
+                <div key={req.id} className="p-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <span className="font-semibold text-slate-800 text-sm">
+                                {req.request_type === 'leave' ? 'Đơn Xin Nghỉ Phép' : 'Đơn Giải Trình'}
+                            </span>
+                            <span className="text-xs text-slate-500 ml-2">
+                                (Ngày gửi: {new Date(req.created_at).toLocaleDateString('vi-VN')})
+                            </span>
+                        </div>
+                        {getStatusStyle(req.status)}
+                    </div>
+                    <div className="text-sm text-slate-600 bg-white p-3 rounded border border-slate-100 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                            <div><span className="text-slate-400">Ngày áp dụng: </span><span className="font-medium text-slate-700">{new Date(req.start_date).toLocaleDateString('vi-VN')} {req.end_date && ` - ${new Date(req.end_date).toLocaleDateString('vi-VN')}`}</span></div>
+                            {req.request_type === 'explanation' && (req.actual_in_time || req.actual_out_time) && (
+                                <div><span className="text-slate-400">Giờ khai báo: </span><span className="font-medium text-blue-600">{req.actual_in_time?.substring(0, 5) || '--:--'} đến {req.actual_out_time?.substring(0, 5) || '--:--'}</span></div>
+                            )}
+                        </div>
+                        <div className="pt-2 border-t border-slate-100">
+                            <span className="text-slate-400">Lý do: </span> <span className="italic">"{req.reason}"</span>
+                        </div>
+                        {req.approver_note && (
+                            <div className="mt-2 p-2 bg-red-50 text-red-800 text-xs rounded border border-red-100">
+                                <strong>Quản lý phản hồi:</strong> {req.approver_note}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
