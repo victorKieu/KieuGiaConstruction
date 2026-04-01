@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import PushNotificationSetup from "@/components/layout/PushNotificationSetup";
 
 export const viewport: Viewport = {
     width: "device-width",
@@ -35,7 +34,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     disableTransitionOnChange
                 >
                     <AuthProvider>
-                        <PushNotificationSetup />
 
                         {children}
                         <Toaster />

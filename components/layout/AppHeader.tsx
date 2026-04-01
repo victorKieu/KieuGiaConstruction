@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 // Components
 import UserDropdownMenu from "@/components/layout/UserDropdownMenu";
 import { NotificationBell } from "@/components/layout/notification-bell";
-
+import PushNotificationSetup from "@/components/layout/PushNotificationSetup";
 interface AppHeaderProps {
     user: {
         id: string;
@@ -48,8 +48,11 @@ export default function AppHeader({ user }: AppHeaderProps) {
 
             {/* 2. KHU VỰC PHẢI */}
             <div className="flex items-center gap-2">
+
+                {/* ✅ 2. CHÈN PUSH SETUP VÀO ĐÂY (Nó sẽ chạy ngầm) */}
+                <PushNotificationSetup />
+
                 <button
-                    // ✅ FIX: hover:bg-gray-100 -> hover:bg-accent hover:text-accent-foreground
                     className="p-2 rounded-full hover:bg-accent hover:text-accent-foreground transition-colors text-foreground"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                     title="Đổi giao diện Sáng/Tối"
@@ -57,7 +60,6 @@ export default function AppHeader({ user }: AppHeaderProps) {
                     {theme === "dark" ? (
                         <Sun className="w-5 h-5 text-yellow-500" />
                     ) : (
-                        // ✅ FIX: text-slate-700 -> text-foreground
                         <Moon className="w-5 h-5 text-foreground" />
                     )}
                 </button>
