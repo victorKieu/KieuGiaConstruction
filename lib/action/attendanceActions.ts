@@ -240,3 +240,163 @@ export async function submitAttendanceRequest(payload: any) {
         return { success: false, error: "Lỗi hệ thống khi gửi đơn." };
     }
 }
+
+// ============================================================================
+// 5. API DÀNH CHO QUẢN LÝ: LẤY DANH SÁCH ĐƠN & XỬ LÝ DUYỆT ĐƠN
+// ============================================================================
+
+// Lấy danh sách đơn đang chờ duyệt
+export async function getPendingRequests() {
+    const supabase = await createSupabaseServerClient();
+    try {
+        // Lấy join với bảng profiles/users/employees để hiển thị tên người gửi
+        // Lưu ý: Thay 'employees' và các trường name, code cho khớp với DB của sếp
+        const { data, error } = await supabase
+            .from('attendance_requests')
+            .select(`
+                *,
+                employee:employees(id, code, first_name, last_name)
+            `)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error("Lỗi lấy danh sách đơn:", e);
+        return [];
+    }
+}
+
+// Xử lý Duyệt / Từ chối đơn
+export async function processAttendanceRequest(requestId: string, newStatus: 'approved' | 'rejected', adminNotes?: string) {
+    const supabase = await createSupabaseServerClient();
+    try {
+        // 1. Lấy thông tin chi tiết của cái đơn này trước
+        const { data: request, error: reqError } = await supabase
+            .from('attendance_requests')
+            .select('*')
+            .eq('id', requestId)
+            .single();
+
+        if (reqError || !request) throw new Error("Không tìm thấy đơn từ.");
+
+        // 2. Nếu DUYỆT ĐƠN GIẢI TRÌNH -> Phải cập nhật lại bảng attendance_records
+        if (newStatus === 'approved' && request.request_type === 'explanation') {
+
+            // Tìm bản ghi chấm công của ngày đó
+            const { data: record } = await supabase
+                .from('attendance_records')
+                .select('*')
+                .eq('employee_id', request.employee_id)
+                .eq('date', request.start_date)
+                .single();
+
+            if (record) {
+                // Vá lỗi dữ liệu dựa theo loại giải trình
+                let updateData: any = { status: 'Đủ công' }; // Mặc định reset về đủ công nếu được duyệt
+
+                if (request.sub_type === 'forgot_in' && request.actual_in_time) {
+                    // Cập nhật ngày giờ VÀO: Lấy date ghép với time
+                    updateData.check_in_time = `${request.start_date}T${request.actual_in_time}:00+07:00`;
+                }
+                else if (request.sub_type === 'forgot_out' && request.actual_out_time) {
+                    // Cập nhật ngày giờ RA
+                    updateData.check_out_time = `${request.start_date}T${request.actual_out_time}:00+07:00`;
+                }
+                // Các case wrong_time, field_work sếp có thể mở rộng thêm logic tính lại working_hours ở đây
+
+                await supabase
+                    .from('attendance_records')
+                    .update(updateData)
+                    .eq('id', record.id);
+            } else {
+                // Nếu ngày đó chưa có record nào luôn (Quên chấm cả vào lẫn ra) -> Tạo mới
+                // (Chỉ chạy nếu có đủ cả actual_in_time và actual_out_time)
+                if (request.actual_in_time && request.actual_out_time) {
+                    await supabase.from('attendance_records').insert({
+                        employee_id: request.employee_id,
+                        date: request.start_date,
+                        check_in_time: `${request.start_date}T${request.actual_in_time}:00+07:00`,
+                        check_out_time: `${request.start_date}T${request.actual_out_time}:00+07:00`,
+                        status: 'Đủ công'
+                    });
+                }
+            }
+        }
+
+        // 3. Cập nhật trạng thái của cái đơn thành Approved / Rejected
+        const { error: updateError } = await supabase
+            .from('attendance_requests')
+            .update({
+                status: newStatus,
+                updated_at: new Date().toISOString()
+                // Thêm cột admin_notes vào DB nếu sếp muốn lưu lý do từ chối
+            })
+            .eq('id', requestId);
+
+        if (updateError) throw updateError;
+
+        return { success: true, message: newStatus === 'approved' ? 'Đã duyệt đơn thành công!' : 'Đã từ chối đơn.' };
+    } catch (e: any) {
+        console.error("Lỗi xử lý đơn:", e);
+        return { success: false, error: e.message || "Có lỗi xảy ra khi xử lý hệ thống." };
+    }
+}
+
+// ============================================================================
+// 6. API DÀNH CHO HR: LẤY BẢNG CÔNG TOÀN CÔNG TY (THEO THÁNG)
+// ============================================================================
+
+export async function getAllAttendanceRecords(month: number, year: number, searchQuery: string = "") {
+    const supabase = await createSupabaseServerClient();
+    try {
+        // Tạo khoảng thời gian từ ngày đầu tháng đến ngày cuối tháng
+        const startDate = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
+        const endDate = new Date(year, month, 0).toLocaleDateString('en-CA');
+
+        const { data, error } = await supabase
+            .from('attendance_records')
+            .select(`
+                *,
+                employee:employees(id, code, first_name, last_name)
+            `)
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .order('date', { ascending: false });
+
+        if (error) throw error;
+
+        // Format lại dữ liệu
+        let formattedData = data.map((record: any) => {
+            const empName = record.employee
+                ? `${record.employee.last_name || ''} ${record.employee.first_name || ''}`.trim()
+                : "Không xác định";
+
+            return {
+                id: record.id,
+                date: new Date(record.date).toLocaleDateString('vi-VN'),
+                employeeCode: record.employee?.code || "NV-???",
+                name: empName,
+                checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "",
+                checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "",
+                status: record.status,
+                location: record.check_in_lat ? `${record.check_in_lat.toFixed(3)}, ${record.check_in_lng.toFixed(3)}` : ""
+            };
+        });
+
+        // Lọc theo từ khóa tìm kiếm (Mã NV hoặc Tên NV)
+        if (searchQuery) {
+            const lowerQuery = searchQuery.toLowerCase();
+            formattedData = formattedData.filter((r: any) =>
+                r.name.toLowerCase().includes(lowerQuery) ||
+                r.employeeCode.toLowerCase().includes(lowerQuery)
+            );
+        }
+
+        return formattedData;
+    } catch (e) {
+        console.error("Lỗi lấy bảng công toàn công ty:", e);
+        return [];
+    }
+}

@@ -1,247 +1,159 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { CalendarDays, AlertCircle, Send, History, FileEdit, Plus, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Search, Download, Loader2, Users, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
-import { MobileCheckIn } from "@/components/hrm/MobileCheckIn";
+import { getAllAttendanceRecords } from "@/lib/action/attendanceActions";
 
-// ✅ Import các hàm API Backend thật
-import { getMyAttendanceRecords, submitAttendanceRequest } from "@/lib/action/attendanceActions";
+export default function HRMAttendancePage() {
+    // Khởi tạo tháng/năm hiện tại
+    const currentDate = new Date();
+    const [month, setMonth] = useState<string>((currentDate.getMonth() + 1).toString());
+    const [year, setYear] = useState<string>(currentDate.getFullYear().toString());
+    const [searchQuery, setSearchQuery] = useState("");
 
-export default function AttendancePage() {
-    // State chứa dữ liệu chấm công thật
-    const [realRecords, setRealRecords] = useState<AttendanceRecord[]>([]);
-    const [loadingRecords, setLoadingRecords] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [records, setRecords] = useState<AttendanceRecord[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // State cho Form Giải trình
-    const [explOpen, setExplOpen] = useState(false);
-    const [explForm, setExplForm] = useState({ date: "", type: "", inTime: "", outTime: "", reason: "" });
+    // Thống kê nhanh
+    const [stats, setStats] = useState({ total: 0, onTime: 0, late: 0 });
 
-    // State cho Form Nghỉ phép
-    const [leaveOpen, setLeaveOpen] = useState(false);
-    const [leaveForm, setLeaveForm] = useState({ type: "", startDate: "", endDate: "", reason: "" });
-
-    // Tải dữ liệu thật khi vào trang
     useEffect(() => {
-        loadRecords();
-    }, []);
+        loadData();
+    }, [month, year]); // Tự động load lại khi sếp đổi tháng/năm
 
-    const loadRecords = async () => {
-        setLoadingRecords(true);
-        const data = await getMyAttendanceRecords();
-        setRealRecords(data);
-        setLoadingRecords(false);
+    const loadData = async () => {
+        setIsLoading(true);
+        const data = await getAllAttendanceRecords(parseInt(month), parseInt(year), searchQuery);
+        setRecords(data);
+
+        // Tính toán thống kê
+        const total = data.length;
+        const onTime = data.filter(r => r.status === 'Đủ công').length;
+        const late = data.filter(r => r.status === 'Đi trễ').length;
+        setStats({ total, onTime, late });
+
+        setIsLoading(false);
     };
 
-    // Xử lý gửi Đơn Giải trình
-    const handleSubmitExplanation = async () => {
-        if (!explForm.date || !explForm.type || !explForm.reason) return toast.error("Vui lòng điền đủ thông tin bắt buộc!");
-
-        setIsSubmitting(true);
-        const res = await submitAttendanceRequest({
-            request_type: 'explanation',
-            sub_type: explForm.type,
-            start_date: explForm.date,
-            actual_in_time: explForm.inTime || null,
-            actual_out_time: explForm.outTime || null,
-            reason: explForm.reason
-        });
-        setIsSubmitting(false);
-
-        if (res.success) {
-            toast.success(res.message);
-            setExplOpen(false); // Đóng modal
-            setExplForm({ date: "", type: "", inTime: "", outTime: "", reason: "" }); // Reset form
-        } else {
-            toast.error(res.error);
-        }
-    };
-
-    // Xử lý gửi Đơn Xin nghỉ
-    const handleSubmitLeave = async () => {
-        if (!leaveForm.type || !leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason) {
-            return toast.error("Vui lòng điền đủ thông tin bắt buộc!");
-        }
-
-        setIsSubmitting(true);
-        const res = await submitAttendanceRequest({
-            request_type: 'leave',
-            sub_type: leaveForm.type,
-            start_date: leaveForm.startDate,
-            end_date: leaveForm.endDate,
-            reason: leaveForm.reason
-        });
-        setIsSubmitting(false);
-
-        if (res.success) {
-            toast.success(res.message);
-            setLeaveOpen(false); // Đóng modal
-            setLeaveForm({ type: "", startDate: "", endDate: "", reason: "" }); // Reset form
-        } else {
-            toast.error(res.error);
+    // Xử lý khi gõ tìm kiếm và bấm Enter
+    const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            loadData();
         }
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center">
+        <div className="space-y-6 animate-in fade-in duration-500">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Quản lý Chấm công & Đơn từ</h1>
-                    <p className="text-sm text-slate-500">Hệ thống ghi nhận thời gian làm việc và xử lý phép</p>
+                    <h1 className="text-2xl font-bold text-slate-800">Bảng Tổng Hợp Chấm Công</h1>
+                    <p className="text-sm text-slate-500">Quản lý thời gian làm việc của toàn bộ nhân sự trong công ty</p>
                 </div>
+                <Button className="bg-emerald-600 hover:bg-emerald-700">
+                    <Download className="w-4 h-4 mr-2" /> Xuất Excel (Tính lương)
+                </Button>
             </div>
 
-            <Tabs defaultValue="checkin" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
-                    <TabsTrigger value="checkin">Chấm công</TabsTrigger>
-                    <TabsTrigger value="requests">Đơn từ & Phép</TabsTrigger>
-                </TabsList>
+            {/* Thống kê nhanh (Cards) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="shadow-sm border-blue-100 bg-blue-50/50">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-blue-600 mb-1">Tổng lượt chấm công</p>
+                            <h3 className="text-3xl font-bold text-blue-900">{stats.total}</h3>
+                        </div>
+                        <div className="p-3 bg-blue-100 rounded-full"><Users className="w-6 h-6 text-blue-600" /></div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm border-emerald-100 bg-emerald-50/50">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-emerald-600 mb-1">Đúng giờ / Đủ công</p>
+                            <h3 className="text-3xl font-bold text-emerald-900">{stats.onTime}</h3>
+                        </div>
+                        <div className="p-3 bg-emerald-100 rounded-full"><CheckCircle2 className="w-6 h-6 text-emerald-600" /></div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm border-orange-100 bg-orange-50/50">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-orange-600 mb-1">Đi trễ / Về sớm</p>
+                            <h3 className="text-3xl font-bold text-orange-900">{stats.late}</h3>
+                        </div>
+                        <div className="p-3 bg-orange-100 rounded-full"><AlertTriangle className="w-6 h-6 text-orange-600" /></div>
+                    </CardContent>
+                </Card>
+            </div>
 
-                <TabsContent value="checkin" className="space-y-4 mt-4">
-                    {/* GIAO DIỆN MOBILE */}
-                    <div className="block md:hidden">
-                        <MobileCheckIn />
+            {/* Bảng dữ liệu & Bộ lọc */}
+            <Card className="shadow-sm border-slate-200">
+                <CardHeader className="bg-slate-50 border-b py-4">
+                    <div className="flex flex-col md:flex-row justify-between gap-4">
+                        {/* Cụm Tìm kiếm */}
+                        <div className="relative w-full md:w-[300px]">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input
+                                placeholder="Tìm mã NV hoặc tên... (Enter để lọc)"
+                                className="pl-9 bg-white"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleSearch}
+                            />
+                        </div>
+
+                        {/* Cụm Lọc Thời gian */}
+                        <div className="flex gap-2">
+                            <Select value={month} onValueChange={setMonth}>
+                                <SelectTrigger className="w-[130px] bg-white">
+                                    <Clock className="w-4 h-4 mr-2 text-slate-400" />
+                                    <SelectValue placeholder="Tháng" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                                        <SelectItem key={m} value={m.toString()}>Tháng {m}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select value={year} onValueChange={setYear}>
+                                <SelectTrigger className="w-[110px] bg-white">
+                                    <SelectValue placeholder="Năm" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[2024, 2025, 2026, 2027].map(y => (
+                                        <SelectItem key={y} value={y.toString()}>Năm {y}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Button variant="outline" onClick={loadData} className="px-3">
+                                Lọc
+                            </Button>
+                        </div>
                     </div>
-
-                    {/* GIAO DIỆN DESKTOP */}
-                    <div className="hidden md:block">
-                        <Card className="shadow-sm border-slate-200">
-                            <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between py-3">
-                                <div>
-                                    <CardTitle className="text-base font-bold text-slate-700 flex items-center">
-                                        <History className="w-4 h-4 mr-2 text-blue-600" /> Lịch sử chấm công của bạn
-                                    </CardTitle>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Dialog open={explOpen} onOpenChange={setExplOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange-50 h-8 text-xs">
-                                                <AlertCircle className="w-3 h-3 mr-1.5" /> Báo quên / Giải trình
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle className="text-orange-600 flex items-center"><FileEdit className="w-5 h-5 mr-2" /> Tạo Đơn Giải Trình</DialogTitle>
-                                            </DialogHeader>
-                                            <div className="space-y-4 py-2">
-                                                <div className="space-y-2">
-                                                    <Label>Ngày cần giải trình <span className="text-red-500">*</span></Label>
-                                                    <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Loại giải trình <span className="text-red-500">*</span></Label>
-                                                    <Select onValueChange={v => setExplForm({ ...explForm, type: v })}>
-                                                        <SelectTrigger><SelectValue placeholder="Chọn lý do..." /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="forgot_in">Quên chấm công VÀO</SelectItem>
-                                                            <SelectItem value="forgot_out">Quên chấm công RA</SelectItem>
-                                                            <SelectItem value="wrong_time">Chấm công sai giờ / Lỗi máy</SelectItem>
-                                                            <SelectItem value="field_work">Đi công tác thực địa</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2"><Label>Giờ VÀO thực tế</Label><Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} /></div>
-                                                    <div className="space-y-2"><Label>Giờ RA thực tế</Label><Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} /></div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Lý do chi tiết <span className="text-red-500">*</span></Label>
-                                                    <Textarea placeholder="Trình bày rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} />
-                                                </div>
-                                            </div>
-                                            <DialogFooter>
-                                                <Button variant="outline" onClick={() => setExplOpen(false)}>Hủy</Button>
-                                                <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 hover:bg-orange-700">
-                                                    {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi duyệt
-                                                </Button>
-                                            </DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
-                                    {/* Nút tải lại bảng */}
-                                    <Button variant="outline" className="h-8 text-xs" onClick={loadRecords} disabled={loadingRecords}>
-                                        {loadingRecords ? <Loader2 className="w-3 h-3 animate-spin" /> : "Làm mới"}
-                                    </Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                {/* ✅ HIỂN THỊ DỮ LIỆU THẬT */}
-                                {loadingRecords ? (
-                                    <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
-                                ) : (
-                                    <AttendanceTable records={realRecords} />
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-                </TabsContent>
-
-                {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP */}
-                <TabsContent value="requests" className="mt-4">
-                    <Card className="shadow-sm border-slate-200">
-                        <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between py-3">
-                            <div>
-                                <CardTitle className="text-base font-bold text-slate-700 flex items-center">
-                                    <CalendarDays className="w-4 h-4 mr-2 text-emerald-600" /> Danh sách Đơn xin nghỉ
-                                </CardTitle>
-                            </div>
-                            <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
-                                <DialogTrigger asChild>
-                                    <Button className="bg-emerald-600 hover:bg-emerald-700 h-8 text-xs shadow-sm">
-                                        <Plus className="w-3 h-3 mr-1.5" /> Tạo Đơn Mới
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-[500px]">
-                                    <DialogHeader>
-                                        <DialogTitle className="text-emerald-700 flex items-center"><CalendarDays className="w-5 h-5 mr-2" /> Tạo Đơn Xin Nghỉ</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="space-y-4 py-2">
-                                        <div className="space-y-2">
-                                            <Label>Loại nghỉ phép <span className="text-red-500">*</span></Label>
-                                            <Select onValueChange={v => setLeaveForm({ ...leaveForm, type: v })}>
-                                                <SelectTrigger><SelectValue placeholder="Chọn loại phép..." /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="annual">Nghỉ phép năm (Có lương)</SelectItem>
-                                                    <SelectItem value="unpaid">Nghỉ không lương</SelectItem>
-                                                    <SelectItem value="sick">Nghỉ ốm / Thai sản</SelectItem>
-                                                    <SelectItem value="urgent">Nghỉ đột xuất / Việc gia đình</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2"><Label>Từ ngày <span className="text-red-500">*</span></Label><Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} /></div>
-                                            <div className="space-y-2"><Label>Đến ngày <span className="text-red-500">*</span></Label><Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} /></div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Lý do chi tiết <span className="text-red-500">*</span></Label>
-                                            <Textarea placeholder="Nêu rõ lý do xin nghỉ..." className="h-24" value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
-                                        </div>
-                                    </div>
-                                    <DialogFooter>
-                                        <Button variant="outline" onClick={() => setLeaveOpen(false)}>Hủy</Button>
-                                        <Button disabled={isSubmitting} onClick={handleSubmitLeave} className="bg-emerald-600 hover:bg-emerald-700">
-                                            {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi Đơn
-                                        </Button>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
-                        </CardHeader>
-                        <CardContent className="p-12 text-center text-slate-500">
-                            <CalendarDays className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                            <p>Bạn chưa có đơn xin nghỉ nào (Giao diện hiển thị danh sách đơn sếp có thể mở rộng sau).</p>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+                </CardHeader>
+                <CardContent className="p-0">
+                    {isLoading ? (
+                        <div className="p-12 flex justify-center flex-col items-center">
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-4" />
+                            <p className="text-slate-500">Đang tải dữ liệu chấm công...</p>
+                        </div>
+                    ) : records.length === 0 ? (
+                        <div className="p-12 text-center text-slate-500 bg-white">
+                            <Users className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                            <p>Không có dữ liệu chấm công nào trong tháng {month}/{year}.</p>
+                        </div>
+                    ) : (
+                        <AttendanceTable records={records} />
+                    )}
+                </CardContent>
+            </Card>
         </div>
     );
 }

@@ -1,10 +1,9 @@
-// components/layout/AppHeader.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
-import { useAuth } from "@/lib/auth/auth-context"; // Vẫn giữ để sử dụng user?.email và signOut
+import { Bell, LogOut, Moon, Search, Sun, User, Clock, MapPinned, CalendarDays } from "lucide-react";
+import { useAuth } from "@/lib/auth/auth-context";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,28 +13,24 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
+    DropdownMenuGroup
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
-// Import UserProfile interface để sử dụng trong props
 import type { UserProfile } from '@/types/userProfile';
 
-// Định nghĩa props cho AppHeader
 interface AppHeaderProps {
-    userProfile: UserProfile | null; // AppHeader sẽ nhận userProfile qua props
+    userProfile: UserProfile | null;
 }
 
-// Logo fallback khi không thể tải logo từ server
 const LogoFallback = () => (
     <div className="w-8 h-8 bg-gold flex items-center justify-center rounded-md text-white font-bold text-sm">KG</div>
 );
 
-// Thay đổi export default function Header() thành AppHeader({ userProfile }: AppHeaderProps)
 export default function AppHeader({ userProfile }: AppHeaderProps) {
-    console.log("[AppHeader Client] Prop userProfile NHẬN ĐƯỢC:", userProfile);
-    const { user, signOut } = useAuth(); // Lấy user từ AuthContext (cung cấp email và chức năng đăng xuất)
+    const { user, signOut } = useAuth();
     const router = useRouter();
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
@@ -45,10 +40,10 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
         setMounted(true);
     }, []);
 
-    // Hiển thị null hoặc một skeleton loading nếu chưa mount hoặc userProfile chưa sẵn sàng
     if (!mounted) {
-        return null; // Hoặc một skeleton loading placeholder
+        return null;
     }
+
     const handleSignOut = async () => {
         try {
             await signOut();
@@ -57,9 +52,8 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
         }
     };
 
-    // Hàm lấy chữ cái đầu tiên từ tên
     const getInitials = (name: string | null | undefined) => {
-        if (!name) return "U"; // Mặc định "U" nếu tên là null/undefined
+        if (!name) return "U";
         return name
             .split(" ")
             .map((n) => n[0])
@@ -68,15 +62,11 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
             .substring(0, 2);
     };
 
-    // Lấy tên hiển thị ưu tiên profile_name, rồi đến email, cuối cùng là "Người dùng"
-    // Lấy tên hiển thị (trường đúng là 'name', theo log của bạn)
     const displayName = userProfile?.name || userProfile?.email || 'Người dùng';
-    // Lấy avatar (trường đúng là 'avatar_url', theo log của bạn)
     const displayAvatarUrl = userProfile?.avatar_url || "/placeholder.svg";
 
     return (
         <header className="h-16 border-b bg-background text-foreground border-border flex items-center justify-between px-4 md:px-6">
-            {/* Phần tìm kiếm */}
             <div className="hidden md:flex items-center w-full max-w-md">
                 <div className="relative w-full">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -88,9 +78,7 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
                 </div>
             </div>
 
-            {/* Phần phải - Thông báo, chuyển theme, user menu */}
             <div className="flex items-center gap-2 md:gap-4 ml-auto">
-                {/* Nút tìm kiếm trên mobile */}
                 {isMobile && (
                     <Button variant="ghost" size="icon" className="text-muted-foreground">
                         <Search className="h-5 w-5" />
@@ -98,14 +86,12 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
                     </Button>
                 )}
 
-                {/* Nút thông báo */}
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground">
                     <Bell className="h-5 w-5" />
                     <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
                     <span className="sr-only">Thông báo</span>
                 </Button>
 
-                {/* Nút chuyển theme */}
                 <Button
                     variant="ghost"
                     size="icon"
@@ -116,37 +102,57 @@ export default function AppHeader({ userProfile }: AppHeaderProps) {
                     <span className="sr-only">Chuyển theme</span>
                 </Button>
 
-                {/* User menu */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                        <Button variant="ghost" className="relative h-8 w-8 rounded-full border border-slate-200 shadow-sm hover:ring-2 hover:ring-indigo-100 transition-all">
                             <Avatar className="h-8 w-8">
-                                {/* Sử dụng avatar_url và tên từ userProfile */}
                                 <AvatarImage src={displayAvatarUrl} alt={displayName} />
-                                <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
+                                <AvatarFallback className="bg-indigo-600 text-white font-bold">{getInitials(displayName)}</AvatarFallback>
                             </Avatar>
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56 bg-popover text-popover-foreground border border-border" align="end" forceMount>
-                        <DropdownMenuLabel className="font-normal">
+                    <DropdownMenuContent className="w-64 bg-popover text-popover-foreground border border-border" align="end" forceMount>
+                        <DropdownMenuLabel className="font-normal py-3">
                             <div className="flex flex-col space-y-1">
-                                {/* Hiển thị tên từ userProfile */}
-                                <p className="text-sm font-medium leading-none">{displayName}</p>
-                                {/* Email vẫn lấy từ useAuth context vì nó chứa thông tin user Auth của Supabase */}
+                                <p className="text-sm font-bold leading-none">{displayName}</p>
                                 <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
                             </div>
                         </DropdownMenuLabel>
+
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => router.push("/profile")}>
-                            <User className="mr-2 h-4 w-4" />
-                            <span>Hồ sơ</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push("/settings")}>
-                            <Sun className="mr-2 h-4 w-4" />
-                            <span>Cài đặt</span>
-                        </DropdownMenuItem>
+
+                        {/* ✅ NHÓM MENU TỰ PHỤC VỤ (CÁ NHÂN) */}
+                        <DropdownMenuGroup>
+                            <DropdownMenuItem onClick={() => router.push("/my-attendance")} className="py-2 cursor-pointer font-medium text-indigo-600 focus:text-indigo-700 focus:bg-indigo-50">
+                                <MapPinned className="mr-2 h-4 w-4" />
+                                <span>Chấm công GPS</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push("/my-attendance?tab=requests")} className="py-2 cursor-pointer">
+                                <CalendarDays className="mr-2 h-4 w-4 text-emerald-600" />
+                                <span>Xin Nghỉ phép & Giải trình</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push("/my-attendance")} className="py-2 cursor-pointer">
+                                <Clock className="mr-2 h-4 w-4 text-slate-500" />
+                                <span>Bảng công của tôi</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuGroup>
+
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleSignOut}>
+
+                        <DropdownMenuGroup>
+                            <DropdownMenuItem onClick={() => router.push("/profile")} className="cursor-pointer">
+                                <User className="mr-2 h-4 w-4" />
+                                <span>Hồ sơ cá nhân</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push("/settings")} className="cursor-pointer">
+                                <Sun className="mr-2 h-4 w-4" />
+                                <span>Cài đặt hệ thống</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuGroup>
+
+                        <DropdownMenuSeparator />
+
+                        <DropdownMenuItem onClick={handleSignOut} className="text-red-600 focus:bg-red-50 focus:text-red-700 cursor-pointer">
                             <LogOut className="mr-2 h-4 w-4" />
                             <span>Đăng xuất</span>
                         </DropdownMenuItem>

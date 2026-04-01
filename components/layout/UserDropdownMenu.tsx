@@ -1,8 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
     DropdownMenu,
     DropdownMenuContent,
+    DropdownMenuGroup,
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
@@ -11,7 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/lib/action/auth";
-import { LogOut, Settings, User as UserIcon } from "lucide-react";
+import { LogOut, Settings, User as UserIcon, CalendarClock } from "lucide-react";
 
 interface UserDropdownMenuProps {
     user: {
@@ -28,6 +30,7 @@ export default function UserDropdownMenu({
     onProfile,
     onSettings,
 }: UserDropdownMenuProps) {
+    const router = useRouter();
 
     const handleLogout = async () => {
         await logoutAction();
@@ -42,13 +45,11 @@ export default function UserDropdownMenu({
             <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                     <Avatar className="h-9 w-9 border border-gray-200 transition-opacity hover:opacity-80">
-                        {/* ✅ SỬA LỖI Ở ĐÂY: Dùng className="object-cover" */}
                         <AvatarImage
                             src={user.avatar_url || ""}
                             alt={user.name || "User"}
                             className="object-cover"
                         />
-
                         <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold">
                             {userInitials}
                         </AvatarFallback>
@@ -70,12 +71,25 @@ export default function UserDropdownMenu({
 
                 <DropdownMenuSeparator />
 
-                <DropdownMenuItem onClick={onProfile} className="cursor-pointer">
+                {/* ✅ MENU GỘP CHUNG: CHẤM CÔNG & ĐƠN TỪ */}
+                <DropdownMenuGroup>
+                    <DropdownMenuItem
+                        onClick={() => router.push("/my-attendance")}
+                        className="cursor-pointer font-medium text-blue-600 focus:text-blue-700 focus:bg-blue-50 dark:text-blue-400 dark:focus:bg-blue-900/30 py-2"
+                    >
+                        <CalendarClock className="mr-2 h-4 w-4" />
+                        <span>Chấm công & Đơn từ</span>
+                    </DropdownMenuItem>
+                </DropdownMenuGroup>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem onClick={onProfile} className="cursor-pointer py-2">
                     <UserIcon className="mr-2 h-4 w-4" />
                     <span>Thông tin cá nhân</span>
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={onSettings} className="cursor-pointer">
+                <DropdownMenuItem onClick={onSettings} className="cursor-pointer py-2">
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Cài đặt</span>
                 </DropdownMenuItem>
@@ -83,7 +97,7 @@ export default function UserDropdownMenu({
                 <DropdownMenuSeparator />
 
                 <DropdownMenuItem
-                    className="text-red-600 focus:text-red-600 cursor-pointer focus:bg-red-50"
+                    className="text-red-600 focus:text-red-600 cursor-pointer focus:bg-red-50 dark:focus:bg-red-900/30 py-2"
                     onClick={handleLogout}
                 >
                     <LogOut className="mr-2 h-4 w-4" />
