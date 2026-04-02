@@ -15,9 +15,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Gửi email đặt lại mật khẩu
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${request.nextUrl.origin}/reset-password`,
-    })
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          // Đẩy qua trạm callback, kèm theo chỉ thị "xử lý xong thì sang trang /reset-password nhé"
+          redirectTo: `${request.nextUrl.origin}/api/auth/callback?next=/reset-password`,
+      })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
