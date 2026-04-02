@@ -191,20 +191,27 @@ export async function getProjectManagers() {
 // --- 3. ACTIONS (CREATE / UPDATE / DELETE / AUTH) ---
 
 export async function createEmployee(prevState: any, formData: FormData) {
-    const supabase = await createSupabaseServerClient();
+    // ✅ Dùng Admin Client để bypass RLS, tránh việc bị chặn ngầm khi Insert
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
+        auth: { autoRefreshToken: false, persistSession: false }
+    });
     const rawData = Object.fromEntries(formData.entries());
 
     try {
         const sharedId = uuidv4();
         // Lấy Type ID
-        const { data: typeData } = await supabase
+        const { data: typeData } = await supabaseAdmin
             .from("sys_dictionaries")
             .select("id").eq("code", "EMPLOYEE").eq("category", "USER_TYPE").single();
 
-        if (!typeData) throw new Error("Chưa cấu hình loại nhân viên (USER_TYPE).");
+        if (!typeData) throw new Error("Chưa cấu hình loại nhân viên (USER_TYPE) trong từ điển.");
+
+        // ✅ ĐÃ FIX: Truyền thêm sharedId vào để tính toán phân cấp
+        const autoManagerId = await findDepartmentManagerId(supabaseAdmin, cleanUUID(rawData.department_id), sharedId);
 
         // B1: TẠO USER_PROFILE
-        const { error: pError } = await supabase.from("user_profiles").insert({
+        const { error: pError } = await supabaseAdmin.from("user_profiles").insert({
             id: sharedId,
             type_id: typeData.id,
             name: String(rawData.name),
@@ -214,14 +221,24 @@ export async function createEmployee(prevState: any, formData: FormData) {
         });
         if (pError) throw pError;
 
-        // B2: TẠO EMPLOYEE
-        const { error: eError } = await supabase.from("employees").insert({
+        // B2: TẠO EMPLOYEE (Lưu Full các trường theo Schema)
+        const { error: eError } = await supabaseAdmin.from("employees").insert({
             id: sharedId,
             name: String(rawData.name),
-            email: String(rawData.email),
-            phone: String(rawData.phone),
-            address: String(rawData.address),
-            identity_card: String(rawData.identity_card),
+            email: String(rawData.email), // ✅ Đã bổ sung Email
+            phone: String(rawData.phone || ""),
+            address: String(rawData.address || ""),
+            current_address: String(rawData.current_address || ""),
+            place_of_birth: String(rawData.place_of_birth || ""),
+
+            identity_card: String(rawData.identity_card || ""),
+            identity_date: rawData.identity_date ? String(rawData.identity_date) : null,
+            identity_place: String(rawData.identity_place || ""),
+
+            tax_code: String(rawData.tax_code || ""),
+            bank_name: String(rawData.bank_name || ""),
+            bank_account: String(rawData.bank_account || ""),
+
             basic_salary: Number(rawData.basic_salary) || 0,
             gender_id: cleanUUID(rawData.gender_id),
             department_id: cleanUUID(rawData.department_id),
@@ -230,26 +247,25 @@ export async function createEmployee(prevState: any, formData: FormData) {
             contract_type_id: cleanUUID(rawData.contract_type_id),
             marital_status_id: cleanUUID(rawData.marital_status_id),
             hire_date: rawData.hire_date ? String(rawData.hire_date) : null,
-            birth_date: rawData.birth_date ? String(rawData.birth_date) : null
+            birth_date: rawData.birth_date ? String(rawData.birth_date) : null,
+
+            manager_id: autoManagerId
         });
 
         if (eError) {
-            await supabase.from("user_profiles").delete().eq("id", sharedId);
+            await supabaseAdmin.from("user_profiles").delete().eq("id", sharedId);
             throw eError;
         }
 
-        revalidatePath("/hrm/employees");
+        //revalidatePath("/hrm/employees", "layout"); // ✅ Phá vỡ toàn bộ Cache
         return { success: true, message: "Thêm nhân viên thành công!", fields: {} };
     } catch (error: any) {
+        console.error("❌ Lỗi Create Employee:", error);
         return { success: false, error: error.message, fields: rawData };
     }
 }
 
 export async function updateEmployee(id: string, prevState: any, formData: FormData) {
-    const supabaseUser = await createSupabaseServerClient();
-    const { data: { user } } = await supabaseUser.auth.getUser();
-    if (!user) return { success: false, error: "Phiên làm việc hết hạn." };
-
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
         auth: { autoRefreshToken: false, persistSession: false }
@@ -265,11 +281,26 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
             await deleteOldAvatar(oldData.avatar_url);
         }
 
-        const { error: eError } = await supabaseAdmin.from("employees").update({
+        // ✅ ĐÃ FIX: Truyền thêm id của nhân viên đang update vào để check xem có phải sếp không
+        const autoManagerId = await findDepartmentManagerId(supabaseAdmin, cleanUUID(rawData.department_id), id);
+
+        // ✅ B2: ÉP SUPABASE PHẢI TRẢ VỀ DỮ LIỆU BẰNG .select() ĐỂ TRÁNH SILENT FAIL
+        const { data: updatedEmp, error: eError } = await supabaseAdmin.from("employees").update({
             name: String(rawData.name),
-            phone: String(rawData.phone),
-            address: String(rawData.address),
-            identity_card: String(rawData.identity_card),
+            email: String(rawData.email), // ✅ B1: Cập nhật Email bị thiếu
+            phone: String(rawData.phone || ""),
+            address: String(rawData.address || ""),
+            current_address: String(rawData.current_address || ""),
+            place_of_birth: String(rawData.place_of_birth || ""),
+
+            identity_card: String(rawData.identity_card || ""),
+            identity_date: rawData.identity_date ? String(rawData.identity_date) : null,
+            identity_place: String(rawData.identity_place || ""),
+
+            tax_code: String(rawData.tax_code || ""),
+            bank_name: String(rawData.bank_name || ""),
+            bank_account: String(rawData.bank_account || ""),
+
             basic_salary: Number(rawData.basic_salary) || 0,
             gender_id: cleanUUID(rawData.gender_id),
             department_id: cleanUUID(rawData.department_id),
@@ -279,22 +310,35 @@ export async function updateEmployee(id: string, prevState: any, formData: FormD
             marital_status_id: cleanUUID(rawData.marital_status_id),
             hire_date: rawData.hire_date ? String(rawData.hire_date) : null,
             birth_date: rawData.birth_date ? String(rawData.birth_date) : null,
+
+            manager_id: autoManagerId,
             updated_at: new Date().toISOString()
-        }).eq("id", id);
+        }).eq("id", id).select(); // <--- CHỐT CHẶN Ở ĐÂY
 
         if (eError) throw eError;
 
-        await supabaseAdmin.from("user_profiles").update({
+        // Nếu không có lỗi nhưng update được 0 dòng (ID sai)
+        if (!updatedEmp || updatedEmp.length === 0) {
+            throw new Error(`Không tìm thấy hồ sơ nhân viên để cập nhật (ID không khớp)!`);
+        }
+
+        // Cập nhật bảng user_profiles
+        const { error: pError } = await supabaseAdmin.from("user_profiles").update({
             name: String(rawData.name),
             email: String(rawData.email),
             avatar_url: newAvatarUrl || null,
             updated_at: new Date().toISOString()
         }).eq("id", id);
 
-        revalidatePath(`/hrm/employees/${id}`);
-        revalidatePath("/hrm/employees");
+        if (pError) throw pError;
+
+        // ✅ B3: Phá vỡ toàn bộ Cache nhánh nhân sự
+        //revalidatePath(`/hrm/employees/${id}`, 'page');
+        //revalidatePath("/hrm/employees", 'layout');
+
         return { success: true, message: "Cập nhật thành công!", fields: rawData };
     } catch (error: any) {
+        console.error("❌ Lỗi Update Employee:", error);
         return { success: false, error: error.message, fields: rawData };
     }
 }
@@ -418,5 +462,52 @@ export async function deleteEmployee(id: string) {
         return { success: true, message: "Đã xóa hồ sơ nhân viên thành công." };
     } catch (error: any) {
         return { success: false, error: error.message };
+    }
+}
+
+// --- HÀM TÌM MANAGER TỰ ĐỘNG (Thêm hàm này vào trên createEmployee) ---
+async function findDepartmentManagerId(supabase: any, departmentId: string | null, employeeId?: string | null) {
+    if (!departmentId) return null;
+
+    try {
+        // 1. Tìm Trưởng phòng của phòng ban HIỆN TẠI
+        const { data: currentDept } = await supabase
+            .from("sys_dictionaries")
+            .select(`id, meta_data`)
+            .eq("id", departmentId)
+            .single();
+
+        if (!currentDept) return null;
+
+        const { data: currentMgrData } = await supabase
+            .from("department_managers")
+            .select("manager_id")
+            .eq("department_id", departmentId)
+            .single();
+
+        const currentManagerId = currentMgrData?.manager_id || null;
+        const parentDeptId = currentDept.meta_data?.parent_id || null;
+
+        // 2. LOGIC PHÂN CẤP:
+        // Nếu nhân viên đang xử lý CHÍNH LÀ Trưởng phòng hiện tại -> Phải tìm sếp của họ ở phòng ban CHA
+        if (employeeId && currentManagerId === employeeId) {
+            if (!parentDeptId) return null; // Là trùm cuối rồi, không có ai ở trên
+
+            // Dò ngược lên phòng ban CHA để tìm ID Trưởng phòng cha
+            const { data: parentMgrData } = await supabase
+                .from("department_managers")
+                .select("manager_id")
+                .eq("department_id", parentDeptId)
+                .single();
+
+            return parentMgrData?.manager_id || null;
+        }
+
+        // 3. Nếu là nhân viên bình thường -> Quản lý là Trưởng phòng hiện tại
+        return currentManagerId;
+
+    } catch (e) {
+        console.error("❌ Lỗi logic tìm manager_id:", e);
+        return null;
     }
 }

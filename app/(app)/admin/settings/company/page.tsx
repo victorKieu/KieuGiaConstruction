@@ -9,11 +9,14 @@ import { Save, Loader2, Building2, MapPin, Building, CreditCard } from "lucide-r
 import { toast } from "sonner";
 import { getCompanySettings, saveCompanySettings } from "@/lib/action/settingActions";
 
+// ✅ Import Component Sơ đồ tổ chức Động
+import DynamicOrgChart from "@/components/hrm/DynamicOrgChart";
+
 export default function CompanySettingsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
-    // State lưu trữ dữ liệu form
+    // State lưu trữ dữ liệu form Công ty
     const [formData, setFormData] = useState({
         name: "",
         tax_code: "",
@@ -30,11 +33,13 @@ export default function CompanySettingsPage() {
         attendance_radius: 150
     });
 
-    // Lấy dữ liệu khi vừa vào trang
+    // Lấy dữ liệu công ty khi vừa vào trang
     useEffect(() => {
         async function loadData() {
             setIsLoading(true);
+            // ✅ Đã xóa đoạn gọi getOrgChartData() cũ gây lỗi
             const data = await getCompanySettings();
+
             if (data) {
                 setFormData({
                     name: data.name || "",
@@ -72,12 +77,13 @@ export default function CompanySettingsPage() {
         }
 
         setIsSaving(true);
+        // Trang này giờ chỉ lưu cấu hình công ty, Sơ đồ tổ chức đã tự động lưu bên trong Component kia
         const res = await saveCompanySettings(formData);
 
         if (res.success) {
-            toast.success(res.message);
+            toast.success("Đã lưu Cấu hình doanh nghiệp thành công!");
         } else {
-            toast.error(res.error);
+            toast.error(res.error || "Có lỗi xảy ra khi lưu!");
         }
         setIsSaving(false);
     };
@@ -87,11 +93,11 @@ export default function CompanySettingsPage() {
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 max-w-5xl mx-auto">
-            <div className="flex justify-between items-center">
+        <div className="space-y-6 animate-in fade-in duration-500 max-w-5xl mx-auto pb-12">
+            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border sticky top-0 z-10">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Cấu hình Thông tin Doanh nghiệp</h1>
-                    <p className="text-sm text-slate-500">Dữ liệu này sẽ được dùng cho Báo giá, Hợp đồng và hệ thống Chấm công GPS.</p>
+                    <h1 className="text-2xl font-bold text-slate-800">Thiết lập chung</h1>
+                    <p className="text-sm text-slate-500">Cấu hình Doanh nghiệp & Sơ đồ tổ chức</p>
                 </div>
                 <Button onClick={handleSave} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700">
                     {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
@@ -229,6 +235,11 @@ export default function CompanySettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                </div>
+
+                {/* --- KHỐI SƠ ĐỒ TỔ CHỨC ĐỘNG NẰM Ở DƯỚI CÙNG --- */}
+                <div className="md:col-span-2">
+                    <DynamicOrgChart />
                 </div>
             </div>
         </div>
