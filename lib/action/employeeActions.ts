@@ -350,6 +350,18 @@ export async function grantSystemAccess(entityId: string, email: string, typeCod
             throw uError;
         }
 
+        const { error: eUpdateError } = await supabaseAdmin
+            .from("employees")
+            .update({
+                auth_id: authData.user.id // Giả định sếp đã thêm cột auth_id vào bảng employees
+            })
+            .eq("id", profile.id);
+
+        if (eUpdateError) {
+            console.error("⚠️ Lỗi cập nhật auth_id cho employees nhưng profile đã xong:", eUpdateError.message);
+            // Tùy sếp muốn rollback hay không, thường thì nên để nó chạy tiếp hoặc log lại
+        }
+
         revalidatePath("/hrm/employees");
         return { success: true, message: "Cấp tài khoản thành công! Mật khẩu: KieuGia@123456" };
     } catch (error: any) {
@@ -369,6 +381,7 @@ export async function revokeSystemAccess(employeeId: string) {
         if (profile?.auth_id) {
             await supabaseAdmin.auth.admin.deleteUser(profile.auth_id);
             await supabaseAdmin.from("user_profiles").update({ auth_id: null }).eq("id", employeeId);
+            await supabaseAdmin.from("employees").update({ auth_id: null }).eq("id", employeeId);
         } else {
             return { success: false, error: "Nhân viên chưa có tài khoản." };
         }

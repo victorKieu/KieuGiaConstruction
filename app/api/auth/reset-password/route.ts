@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
   try {
       const cookieStore = await cookies(); // phải await
       const token = cookieStore.get("sb-access-token")?.value || null;
-      const supabase = createSupabaseServerClient(token);
+      const supabase = await createSupabaseServerClient();
     const body = await request.json()
     const { email } = body
 
