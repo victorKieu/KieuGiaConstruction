@@ -219,18 +219,18 @@ export async function submitAttendanceRequest(payload: any) {
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Vui lòng đăng nhập." };
-
+        console.log("Thông tin nhân viên gửi đơn:", user);
         // Insert đơn từ
         const { error } = await supabase.from('attendance_requests').insert({
             employee_id: user.id, // Auth_id của nhân viên
             ...payload
         });
         if (error) throw error;
-
+       
         // ✅ BẮN THÔNG BÁO CHO QUẢN LÝ
         // 1. Lấy thông tin người gửi & ID Quản lý trực tiếp
         const { data: employee } = await supabase.from('employees').select('name, manager_id').eq('auth_id', user.id).single();
-
+        console.log("Thông tin nhân viên gửi đơn:", employee);
         if (employee && employee.manager_id) {
             // 2. Lấy auth_id của Quản lý để gửi thông báo
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();

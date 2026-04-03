@@ -21,7 +21,7 @@ export async function getProjectSurveys(projectId: string) {
         *,
         created_by:employees (
             name,
-            user_profiles ( avatar_url )
+            user_profiles!employees_id_fkey ( avatar_url ) 
         )
     `)
         .eq("project_id", projectId)
@@ -48,7 +48,7 @@ export async function getSurveyTasks(surveyId: string) {
             assigned_to:employees ( 
                 id,
                 name, 
-                user_profiles ( avatar_url ) 
+                user_profiles!employees_id_fkey ( avatar_url ) 
             )
         `)
         .eq("survey_id", surveyId)
