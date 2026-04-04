@@ -4,7 +4,7 @@ import type { Session, User, SupabaseClient, AuthChangeEvent } from "@supabase/s
 import React, { createContext, useContext, useState, useEffect } from "react";
 import supabase from '@/lib/supabase/client';
 import { Database } from "@/types/supabase";
-import Cookies from "js-cookie"; // ✅ Đã thêm lại js-cookie để đồng bộ Middleware
+// ❌ ĐÃ XÓA: import Cookies from "js-cookie"; (Không cần thiết nữa)
 import GlobalLoader from '@/components/ui/GlobalLoader';
 
 interface AuthContextProps {
@@ -40,18 +40,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(currentSession);
                 setUser(currentSession?.user ?? null);
 
-                // ✅ LOGIC QUAN TRỌNG: Ghi access_token vào cookie thủ công
-                // Giúp Middleware nhận biết user ngay cả khi reload trang
-                if (currentSession?.access_token) {
-                    Cookies.set("sb-access-token", currentSession.access_token, {
-                        path: "/",
-                        secure: process.env.NODE_ENV === "production",
-                        sameSite: "lax",
-                        expires: 7, // 7 ngày (hoặc theo cấu hình Supabase)
-                    });
-                } else {
-                    Cookies.remove("sb-access-token");
-                }
+                // ✅ ĐÃ XÓA LOGIC SET COOKIE THỦ CÔNG BẰNG JS-COOKIE
+                // @supabase/ssr tự động đồng bộ Cookie ngầm với Middleware cực chuẩn rồi!
 
                 setIsLoading(false);
             }
@@ -128,15 +118,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             if (!data) return false;
 
-            // Kiểm tra xem user có quyền đó không
-            // Lưu ý: Tùy vào cấu trúc trả về mà permissions là object hay mảng
-            // Code dưới đây giả định quan hệ One-to-Many hoặc Many-to-Many trả về mảng
             return data.some((item: any) => {
-                // Nếu permissions là mảng
                 if (Array.isArray(item.permissions)) {
                     return item.permissions.some((p: any) => p.code === permissionToCheck);
                 }
-                // Nếu permissions là object đơn lẻ
                 return item.permissions?.code === permissionToCheck;
             });
 
@@ -159,9 +144,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return (
         <AuthContext.Provider value={value}>
-            {/* ✅ Hiển thị Loader toàn màn hình khi đang xử lý (Login/Check Session) */}
             {isLoading && <GlobalLoader text="Đang xử lý..." />}
-            {children}
+            {!isLoading && children}
         </AuthContext.Provider>
     );
 };

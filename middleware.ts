@@ -14,6 +14,13 @@ export async function middleware(request: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
+            // ✅ BƯỚC 1: Khai báo cấu hình Cookie mặc định là 24h (86400 giây)
+            cookieOptions: {
+                maxAge: 86400,
+                path: "/",
+                sameSite: "lax",
+                secure: process.env.NODE_ENV === "production",
+            },
             cookies: {
                 // Lấy tất cả cookie từ browser gửi lên
                 getAll() {
@@ -24,11 +31,15 @@ export async function middleware(request: NextRequest) {
                     cookiesToSet.forEach(({ name, value, options }) => {
                         request.cookies.set(name, value);
                     });
+
                     response = NextResponse.next({
                         request,
                     });
+
                     cookiesToSet.forEach(({ name, value, options }) => {
-                        response.cookies.set(name, value, options);
+                        // ✅ BƯỚC 2: Ép cứng maxAge = 86400 mỗi khi Supabase ghi Cookie mới
+                        const finalOptions = { ...options, maxAge: 86400 };
+                        response.cookies.set(name, value, finalOptions);
                     });
                 },
             },
