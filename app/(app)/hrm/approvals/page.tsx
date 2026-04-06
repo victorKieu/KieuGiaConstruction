@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Check, X, Clock, AlertCircle, CalendarDays, Loader2, User, FileText, Send } from "lucide-react";
 import { toast } from "sonner";
+import { formatDate } from "@/lib/utils/utils";
 
 // Import API đã viết từ trước
 import { getPendingRequests, processAttendanceRequest } from "@/lib/action/attendanceActions";
@@ -109,7 +110,8 @@ export default function ApprovalDashboardPage() {
                                             <Icon className="w-3 h-3 mr-1" /> {typeInfo.label}
                                         </Badge>
                                         <span className="text-[11px] text-slate-400 font-medium">
-                                            {new Date(req.created_at).toLocaleDateString('vi-VN')}
+                                            {/* ✅ Fix: Dùng formatDate cho ngày tạo đơn */}
+                                            {formatDate(req.created_at)}
                                         </span>
                                     </div>
                                     <div className="font-bold text-lg text-slate-800 flex items-center">
@@ -123,8 +125,9 @@ export default function ApprovalDashboardPage() {
                                     <div className="flex justify-between items-center bg-slate-50 p-2 rounded-md border border-slate-100">
                                         <span className="text-slate-500">Ngày áp dụng:</span>
                                         <span className="font-bold text-slate-700">
-                                            {new Date(req.start_date).toLocaleDateString('vi-VN')}
-                                            {req.end_date && req.end_date !== req.start_date && ` - ${new Date(req.end_date).toLocaleDateString('vi-VN')}`}
+                                            {/* ✅ Fix: Dùng formatDate cho khoảng thời gian áp dụng */}
+                                            {formatDate(req.start_date)}
+                                            {req.end_date && req.end_date !== req.start_date && ` - ${formatDate(req.end_date)}`}
                                         </span>
                                     </div>
 

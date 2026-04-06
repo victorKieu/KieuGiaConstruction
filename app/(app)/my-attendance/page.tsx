@@ -14,6 +14,16 @@ import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
 import { MobileCheckIn } from "@/components/hrm/MobileCheckIn";
 
+// ✅ Import hàm format ngày của sếp
+import { formatDate } from "@/lib/utils/utils";
+
+// ✅ Import thư viện làm Lịch (Date Range Picker)
+import { format } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils/utils";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
 // Import các hàm API Backend thật
 import { getMyAttendanceRecords, submitAttendanceRequest, getMyRequests } from "@/lib/action/attendanceActions";
 
@@ -29,7 +39,25 @@ export default function AttendancePage() {
 
     // State cho Form Nghỉ phép
     const [leaveOpen, setLeaveOpen] = useState(false);
-    const [leaveForm, setLeaveForm] = useState({ type: "", startDate: "", endDate: "", reason: "" });
+    const [leaveForm, setLeaveForm] = useState({ type: "", startDate: format(new Date(), 'yyyy-MM-dd'), endDate: format(new Date(), 'yyyy-MM-dd'), reason: "" });
+
+    // ✅ State quản lý Lịch (Date Range) cho form Xin Nghỉ
+    const [leaveDate, setLeaveDate] = useState<DateRange | undefined>({
+        from: new Date(),
+        to: new Date(),
+    });
+
+    // ✅ Đồng bộ từ Lịch sang data form để gửi API
+    useEffect(() => {
+        if (leaveDate?.from) {
+            setLeaveForm(prev => ({ ...prev, startDate: format(leaveDate.from!, 'yyyy-MM-dd') }));
+        }
+        if (leaveDate?.to) {
+            setLeaveForm(prev => ({ ...prev, endDate: format(leaveDate.to!, 'yyyy-MM-dd') }));
+        } else if (leaveDate?.from) {
+            setLeaveForm(prev => ({ ...prev, endDate: format(leaveDate.from!, 'yyyy-MM-dd') }));
+        }
+    }, [leaveDate]);
 
     // Tải dữ liệu thật khi vào trang
     useEffect(() => {
@@ -45,12 +73,10 @@ export default function AttendancePage() {
 
     // Xử lý gửi Đơn Giải trình
     const handleSubmitExplanation = async () => {
-        // Validate cơ bản
         if (!explForm.date || !explForm.type || !explForm.reason) {
             return toast.error("Vui lòng điền đủ Ngày, Loại giải trình và Lý do!");
         }
 
-        // Validate logic giờ giấc
         if (explForm.type === 'forgot_in' && !explForm.inTime) return toast.error("Vui lòng nhập Giờ VÀO thực tế!");
         if (explForm.type === 'forgot_out' && !explForm.outTime) return toast.error("Vui lòng nhập Giờ RA thực tế!");
 
@@ -67,8 +93,8 @@ export default function AttendancePage() {
 
         if (res.success) {
             toast.success(res.message);
-            setExplOpen(false); // Đóng modal
-            setExplForm({ date: "", type: "", inTime: "", outTime: "", reason: "" }); // Reset form
+            setExplOpen(false);
+            setExplForm({ date: "", type: "", inTime: "", outTime: "", reason: "" });
         } else {
             toast.error(res.error);
         }
@@ -96,8 +122,9 @@ export default function AttendancePage() {
 
         if (res.success) {
             toast.success(res.message);
-            setLeaveOpen(false); // Đóng modal
-            setLeaveForm({ type: "", startDate: "", endDate: "", reason: "" }); // Reset form
+            setLeaveOpen(false);
+            setLeaveForm({ type: "", startDate: "", endDate: "", reason: "" });
+            setLeaveDate({ from: new Date(), to: new Date() }); // Reset Lịch về hiện tại
         } else {
             toast.error(res.error);
         }
@@ -120,12 +147,10 @@ export default function AttendancePage() {
 
                 {/* TAB 1: CHẤM CÔNG */}
                 <TabsContent value="checkin" className="space-y-4 mt-4">
-                    {/* GIAO DIỆN MOBILE: Form Check-in GPS */}
                     <div className="block md:hidden">
                         <MobileCheckIn />
                     </div>
 
-                    {/* LỊCH SỬ CHẤM CÔNG (Hiển thị trên cả Desktop và có thanh cuộn ngang trên Mobile) */}
                     <Card className="shadow-sm border-slate-200">
                         <CardHeader className="bg-slate-50 border-b flex flex-row items-center justify-between py-3">
                             <div>
@@ -154,7 +179,6 @@ export default function AttendancePage() {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label>Loại giải trình <span className="text-red-500">*</span></Label>
-                                                {/* ✅ FIX: Thêm value={explForm.type} */}
                                                 <Select value={explForm.type} onValueChange={v => setExplForm({ ...explForm, type: v, inTime: "", outTime: "" })}>
                                                     <SelectTrigger><SelectValue placeholder="Chọn lý do..." /></SelectTrigger>
                                                     <SelectContent>
@@ -168,7 +192,6 @@ export default function AttendancePage() {
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <Label className={explForm.type === 'forgot_out' ? 'text-slate-400' : ''}>Giờ VÀO thực tế</Label>
-                                                    {/* ✅ FIX: Khóa ô input nếu không cần thiết */}
                                                     <Input
                                                         type="time"
                                                         value={explForm.inTime}
@@ -178,7 +201,6 @@ export default function AttendancePage() {
                                                 </div>
                                                 <div className="space-y-2">
                                                     <Label className={explForm.type === 'forgot_in' ? 'text-slate-400' : ''}>Giờ RA thực tế</Label>
-                                                    {/* ✅ FIX: Khóa ô input nếu không cần thiết */}
                                                     <Input
                                                         type="time"
                                                         value={explForm.outTime}
@@ -201,14 +223,12 @@ export default function AttendancePage() {
                                     </DialogContent>
                                 </Dialog>
 
-                                {/* Nút tải lại bảng */}
                                 <Button variant="outline" className="h-8 text-xs" onClick={loadRecords} disabled={loadingRecords}>
                                     {loadingRecords ? <Loader2 className="w-3 h-3 animate-spin" /> : "Làm mới"}
                                 </Button>
                             </div>
                         </CardHeader>
                         <CardContent className="p-0 overflow-x-auto">
-                            {/* HIỂN THỊ DỮ LIỆU THẬT */}
                             {loadingRecords ? (
                                 <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
                             ) : (
@@ -230,7 +250,7 @@ export default function AttendancePage() {
                                 </CardTitle>
                             </div>
 
-                            {/* DIALOG XIN NGHỈ PHÉP (GIỮ NGUYÊN CODE DIALOG CŨ Ở ĐÂY) */}
+                            {/* DIALOG XIN NGHỈ PHÉP VỚI LỊCH (DATE RANGE) XỊN XÒ */}
                             <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="bg-emerald-600 hover:bg-emerald-700 h-8 text-xs shadow-sm">
@@ -256,16 +276,47 @@ export default function AttendancePage() {
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <Label>Từ ngày <span className="text-red-500">*</span></Label>
-                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label>Đến ngày <span className="text-red-500">*</span></Label>
-                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} />
-                                            </div>
+
+                                        {/* ✅ NÂNG CẤP LÊN DATE RANGE PICKER CHUẨN UX */}
+                                        <div className="space-y-2 flex flex-col">
+                                            <Label>Thời gian áp dụng <span className="text-red-500">*</span></Label>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        id="date"
+                                                        variant={"outline"}
+                                                        className={cn(
+                                                            "w-full justify-start text-left font-normal",
+                                                            !leaveDate && "text-muted-foreground"
+                                                        )}
+                                                    >
+                                                        <CalendarDays className="mr-2 h-4 w-4" />
+                                                        {leaveDate?.from ? (
+                                                            leaveDate.to && leaveDate.to.getTime() !== leaveDate.from.getTime() ? (
+                                                                <>
+                                                                    {format(leaveDate.from!, "dd/MM/yyyy")} - {format(leaveDate.to!, "dd/MM/yyyy")}
+                                                                </>
+                                                            ) : (
+                                                                format(leaveDate.from!, "dd/MM/yyyy")
+                                                            )
+                                                        ) : (
+                                                            <span>Chọn khoảng ngày nghỉ</span>
+                                                        )}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar
+                                                        initialFocus
+                                                        mode="range"
+                                                        defaultMonth={leaveDate?.from}
+                                                        selected={leaveDate}
+                                                        onSelect={setLeaveDate}
+                                                        numberOfMonths={2}
+                                                    />
+                                                </PopoverContent>
+                                            </Popover>
                                         </div>
+
                                         <div className="space-y-2">
                                             <Label>Lý do chi tiết <span className="text-red-500">*</span></Label>
                                             <Textarea placeholder="Nêu rõ lý do xin nghỉ..." className="h-24" value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
@@ -289,7 +340,10 @@ export default function AttendancePage() {
         </div>
     );
 }
+
+// ====================================================================================
 // Component hiển thị danh sách đơn cá nhân
+// ====================================================================================
 function PersonalRequestsList() {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -328,14 +382,22 @@ function PersonalRequestsList() {
                                 {req.request_type === 'leave' ? 'Đơn Xin Nghỉ Phép' : 'Đơn Giải Trình'}
                             </span>
                             <span className="text-xs text-slate-500 ml-2">
-                                (Ngày gửi: {new Date(req.created_at).toLocaleDateString('vi-VN')})
+                                {/* ✅ FIX: Dùng formatDate thay thế toLocaleDateString */}
+                                (Ngày gửi: {formatDate(req.created_at)})
                             </span>
                         </div>
                         {getStatusStyle(req.status)}
                     </div>
                     <div className="text-sm text-slate-600 bg-white p-3 rounded border border-slate-100 shadow-sm">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                            <div><span className="text-slate-400">Ngày áp dụng: </span><span className="font-medium text-slate-700">{new Date(req.start_date).toLocaleDateString('vi-VN')} {req.end_date && ` - ${new Date(req.end_date).toLocaleDateString('vi-VN')}`}</span></div>
+                            <div>
+                                <span className="text-slate-400">Ngày áp dụng: </span>
+                                {/* ✅ FIX: Dùng formatDate thay thế toLocaleDateString */}
+                                <span className="font-medium text-slate-700">
+                                    {formatDate(req.start_date)}
+                                    {req.end_date && req.end_date !== req.start_date && ` - ${formatDate(req.end_date)}`}
+                                </span>
+                            </div>
                             {req.request_type === 'explanation' && (req.actual_in_time || req.actual_out_time) && (
                                 <div><span className="text-slate-400">Giờ khai báo: </span><span className="font-medium text-blue-600">{req.actual_in_time?.substring(0, 5) || '--:--'} đến {req.actual_out_time?.substring(0, 5) || '--:--'}</span></div>
                             )}

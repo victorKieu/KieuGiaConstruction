@@ -9,8 +9,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Clock, LogIn, LogOut } from "lucide-react";
+import { format, parseISO, isValid } from "date-fns"; // ✅ Import date-fns để format ngày chuẩn
 
-// ✅ Cập nhật Interface: Thêm trường location (Tọa độ GPS)
 export interface AttendanceRecord {
     id: string;
     date: string;
@@ -30,19 +30,33 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
 
     // Hàm render Badge màu sắc theo trạng thái
     const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'Đủ công':
-                return <Badge className="bg-emerald-500 hover:bg-emerald-600">Đủ công</Badge>;
-            case 'Đi trễ':
-            case 'Về sớm':
-                return <Badge className="bg-amber-500 hover:bg-amber-600">{status}</Badge>;
-            case 'Nửa công':
-                return <Badge className="bg-blue-500 hover:bg-blue-600">Nửa công</Badge>;
-            case 'Vắng mặt':
-            case 'Nghỉ phép':
-                return <Badge className="bg-rose-500 hover:bg-rose-600">{status}</Badge>;
-            default:
-                return <Badge variant="outline" className="text-slate-500">{status}</Badge>;
+        // Gom các trạng thái tương đồng vào một màu cho gọn
+        if (status.includes('Đủ công')) return <Badge className="bg-emerald-500 hover:bg-emerald-600">Đủ công</Badge>;
+        if (status.includes('Đi muộn') || status.includes('Về sớm') || status.includes('Đi trễ')) return <Badge className="bg-amber-500 hover:bg-amber-600">{status}</Badge>;
+        if (status.includes('Nửa công')) return <Badge className="bg-blue-500 hover:bg-blue-600">Nửa công</Badge>;
+        if (status.includes('Tăng ca (OT)')) return <Badge className="bg-teal-500 hover:bg-teal-600">Tăng ca (OT)</Badge>;
+        if (status.includes('Nghỉ (P)') || status.includes('Nghỉ lễ/Tết (L)')) return <Badge className="bg-violet-500 hover:bg-violet-600">{status}</Badge>;
+        if (status.includes('Nghỉ không lương (UL)') || status.includes('Vắng mặt')) return <Badge className="bg-rose-500 hover:bg-rose-600">{status}</Badge>;
+        if (status.includes('Công tác (CT)')) return <Badge className="bg-indigo-500 hover:bg-indigo-600">Công tác (CT)</Badge>;
+        if (status.includes('Quên chấm công (QC)')) return <Badge className="bg-slate-600 hover:bg-slate-700">Quên CC (QC)</Badge>;
+        if (status.includes('Đang làm việc')) return <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 animate-pulse">Đang làm việc</Badge>;
+
+        // Default
+        return <Badge variant="outline" className="text-slate-500">{status}</Badge>;
+    };
+
+    // ✅ Hàm format ngày an toàn (Xử lý cả chuỗi ISO lẫn YYYY-MM-DD)
+    const formatDisplayDate = (dateString: string) => {
+        if (!dateString) return "-";
+        try {
+            // Thử parse chuỗi ngày (VD: "2026-04-06")
+            const parsedDate = new Date(dateString);
+            if (isValid(parsedDate)) {
+                return format(parsedDate, 'dd/MM/yyyy'); // Ép ra chuẩn 06/04/2026
+            }
+            return dateString; // Nếu lỗi thì trả về chuỗi gốc
+        } catch (e) {
+            return dateString;
         }
     };
 
@@ -57,7 +71,7 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
     }
 
     return (
-        <div className="w-full overflow-x-auto bg-white rounded-b-lg">
+        <div className="w-full overflow-x-auto bg-white rounded-b-lg shadow-sm border border-slate-200">
             <Table>
                 <TableHeader>
                     <TableRow className="bg-slate-100 border-b-2 border-slate-200">
@@ -73,9 +87,9 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
                 <TableBody>
                     {records.map((r) => (
                         <TableRow key={r.id} className="hover:bg-slate-50 transition-colors">
-                            {/* Ngày */}
+                            {/* ✅ Ngày (Đã được format qua hàm) */}
                             <TableCell className="font-medium text-slate-700">
-                                {r.date}
+                                {formatDisplayDate(r.date)}
                             </TableCell>
 
                             {/* Mã NV */}

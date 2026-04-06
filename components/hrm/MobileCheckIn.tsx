@@ -36,8 +36,11 @@ export function MobileCheckIn() {
 
                 toast.loading("Đang gửi dữ liệu chấm công...", { id: "checkin-process" });
 
-                // Gọi API Server Action
-                const res = await submitMobileCheckIn({ lat: latitude, lng: longitude });
+                // ✅ ĐÃ FIX: Chỉ gửi lat và lng, Server sẽ tự lo phần thời gian và múi giờ!
+                const res = await submitMobileCheckIn({
+                    lat: latitude,
+                    lng: longitude
+                });
 
                 if (res.success) {
                     toast.success("Chấm công thành công!", { id: "checkin-process" });
