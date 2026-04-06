@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/utils";
 import tzlookup from "tz-lookup";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
+import { sendPushToUser } from "@/lib/action/pushNotification";
 
 // ============================================================================
 // 1. HÀM TÍNH KHOẢNG CÁCH (HAVERSINE)
@@ -270,27 +271,37 @@ export async function submitAttendanceRequest(payload: any) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Vui lòng đăng nhập." };
 
-        // Insert đơn từ
+        // 1. Insert đơn từ vào database
         const { error } = await supabase.from('attendance_requests').insert({
             employee_id: user.id,
             ...payload
         });
         if (error) throw error;
 
-        // BẮN THÔNG BÁO CHO QUẢN LÝ
+        // 2. TÌM QUẢN LÝ & BẮN THÔNG BÁO
         const { data: employee } = await supabase.from('employees').select('name, manager_id').eq('auth_id', user.id).single();
+
         if (employee && employee.manager_id) {
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
 
             if (manager && manager.auth_id) {
                 const reqTypeName = payload.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
+
+                // Chuẩn bị nội dung thông báo
+                const notifTitle = `Có đơn ${reqTypeName} mới cần duyệt`;
+                const notifMessage = `Nhân viên ${employee.name} vừa gửi đơn ${reqTypeName} cho ngày ${formatDate(payload.start_date)}. Vui lòng kiểm tra!`;
+                const notifLink = '/hrm/approvals';
+
+                // A. Lưu vào chuông thông báo (In-app)
                 await supabase.from('notifications').insert({
                     user_id: manager.auth_id,
-                    title: `Có đơn ${reqTypeName} mới cần duyệt`,
-                    // ✅ Đã fix: Dùng formatDate trong nội dung thông báo
-                    message: `Nhân viên ${employee.name} vừa gửi đơn ${reqTypeName} cho ngày ${formatDate(payload.start_date)}. Vui lòng kiểm tra!`,
-                    link: '/hrm/approvals'
+                    title: notifTitle,
+                    message: notifMessage,
+                    link: notifLink
                 });
+
+                // B. Bắn Push Notification xuống điện thoại của Quản lý 🚀
+                await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
             }
         }
 
@@ -391,13 +402,16 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
         const { data: request, error: reqError } = await supabase.from('attendance_requests').select('*').eq('id', requestId).single();
         if (reqError || !request) throw new Error("Không tìm thấy đơn từ.");
 
+        // 1. CẬP NHẬT TRẠNG THÁI ĐƠN
+        await supabase.from('attendance_requests').update({ status: newStatus }).eq('id', requestId);
+
+        // 2. LOGIC VÁ BẢNG CÔNG (Áp dụng nếu được Approved)
         if (newStatus === 'approved') {
             if (request.request_type === 'explanation') {
-                // 1. DUYỆT ĐƠN GIẢI TRÌNH
+                // --- Xử lý Đơn giải trình ---
                 const { data: record } = await supabase.from('attendance_records').select('*').eq('employee_id', request.employee_id).eq('date', request.start_date).single();
                 const formatTimeStr = (t: string) => t.length > 5 ? t.substring(0, 5) : t;
 
-                // Xác định mã sau khi duyệt
                 let finalStatus = 'Đủ công';
                 if (request.sub_type === 'field_work') finalStatus = 'Công tác (CT)';
 
@@ -411,6 +425,7 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
 
                     const inTime = updateData.check_in_time || record.check_in_time;
                     const outTime = updateData.check_out_time || record.check_out_time;
+
                     if (inTime && outTime) {
                         let diffMs = new Date(outTime).getTime() - new Date(inTime).getTime();
                         let wHours = diffMs / (1000 * 60 * 60);
@@ -437,31 +452,24 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
                     }
                 }
             } else if (request.request_type === 'leave') {
-                // 2. DUYỆT ĐƠN NGHỈ PHÉP (Tự động rải phép vào bảng chấm công)
+                // --- Xử lý Đơn nghỉ phép ---
                 let leaveStatus = 'Nghỉ (P)';
-                let workingHoursToLog = 8; // Điền mặc định 8h để ko bị tính mất công nếu là P
+                let workingHoursToLog = 8;
 
                 if (request.sub_type === 'unpaid') {
                     leaveStatus = 'Nghỉ không lương (UL)';
                     workingHoursToLog = 0;
                 }
 
-                // Chạy vòng lặp từ ngày bắt đầu đến ngày kết thúc
                 let currDate = new Date(request.start_date);
                 const endDate = new Date(request.end_date || request.start_date);
 
                 while (currDate <= endDate) {
                     const dateStr = currDate.toISOString().split('T')[0];
-
-                    // Kiểm tra xem ngày này đã có record chưa
-                    const { data: extRecord } = await supabase.from('attendance_records')
-                        .select('id').eq('employee_id', request.employee_id).eq('date', dateStr).maybeSingle();
+                    const { data: extRecord } = await supabase.from('attendance_records').select('id').eq('employee_id', request.employee_id).eq('date', dateStr).maybeSingle();
 
                     if (extRecord) {
-                        await supabase.from('attendance_records').update({
-                            status: leaveStatus,
-                            working_hours: workingHoursToLog
-                        }).eq('id', extRecord.id);
+                        await supabase.from('attendance_records').update({ status: leaveStatus, working_hours: workingHoursToLog }).eq('id', extRecord.id);
                     } else {
                         await supabase.from('attendance_records').insert({
                             employee_id: request.employee_id,
@@ -475,16 +483,25 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
             }
         }
 
+        // 3. THÔNG BÁO KẾT QUẢ CHO NHÂN VIÊN
         const statusText = newStatus === 'approved' ? 'ĐÃ ĐƯỢC DUYỆT' : 'ĐÃ BỊ TỪ CHỐI';
         const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
 
+        // Chuẩn bị nội dung thông báo
+        const notifTitle = `Cập nhật trạng thái đơn ${reqTypeName}`;
+        const notifMessage = `Đơn xin ${reqTypeName} của bạn (áp dụng ngày ${formatDate(request.start_date)}) ${statusText}. ${adminNotes ? `Ghi chú: ${adminNotes}` : ''}`;
+        const notifLink = '/my-attendance?tab=requests';
+
+        // A. Lưu vào chuông (In-app)
         await supabase.from('notifications').insert({
             user_id: request.employee_id,
-            title: `Cập nhật trạng thái đơn ${reqTypeName}`,
-            // ✅ Đã fix: Dùng formatDate trong thông báo trả về
-            message: `Đơn xin ${reqTypeName} của bạn (áp dụng ngày ${formatDate(request.start_date)}) ${statusText}. ${adminNotes ? `Ghi chú: ${adminNotes}` : ''}`,
-            link: '/my-attendance?tab=requests'
+            title: notifTitle,
+            message: notifMessage,
+            link: notifLink
         });
+
+        // B. Bắn Push Notification xuống điện thoại nhân viên 🚀
+        await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
 
         return { success: true, message: newStatus === 'approved' ? 'Đã duyệt đơn và vá bảng công!' : 'Đã từ chối đơn.' };
     } catch (e: any) {
