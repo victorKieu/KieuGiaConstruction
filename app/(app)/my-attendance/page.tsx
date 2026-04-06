@@ -13,16 +13,8 @@ import { CalendarDays, AlertCircle, Send, History, FileEdit, Plus, Loader2 } fro
 import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
 import { MobileCheckIn } from "@/components/hrm/MobileCheckIn";
-
-// ✅ Import hàm format ngày của sếp
 import { formatDate } from "@/lib/utils/utils";
-
-// ✅ Import thư viện làm Lịch (Date Range Picker)
-import { format } from "date-fns";
-import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils/utils";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Import các hàm API Backend thật
 import { getMyAttendanceRecords, submitAttendanceRequest, getMyRequests } from "@/lib/action/attendanceActions";
@@ -37,27 +29,14 @@ export default function AttendancePage() {
     const [explOpen, setExplOpen] = useState(false);
     const [explForm, setExplForm] = useState({ date: "", type: "", inTime: "", outTime: "", reason: "" });
 
-    // State cho Form Nghỉ phép
+    // State cho Form Nghỉ phép (Đã chuyển sang dùng Date chuẩn thay vì Lịch phức tạp để Mobile dễ chọn)
     const [leaveOpen, setLeaveOpen] = useState(false);
-    const [leaveForm, setLeaveForm] = useState({ type: "", startDate: format(new Date(), 'yyyy-MM-dd'), endDate: format(new Date(), 'yyyy-MM-dd'), reason: "" });
-
-    // ✅ State quản lý Lịch (Date Range) cho form Xin Nghỉ
-    const [leaveDate, setLeaveDate] = useState<DateRange | undefined>({
-        from: new Date(),
-        to: new Date(),
+    const [leaveForm, setLeaveForm] = useState({
+        type: "",
+        startDate: new Date().toLocaleDateString('en-CA'),
+        endDate: new Date().toLocaleDateString('en-CA'),
+        reason: ""
     });
-
-    // ✅ Đồng bộ từ Lịch sang data form để gửi API
-    useEffect(() => {
-        if (leaveDate?.from) {
-            setLeaveForm(prev => ({ ...prev, startDate: format(leaveDate.from!, 'yyyy-MM-dd') }));
-        }
-        if (leaveDate?.to) {
-            setLeaveForm(prev => ({ ...prev, endDate: format(leaveDate.to!, 'yyyy-MM-dd') }));
-        } else if (leaveDate?.from) {
-            setLeaveForm(prev => ({ ...prev, endDate: format(leaveDate.from!, 'yyyy-MM-dd') }));
-        }
-    }, [leaveDate]);
 
     // Tải dữ liệu thật khi vào trang
     useEffect(() => {
@@ -123,8 +102,7 @@ export default function AttendancePage() {
         if (res.success) {
             toast.success(res.message);
             setLeaveOpen(false);
-            setLeaveForm({ type: "", startDate: "", endDate: "", reason: "" });
-            setLeaveDate({ from: new Date(), to: new Date() });
+            setLeaveForm({ type: "", startDate: new Date().toLocaleDateString('en-CA'), endDate: new Date().toLocaleDateString('en-CA'), reason: "" });
         } else {
             toast.error(res.error);
         }
@@ -248,11 +226,11 @@ export default function AttendancePage() {
                         <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3 transition-colors">
                             <div>
                                 <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center transition-colors">
-                                    <CalendarDays className="w-4 h-4 mr-2 text-emerald-600 dark:text-emerald-500" /> Danh sách Đơn xin nghỉ / Giải trình
+                                    <CalendarDays className="w-4 h-4 mr-2 text-emerald-600 dark:text-emerald-500" /> Danh sách Đơn xin nghỉ
                                 </CardTitle>
                             </div>
 
-                            {/* DIALOG XIN NGHỈ PHÉP VỚI LỊCH (DATE RANGE) XỊN XÒ */}
+                            {/* DIALOG XIN NGHỈ PHÉP (Sử dụng 2 ô Date Input chuẩn UX Mobile) */}
                             <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs shadow-sm">
@@ -279,45 +257,26 @@ export default function AttendancePage() {
                                             </Select>
                                         </div>
 
-                                        {/* ✅ NÂNG CẤP LÊN DATE RANGE PICKER CHUẨN UX */}
-                                        <div className="space-y-2 flex flex-col">
-                                            <Label className="dark:text-slate-300">Thời gian áp dụng <span className="text-red-500">*</span></Label>
-                                            <Popover>
-                                                <PopoverTrigger asChild>
-                                                    <Button
-                                                        id="date"
-                                                        variant={"outline"}
-                                                        className={cn(
-                                                            "w-full justify-start text-left font-normal",
-                                                            "dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900",
-                                                            !leaveDate && "text-muted-foreground"
-                                                        )}
-                                                    >
-                                                        <CalendarDays className="mr-2 h-4 w-4" />
-                                                        {leaveDate?.from ? (
-                                                            leaveDate.to && leaveDate.to.getTime() !== leaveDate.from.getTime() ? (
-                                                                <>
-                                                                    {format(leaveDate.from!, "dd/MM/yyyy")} - {format(leaveDate.to!, "dd/MM/yyyy")}
-                                                                </>
-                                                            ) : (
-                                                                format(leaveDate.from!, "dd/MM/yyyy")
-                                                            )
-                                                        ) : (
-                                                            <span>Chọn khoảng ngày nghỉ</span>
-                                                        )}
-                                                    </Button>
-                                                </PopoverTrigger>
-                                                <PopoverContent className="w-auto p-0 dark:bg-slate-900 dark:border-slate-800" align="start">
-                                                    <Calendar
-                                                        initialFocus
-                                                        mode="range"
-                                                        defaultMonth={leaveDate?.from}
-                                                        selected={leaveDate}
-                                                        onSelect={setLeaveDate}
-                                                        numberOfMonths={2}
-                                                    />
-                                                </PopoverContent>
-                                            </Popover>
+                                        {/* Chuyển DateRange phức tạp thành 2 ô Input Date đơn giản */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label className="dark:text-slate-300">Từ ngày <span className="text-red-500">*</span></Label>
+                                                <Input
+                                                    type="date"
+                                                    value={leaveForm.startDate}
+                                                    onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
+                                                    className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="dark:text-slate-300">Đến ngày <span className="text-red-500">*</span></Label>
+                                                <Input
+                                                    type="date"
+                                                    value={leaveForm.endDate}
+                                                    onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                                                    className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"
+                                                />
+                                            </div>
                                         </div>
 
                                         <div className="space-y-2">
