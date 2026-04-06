@@ -52,55 +52,55 @@ export default function HRMAttendancePage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Bảng Tổng Hợp Chấm Công</h1>
-                    <p className="text-sm text-slate-500">Quản lý thời gian làm việc của toàn bộ nhân sự trong công ty</p>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 transition-colors">Bảng Tổng Hợp Chấm Công</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 transition-colors">Quản lý thời gian làm việc của toàn bộ nhân sự trong công ty</p>
                 </div>
-                <Button className="bg-emerald-600 hover:bg-emerald-700">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors">
                     <Download className="w-4 h-4 mr-2" /> Xuất Excel (Tính lương)
                 </Button>
             </div>
 
             {/* Thống kê nhanh (Cards) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="shadow-sm border-blue-100 bg-blue-50/50">
+                <Card className="shadow-sm border-blue-100 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-900/10 transition-colors">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-medium text-blue-600 mb-1">Tổng lượt chấm công</p>
-                            <h3 className="text-3xl font-bold text-blue-900">{stats.total}</h3>
+                            <p className="text-sm font-medium text-blue-600 dark:text-blue-400 mb-1">Tổng lượt chấm công</p>
+                            <h3 className="text-3xl font-bold text-blue-900 dark:text-blue-100">{stats.total}</h3>
                         </div>
-                        <div className="p-3 bg-blue-100 rounded-full"><Users className="w-6 h-6 text-blue-600" /></div>
+                        <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full transition-colors"><Users className="w-6 h-6 text-blue-600 dark:text-blue-400" /></div>
                     </CardContent>
                 </Card>
-                <Card className="shadow-sm border-emerald-100 bg-emerald-50/50">
+                <Card className="shadow-sm border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-900/10 transition-colors">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-medium text-emerald-600 mb-1">Đúng giờ / Đủ công</p>
-                            <h3 className="text-3xl font-bold text-emerald-900">{stats.onTime}</h3>
+                            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 mb-1">Đúng giờ / Đủ công</p>
+                            <h3 className="text-3xl font-bold text-emerald-900 dark:text-emerald-100">{stats.onTime}</h3>
                         </div>
-                        <div className="p-3 bg-emerald-100 rounded-full"><CheckCircle2 className="w-6 h-6 text-emerald-600" /></div>
+                        <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-full transition-colors"><CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" /></div>
                     </CardContent>
                 </Card>
-                <Card className="shadow-sm border-orange-100 bg-orange-50/50">
+                <Card className="shadow-sm border-orange-100 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-900/10 transition-colors">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-medium text-orange-600 mb-1">Đi trễ / Về sớm</p>
-                            <h3 className="text-3xl font-bold text-orange-900">{stats.late}</h3>
+                            <p className="text-sm font-medium text-orange-600 dark:text-orange-400 mb-1">Đi trễ / Về sớm</p>
+                            <h3 className="text-3xl font-bold text-orange-900 dark:text-orange-100">{stats.late}</h3>
                         </div>
-                        <div className="p-3 bg-orange-100 rounded-full"><AlertTriangle className="w-6 h-6 text-orange-600" /></div>
+                        <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full transition-colors"><AlertTriangle className="w-6 h-6 text-orange-600 dark:text-orange-400" /></div>
                     </CardContent>
                 </Card>
             </div>
 
             {/* Bảng dữ liệu & Bộ lọc */}
-            <Card className="shadow-sm border-slate-200">
-                <CardHeader className="bg-slate-50 border-b py-4">
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">
+                <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 py-4 transition-colors">
                     <div className="flex flex-col md:flex-row justify-between gap-4">
                         {/* Cụm Tìm kiếm */}
                         <div className="relative w-full md:w-[300px]">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400 dark:text-slate-500" />
                             <Input
                                 placeholder="Tìm mã NV hoặc tên... (Enter để lọc)"
-                                className="pl-9 bg-white"
+                                className="pl-9 bg-white dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 focus-visible:ring-blue-500 transition-colors"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyDown={handleSearch}
@@ -110,8 +110,8 @@ export default function HRMAttendancePage() {
                         {/* Cụm Lọc Thời gian */}
                         <div className="flex gap-2">
                             <Select value={month} onValueChange={setMonth}>
-                                <SelectTrigger className="w-[130px] bg-white">
-                                    <Clock className="w-4 h-4 mr-2 text-slate-400" />
+                                <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors">
+                                    <Clock className="w-4 h-4 mr-2 text-slate-400 dark:text-slate-500" />
                                     <SelectValue placeholder="Tháng" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -122,7 +122,7 @@ export default function HRMAttendancePage() {
                             </Select>
 
                             <Select value={year} onValueChange={setYear}>
-                                <SelectTrigger className="w-[110px] bg-white">
+                                <SelectTrigger className="w-[110px] bg-white dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors">
                                     <SelectValue placeholder="Năm" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -132,7 +132,7 @@ export default function HRMAttendancePage() {
                                 </SelectContent>
                             </Select>
 
-                            <Button variant="outline" onClick={loadData} className="px-3">
+                            <Button variant="outline" onClick={loadData} className="px-3 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900 dark:text-slate-200 transition-colors">
                                 Lọc
                             </Button>
                         </div>
@@ -141,12 +141,12 @@ export default function HRMAttendancePage() {
                 <CardContent className="p-0">
                     {isLoading ? (
                         <div className="p-12 flex justify-center flex-col items-center">
-                            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-4" />
-                            <p className="text-slate-500">Đang tải dữ liệu chấm công...</p>
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500 mb-4" />
+                            <p className="text-slate-500 dark:text-slate-400">Đang tải dữ liệu chấm công...</p>
                         </div>
                     ) : records.length === 0 ? (
-                        <div className="p-12 text-center text-slate-500 bg-white">
-                            <Users className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                        <div className="p-12 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 transition-colors">
+                            <Users className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
                             <p>Không có dữ liệu chấm công nào trong tháng {month}/{year}.</p>
                         </div>
                     ) : (

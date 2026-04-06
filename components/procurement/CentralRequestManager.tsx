@@ -43,30 +43,32 @@ export default function CentralRequestManager({ allRequests }: Props) {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-in fade-in duration-500 transition-colors">
             {/* TOOLBAR */}
-            <div className="flex flex-col md:flex-row gap-4 justify-between items-end md:items-center bg-white p-4 rounded-xl border shadow-sm">
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-end md:items-center bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                 <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
                     <div className="w-full md:w-[300px]">
-                        <Label className="text-xs mb-1.5 block text-slate-500 font-medium">Tìm kiếm</Label>
+                        <Label className="text-xs mb-1.5 block text-slate-500 dark:text-slate-400 font-medium transition-colors">Tìm kiếm</Label>
                         <div className="relative">
-                            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400 dark:text-slate-500 transition-colors" />
                             <Input
                                 placeholder="Mã phiếu, tên dự án..."
-                                className="pl-9 bg-slate-50"
+                                className="pl-9 bg-slate-50 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
                             />
                         </div>
                     </div>
                     <div className="w-full md:w-[250px]">
-                        <Label className="text-xs mb-1.5 block text-slate-500 font-medium">Lọc theo Dự án</Label>
+                        <Label className="text-xs mb-1.5 block text-slate-500 dark:text-slate-400 font-medium transition-colors">Lọc theo Dự án</Label>
                         <Select value={filterProject} onValueChange={setFilterProject}>
-                            <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">-- Tất cả dự án --</SelectItem>
+                            <SelectTrigger className="bg-slate-50 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                <SelectItem value="all" className="dark:text-slate-200">-- Tất cả dự án --</SelectItem>
                                 {uniqueProjects.map(([id, name]) => (
-                                    <SelectItem key={id} value={id}>{name}</SelectItem>
+                                    <SelectItem key={id} value={id} className="dark:text-slate-200">{name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -75,37 +77,47 @@ export default function CentralRequestManager({ allRequests }: Props) {
             </div>
 
             {/* DANH SÁCH YÊU CẦU */}
-            <Card className="border-none shadow-sm overflow-hidden bg-white">
+            <Card className="border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden bg-white dark:bg-slate-950 transition-colors">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-slate-50 border-b-slate-100">
-                            <TableHead>Mã YC</TableHead>
-                            <TableHead>Dự án</TableHead>
-                            <TableHead>Ngày tạo</TableHead>
-                            <TableHead>Người yêu cầu</TableHead>
-                            <TableHead>Trạng thái</TableHead>
-                            <TableHead className="text-right">Tác vụ</TableHead>
+                        <TableRow className="bg-slate-50 dark:bg-slate-900 border-b-slate-100 dark:border-b-slate-800 transition-colors hover:bg-slate-50 dark:hover:bg-slate-900">
+                            <TableHead className="font-bold text-slate-700 dark:text-slate-300">Mã YC</TableHead>
+                            <TableHead className="font-bold text-slate-700 dark:text-slate-300">Dự án</TableHead>
+                            <TableHead className="font-bold text-slate-700 dark:text-slate-300">Ngày tạo</TableHead>
+                            <TableHead className="font-bold text-slate-700 dark:text-slate-300">Người yêu cầu</TableHead>
+                            <TableHead className="font-bold text-slate-700 dark:text-slate-300">Trạng thái</TableHead>
+                            <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Tác vụ</TableHead>
                         </TableRow>
                     </TableHeader>
-                    <TableBody>
+                    <TableBody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
                         {filteredRequests.length === 0 ? (
-                            <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-500">Không có dữ liệu.</TableCell></TableRow>
-                        ) : filteredRequests.map((req) => (
-                            <TableRow key={req.id} className="hover:bg-slate-50">
-                                <TableCell className="font-mono font-bold text-blue-600">{req.code}</TableCell>
-                                <TableCell>
-                                    <div className="font-semibold text-slate-700 text-sm">{req.project?.name}</div>
-                                    <div className="text-[10px] text-slate-400 font-mono">{req.project?.code}</div>
+                            <TableRow>
+                                <TableCell colSpan={6} className="text-center py-10 text-slate-500 dark:text-slate-400 italic">
+                                    Không có dữ liệu.
                                 </TableCell>
-                                <TableCell>{new Date(req.created_at).toLocaleDateString('vi-VN')}</TableCell>
-                                <TableCell>{req.requester?.name || '---'}</TableCell>
+                            </TableRow>
+                        ) : filteredRequests.map((req) => (
+                            <TableRow key={req.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-none transition-colors">
+                                <TableCell className="font-mono font-bold text-blue-600 dark:text-blue-400 transition-colors">{req.code}</TableCell>
                                 <TableCell>
-                                    <Badge variant={req.status === 'processing' ? 'secondary' : 'default'}>
-                                        {req.status === 'processing' ? 'Đang xử lý' : 'Chờ đặt hàng'}
-                                    </Badge>
+                                    <div className="font-semibold text-slate-700 dark:text-slate-200 text-sm transition-colors">{req.project?.name}</div>
+                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono transition-colors">{req.project?.code}</div>
+                                </TableCell>
+                                <TableCell className="text-slate-700 dark:text-slate-300">
+                                    {new Date(req.created_at).toLocaleDateString('vi-VN')}
+                                </TableCell>
+                                <TableCell className="text-slate-700 dark:text-slate-300">
+                                    {req.requester?.name || '---'}
+                                </TableCell>
+                                <TableCell>
+                                    {req.status === 'processing' ? (
+                                        <Badge variant="secondary" className="dark:bg-slate-800 dark:text-slate-300 border-none transition-colors">Đang xử lý</Badge>
+                                    ) : (
+                                        <Badge variant="default" className="bg-slate-900 dark:bg-slate-100 dark:text-slate-900 border-none transition-colors">Chờ đặt hàng</Badge>
+                                    )}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Button size="sm" onClick={() => handleCreatePO(req.id)} className="bg-blue-600 hover:bg-blue-700 h-8">
+                                    <Button size="sm" onClick={() => handleCreatePO(req.id)} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-8 transition-colors">
                                         <ShoppingCart className="w-3.5 h-3.5 mr-1.5" /> Tạo PO
                                     </Button>
                                 </TableCell>

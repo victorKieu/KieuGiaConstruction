@@ -2,15 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "./authActions";
 import { isValidUUID } from "@/lib/utils/uuid";
 import type { ActionResponse } from "@/lib/action/projectActions";
+import { getUserProfile } from "@/lib/supabase/getUserProfile"; // ✅ Import hàm xịn của sếp
 
+// --- 1. ACTIONS (READ) ---
 
 export async function getProjectSurveys(projectId: string) {
     const supabase = await createSupabaseServerClient();
 
-    // Validate input trước khi query
     if (!isValidUUID(projectId)) {
         return { data: null, error: { message: "Project ID không hợp lệ", code: "400" } };
     }
@@ -63,20 +63,26 @@ export async function getSurveyTasks(surveyId: string) {
 
 // --- 2. ACTIONS (WRITE) ---
 
-// Helper để check Auth nhanh gọn
+// ✅ Helper lấy chuẩn Profile và Entity ID
 async function checkAuth() {
-    const user = await getCurrentUser();
-    if (!user) throw new Error("Bạn cần đăng nhập để thực hiện thao tác này.");
-    return user;
+    const userProfile = await getUserProfile();
+    if (!userProfile || !userProfile.isAuthenticated) {
+        throw new Error("Bạn cần đăng nhập để thực hiện thao tác này.");
+    }
+    if (!userProfile.entityId) {
+        throw new Error("Tài khoản của bạn chưa được liên kết với hồ sơ nhân viên chính thức.");
+    }
+    return userProfile;
 }
 
 export async function createSurvey(
-    prevState: any, // Sử dụng any để tương thích tốt với useFormState ban đầu
+    prevState: any,
     formData: FormData
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        const currentUser = await checkAuth();
+        // ✅ Gọi checkAuth để lấy đúng Entity ID
+        const userProfile = await checkAuth();
 
         const projectId = formData.get("projectId") as string | null;
         const template_name = formData.get("template_name") as string | null;
@@ -95,7 +101,7 @@ export async function createSurvey(
                 project_id: projectId,
                 name: finalName,
                 survey_date: survey_date,
-                created_by: currentUser.id,
+                created_by: userProfile.entityId, // ✅ CHÌA KHÓA: Dùng entityId thay vì auth_id
                 status: 'pending'
             });
 
@@ -116,7 +122,7 @@ export async function updateSurvey(
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth();
+        await checkAuth(); // Chỉ check quyền, không cần update created_by
 
         const surveyId = formData.get("surveyId") as string | null;
         const projectId = formData.get("projectId") as string | null;
@@ -149,6 +155,7 @@ export async function updateSurvey(
 export async function deleteSurvey(prevState: any, formData: FormData): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
+        await checkAuth(); // Thêm check quyền cho an toàn
         const surveyId = formData.get("surveyId") as string | null;
         const projectId = formData.get("projectId") as string | null;
 
@@ -178,7 +185,7 @@ export async function createSurveyTask(
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth();
+        await checkAuth(); // Check quyền
 
         const surveyId = formData.get("surveyId") as string | null;
         const projectId = formData.get("projectId") as string | null;
@@ -190,7 +197,6 @@ export async function createSurveyTask(
         if (!projectId) return { success: false, error: "ID Dự án thiếu." };
         if (!title) return { success: false, error: "Thiếu tiêu đề công việc." };
 
-        // Lấy chi phí ước tính từ template (nếu có)
         const { data: templateData } = await supabase
             .from("survey_task_templates")
             .select("estimated_cost")
@@ -224,7 +230,7 @@ export async function updateSurveyTask(
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth();
+        await checkAuth(); // Check quyền
 
         const taskId = formData.get("taskId") as string | null;
         const projectId = formData.get("projectId") as string | null;
@@ -292,11 +298,9 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
     try {
         const supabase = await createSupabaseServerClient();
+        await checkAuth(); // Thêm check quyền
 
-        // ==========================================
-        // 🚀 BƯỚC 1: TÌM VÀ XÓA ẢNH RÁC TRONG BUCKET
-        // ==========================================
-        // Lấy danh sách ảnh CŨ đang lưu trong DB trước khi bị ghi đè
+        // TÌM VÀ XÓA ẢNH RÁC TRONG BUCKET
         const { data: currentTask } = await supabase
             .from("survey_tasks")
             .select("attachments")
@@ -304,36 +308,25 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
             .single();
 
         const oldAttachments: string[] = currentTask?.attachments || [];
-
-        // Tìm ra những URL có trong DB cũ nhưng KHÔNG CÓ trong danh sách Client giữ lại
         const urlsToDelete = oldAttachments.filter(url => !existingAttachments.includes(url));
 
         if (urlsToDelete.length > 0) {
-            // Tách lấy Tên File từ URL Public của Supabase
-            // Ví dụ URL: https://xxx.supabase.co/storage/v1/object/public/survey_files/ten-file.jpg
             const filesToDelete = urlsToDelete.map(url => {
                 const parts = url.split('/survey_files/');
                 return parts.length > 1 ? parts[1] : null;
             }).filter(Boolean) as string[];
 
-            // Ra lệnh xóa file vật lý trên Bucket
             if (filesToDelete.length > 0) {
                 const { error: removeError } = await supabase.storage
                     .from('survey_files')
                     .remove(filesToDelete);
-
-                if (removeError) {
-                    console.error("❌ Lỗi khi xóa file vật lý khỏi Bucket:", removeError);
-                } else {
-                    console.log("✅ Đã dọn dẹp file vật lý thành công:", filesToDelete);
-                }
+                if (removeError) console.error("❌ Lỗi khi xóa file vật lý khỏi Bucket:", removeError);
             }
         }
-        // ==========================================
 
         const uploadedUrls: string[] = [];
 
-        // --- LOGIC UPLOAD ẢNH MỚI LÊN SUPABASE STORAGE ---
+        // UPLOAD ẢNH MỚI LÊN SUPABASE STORAGE
         if (files && files.length > 0) {
             for (const file of files) {
                 if (file.size === 0) continue;
@@ -356,10 +349,9 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
             }
         }
 
-        // GỘP ẢNH CŨ (ĐÃ GIỮ LẠI) VÀ ẢNH MỚI (VỪA UPLOAD)
         const finalAttachments = [...existingAttachments, ...uploadedUrls];
 
-        // --- CẬP NHẬT TASK VÀO DATABASE ---
+        // CẬP NHẬT TASK VÀO DATABASE
         const updateData: any = {
             status: status,
             notes: textFromForm,
@@ -379,12 +371,9 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
             .select("survey_id")
             .single();
 
-        if (error) {
-            console.error("Lỗi update task:", error);
-            throw error;
-        }
+        if (error) throw error;
 
-        // --- TÍNH % VÀ ĐỔI TRẠNG THÁI SURVEY BÊN NGOÀI ---
+        // TÍNH % VÀ ĐỔI TRẠNG THÁI SURVEY BÊN NGOÀI
         if (updatedTask && updatedTask.survey_id) {
             const surveyId = updatedTask.survey_id;
 
@@ -402,17 +391,13 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
                 const { error: surveyError } = await supabase
                     .from("project_surveys")
-                    .update({
-                        //progress: progressPercent,
-                        status: surveyStatus
-                    })
+                    .update({ status: surveyStatus })
                     .eq("id", surveyId);
 
                 if (surveyError) console.error("Lỗi update bảng project_surveys:", surveyError.message);
             }
         }
 
-        // --- RESET CACHE UI ---
         if (projectId) {
             revalidatePath(`/projects/${projectId}`, 'layout');
         }
@@ -427,6 +412,8 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 export async function deleteSurveyTask(prevState: any, formData: FormData): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
+        await checkAuth(); // Check quyền
+
         const taskId = formData.get("taskId") as string | null;
         const projectId = formData.get("projectId") as string | null;
 
@@ -449,7 +436,29 @@ export async function deleteSurveyTask(prevState: any, formData: FormData): Prom
     }
 }
 
-// Thêm hàm này vào surveyActions.ts
+// Bổ sung hàm cho tính năng 6 Bước Wizard AI Bóc Tách
+export async function submitFullSurveyWizard(projectId: string, surveyData: any) {
+    try {
+        const supabase = await createSupabaseServerClient();
+        const userProfile = await checkAuth();
+
+        const { error } = await supabase.from("project_surveys").insert({
+            project_id: projectId,
+            name: "Khảo sát Hiện trạng & Pháp lý (Full)",
+            survey_date: new Date().toISOString(),
+            status: 'completed',
+            survey_details: surveyData,
+            created_by: userProfile.entityId, // ✅ CHUẨN KHÓA NGOẠI LÀ ĐÂY
+        });
+
+        if (error) throw error;
+
+        return { success: true, message: "Lưu thành công!" };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 export async function getSurveyTypesFromDictionary() {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase

@@ -36,20 +36,34 @@ export default function ProjectMilestoneTab({
             <Card className="border-none shadow-none bg-transparent">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                     <div>
-                        <h3 className="text-lg font-bold text-slate-800">Tiến độ & Công việc</h3>
-                        <p className="text-sm text-slate-500">Quản lý vòng đời dự án theo mô hình WBS</p>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 transition-colors">Tiến độ & Công việc</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 transition-colors">Quản lý vòng đời dự án theo mô hình WBS</p>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-white p-1 rounded-lg border shadow-sm">
-                        <button onClick={() => setViewMode("tree")} className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "tree" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-500 hover:bg-slate-50"}`}>
-                            <ListTree className="w-4 h-4" /> Cây WBS
-                        </button>
-                        <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "list" ? "bg-blue-50 text-blue-700 shadow-sm" : "text-slate-500 hover:bg-slate-50"}`}>
-                            <LayoutList className="w-4 h-4" /> Danh sách
-                        </button>
-                    </div>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1 rounded-lg border dark:border-slate-800 shadow-sm transition-colors">
+                            <button
+                                onClick={() => setViewMode("tree")}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "tree"
+                                        ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm"
+                                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    }`}
+                            >
+                                <ListTree className="w-4 h-4" /> Cây WBS
+                            </button>
+                            <button
+                                onClick={() => setViewMode("list")}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "list"
+                                        ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm"
+                                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    }`}
+                            >
+                                <LayoutList className="w-4 h-4" /> Danh sách
+                            </button>
+                        </div>
 
-                    <TaskCreateModal projectId={projectId} members={members} tasks={tasks} dictionaries={dictionaries} />
+                        <TaskCreateModal projectId={projectId} members={members} tasks={tasks} dictionaries={dictionaries} />
+                    </div>
                 </div>
 
                 {viewMode === "tree" ? (
@@ -63,7 +77,7 @@ export default function ProjectMilestoneTab({
                             members={members}
                             currentUserId={currentUserId}
                         />
-                        {tasks.length === 0 && <p className="text-center py-10 text-slate-500">Chưa có công việc nào.</p>}
+                        {tasks.length === 0 && <p className="text-center py-10 text-slate-500 dark:text-slate-400">Chưa có công việc nào.</p>}
                     </div>
                 )}
             </Card>

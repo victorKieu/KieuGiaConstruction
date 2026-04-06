@@ -27,7 +27,7 @@ interface SurveyCreateModalProps {
 function SubmitButton() {
     const { pending } = useFormStatus();
     return (
-        <Button type="submit" disabled={pending} className="bg-indigo-600 hover:bg-indigo-700 w-full transition-all">
+        <Button type="submit" disabled={pending} className="bg-indigo-600 hover:bg-indigo-700 text-white w-full transition-all">
             {pending ? (
                 <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -58,14 +58,14 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 shadow-md transition-all">
+                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all">
                     <Plus className="w-4 h-4 mr-1" /> Thêm đợt khảo sát
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl bg-white">
+            <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl bg-white dark:bg-slate-900 transition-colors">
                 {/* Header màu Indigo cực đẹp của sếp */}
-                <div className="bg-indigo-700 p-6 text-white">
+                <div className="bg-indigo-700 dark:bg-indigo-900 p-6 text-white transition-colors">
                     <DialogTitle className="flex items-center gap-2 text-xl font-bold">
                         <Settings2 className="w-6 h-6 text-indigo-200" /> Thiết lập Khảo sát
                     </DialogTitle>
@@ -81,10 +81,10 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mục đích khảo sát</Label>
                         <Select name="template_name" required> {/* ✅ Đổi name thành template_name để khớp với Server Action */}
-                            <SelectTrigger className="h-11 border-slate-200 focus:ring-indigo-500 bg-slate-50/50">
+                            <SelectTrigger className="h-11 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 bg-slate-50/50 dark:bg-slate-950 dark:text-slate-100 transition-colors">
                                 <SelectValue placeholder="Chọn loại hình khảo sát..." />
                             </SelectTrigger>
-                            <SelectContent className="bg-white border-slate-200">
+                            <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-colors">
                                 {surveyTypes && surveyTypes.length > 0 ? (
                                     surveyTypes.map((item: any, index: number) => {
                                         // Log thử để sếp kiểm tra ở F12 xem dữ liệu thực tế là gì
@@ -96,7 +96,7 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                                                 value={item.value || item.code || `val-${index}`}
                                             >
                                                 {/* BẮT BUỘC dùng span và toString() để tránh lỗi truyền Object */}
-                                                <span className="text-slate-900 font-medium">
+                                                <span className="text-slate-900 dark:text-slate-100 font-medium">
                                                     {String(item.value || item.name || item.code || "Không có tiêu đề")}
                                                 </span>
                                             </SelectItem>
@@ -117,7 +117,7 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                         <Input
                             name="name_detail"
                             placeholder="Ví dụ: Lần 1, Trước khi ép cọc..."
-                            className="h-11 border-slate-200 focus:ring-indigo-500"
+                            className="h-11 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 dark:bg-slate-950 dark:text-slate-100 transition-colors"
                         />
                     </div>
 
@@ -129,13 +129,13 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                             type="date"
                             required
                             defaultValue={new Date().toISOString().split('T')[0]}
-                            className="h-11 border-slate-200 focus:ring-indigo-500"
+                            className="h-11 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 dark:bg-slate-950 dark:text-slate-100 transition-colors"
                         />
                     </div>
 
                     {/* Thông báo lỗi nếu có */}
                     {state.error && (
-                        <Alert variant="destructive" className="py-2 border-none bg-red-50 text-red-700 animate-in fade-in zoom-in duration-200">
+                        <Alert variant="destructive" className="py-2 border-none bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 animate-in fade-in zoom-in duration-200 transition-colors">
                             <AlertCircle className="h-4 w-4" />
                             <AlertDescription className="text-xs font-medium">{state.error}</AlertDescription>
                         </Alert>
@@ -143,7 +143,7 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
 
                     <div className="flex gap-3 pt-4">
                         <DialogClose asChild>
-                            <Button type="button" variant="ghost" className="flex-1 text-slate-500 hover:bg-slate-100 transition-colors">Hủy</Button>
+                            <Button type="button" variant="ghost" className="flex-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Hủy</Button>
                         </DialogClose>
                         <div className="flex-[2]">
                             <SubmitButton />
@@ -153,4 +153,4 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
             </DialogContent>
         </Dialog>
     );
-}   
+}

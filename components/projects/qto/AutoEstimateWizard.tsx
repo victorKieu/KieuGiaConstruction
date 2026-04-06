@@ -77,12 +77,9 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                 // 🔴 1. Dùng alert() thay cho toast để ăn chắc 100%
                 alert("✨ " + res.message);
 
-                setIsOpen(false); if (res.success) {
-                    //alert("✨ " + res.message); // Hoặc toast.success
-                    setIsOpen(false);
-                    setStep(1);
-                    onSuccess(); // 🔴 Gọi hàm này để báo Cha tải lại data
-                }
+                setIsOpen(false);
+                setStep(1);
+                onSuccess(); // 🔴 Gọi hàm này để báo Cha tải lại data
             } else {
                 alert("❌ Lỗi: " + res.error);
             }
@@ -99,23 +96,23 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
             case 1:
                 return (
                     <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800 mb-4">
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg text-sm text-blue-800 dark:text-blue-300 mb-4 transition-colors">
                             <strong>Hướng dẫn:</strong> Bấm chọn loại nhà cần lập dự toán. Nhà phố thường 2 bên giáp tường nhà khác.
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div
-                                className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${formData.houseType === 'nha_pho' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'}`}
+                                className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${formData.houseType === 'nha_pho' ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-orange-300 dark:hover:border-orange-500/50'}`}
                                 onClick={() => handleChange("houseType", "nha_pho")}
                             >
-                                <div className="h-32 bg-slate-200 rounded-md mb-3 flex items-center justify-center text-slate-400 font-bold">ẢNH NHÀ PHỐ</div>
-                                <h3 className="text-center font-bold text-slate-700">Nhà Phố</h3>
+                                <div className="h-32 bg-slate-200 dark:bg-slate-800 rounded-md mb-3 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold transition-colors">ẢNH NHÀ PHỐ</div>
+                                <h3 className="text-center font-bold text-slate-700 dark:text-slate-300 transition-colors">Nhà Phố</h3>
                             </div>
                             <div
-                                className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${formData.houseType === 'biet_thu' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-300'}`}
+                                className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${formData.houseType === 'biet_thu' ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-orange-300 dark:hover:border-orange-500/50'}`}
                                 onClick={() => handleChange("houseType", "biet_thu")}
                             >
-                                <div className="h-32 bg-slate-200 rounded-md mb-3 flex items-center justify-center text-slate-400 font-bold">ẢNH BIỆT THỰ</div>
-                                <h3 className="text-center font-bold text-slate-700">Biệt Thự</h3>
+                                <div className="h-32 bg-slate-200 dark:bg-slate-800 rounded-md mb-3 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold transition-colors">ẢNH BIỆT THỰ</div>
+                                <h3 className="text-center font-bold text-slate-700 dark:text-slate-300 transition-colors">Biệt Thự</h3>
                             </div>
                         </div>
                     </div>
@@ -126,28 +123,28 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                         <div className="grid grid-cols-2 gap-8">
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Số tầng (Không tính hầm/lửng)</label>
-                                    <Input type="number" value={formData.floors} onChange={e => handleChange("floors", e.target.value)} />
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Số tầng (Không tính hầm/lửng)</label>
+                                    <Input type="number" value={formData.floors} onChange={e => handleChange("floors", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Tầng lửng</label>
-                                    <Input type="number" value={formData.mezzanine} onChange={e => handleChange("mezzanine", e.target.value)} />
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Tầng lửng</label>
+                                    <Input type="number" value={formData.mezzanine} onChange={e => handleChange("mezzanine", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Tổng Cao (H)</label>
-                                    <Input type="number" value={formData.totalHeight} onChange={e => handleChange("totalHeight", e.target.value)} />
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Tổng Cao (H)</label>
+                                    <Input type="number" value={formData.totalHeight} onChange={e => handleChange("totalHeight", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Loại Hầm</label>
-                                    <select value={formData.basement} onChange={e => handleChange("basement", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Loại Hầm</label>
+                                    <select value={formData.basement} onChange={e => handleChange("basement", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                         <option value="khong_ham">Không hầm</option>
                                         <option value="ban_ham">Bán hầm</option>
                                         <option value="ham_full">Hầm toàn bộ</option>
                                     </select>
                                 </div>
                             </div>
-                            <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center border border-slate-200">
-                                <span className="text-slate-400 font-bold">SƠ ĐỒ MẶT CẮT TẦNG</span>
+                            <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition-colors">
+                                <span className="text-slate-400 dark:text-slate-500 font-bold">SƠ ĐỒ MẶT CẮT TẦNG</span>
                             </div>
                         </div>
                     </div>
@@ -158,28 +155,28 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                         <div className="grid grid-cols-2 gap-8">
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Hình dạng nhà</label>
-                                    <select value={formData.shape} onChange={e => handleChange("shape", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Hình dạng nhà</label>
+                                    <select value={formData.shape} onChange={e => handleChange("shape", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                         <option value="vuong_van">Vuông vắn</option>
                                         <option value="chu_l">Nhữ L</option>
                                         <option value="hinh_cheo">Hình chéo</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Chiều dài nhà (m)</label>
-                                    <Input type="number" value={formData.length} onChange={e => handleChange("length", e.target.value)} />
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Chiều dài nhà (m)</label>
+                                    <Input type="number" value={formData.length} onChange={e => handleChange("length", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Chiều rộng nhà (m)</label>
-                                    <Input type="number" value={formData.width} onChange={e => handleChange("width", e.target.value)} />
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Chiều rộng nhà (m)</label>
+                                    <Input type="number" value={formData.width} onChange={e => handleChange("width", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-orange-600">Diện tích xây dựng (m2)</label>
-                                    <Input type="number" className="bg-orange-50 font-bold text-orange-700" value={formData.buildArea} onChange={e => handleChange("buildArea", e.target.value)} />
+                                    <label className="text-xs font-semibold text-orange-600 dark:text-orange-400 transition-colors">Diện tích xây dựng (m2)</label>
+                                    <Input type="number" className="bg-orange-50 dark:bg-orange-900/20 font-bold text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 transition-colors" value={formData.buildArea} onChange={e => handleChange("buildArea", e.target.value)} />
                                 </div>
                             </div>
-                            <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center border border-slate-200">
-                                <span className="text-slate-400 font-bold">MÔ HÌNH NHÀ VUÔNG</span>
+                            <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition-colors">
+                                <span className="text-slate-400 dark:text-slate-500 font-bold">MÔ HÌNH NHÀ VUÔNG</span>
                             </div>
                         </div>
                     </div>
@@ -188,12 +185,12 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                 return (
                     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
                         <div className="grid grid-cols-2 gap-4">
-                            <div><label className="text-xs font-semibold text-slate-700">Số Cột (Tự nội suy)</label><Input type="number" value={formData.columns} onChange={e => handleChange("columns", e.target.value)} /></div>
-                            <div><label className="text-xs font-semibold text-slate-700">Số phòng Vệ sinh (WC)</label><Input type="number" value={formData.wcCount} onChange={e => handleChange("wcCount", e.target.value)} /></div>
-                            <div><label className="text-xs font-semibold text-slate-700">Số phòng ngủ/kín</label><Input type="number" value={formData.rooms} onChange={e => handleChange("rooms", e.target.value)} /></div>
+                            <div><label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Số Cột (Tự nội suy)</label><Input type="number" value={formData.columns} onChange={e => handleChange("columns", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" /></div>
+                            <div><label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Số phòng Vệ sinh (WC)</label><Input type="number" value={formData.wcCount} onChange={e => handleChange("wcCount", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" /></div>
+                            <div><label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Số phòng ngủ/kín</label><Input type="number" value={formData.rooms} onChange={e => handleChange("rooms", e.target.value)} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" /></div>
                             <div>
-                                <label className="text-xs font-semibold text-slate-700">Loại Mái Tum</label>
-                                <select value={formData.roofType} onChange={e => handleChange("roofType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Loại Mái Tum</label>
+                                <select value={formData.roofType} onChange={e => handleChange("roofType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                     <option value="ton">Mái Tôn</option>
                                     <option value="btct">Mái bằng BTCT</option>
                                     <option value="ngoi">Mái Ngói</option>
@@ -208,8 +205,8 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                         <div className="grid grid-cols-2 gap-8">
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Mác Bê Tông (Móng, Cột, Dầm, Sàn)</label>
-                                    <select value={formData.concreteMac} onChange={e => handleChange("concreteMac", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Mác Bê Tông (Móng, Cột, Dầm, Sàn)</label>
+                                    <select value={formData.concreteMac} onChange={e => handleChange("concreteMac", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                         <option value="M200">BT Trộn M200</option>
                                         <option value="M250">BT Trộn M250</option>
                                         <option value="M300">BT Trộn M300</option>
@@ -218,8 +215,8 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                             </div>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-semibold text-slate-700">Loại gạch xây</label>
-                                    <select value={formData.brickType} onChange={e => handleChange("brickType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Loại gạch xây</label>
+                                    <select value={formData.brickType} onChange={e => handleChange("brickType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                         <option value="8x8x18">Gạch ống 8x8x18 (Miền Nam)</option>
                                         <option value="6.5x10.5x22">Gạch ống 6.5x10.5x22 (Miền Bắc)</option>
                                     </select>
@@ -233,29 +230,29 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="text-xs font-semibold text-slate-700">Loại Đất Nền</label>
-                                <select value={formData.soilType} onChange={e => handleChange("soilType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Loại Đất Nền</label>
+                                <select value={formData.soilType} onChange={e => handleChange("soilType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                     <option value="tot">Đất Tốt (Chịu tải cao)</option>
                                     <option value="yeu">Đất Yếu</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="text-xs font-semibold text-slate-700">Giải pháp Móng (Rút ra từ đất nền)</label>
-                                <select value={formData.foundation} onChange={e => handleChange("foundation", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Giải pháp Móng (Rút ra từ đất nền)</label>
+                                <select value={formData.foundation} onChange={e => handleChange("foundation", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                     <option value="bang">Móng Băng</option>
                                     <option value="coc">Móng Cọc</option>
                                     <option value="don">Móng Đơn</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="text-xs font-semibold text-slate-700">Hình thức Đào Đất</label>
-                                <select value={formData.digType} onChange={e => handleChange("digType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none">
+                                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors">Hình thức Đào Đất</label>
+                                <select value={formData.digType} onChange={e => handleChange("digType", e.target.value)} className="w-full h-10 px-3 border rounded-md outline-none bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 dark:text-slate-200 focus:border-orange-500 transition-colors">
                                     <option value="may">Đào bằng Máy</option>
                                     <option value="thu_cong">Thủ công - Cấp 2</option>
                                 </select>
                             </div>
                         </div>
-                        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                        <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-300 transition-colors">
                             <strong>Bước cuối cùng:</strong> Bấm <b>"Bắt đầu tính toán"</b> để hệ thống tự động bóc tách khối lượng (QTO) dựa trên 6 bước bạn vừa thiết lập!
                         </div>
                     </div>
@@ -270,25 +267,25 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
     return (
         <Dialog open={isOpen} onOpenChange={(open) => { setIsOpen(open); if (!open) setStep(1); }}>
             <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-md">
+                <Button className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-md transition-all">
                     <Wand2 className="w-4 h-4 mr-2" /> Wizard Lập Dự Toán (6 Bước)
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[750px] bg-white p-0 overflow-hidden">
+            <DialogContent className="sm:max-w-[750px] bg-white dark:bg-slate-900 p-0 overflow-hidden dark:border-slate-800 transition-colors">
                 {/* HEADER */}
-                <div className="bg-slate-50 border-b p-4 flex items-center justify-between">
-                    <DialogTitle className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <div className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 p-4 flex items-center justify-between transition-colors">
+                    <DialogTitle className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 transition-colors">
                         <Wand2 className="w-5 h-5 text-orange-500" />
                         Thiết Lập Thông Số (dtPro Engine)
                     </DialogTitle>
-                    <div className="text-sm font-bold text-slate-400">
+                    <div className="text-sm font-bold text-slate-400 dark:text-slate-500 transition-colors">
                         Bước {step} / 6
                     </div>
                 </div>
 
                 {/* STEP INDICATOR */}
                 <div className="flex px-6 pt-4 justify-between relative">
-                    <div className="absolute top-8 left-10 right-10 h-1 bg-slate-100 -z-10"></div>
+                    <div className="absolute top-8 left-10 right-10 h-1 bg-slate-100 dark:bg-slate-800 -z-10 transition-colors"></div>
                     <div className="absolute top-8 left-10 h-1 bg-orange-500 transition-all duration-300 -z-10" style={{ width: `${((step - 1) / 5) * 100}%` }}></div>
 
                     {[1, 2, 3, 4, 5, 6].map((i) => {
@@ -297,7 +294,7 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                         const isDone = i < step;
                         return (
                             <div key={i} className="flex flex-col items-center gap-2 z-10">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${isActive ? 'border-orange-500 bg-white text-orange-600 shadow-md scale-110' : isDone ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-200 bg-white text-slate-300'}`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${isActive ? 'border-orange-500 bg-white dark:bg-slate-950 text-orange-600 dark:text-orange-500 shadow-md scale-110' : isDone ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-300 dark:text-slate-500'}`}>
                                     {isDone ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
                                 </div>
                             </div>
@@ -307,7 +304,7 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
 
                 {/* CONTENT */}
                 <div className="p-6 min-h-[350px]">
-                    <h2 className="text-lg font-bold text-slate-700 border-b pb-2 mb-4">
+                    <h2 className="text-lg font-bold text-slate-700 dark:text-slate-200 border-b dark:border-slate-800 pb-2 mb-4 transition-colors">
                         {step === 1 && "Bước 1/6: Chọn loại nhà"}
                         {step === 2 && "Bước 2/6: Nhập số tầng và chiều cao nhà"}
                         {step === 3 && "Bước 3/6: Nhập hình dạng và kích thước nhà"}
@@ -319,10 +316,10 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                 </div>
 
                 {/* FOOTER */}
-                <div className="bg-slate-50 border-t p-4 flex justify-between items-center">
-                    <Button variant="outline" onClick={() => setIsOpen(false)}>Hủy bỏ</Button>
+                <div className="bg-slate-50 dark:bg-slate-900/50 border-t dark:border-slate-800 p-4 flex justify-between items-center transition-colors">
+                    <Button variant="outline" onClick={() => setIsOpen(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy bỏ</Button>
                     <div className="flex gap-2">
-                        <Button variant="secondary" onClick={() => setStep(s => s - 1)} disabled={step === 1}>
+                        <Button variant="secondary" onClick={() => setStep(s => s - 1)} disabled={step === 1} className="dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
                             <ChevronLeft className="w-4 h-4 mr-1" /> Trở lại
                         </Button>
 
@@ -331,7 +328,7 @@ export default function AutoEstimateWizard({ projectId, onSuccess }: { projectId
                                 Tiếp tục <ChevronRight className="w-4 h-4 ml-1" />
                             </Button>
                         ) : (
-                                <Button onClick={handleCalculate} disabled={loading || isPending} className="bg-orange-600 hover:bg-orange-700 text-white px-6">
+                            <Button onClick={handleCalculate} disabled={loading || isPending} className="bg-orange-600 hover:bg-orange-700 text-white px-6">
                                 {loading ? "Đang tính..." : "Bắt đầu tính toán"}
                             </Button>
                         )}

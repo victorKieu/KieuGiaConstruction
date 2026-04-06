@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ChevronRight, ChevronLeft, CheckCircle2, Scale, Truck, Mountain, Home, Compass, Camera, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { submitFullSurveyWizard } from "@/lib/action/surveyActions"
 
 export default function SurveyWizard({ projectId }: { projectId: string }) {
     const [step, setStep] = useState(1)
@@ -38,26 +39,17 @@ export default function SurveyWizard({ projectId }: { projectId: string }) {
     const handleSubmit = async () => {
         setLoading(true)
         try {
-            const supabase = createClient()
-            // Lưu toàn bộ dữ liệu vào cột JSONB survey_details
-            const { error } = await supabase
-                .from("project_surveys")
-                .insert({
-                    project_id: projectId,
-                    name: "Khảo sát Hiện trạng & Pháp lý (Full)",
-                    survey_date: new Date().toISOString(),
-                    status: 'completed',
-                    survey_details: surveyData
-                })
+            // Không dùng createClient() trực tiếp nữa, gọi thẳng xuống Server Action
+            const res = await submitFullSurveyWizard(projectId, surveyData);
 
-            if (error) throw error
+            if (!res.success) {
+                throw new Error(res.error);
+            }
 
             toast.success("Đã lưu Phiếu khảo sát 6 bước thành công!")
             setStep(1)
             router.refresh()
-
         } catch (err: any) {
-            console.error(err)
             toast.error("Lỗi khi lưu dữ liệu: " + err.message)
         } finally {
             setLoading(false)

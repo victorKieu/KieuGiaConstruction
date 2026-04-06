@@ -26,13 +26,13 @@ interface SurveyWorkspaceModalProps {
     projectId: string;
     surveyTaskTemplates?: any[];
     surveyTypes: { code: string; name?: string; value?: string }[];
-    onProgressChange?: (surveyId: string, progress: number) => void; // 👈 THÊM DÒNG NÀY
+    onProgressChange?: (surveyId: string, progress: number) => void;
 }
 
 function SubmitTaskButton() {
     const { pending } = useFormStatus();
     return (
-        <Button type="submit" size="sm" disabled={pending} className="bg-blue-600 hover:bg-blue-700 h-9 w-9 p-0 shrink-0 shadow-lg shadow-blue-200 transition-all active:scale-95">
+        <Button type="submit" size="sm" disabled={pending} className="bg-blue-600 hover:bg-blue-700 text-white h-9 w-9 p-0 shrink-0 shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-95">
             {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-5 w-5" />}
         </Button>
     );
@@ -146,15 +146,15 @@ export default function SurveyWorkspaceModal({
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <div className="cursor-pointer group flex-1 p-3 hover:bg-blue-50/40 rounded-lg transition-all border-b last:border-0 border-slate-100">
+                <div className="cursor-pointer group flex-1 p-3 hover:bg-blue-50/40 dark:hover:bg-blue-900/20 rounded-lg transition-all border-b last:border-0 border-slate-100 dark:border-slate-800">
                     <div className="flex justify-between items-center">
                         <div>
-                            <p className="font-bold text-slate-800 group-hover:text-blue-700 text-[15px] flex items-center gap-2">
+                            <p className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-700 dark:group-hover:text-blue-400 text-[15px] flex items-center gap-2 transition-colors">
                                 {displayTitle}
                                 {tasks.length > 0 && completedTasks === tasks.length && <CheckCircle2 className="w-4 h-4 text-green-500" />}
                             </p>
-                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3 font-medium">
-                                <span className="text-blue-600 font-bold tracking-tight">#{project.code}</span>
+                            <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-3 font-medium transition-colors">
+                                <span className="text-blue-600 dark:text-blue-400 font-bold tracking-tight">#{project.code}</span>
                                 <span>📅 {formatDate(survey.survey_date)}</span>
                             </div>
                         </div>
@@ -162,7 +162,7 @@ export default function SurveyWorkspaceModal({
                 </div>
             </DialogTrigger>
 
-            <DialogContent className="max-w-[1400px] w-[98vw] h-[96vh] flex flex-col !p-0 !gap-0 overflow-hidden bg-white border-none shadow-2xl">
+            <DialogContent className="max-w-[1400px] w-[98vw] h-[96vh] flex flex-col !p-0 !gap-0 overflow-hidden bg-white dark:bg-slate-950 border-none shadow-2xl transition-colors">
                 <div className="sr-only">
                     <DialogHeader><DialogTitle>{displayTitle}</DialogTitle></DialogHeader>
                 </div>
@@ -205,33 +205,33 @@ export default function SurveyWorkspaceModal({
                         </div>
 
                         <TabsList className="bg-transparent h-10 w-full justify-start rounded-none p-0 gap-0">
-                            <TabsTrigger value="tasks" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-blue-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-blue-500">
+                            <TabsTrigger value="tasks" className="flex-1 sm:flex-none sm:px-8 data-[state=active]:bg-white/5 data-[state=active]:text-blue-400 rounded-none h-10 text-[11px] font-black uppercase border-b-2 border-transparent data-[state=active]:border-blue-500 transition-colors">
                                 NHIỆM VỤ
                             </TabsTrigger>
                         </TabsList>
                     </div>
 
                     <div className="flex-1 relative min-h-0 bg-slate-950">
-                        <TabsContent value="tasks" className="h-full w-full m-0 p-3 bg-slate-50 flex flex-col gap-3 overflow-y-auto data-[state=inactive]:hidden">
-                            <form ref={formRef} action={formAction} className="flex flex-col gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0 sticky top-0 z-20">
+                        <TabsContent value="tasks" className="h-full w-full m-0 p-3 bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 overflow-y-auto data-[state=inactive]:hidden transition-colors">
+                            <form ref={formRef} action={formAction} className="flex flex-col gap-2 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm shrink-0 sticky top-0 z-20 transition-colors">
                                 <input type="hidden" name="surveyId" value={survey.id} />
                                 <input type="hidden" name="projectId" value={projectId} />
 
                                 <div className="flex flex-wrap items-center gap-2">
                                     <div className="flex-[2] min-w-[180px]">
                                         <Select name="title" required>
-                                            <SelectTrigger className="bg-slate-50 border-slate-200 focus:ring-blue-500">
+                                            <SelectTrigger className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 dark:text-slate-200 focus:ring-blue-500 transition-colors">
                                                 <SelectValue placeholder="Chọn hạng mục từ danh mục..." />
                                             </SelectTrigger>
-                                            <SelectContent>
+                                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
                                                 {dictionaryItems.length > 0 ? (
                                                     dictionaryItems.map((item) => (
-                                                        <SelectItem key={item.id} value={item.name} className="text-sm font-semibold">
+                                                        <SelectItem key={item.id} value={item.name} className="text-sm font-semibold dark:text-slate-200">
                                                             {item.name}
                                                         </SelectItem>
                                                     ))
                                                 ) : (
-                                                    <SelectItem value="Other" disabled className="text-xs italic text-slate-400">
+                                                    <SelectItem value="Other" disabled className="text-xs italic text-slate-400 dark:text-slate-500">
                                                         Chưa có danh mục TASK_{typeCode}
                                                     </SelectItem>
                                                 )}
@@ -239,20 +239,20 @@ export default function SurveyWorkspaceModal({
                                         </Select>
                                     </div>
                                     <div className="flex-[3] min-w-[200px]">
-                                        <Input name="notes" placeholder="Mô tả cụ thể hiện trường..." className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-sm font-medium" />
+                                        <Input name="notes" placeholder="Mô tả cụ thể hiện trường..." className="h-9 border-none bg-slate-100/50 dark:bg-slate-950 dark:text-slate-200 focus-visible:ring-0 text-sm font-medium transition-colors" />
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2 border-t pt-2">
+                                <div className="flex items-center gap-2 border-t dark:border-slate-800 pt-2 transition-colors">
                                     <div className="flex-1">
                                         <Select name="assigned_to" defaultValue="unassigned">
-                                            <SelectTrigger className="h-9 border-none bg-slate-100/50 focus:ring-0 text-[11px] font-black uppercase">
+                                            <SelectTrigger className="h-9 border-none bg-slate-100/50 dark:bg-slate-950 dark:text-slate-300 focus:ring-0 text-[11px] font-black uppercase transition-colors">
                                                 <SelectValue />
                                             </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="unassigned">Tự thực hiện</SelectItem>
+                                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                                <SelectItem value="unassigned" className="dark:text-slate-200">Tự thực hiện</SelectItem>
                                                 {members?.map((m) => m.employee && (
-                                                    <SelectItem key={m.employee.id || m.employee_id} value={m.employee.id || m.employee_id} className="text-xs">
+                                                    <SelectItem key={m.employee.id || m.employee_id} value={m.employee.id || m.employee_id} className="text-xs dark:text-slate-200">
                                                         {m.employee.name}
                                                     </SelectItem>
                                                 ))}
@@ -260,7 +260,7 @@ export default function SurveyWorkspaceModal({
                                         </Select>
                                     </div>
                                     <div className="w-32">
-                                        <Input name="due_date" type="date" className="h-9 border-none bg-slate-100/50 focus-visible:ring-0 text-xs font-bold" />
+                                        <Input name="due_date" type="date" className="h-9 border-none bg-slate-100/50 dark:bg-slate-950 dark:text-slate-300 focus-visible:ring-0 text-xs font-bold transition-colors" />
                                     </div>
                                     <SubmitTaskButton />
                                 </div>
@@ -268,9 +268,9 @@ export default function SurveyWorkspaceModal({
 
                             <div className="space-y-2 pb-10">
                                 {isLoading ? (
-                                    <div className="flex justify-center p-10 opacity-50"><Loader2 className="animate-spin w-6 h-6" /></div>
+                                    <div className="flex justify-center p-10 opacity-50"><Loader2 className="animate-spin w-6 h-6 dark:text-slate-400" /></div>
                                 ) : tasks.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center p-20 text-slate-300 border-2 border-dashed rounded-3xl bg-white/50">
+                                    <div className="flex flex-col items-center justify-center p-20 text-slate-300 dark:text-slate-600 border-2 border-dashed dark:border-slate-800 rounded-3xl bg-white/50 dark:bg-slate-900/50 transition-colors">
                                         <ListTodo className="w-12 h-12 mb-2" />
                                         <p className="text-xs font-black uppercase tracking-widest text-center">Chưa có nhiệm vụ</p>
                                     </div>
@@ -279,31 +279,29 @@ export default function SurveyWorkspaceModal({
                                         const isDone = task.status === 'completed';
                                         const t = task as any;
                                         return (
-                                            <div key={task.id} className="flex justify-between items-start p-3 bg-white border rounded-xl shadow-sm group hover:border-blue-200 transition-all">
-
-                                                {/* ✅ ĐÃ SỬA: items-start và xóa truncate để chữ được bung xõa thoải mái */}
+                                            <div key={task.id} className="flex justify-between items-start p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm group hover:border-blue-200 dark:hover:border-blue-900 transition-all">
                                                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                                                    <div className={`w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 ${isDone ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                    <div className={`w-8 h-8 mt-0.5 rounded-full flex items-center justify-center shrink-0 transition-colors ${isDone ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'}`}>
                                                         {isDone ? <ClipboardCheck className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                                                     </div>
 
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
-                                                            <p className={`text-sm font-bold truncate ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</p>
+                                                            <p className={`text-sm font-bold truncate transition-colors ${isDone ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200'}`}>{task.title}</p>
                                                             {isDone && <span className="text-[8px] bg-green-500 text-white px-1 py-0.5 rounded font-black uppercase">Xong</span>}
                                                         </div>
 
                                                         {/* Báo cáo phong thủy và Ghi chú */}
                                                         {t.notes && (
-                                                            <div className={`mt-2 ${isDone ? 'bg-slate-100/50 border border-slate-200 p-3 rounded-lg shadow-inner' : ''}`}>
-                                                                <p className={`text-[11px] leading-relaxed ${isDone ? 'text-slate-700 whitespace-pre-wrap font-medium' : 'text-blue-500 font-medium truncate italic'}`}>
+                                                            <div className={`mt-2 transition-colors ${isDone ? 'bg-slate-100/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-inner' : ''}`}>
+                                                                <p className={`text-[11px] leading-relaxed transition-colors ${isDone ? 'text-slate-700 dark:text-slate-400 whitespace-pre-wrap font-medium' : 'text-blue-500 dark:text-blue-400 font-medium truncate italic'}`}>
                                                                     {t.notes}
                                                                 </p>
                                                             </div>
                                                         )}
 
                                                         <div className="flex items-center gap-3 mt-2">
-                                                            <p className="text-[9px] text-slate-400 font-black uppercase">
+                                                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-black uppercase transition-colors">
                                                                 {task.assigned_to?.name || "Hệ thống"} • {task.due_date ? formatDate(task.due_date) : "N/A"}
                                                             </p>
                                                         </div>
@@ -323,7 +321,7 @@ export default function SurveyWorkspaceModal({
                                                         task={task}
                                                         members={members}
                                                         surveyTaskTemplates={dictionaryItems}
-                                                        projectId={projectId}                                                       
+                                                        projectId={projectId}
                                                         onUpdateSuccess={triggerRefresh}
                                                     />
                                                     <SurveyTaskDeleteButton taskId={task.id} projectId={projectId} onDeleteSuccess={triggerRefresh} />

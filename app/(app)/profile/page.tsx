@@ -24,7 +24,7 @@ export default async function ProfilePage() {
 
     // Nếu không có profile (lỗi hệ thống nghiêm trọng)
     if (profileError || !profile) {
-        return <div className="p-6 text-red-500">Lỗi: Không tìm thấy hồ sơ liên kết với tài khoản này.</div>;
+        return <div className="p-6 text-red-500 dark:text-red-400 transition-colors">Lỗi: Không tìm thấy hồ sơ liên kết với tài khoản này.</div>;
     }
 
     // 2. Lấy thông tin Nhân viên (Dựa vào ID của Profile - Shared ID)
@@ -38,8 +38,8 @@ export default async function ProfilePage() {
     // (Vì Customer cũng có Profile nhưng không có trong bảng employees)
     if (empError || !employee) {
         return (
-            <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
-                <div className="bg-yellow-50 text-yellow-700 p-6 rounded-lg border border-yellow-200">
+            <div className="flex flex-col items-center justify-center h-[50vh] gap-4 animate-in fade-in duration-500">
+                <div className="bg-yellow-50 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 p-6 rounded-lg border border-yellow-200 dark:border-yellow-500/20 transition-colors">
                     <h2 className="text-xl font-semibold mb-2">⚠️ Tài khoản chưa kích hoạt</h2>
                     <p className="text-sm">Bạn chưa có hồ sơ Nhân viên chính thức.</p>
                 </div>
@@ -65,14 +65,14 @@ export default async function ProfilePage() {
     ]);
 
     return (
-        <div className="container mx-auto p-6 max-w-4xl space-y-6">
+        <div className="container mx-auto p-6 max-w-4xl space-y-6 animate-in fade-in duration-500 transition-colors">
             <div className="mb-4">
-                <h1 className="text-2xl font-bold text-gray-800">Hồ sơ cá nhân</h1>
-                <p className="text-gray-500 text-sm mt-1">Quản lý thông tin tài khoản và bảo mật.</p>
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-slate-100 transition-colors">Hồ sơ cá nhân</h1>
+                <p className="text-gray-500 dark:text-slate-400 text-sm mt-1 transition-colors">Quản lý thông tin tài khoản và bảo mật.</p>
             </div>
 
             {/* Khối thông tin cá nhân */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-800 p-6 transition-colors">
                 <ProfileForm
                     // Thêm key để React reset form khi dữ liệu thay đổi (quan trọng)
                     key={combinedData.updated_at || 'profile-init'}
@@ -82,7 +82,7 @@ export default async function ProfilePage() {
             </div>
 
             {/* Khối bảo mật/Đổi mật khẩu */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-800 p-6 transition-colors">
                 <PasswordForm />
             </div>
         </div>

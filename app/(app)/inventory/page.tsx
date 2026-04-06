@@ -108,40 +108,40 @@ export default function InventoryPage() {
     });
 
     return (
-        <div className="flex-1 space-y-6 p-8 pt-6">
+        <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 transition-colors duration-500">
 
             {/* HEADER */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight text-slate-800">Quản lý Kho bãi</h2>
-                    <p className="text-muted-foreground">Theo dõi tồn kho, nhập xuất vật tư tại các dự án được phân công.</p>
+                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100 transition-colors">Quản lý Kho bãi</h2>
+                    <p className="text-sm md:text-base text-muted-foreground dark:text-slate-400 mt-1 transition-colors">Theo dõi tồn kho, nhập xuất vật tư tại các dự án được phân công.</p>
                 </div>
 
                 <div className="flex gap-2">
                     <Dialog open={openCreate} onOpenChange={setOpenCreate}>
                         <DialogTrigger asChild>
-                            <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm">
+                            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors">
                                 <Plus className="mr-2 h-4 w-4" /> Tạo Kho Mới
                             </Button>
                         </DialogTrigger>
-                        <DialogContent>
+                        <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800 transition-colors">
                             <DialogHeader>
-                                <DialogTitle>Tạo Kho Thủ Công (Kho Tổng)</DialogTitle>
+                                <DialogTitle className="dark:text-slate-100">Tạo Kho Thủ Công (Kho Tổng)</DialogTitle>
                             </DialogHeader>
                             <form onSubmit={handleCreateWarehouse} className="space-y-4 py-2">
                                 <div className="space-y-2">
-                                    <Label>Tên kho <span className="text-red-500">*</span></Label>
-                                    <Input name="name" required placeholder="VD: Kho Tổng - KCN Tân Bình" />
+                                    <Label className="dark:text-slate-300">Tên kho <span className="text-red-500">*</span></Label>
+                                    <Input name="name" required placeholder="VD: Kho Tổng - KCN Tân Bình" className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Địa chỉ <span className="text-red-500">*</span></Label>
-                                    <Input name="address" required placeholder="Địa chỉ thực tế..." />
+                                    <Label className="dark:text-slate-300">Địa chỉ <span className="text-red-500">*</span></Label>
+                                    <Input name="address" required placeholder="Địa chỉ thực tế..." className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Mô tả / Ghi chú</Label>
-                                    <Textarea name="description" placeholder="Kho chứa giàn giáo, máy móc lớn..." />
+                                    <Label className="dark:text-slate-300">Mô tả / Ghi chú</Label>
+                                    <Textarea name="description" placeholder="Kho chứa giàn giáo, máy móc lớn..." className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors" />
                                 </div>
-                                <Button type="submit" className="w-full bg-blue-600" disabled={loading}>
+                                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors" disabled={loading}>
                                     {loading ? "Đang xử lý..." : "Lưu & Tạo kho"}
                                 </Button>
                             </form>
@@ -153,11 +153,11 @@ export default function InventoryPage() {
             {/* ✅ 3. THANH CÔNG CỤ (SEARCH + FILTER) */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 {/* Search Bar */}
-                <div className="flex items-center gap-2 bg-white p-2 rounded-md border w-full sm:w-fit shadow-sm">
-                    <Search className="h-4 w-4 text-muted-foreground ml-2" />
+                <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-800 w-full sm:w-fit shadow-sm transition-colors">
+                    <Search className="h-4 w-4 text-slate-400 dark:text-slate-500 ml-2" />
                     <Input
-                        placeholder="Tìm theo tên kho, tên dự án..."
-                        className="border-none shadow-none focus-visible:ring-0 w-full sm:w-[300px]"
+                        placeholder="Tìm theo tên kho, dự án..."
+                        className="border-none shadow-none focus-visible:ring-0 w-full sm:w-[300px] bg-transparent dark:text-slate-100 dark:placeholder:text-slate-500"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
@@ -165,11 +165,11 @@ export default function InventoryPage() {
 
                 {/* Status Filter */}
                 <div className="flex items-center gap-2">
-                    <Filter className="h-4 w-4 text-slate-500" />
+                    <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="h-10 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm"
+                        className="h-10 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm transition-colors"
                     >
                         <option value="active">🟢 Đang hoạt động</option>
                         <option value="closed">🔴 Đã đóng / Ngừng</option>
@@ -181,10 +181,10 @@ export default function InventoryPage() {
             {/* LIST WAREHOUSES */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filtered.length === 0 ? (
-                    <div className="col-span-full flex flex-col items-center justify-center py-16 bg-slate-50 border border-dashed rounded-xl">
-                        <Warehouse className="w-12 h-12 text-slate-300 mb-3" />
-                        <h3 className="text-lg font-medium text-slate-900">Không tìm thấy kho nào</h3>
-                        <p className="text-slate-500 text-sm mt-1">
+                    <div className="col-span-full flex flex-col items-center justify-center py-16 bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl transition-colors">
+                        <Warehouse className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3 transition-colors" />
+                        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200 transition-colors">Không tìm thấy kho nào</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 transition-colors">
                             {statusFilter === 'active'
                                 ? "Không có kho nào đang hoạt động khớp với tìm kiếm."
                                 : "Danh sách trống hoặc không khớp bộ lọc."}
@@ -196,55 +196,63 @@ export default function InventoryPage() {
                         return (
                             <Card
                                 key={w.id}
-                                className={`hover:shadow-md transition-all duration-200 group relative overflow-hidden border-slate-200 flex flex-col ${isClosed ? 'opacity-70 bg-gray-50' : 'bg-white'}`}
+                                className={`hover:shadow-md transition-all duration-200 group relative overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 ${isClosed
+                                        ? 'opacity-70 bg-gray-50 dark:bg-slate-900/40'
+                                        : 'bg-white dark:bg-slate-900'
+                                    }`}
                             >
                                 {/* Thanh màu trạng thái bên trái */}
-                                <div className={`absolute left-0 top-0 bottom-0 w-1 ${isClosed ? 'bg-gray-400' : (w.project_id ? 'bg-blue-600' : 'bg-purple-600')}`} />
+                                <div className={`absolute left-0 top-0 bottom-0 w-1 ${isClosed ? 'bg-slate-400 dark:bg-slate-600' : (w.project_id ? 'bg-blue-600 dark:bg-blue-500' : 'bg-purple-600 dark:bg-purple-500')}`} />
 
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pl-6">
-                                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pl-6 transition-colors">
+                                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2 transition-colors">
                                         {w.project_id ? "KHO DỰ ÁN" : "KHO TỔNG / CÔNG TY"}
-                                        {isClosed && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">ĐÃ ĐÓNG</Badge>}
+                                        {isClosed && <Badge variant="destructive" className="h-5 px-1.5 text-[10px] dark:bg-red-900/50 dark:text-red-300 dark:border-red-800">ĐÃ ĐÓNG</Badge>}
                                     </CardTitle>
 
                                     {/* Nút Đóng/Mở kho */}
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity dark:hover:bg-slate-800"
                                         onClick={() => toggleStatus(w.id, w.status, w.name)}
                                         title={isClosed ? "Mở lại kho" : "Đóng kho này"}
                                     >
                                         {isClosed ? (
-                                            <Lock className="h-3.5 w-3.5 text-gray-400 group-hover:text-green-600" />
+                                            <Lock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 group-hover:text-green-600 dark:group-hover:text-green-400" />
                                         ) : (
-                                            <Unlock className="h-3.5 w-3.5 text-gray-300 group-hover:text-red-500" />
+                                            <Unlock className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600 group-hover:text-red-500 dark:group-hover:text-red-400" />
                                         )}
                                     </Button>
                                 </CardHeader>
 
-                                <CardContent className="pl-6 flex-1 flex flex-col">
-                                    <div className="text-lg font-bold mb-1 text-slate-800 group-hover:text-blue-700 transition-colors break-words leading-tight">
+                                <CardContent className="pl-6 flex-1 flex flex-col transition-colors">
+                                    <div className="text-lg font-bold mb-1 text-slate-800 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors break-words leading-tight">
                                         {w.name}
                                     </div>
 
                                     {w.project ? (
-                                        <div className="text-xs text-muted-foreground flex items-start gap-1.5 mb-4">
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 flex items-start gap-1.5 mb-4 transition-colors">
                                             <Building2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                                             <span className="font-medium break-words">{w.project.code} - {w.project.name}</span>
                                         </div>
                                     ) : (
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 mb-4">
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mb-4 transition-colors">
                                             <Warehouse className="h-3.5 w-3.5" /> Kho trung tâm
                                         </div>
                                     )}
 
-                                    <div className="mt-auto flex items-center justify-between pt-4 border-t border-dashed border-slate-100">
-                                        <Badge variant="secondary" className="font-normal bg-slate-100 text-slate-600 hover:bg-slate-200">
+                                    <div className="mt-auto flex items-center justify-between pt-4 border-t border-dashed border-slate-100 dark:border-slate-800 transition-colors">
+                                        <Badge variant="secondary" className="font-normal bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
                                             <Package className="h-3 w-3 mr-1.5" /> {w.items_count || 0} loại vật tư
                                         </Badge>
 
-                                        <Button size="sm" variant={isClosed ? "outline" : "default"} asChild className={isClosed ? "" : "bg-slate-900 hover:bg-blue-700 shadow-sm"}>
+                                        <Button
+                                            size="sm"
+                                            variant={isClosed ? "outline" : "default"}
+                                            asChild
+                                            className={isClosed ? "dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors" : "bg-slate-900 dark:bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-700 text-white shadow-sm transition-colors"}
+                                        >
                                             <Link href={`/inventory/${w.id}`}>
                                                 Truy cập <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                                             </Link>

@@ -16,7 +16,7 @@ interface Props {
     projectId: string,
     project: any,
     quotations: any[],
-    contracts?: any[] // Biến này chứa danh sách hợp đồng
+    contracts?: any[]
 }
 
 type ViewMode = 'list' | 'quotation-form' | 'contract-form';
@@ -66,14 +66,14 @@ export default function QuotationPageClient({ projectId, project, quotations, co
     // --- RENDER VIEW: QUOTATION FORM ---
     if (view === 'quotation-form') {
         return (
-            <div className="animate-in slide-in-from-right duration-300">
+            <div className="animate-in slide-in-from-right duration-300 transition-colors">
                 <div className="mb-4">
-                    <Button variant="ghost" onClick={() => setView('list')} className="pl-0 hover:pl-2 transition-all">
+                    <Button variant="ghost" onClick={() => setView('list')} className="pl-0 hover:pl-2 transition-all dark:text-slate-300 dark:hover:text-slate-100 dark:hover:bg-transparent">
                         <ArrowLeft className="w-4 h-4 mr-2" /> Quay lại danh sách
                     </Button>
                 </div>
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                    <h2 className="text-xl font-bold mb-4">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                    <h2 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-100 transition-colors">
                         {editingData ? `Chỉnh sửa Báo giá` : "Tạo Báo Giá Mới"}
                     </h2>
                     <QuotationForm
@@ -91,14 +91,14 @@ export default function QuotationPageClient({ projectId, project, quotations, co
     // --- RENDER VIEW: CONTRACT FORM ---
     if (view === 'contract-form') {
         return (
-            <div className="animate-in slide-in-from-right duration-300">
+            <div className="animate-in slide-in-from-right duration-300 transition-colors">
                 <div className="mb-4">
-                    <Button variant="ghost" onClick={() => setView('list')} className="pl-0 hover:pl-2 transition-all">
+                    <Button variant="ghost" onClick={() => setView('list')} className="pl-0 hover:pl-2 transition-all dark:text-slate-300 dark:hover:text-slate-100 dark:hover:bg-transparent">
                         <ArrowLeft className="w-4 h-4 mr-2" /> Quay lại danh sách
                     </Button>
                 </div>
-                <div className="bg-white p-6 rounded-lg border shadow-sm">
-                    <div className="flex items-center gap-2 mb-4 text-indigo-700 border-b pb-2">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                    <div className="flex items-center gap-2 mb-4 text-indigo-700 dark:text-indigo-400 border-b border-slate-200 dark:border-slate-800 pb-2 transition-colors">
                         <FileSignature className="w-6 h-6" />
                         <h2 className="text-xl font-bold">Chi tiết Hợp đồng</h2>
                     </div>
@@ -107,7 +107,6 @@ export default function QuotationPageClient({ projectId, project, quotations, co
                         initialData={editingData}
                         onSuccess={() => setView('list')}
                         onCancel={() => setView('list')}
-                        // ✅ ĐÃ SỬA: Truyền danh sách hợp đồng vào đây để chọn Phụ lục
                         existingContracts={contracts}
                     />
                 </div>
@@ -117,12 +116,12 @@ export default function QuotationPageClient({ projectId, project, quotations, co
 
     // --- RENDER VIEW: LIST ---
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8 animate-in fade-in duration-500 transition-colors">
             {/* PHẦN 1: HỢP ĐỒNG */}
             <div>
                 <div className="flex items-center gap-2 mb-4">
-                    <FileSignature className="w-5 h-5 text-blue-600" />
-                    <h3 className="text-lg font-bold text-slate-800">Hợp đồng Dự án</h3>
+                    <FileSignature className="w-5 h-5 text-blue-600 dark:text-blue-500" />
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 transition-colors">Hợp đồng Dự án</h3>
                 </div>
 
                 <ContractList
@@ -132,16 +131,16 @@ export default function QuotationPageClient({ projectId, project, quotations, co
                 />
             </div>
 
-            <Separator className="my-6" />
+            <Separator className="my-6 dark:bg-slate-800 transition-colors" />
 
             {/* PHẦN 2: BÁO GIÁ */}
             <div>
                 <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-orange-600" />
-                        <h3 className="text-lg font-bold text-slate-800">Danh sách Báo giá</h3>
+                        <FileText className="w-5 h-5 text-orange-600 dark:text-orange-500" />
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 transition-colors">Danh sách Báo giá</h3>
                     </div>
-                    <Button onClick={handleCreateQuotation} size="sm" className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={handleCreateQuotation} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors">
                         <Plus className="w-4 h-4 mr-2" />
                         Tạo Báo Giá
                     </Button>

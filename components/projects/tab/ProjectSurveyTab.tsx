@@ -10,8 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
 import { Compass, Ruler, Camera } from "lucide-react";
 
-// ✅ ĐÃ SỬA: Bỏ dấu '?' để ép kiểu dữ liệu bắt buộc là string, 
-// khớp với kiểu mà component con đang mong đợi.
+// ✅ ĐÃ SỬA: Bỏ dấu '?' để ép kiểu dữ liệu bắt buộc là string
 interface LocalSysDictionary {
     code: string;
     name: string;
@@ -23,7 +22,7 @@ interface ProjectSurveyTabProps {
     project: ProjectData;
     surveys: Survey[];
     members: MemberData[];
-    surveyTypes: LocalSysDictionary[]; // ✅ Đổi tên interface để tránh trùng lặp hệ thống
+    surveyTypes: LocalSysDictionary[];
     surveyTaskTemplates?: any[];
 }
 
@@ -55,30 +54,30 @@ export default function ProjectSurveyTab({
     }, []);
 
     return (
-        <Card className="shadow-sm border-slate-200">
-            <CardHeader className="flex flex-row items-center justify-between bg-slate-50 border-b pb-4">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between bg-slate-50 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 pb-4 transition-colors">
                 <div>
-                    <CardTitle className="text-lg font-bold text-blue-900 flex items-center gap-2">
+                    <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-400 flex items-center gap-2">
                         <Ruler className="w-5 h-5 text-orange-500" /> Quản lý Đợt Khảo sát
                     </CardTitle>
-                    <p className="text-xs text-slate-500 mt-1">Lập Workspace khảo sát theo từng giai đoạn từ Từ điển hệ thống</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Lập Workspace khảo sát theo từng giai đoạn từ Từ điển hệ thống</p>
                 </div>
                 <SurveyCreateModal projectId={projectId} surveyTypes={surveyTypes} />
             </CardHeader>
 
             <CardContent className="pt-6">
                 {surveys.length === 0 ? (
-                    <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed text-slate-400">
+                    <div className="text-center py-10 bg-slate-50 dark:bg-slate-950/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 transition-colors">
                         <Compass className="w-10 h-10 mx-auto mb-3 opacity-20" />
                         <p className="text-sm font-medium">Chưa có đợt khảo sát nào được khởi tạo.</p>
                     </div>
                 ) : (
                     <ul className="space-y-4">
                         {surveys.map((survey) => (
-                            <li key={survey.id} className="flex flex-col p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all hover:shadow-md">
+                            <li key={survey.id} className="flex flex-col p-4 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-900 transition-all hover:shadow-md">
                                 <div className="flex justify-between items-center">
                                     <div className="flex-1 min-w-0 flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                        <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 transition-colors">
                                             <Camera className="w-5 h-5" />
                                         </div>
                                         <SurveyWorkspaceModal
@@ -93,12 +92,17 @@ export default function ProjectSurveyTab({
                                     </div>
 
                                     <div className="flex flex-shrink-0 items-center space-x-1 ml-4">
-                                        <Badge className={`text-xs mr-3 ${survey.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'} border-none shadow-none`}>
+                                        <Badge className={`text-xs mr-3 border-none shadow-none transition-colors ${survey.status === 'completed'
+                                                ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
+                                                : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
+                                            }`}>
                                             {survey.status === 'completed' ? 'Hoàn thành' : 'Đang xử lý'}
                                         </Badge>
 
-                                        <SurveyEditModal survey={survey} projectId={projectId} />
-                                        <SurveyDeleteButton surveyId={survey.id} projectId={projectId} />
+                                        <div className="flex items-center gap-1">
+                                            <SurveyEditModal survey={survey} projectId={projectId} />
+                                            <SurveyDeleteButton surveyId={survey.id} projectId={projectId} />
+                                        </div>
                                     </div>
                                 </div>
                             </li>

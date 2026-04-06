@@ -27,7 +27,7 @@ export const getUserProfile = cache(async () => {
     if (!profile) {
         return {
             isAuthenticated: true,
-            id: user.id, // Vẫn trả về id để layout không bị lỗi
+            id: user.id,
             authId: user.id,
             email: user.email,
             name: user.email?.split('@')[0] || "Người dùng",
@@ -37,10 +37,11 @@ export const getUserProfile = cache(async () => {
         };
     }
 
-    const roleCode = (profile.role_data as any)?.code || "VIEWER";
-    const typeCode = (profile.type_data as any)?.code || "GUEST";
+    // ✅ Thêm toUpperCase() để đảm bảo map đúng tên bảng dù DB nhập chữ thường
+    const roleCode = ((profile.role_data as any)?.code || "VIEWER").toUpperCase();
+    const typeCode = ((profile.type_data as any)?.code || "GUEST").toUpperCase();
 
-    // 3. Truy vấn ID nghiệp vụ (Entity ID) dựa trên USER_TYPE (Ảnh b1478c)
+    // 3. Truy vấn ID nghiệp vụ (Entity ID)
     let entityId = null;
     let entityName = profile.name;
 
@@ -53,36 +54,36 @@ export const getUserProfile = cache(async () => {
     const targetTable = tableMap[typeCode];
 
     if (targetTable) {
-        const { data: entity } = await supabase
+        // ✅ FIX LỖI: Đổi "profile_id" thành "id" để khớp với kiến trúc Shared ID của sếp
+        const { data: entity, error } = await supabase
             .from(targetTable)
             .select("id, name")
-            .eq("profile_id", profile.id)
+            .eq("id", profile.id) // Tìm bằng ID thay vì profile_id
             .single();
 
         if (entity) {
             entityId = entity.id;
             entityName = entity.name;
+        } else {
+            console.error(`[getUserProfile] Không tìm thấy dữ liệu trong bảng ${targetTable} với ID: ${profile.id}`, error?.message);
         }
     }
 
-    // Trả về đối tượng đầy đủ, giữ các key cũ để Sidebar/Header không lỗi
     return {
         isAuthenticated: true,
-        id: user.id,           // Key cũ (Auth ID)
-        authId: user.id,       // Key rõ nghĩa cho Auth
-        profileId: profile.id, // Key cho Profile trung gian
-        entityId: entityId,    // Key cho nghiệp vụ (EmployeeID, CustomerID...)
+        id: user.id,
+        authId: user.id,
+        profileId: profile.id,
+        entityId: entityId,    // Giờ chắc chắn sẽ có ID nhân viên (nếu có trong bảng employees)
         name: entityName || user.email?.split('@')[0] || "Người dùng",
         email: user.email,
-        role: roleCode,        // ADMIN, MANAGER...
-        type: typeCode,        // EMPLOYEE, CUSTOMER, SUPPLIER
+        role: roleCode,
+        type: typeCode,
         avatar_url: profile.avatar_url || null
     };
 });
 
-// ✅ THÊM HÀM NÀY VÀO CUỐI FILE
 export const checkIsAdmin = async () => {
     const profile = await getUserProfile();
-    // Kiểm tra role code là 'ADMIN' (Hoặc mã bạn quy định trong sys_dictionaries)
     return profile?.isAuthenticated && profile.role === 'ADMIN';
 };

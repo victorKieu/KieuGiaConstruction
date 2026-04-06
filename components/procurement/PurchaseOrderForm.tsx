@@ -75,7 +75,6 @@ export default function PurchaseOrderForm({
             if (initialPoData.items && initialPoData.items.length > 0) {
                 const mappedItems = initialPoData.items.map((item: any, index: number) => ({
                     id: item.id || Date.now() + index,
-                    // ✅ FIX LỖI: Luôn fallback về chuỗi rỗng hoặc 0 để tránh undefined
                     item_name: item.item_name || "",
                     unit: item.unit || "",
                     quantity: Number(item.quantity) || 0,
@@ -212,15 +211,17 @@ export default function PurchaseOrderForm({
         }
     };
 
+    const inputClass = "dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors";
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 transition-colors duration-500">
             {/* Header Form */}
-            <Card className="p-6 space-y-5 h-fit shadow-sm border-slate-200">
+            <Card className="p-6 space-y-5 h-fit shadow-sm border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
                 <div className="flex items-center gap-2 mb-2">
-                    <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={() => router.back()}>
+                    <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-100 transition-colors" onClick={() => router.back()}>
                         <ArrowLeft className="w-4 h-4" />
                     </Button>
-                    <h3 className="font-bold text-lg text-slate-800">
+                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 transition-colors">
                         {isEditMode ? "Cập nhật Đơn hàng" : "Tạo Đơn hàng mới"}
                     </h3>
                 </div>
@@ -229,69 +230,69 @@ export default function PurchaseOrderForm({
                     {/* Project Selection */}
                     {(!initialRequestId && !isEditMode) && (
                         <div>
-                            <Label>Dự án <span className="text-red-500">*</span></Label>
+                            <Label className="dark:text-slate-300">Dự án <span className="text-red-500">*</span></Label>
                             <Select onValueChange={setProjectId} value={projectId}>
-                                <SelectTrigger><SelectValue placeholder="Chọn Dự án" /></SelectTrigger>
-                                <SelectContent>
-                                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
+                                <SelectTrigger className={inputClass}><SelectValue placeholder="Chọn Dự án" /></SelectTrigger>
+                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
+                                    {projects.map(p => <SelectItem key={p.id} value={p.id} className="dark:text-slate-200">{p.code} - {p.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
                     )}
 
                     {isEditMode && (
-                        <div className="p-3 bg-slate-50 rounded border text-sm">
-                            <span className="text-slate-500 block text-xs uppercase font-bold">Dự án</span>
-                            <span className="font-medium text-slate-800">
+                        <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 text-sm transition-colors">
+                            <span className="text-slate-500 dark:text-slate-400 block text-xs uppercase font-bold tracking-wider mb-1">Dự án</span>
+                            <span className="font-medium text-slate-800 dark:text-slate-200">
                                 {projects.find(p => p.id === projectId)?.name || "---"}
                             </span>
                         </div>
                     )}
 
                     <div>
-                        <Label>Nhà cung cấp <span className="text-red-500">*</span></Label>
+                        <Label className="dark:text-slate-300">Nhà cung cấp <span className="text-red-500">*</span></Label>
                         <Select onValueChange={setSupplierId} value={supplierId}>
-                            <SelectTrigger><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
-                            <SelectContent>
-                                {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                            <SelectTrigger className={inputClass}><SelectValue placeholder="Chọn NCC" /></SelectTrigger>
+                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
+                                {suppliers.map(s => <SelectItem key={s.id} value={s.id} className="dark:text-slate-200">{s.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
 
                     <div>
-                        <Label>Ngày giao hàng dự kiến</Label>
-                        <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+                        <Label className="dark:text-slate-300">Ngày giao hàng dự kiến</Label>
+                        <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className={inputClass} />
                     </div>
 
                     <div>
-                        <Label>Ghi chú</Label>
+                        <Label className="dark:text-slate-300">Ghi chú</Label>
                         <Textarea
                             placeholder="Ghi chú đơn hàng..."
                             value={notes}
                             onChange={e => setNotes(e.target.value)}
-                            className="min-h-[100px]"
+                            className={`min-h-[100px] ${inputClass}`}
                         />
                     </div>
 
                     {isEditMode && (
                         <div>
-                            <Label>Trạng thái</Label>
+                            <Label className="dark:text-slate-300">Trạng thái</Label>
                             <Select value={status} onValueChange={setStatus}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="draft">Chờ xử lý (Draft)</SelectItem>
-                                    <SelectItem value="ordered">Đã đặt hàng (Ordered)</SelectItem>
-                                    <SelectItem value="cancelled">Hủy bỏ</SelectItem>
+                                <SelectTrigger className={inputClass}><SelectValue /></SelectTrigger>
+                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
+                                    <SelectItem value="draft" className="dark:text-slate-200">Chờ xử lý (Draft)</SelectItem>
+                                    <SelectItem value="ordered" className="dark:text-slate-200">Đã đặt hàng (Ordered)</SelectItem>
+                                    <SelectItem value="cancelled" className="dark:text-slate-200">Hủy bỏ</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                     )}
                 </div>
 
-                <div className="pt-4 border-t mt-4">
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 mt-4 transition-colors">
                     <div className="flex justify-between items-center text-sm">
-                        <span className="text-slate-500">Tổng tiền (tạm tính):</span>
-                        <span className="font-bold text-lg text-blue-600">
+                        <span className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-xs">Tổng tiền (tạm tính)</span>
+                        <span className="font-black text-xl text-blue-600 dark:text-blue-400 transition-colors">
                             {calculateTotal().toLocaleString()} ₫
                         </span>
                     </div>
@@ -299,15 +300,15 @@ export default function PurchaseOrderForm({
             </Card>
 
             {/* Detail Items */}
-            <Card className="lg:col-span-2 p-6 flex flex-col min-h-[600px] shadow-sm border-slate-200">
-                <div className="flex justify-between items-center border-b pb-4 mb-4">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <Card className="lg:col-span-2 p-4 md:p-6 flex flex-col min-h-[600px] shadow-sm border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
+                <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-4 mb-4 transition-colors">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 transition-colors">
+                        <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-500" />
                         Chi tiết Vật tư
                     </h3>
 
                     {!initialRequestId && (
-                        <Button size="sm" variant="outline" onClick={addManualRow} className="text-blue-600 border-blue-200 hover:bg-blue-50">
+                        <Button size="sm" variant="outline" onClick={addManualRow} className="text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:bg-transparent transition-colors">
                             <Plus className="w-4 h-4 mr-1" /> Thêm dòng
                         </Button>
                     )}
@@ -317,103 +318,101 @@ export default function PurchaseOrderForm({
                     {initialRequestId ? (
                         <Table>
                             <TableHeader>
-                                <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                    <TableHead className="w-[40px]">#</TableHead>
-                                    <TableHead>Vật tư</TableHead>
-                                    <TableHead className="text-right text-xs">Còn lại / Tổng</TableHead>
-                                    <TableHead className="w-[100px] text-right">SL Đặt</TableHead>
+                                <TableRow className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
+                                    <TableHead className="w-[40px] dark:text-slate-300">#</TableHead>
+                                    <TableHead className="dark:text-slate-300">Vật tư</TableHead>
+                                    <TableHead className="text-right text-xs dark:text-slate-300">Còn lại / Tổng</TableHead>
+                                    <TableHead className="w-[100px] text-right dark:text-slate-300">SL Đặt</TableHead>
                                 </TableRow>
                             </TableHeader>
-                            <TableBody>
+                            <TableBody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
                                 {initialItems.map(item => (
-                                    <TableRow key={item.id} className={item.is_fully_ordered ? "bg-slate-50 opacity-60" : ""}>
+                                    <TableRow key={item.id} className={`${item.is_fully_ordered ? "bg-slate-50/50 dark:bg-slate-950/50 opacity-50" : "hover:bg-slate-50 dark:hover:bg-slate-800/50"} border-none transition-colors`}>
                                         <TableCell>
                                             {!item.is_fully_ordered && (
                                                 <Checkbox
                                                     checked={!!selectedItems[item.id]}
                                                     onCheckedChange={(c) => setSelectedItems(p => ({ ...p, [item.id]: !!c }))}
+                                                    className="dark:border-slate-600 dark:data-[state=checked]:bg-blue-600 dark:data-[state=checked]:border-blue-600"
                                                 />
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            <div className="font-medium text-sm text-slate-900">{item.item_name}</div>
-                                            <div className="text-xs text-slate-500">{item.unit}</div>
+                                            <div className="font-bold text-sm text-slate-900 dark:text-slate-200 transition-colors">{item.item_name}</div>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 transition-colors">{item.unit}</div>
                                         </TableCell>
                                         <TableCell className="text-right text-sm">
-                                            <span className="text-orange-600 font-bold">{Number(item.remaining_quantity).toLocaleString()}</span>
-                                            <span className="text-slate-300 mx-1">/</span>
-                                            {Number(item.quantity).toLocaleString()}
+                                            <span className="text-orange-600 dark:text-orange-400 font-bold transition-colors">{Number(item.remaining_quantity).toLocaleString()}</span>
+                                            <span className="text-slate-300 dark:text-slate-600 mx-1.5">/</span>
+                                            <span className="font-medium text-slate-600 dark:text-slate-400 transition-colors">{Number(item.quantity).toLocaleString()}</span>
                                         </TableCell>
                                         <TableCell>
                                             {!item.is_fully_ordered ? (
                                                 <Input
-                                                    type="number" className="h-8 text-right font-bold border-blue-200 focus:border-blue-500"
-                                                    value={quantities[item.id] || 0} // ✅ FIX LỖI undefined
+                                                    type="number"
+                                                    className="h-9 text-right font-bold border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-950 dark:text-slate-100 focus-visible:ring-blue-500 transition-colors disabled:opacity-50"
+                                                    value={quantities[item.id] || 0}
                                                     disabled={!selectedItems[item.id]}
                                                     onChange={(e) => setQuantities(p => ({ ...p, [item.id]: Number(e.target.value) }))}
                                                 />
-                                            ) : <CheckCircle2 className="w-4 h-4 text-green-600 ml-auto" />}
+                                            ) : <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-500 ml-auto" />}
                                         </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
                         </Table>
                     ) : (
-                        <Table>
+                        <Table className="min-w-[600px]">
                             <TableHeader>
-                                <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                    <TableHead className="min-w-[200px]">Tên Vật tư / Hàng hóa</TableHead>
-                                    <TableHead className="w-[80px]">ĐVT</TableHead>
-                                    <TableHead className="w-[100px] text-right">SL</TableHead>
-                                    <TableHead className="w-[140px] text-right">Đơn giá</TableHead>
-                                    <TableHead className="w-[140px] text-right">Thành tiền</TableHead>
+                                <TableRow className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
+                                    <TableHead className="min-w-[200px] dark:text-slate-300 font-bold">Tên Vật tư / Hàng hóa</TableHead>
+                                    <TableHead className="w-[80px] dark:text-slate-300 font-bold">ĐVT</TableHead>
+                                    <TableHead className="w-[100px] text-right dark:text-slate-300 font-bold">SL</TableHead>
+                                    <TableHead className="w-[140px] text-right dark:text-slate-300 font-bold">Đơn giá</TableHead>
+                                    <TableHead className="w-[140px] text-right dark:text-slate-300 font-bold">Thành tiền</TableHead>
                                     <TableHead className="w-[50px]"></TableHead>
                                 </TableRow>
                             </TableHeader>
-                            <TableBody>
+                            <TableBody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
                                 {manualItems.map((item) => (
-                                    <TableRow key={item.id}>
-                                        <TableCell className="p-2">
+                                    <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-none transition-colors group">
+                                        <TableCell className="p-1.5 align-top">
                                             <Input
-                                                // ✅ FIX LỖI: Luôn có giá trị fallback ""
                                                 value={item.item_name || ""}
                                                 onChange={e => updateManualItem(item.id, 'item_name', e.target.value)}
                                                 placeholder="Nhập tên vật tư..."
-                                                className="border-transparent bg-transparent hover:bg-slate-50 focus:bg-white focus:border-blue-500 transition-all"
+                                                className="border-transparent bg-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:bg-white dark:focus:bg-slate-950 focus:border-blue-500 dark:focus:border-blue-500 dark:text-slate-200 transition-all h-9 font-medium"
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2">
+                                        <TableCell className="p-1.5 align-top">
                                             <Input
-                                                // ✅ FIX LỖI: Luôn có giá trị fallback ""
                                                 value={item.unit || ""}
                                                 onChange={e => updateManualItem(item.id, 'unit', e.target.value)}
-                                                className="border-transparent bg-transparent hover:bg-slate-50 focus:bg-white focus:border-blue-500 transition-all text-center"
+                                                className="border-transparent bg-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:bg-white dark:focus:bg-slate-950 focus:border-blue-500 dark:focus:border-blue-500 dark:text-slate-300 transition-all text-center h-9"
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2">
+                                        <TableCell className="p-1.5 align-top">
                                             <Input
                                                 type="number"
-                                                className="text-right border-transparent bg-transparent hover:bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-bold text-slate-800"
-                                                // ✅ FIX LỖI: Luôn có giá trị fallback 0
+                                                className="text-right border-transparent bg-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:bg-white dark:focus:bg-slate-950 focus:border-blue-500 dark:focus:border-blue-500 transition-all font-bold text-slate-800 dark:text-slate-100 h-9"
                                                 value={item.quantity || 0}
                                                 onChange={e => updateManualItem(item.id, 'quantity', Number(e.target.value))}
                                             />
                                         </TableCell>
-                                        <TableCell className="p-2">
+                                        <TableCell className="p-1.5 align-top">
                                             <Input
                                                 type="number"
-                                                className="text-right border-transparent bg-transparent hover:bg-slate-50 focus:bg-white focus:border-blue-500 transition-all"
-                                                // ✅ FIX LỖI: Luôn có giá trị fallback 0
+                                                className="text-right border-transparent bg-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:bg-white dark:focus:bg-slate-950 focus:border-blue-500 dark:focus:border-blue-500 transition-all dark:text-slate-200 h-9"
                                                 value={item.unit_price || 0}
                                                 onChange={e => updateManualItem(item.id, 'unit_price', Number(e.target.value))}
                                                 placeholder="0"
                                             />
                                         </TableCell>
-                                        <TableCell className="text-right font-bold text-slate-700 p-2 align-middle">
+                                        <TableCell className="text-right font-bold text-slate-700 dark:text-slate-200 p-2 align-middle transition-colors">
                                             {((item.quantity || 0) * (item.unit_price || 0)).toLocaleString()}
                                         </TableCell>
-                                        <TableCell className="p-2 text-center align-middle">
-                                            <Button variant="ghost" size="icon" onClick={() => removeManualRow(item.id)} className="h-8 w-8 text-red-300 hover:text-red-600 hover:bg-red-50">
+                                        <TableCell className="p-1.5 text-center align-middle">
+                                            <Button variant="ghost" size="icon" onClick={() => removeManualRow(item.id)} className="h-8 w-8 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>
                                         </TableCell>
@@ -424,9 +423,9 @@ export default function PurchaseOrderForm({
                     )}
                 </div>
 
-                <div className="mt-6 flex justify-end gap-3 pt-4 border-t">
-                    <Button variant="outline" onClick={() => router.back()} disabled={loading}>Hủy bỏ</Button>
-                    <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700 min-w-[150px] shadow-md">
+                <div className="mt-6 flex justify-end gap-3 pt-5 border-t border-slate-200 dark:border-slate-800 transition-colors">
+                    <Button variant="outline" onClick={() => router.back()} disabled={loading} className="dark:bg-slate-950 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors">Hủy bỏ</Button>
+                    <Button onClick={handleSubmit} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[160px] shadow-md transition-colors">
                         {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Đang xử lý...</> : <><Save className="w-4 h-4 mr-2" /> Lưu Đơn Hàng</>}
                     </Button>
                 </div>

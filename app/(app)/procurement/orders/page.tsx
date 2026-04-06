@@ -31,13 +31,17 @@ export default async function OrdersPage({
     ]);
 
     return (
-        <div className="flex-1 space-y-4 p-8 pt-6">
-            <div className="flex items-center justify-between">
+        <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 transition-colors duration-500">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Đơn Mua Hàng (PO)</h2>
-                    <p className="text-muted-foreground">Quản lý đặt hàng vật tư, thiết bị cho dự án.</p>
+                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100 transition-colors">
+                        Đơn Mua Hàng (PO)
+                    </h2>
+                    <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 mt-1 transition-colors">
+                        Quản lý đặt hàng vật tư, thiết bị cho dự án.
+                    </p>
                 </div>
-                <Button asChild>
+                <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors w-full sm:w-auto">
                     <Link href="/procurement/orders/new">
                         <Plus className="mr-2 h-4 w-4" /> Tạo đơn mới
                     </Link>

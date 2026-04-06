@@ -27,7 +27,6 @@ export default function DynamicOrgChart() {
         if (res.success) {
             setNodes(res.nodes || []);
             setEmployees(res.employees || []);
-            // Mặc định mở rộng tất cả các nhánh
             const initialExpanded: any = {};
             (res.nodes || []).forEach(n => initialExpanded[n.id] = true);
             setExpanded(initialExpanded);
@@ -83,7 +82,7 @@ export default function DynamicOrgChart() {
         if (children.length === 0) return null;
 
         return (
-            <div className={`space-y-3 ${level > 0 ? "ml-8 mt-3 border-l-2 border-blue-100 pl-4" : ""}`}>
+            <div className={`space-y-4 ${level > 0 ? "ml-8 mt-4 border-l-2 border-slate-200 dark:border-slate-800 pl-6" : ""}`}>
                 {children.map(node => {
                     const hasChildren = nodes.some(n => n.parent_id === node.id);
                     const manager = employees.find(e => e.id === node.manager_id);
@@ -91,48 +90,48 @@ export default function DynamicOrgChart() {
 
                     return (
                         <div key={node.id} className="relative">
-                            {/* Dấu chấm nối dây */}
-                            {level > 0 && <div className="absolute -left-[21px] top-5 w-4 h-0.5 bg-blue-100"></div>}
+                            {/* Đường nối ngang */}
+                            {level > 0 && <div className="absolute -left-[26px] top-6 w-6 h-0.5 bg-slate-200 dark:bg-slate-800"></div>}
 
-                            <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm hover:border-blue-300 transition-all">
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                    {/* Cột trái: Tên & Nút mở rộng */}
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => toggleExpand(node.id)} className="text-slate-400 hover:text-blue-600 focus:outline-none">
-                                            {hasChildren ? (isExp ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />) : <span className="w-5 h-5 block"></span>}
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm hover:border-blue-400 dark:hover:border-blue-500/50 transition-all group/node">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => toggleExpand(node.id)}
+                                            className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus:outline-none"
+                                        >
+                                            {hasChildren ? (isExp ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />) : <div className="w-5 h-5"></div>}
                                         </button>
                                         <div>
-                                            <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-base transition-colors">
                                                 {node.name}
                                             </h4>
                                             {manager ? (
-                                                <div className="text-sm text-emerald-600 flex items-center mt-1 bg-emerald-50 w-fit px-2 py-0.5 rounded-full border border-emerald-100">
-                                                    <User className="w-3 h-3 mr-1" /> Quản lý: {manager.name}
+                                                <div className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center mt-1.5 bg-emerald-50 dark:bg-emerald-500/10 w-fit px-2.5 py-1 rounded-full border border-emerald-100 dark:border-emerald-500/20 font-medium">
+                                                    <User className="w-3 h-3 mr-1.5" /> Quản lý: {manager.name}
                                                 </div>
                                             ) : (
-                                                <div className="text-sm text-orange-500 flex items-center mt-1">
-                                                    <User className="w-3 h-3 mr-1" /> Chưa có quản lý
+                                                <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center mt-1.5 font-medium">
+                                                    <User className="w-3 h-3 mr-1.5" /> Chưa chỉ định quản lý
                                                 </div>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Cột phải: Các nút hành động */}
-                                    <div className="flex items-center gap-2 ml-7 sm:ml-0">
-                                        <button onClick={() => openModal(null, node.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Thêm bộ phận con">
+                                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover/node:opacity-100 transition-opacity ml-8 sm:ml-0">
+                                        <button onClick={() => openModal(null, node.id)} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="Thêm bộ phận con">
                                             <Plus className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => openModal(node)} className="p-1.5 text-slate-600 hover:bg-slate-100 rounded" title="Sửa">
+                                        <button onClick={() => openModal(node)} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Sửa">
                                             <Edit className="w-4 h-4" />
                                         </button>
-                                        <button onClick={() => handleDelete(node.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Xóa">
+                                        <button onClick={() => handleDelete(node.id)} className="p-2 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Xóa">
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Render đệ quy các con của Node này */}
                             {isExp && renderTree(node.id, level + 1)}
                         </div>
                     );
@@ -141,55 +140,74 @@ export default function DynamicOrgChart() {
         );
     };
 
-    if (loading) return <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500" /></div>;
+    if (loading) return <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" /></div>;
 
     return (
-        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center">
-                    <Users className="w-5 h-5 mr-2 text-blue-600" /> Sơ đồ tổ chức phân cấp
-                </h3>
-                <button onClick={() => openModal(null, null)} className="bg-white border border-blue-600 text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-md text-sm font-medium flex items-center">
-                    <Plus className="w-4 h-4 mr-1" /> Thêm Khối/Ban gốc
+        <div className="bg-slate-50/50 dark:bg-slate-950/30 p-4 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 transition-colors">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                <div>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 flex items-center transition-colors">
+                        <Users className="w-6 h-6 mr-3 text-blue-600 dark:text-blue-500" /> Sơ đồ tổ chức Doanh nghiệp
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Quản lý cấu trúc phòng ban và phân cấp nhân sự</p>
+                </div>
+                <button onClick={() => openModal(null, null)} className="bg-white dark:bg-slate-900 border border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center transition-all shadow-sm active:scale-95">
+                    <Plus className="w-4 h-4 mr-2" /> Thêm Khối/Ban gốc
                 </button>
             </div>
 
             {nodes.length === 0 ? (
-                <div className="text-center py-10 bg-white rounded-lg border border-dashed border-slate-300">
-                    <p className="text-slate-500 mb-4">Chưa có bộ phận nào trong sơ đồ.</p>
-                    <button onClick={() => openModal(null, null)} className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm">Tạo Khối/Ban đầu tiên</button>
+                <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 transition-colors">
+                    <Users className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700 mb-4" />
+                    <p className="text-slate-500 dark:text-slate-400 mb-6 font-medium">Hệ thống chưa có dữ liệu sơ đồ tổ chức.</p>
+                    <button onClick={() => openModal(null, null)} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all">Tạo Bộ phận đầu tiên</button>
                 </div>
             ) : (
-                <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-inner overflow-x-auto">
-                    {/* Bắt đầu vẽ cây từ gốc (parent_id = null) */}
-                    {renderTree(null, 0)}
+                <div className="bg-white dark:bg-slate-900/50 p-4 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-inner overflow-x-auto transition-colors">
+                    <div className="min-w-[600px]">
+                        {renderTree(null, 0)}
+                    </div>
                 </div>
             )}
 
             {/* MODAL THÊM / SỬA BỘ PHẬN */}
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="px-6 py-4 border-b bg-slate-50 flex justify-between items-center">
-                            <h3 className="font-bold text-lg">{editingNode ? "Chỉnh sửa Bộ phận" : "Thêm Bộ phận mới"}</h3>
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border dark:border-slate-800 transform animate-in zoom-in-95 duration-200">
+                        <div className="px-6 py-5 border-b dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-between items-center transition-colors">
+                            <h3 className="font-bold text-lg dark:text-slate-100">{editingNode ? "Chỉnh sửa Bộ phận" : "Thêm Bộ phận mới"}</h3>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Tên bộ phận <span className="text-red-500">*</span></label>
-                                <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full border rounded-md p-2" placeholder="VD: Phòng IT" />
+                        <div className="p-6 space-y-5">
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Tên bộ phận <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-slate-100"
+                                    placeholder="VD: Phòng Kỹ thuật"
+                                />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Thuộc cấp (Bộ phận cha)</label>
-                                <select value={formData.parent_id || ""} onChange={e => setFormData({ ...formData, parent_id: e.target.value })} className="w-full border rounded-md p-2">
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Thuộc cấp (Bộ phận cha)</label>
+                                <select
+                                    value={formData.parent_id || ""}
+                                    onChange={e => setFormData({ ...formData, parent_id: e.target.value })}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-slate-100 cursor-pointer"
+                                >
                                     <option value="">-- Là cấp cao nhất (Root) --</option>
                                     {nodes.filter(n => n.id !== editingNode?.id).map(n => (
                                         <option key={n.id} value={n.id}>{n.name}</option>
                                     ))}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Trưởng bộ phận (Quản lý)</label>
-                                <select value={formData.manager_id || ""} onChange={e => setFormData({ ...formData, manager_id: e.target.value })} className="w-full border rounded-md p-2">
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Trưởng bộ phận (Quản lý)</label>
+                                <select
+                                    value={formData.manager_id || ""}
+                                    onChange={e => setFormData({ ...formData, manager_id: e.target.value })}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-slate-100 cursor-pointer"
+                                >
                                     <option value="">-- Chưa chỉ định --</option>
                                     {employees.map(e => (
                                         <option key={e.id} value={e.id}>{e.name} {e.code ? `(${e.code})` : ""}</option>
@@ -197,9 +215,18 @@ export default function DynamicOrgChart() {
                                 </select>
                             </div>
                         </div>
-                        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t">
-                            <button onClick={() => setIsOpen(false)} className="px-4 py-2 text-slate-600 bg-white border rounded hover:bg-slate-100">Hủy</button>
-                            <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center">
+                        <div className="px-6 py-5 bg-slate-50 dark:bg-slate-950 flex justify-end gap-3 border-t dark:border-slate-800 transition-colors">
+                            <button
+                                onClick={() => setIsOpen(false)}
+                                className="px-5 py-2.5 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-sm transition-all"
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={isSaving}
+                                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 flex items-center transition-all disabled:opacity-50"
+                            >
                                 {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Lưu dữ liệu"}
                             </button>
                         </div>

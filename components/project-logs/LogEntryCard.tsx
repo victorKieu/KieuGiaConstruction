@@ -8,7 +8,6 @@ import {
     Trash2,
     Send,
     ThumbsUp,
-    ThumbsDown,
     Heart,
     MoreVertical,
 } from "lucide-react";
@@ -18,7 +17,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-// ✅ FIX: Thay thế react-modal bằng Dialog của shadcn để hỗ trợ Dark Mode tốt hơn
 import {
     Dialog,
     DialogContent,
@@ -27,8 +25,8 @@ import {
     DialogFooter,
     DialogDescription
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea"; // Dùng Textarea chuẩn UI
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Dùng Avatar chuẩn UI
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface LogEntryCardProps {
     log: {
@@ -115,24 +113,25 @@ export default function LogEntryCard({
     };
 
     return (
-        // ✅ FIX: bg-white -> bg-card, border colors
-        <div className="w-full max-w-3xl mx-auto bg-card border border-border shadow-sm rounded-lg mb-8 overflow-hidden text-card-foreground">
-            {/* Header - ✅ FIX: border color */}
-            <div className="flex items-center px-6 py-4 border-b border-border gap-4">
-                {/* Avatar & Name - ✅ FIX: Sử dụng component Avatar chuẩn */}
+        <div className="w-full max-w-3xl mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl mb-8 overflow-hidden transition-colors">
+
+            {/* Header */}
+            <div className="flex items-center px-6 py-4 border-b border-slate-100 dark:border-slate-800 gap-4 transition-colors">
+                {/* Avatar & Name */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <Avatar className="h-10 w-10 border border-border">
+                    <Avatar className="h-10 w-10 border border-slate-200 dark:border-slate-700">
                         <AvatarImage src={log.creator?.avatar_url} className="object-cover" />
-                        <AvatarFallback className="bg-muted text-muted-foreground font-bold">
+                        <AvatarFallback className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold">
                             {log.creator?.name?.[0] || "?"}
                         </AvatarFallback>
                     </Avatar>
 
                     <div className="flex flex-col min-w-0">
-                        {/* ✅ FIX: Text colors */}
-                        <span className="font-semibold truncate text-foreground">{log.creator?.name || "Người dùng"}</span>
-                        <span className="text-xs text-muted-foreground">
-                            Ngày tạo: {formatDate(log.log_date)} <span className="mx-1">||</span> Dự án: {log.projectname?.name}
+                        <span className="font-semibold truncate text-slate-800 dark:text-slate-100 transition-colors">
+                            {log.creator?.name || "Người dùng"}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 transition-colors">
+                            Ngày tạo: {formatDate(log.log_date)} <span className="mx-1">|</span> Dự án: <span className="font-medium text-slate-600 dark:text-slate-300">{log.projectname?.name}</span>
                         </span>
                     </div>
                 </div>
@@ -140,20 +139,16 @@ export default function LogEntryCard({
                 {/* Dropdown Menu */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        {/* ✅ FIX: Ghost button text color */}
-                        <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-foreground">
+                        <Button size="icon" variant="ghost" className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
                             <MoreVertical className="w-4 h-4" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setIsModalOpen(true)}>
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Sửa
+                    <DropdownMenuContent align="end" className="dark:bg-slate-900 dark:border-slate-800">
+                        <DropdownMenuItem onClick={() => setIsModalOpen(true)} className="dark:text-slate-300 dark:focus:bg-slate-800 cursor-pointer">
+                            <Pencil className="w-4 h-4 mr-2" /> Sửa
                         </DropdownMenuItem>
-                        {/* ✅ FIX: Text destructive color */}
-                        <DropdownMenuItem onClick={handleDeleteLog} className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400">
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Xóa
+                        <DropdownMenuItem onClick={handleDeleteLog} className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 dark:focus:bg-slate-800 cursor-pointer">
+                            <Trash2 className="w-4 h-4 mr-2" /> Xóa
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -161,21 +156,20 @@ export default function LogEntryCard({
 
             {/* Section - hạng mục */}
             {log.section && (
-                // ✅ FIX: Text color blue adapted for dark mode
-                <div className="px-6 pt-3 pb-1 text-base font-medium text-blue-700 dark:text-blue-400">
+                <div className="px-6 pt-4 pb-1 text-base font-bold text-blue-700 dark:text-blue-400 transition-colors">
                     {log.section}
                 </div>
             )}
 
             {/* Images */}
             {log.images && log.images.length > 0 && (
-                <div className="flex flex-row gap-2 w-full p-2">
+                <div className="flex flex-row gap-2 w-full p-3 bg-slate-50/50 dark:bg-slate-950/30 transition-colors">
                     {log.images.map((url, idx) => (
                         <div key={url} className="flex-1 flex justify-center items-center">
                             <img
                                 src={url}
                                 alt={`log-${idx}`}
-                                className="object-cover rounded-lg w-full h-80 max-h-[340px] border border-border"
+                                className="object-cover rounded-lg w-full h-80 max-h-[340px] border border-slate-200 dark:border-slate-800 shadow-sm"
                             />
                         </div>
                     ))}
@@ -183,68 +177,65 @@ export default function LogEntryCard({
             )}
 
             {/* Content */}
-            <div className="px-6 py-3 space-y-2">
+            <div className="px-6 py-4 space-y-3">
                 {log.weather && (
-                    // ✅ FIX: Text colors
-                    <div className="text-xs text-muted-foreground">
-                        <b className="text-foreground">Thời tiết:</b> {log.weather}
+                    <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 transition-colors">
+                        <span className="font-bold text-slate-700 dark:text-slate-300">Thời tiết:</span>
+                        <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-medium">{log.weather}</span>
                         {log.temperature && (
-                            <span className="ml-1">({log.temperature})</span>
+                            <span className="bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-100 dark:border-orange-900/50 px-2 py-0.5 rounded-md font-medium ml-1 transition-colors">
+                                {log.temperature}
+                            </span>
                         )}
                     </div>
                 )}
 
                 {log.content && (
-                    // ✅ FIX: Text foreground
-                    <div className="text-base text-foreground whitespace-pre-line leading-relaxed">
+                    <div className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed transition-colors">
                         {log.content}
                     </div>
                 )}
 
                 {log.directive && (
-                    <div className="text-xs text-muted-foreground">
-                        <b className="text-foreground">Chỉ đạo:</b> {log.directive}
+                    <div className="text-xs text-slate-600 dark:text-slate-400 bg-red-50 dark:bg-red-900/10 border-l-2 border-red-500 p-2 rounded-r-md transition-colors">
+                        <b className="text-red-700 dark:text-red-400 uppercase tracking-widest block mb-0.5 text-[10px]">Chỉ đạo CHT/CĐT:</b>
+                        <span className="font-medium">{log.directive}</span>
                     </div>
                 )}
+
                 {log.participants && (
-                    <div className="text-xs text-muted-foreground">
-                        <b className="text-foreground">Người tham gia:</b> {log.participants}
+                    <div className="text-xs text-slate-500 dark:text-slate-400 transition-colors">
+                        <b className="text-slate-700 dark:text-slate-300">Nhân sự tham gia:</b> {log.participants}
                     </div>
                 )}
             </div>
 
-            {/* Like, Unlike, Love - ✅ FIX: Border color */}
-            <div className="flex items-center justify-start px-6 py-3 border-t border-border gap-4">
+            {/* Like, Love Actions */}
+            <div className="flex items-center justify-start px-6 py-3 border-t border-slate-100 dark:border-slate-800 gap-4 transition-colors">
                 <Button
                     size="icon"
                     variant="ghost"
                     onClick={isLiked ? handleUnlike : handleLike}
-                    // ✅ FIX: Active state colors
-                    className={isLiked ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20" : "text-muted-foreground hover:text-foreground"}
+                    className={`h-8 w-8 rounded-full transition-all ${isLiked ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30" : "text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
                 >
-                    {isLiked ? (
-                        <ThumbsUp className="w-4 h-4 fill-current" />
-                    ) : (
-                        <ThumbsUp className="w-4 h-4" />
-                    )}
+                    <ThumbsUp className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
                 </Button>
                 <Button
                     size="icon"
                     variant="ghost"
                     onClick={handleLove}
-                    className={isLoved ? "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20" : "text-muted-foreground hover:text-foreground"}
+                    className={`h-8 w-8 rounded-full transition-all ${isLoved ? "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30" : "text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
                 >
                     <Heart className={`w-4 h-4 ${isLoved ? "fill-current" : ""}`} />
                 </Button>
             </div>
 
-            {/* Comment Box - ✅ FIX: bg-gray-50 -> bg-muted/30, border color */}
-            <div className="px-6 py-3 border-t border-border bg-muted/30">
+            {/* Comment Box */}
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 transition-colors">
                 <div className="flex items-center gap-2">
                     <input
                         type="text"
-                        // ✅ FIX: Input styles for dark mode
-                        className="flex-1 border border-input rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-background text-foreground placeholder:text-muted-foreground"
+                        className="flex-1 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-colors shadow-sm"
                         placeholder="Viết bình luận..."
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
@@ -252,35 +243,35 @@ export default function LogEntryCard({
                             if (e.key === "Enter") handleAddComment();
                         }}
                     />
-                    <Button size="icon" onClick={handleAddComment} className="bg-blue-600 hover:bg-blue-700 text-white">
-                        <Send className="w-4 h-4" />
+                    <Button size="icon" onClick={handleAddComment} className="bg-blue-600 hover:bg-blue-700 text-white rounded-full h-9 w-9 shadow-sm shrink-0">
+                        <Send className="w-4 h-4 ml-0.5" />
                     </Button>
                 </div>
             </div>
 
-            {/* Modal Sửa Log - ✅ FIX: Chuyển sang Dialog shadcn */}
+            {/* Modal Sửa Log */}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800 transition-colors">
                     <DialogHeader>
-                        <DialogTitle>Sửa Nhật Ký</DialogTitle>
-                        <DialogDescription>Chỉnh sửa nội dung nhật ký thi công.</DialogDescription>
+                        <DialogTitle className="dark:text-slate-100">Sửa Nhật Ký</DialogTitle>
+                        <DialogDescription className="dark:text-slate-400">Chỉnh sửa nội dung chi tiết của nhật ký thi công.</DialogDescription>
                     </DialogHeader>
 
                     <div className="py-4">
                         <Textarea
                             value={editedContent}
                             onChange={(e) => setEditedContent(e.target.value)}
-                            className="min-h-[150px] bg-background"
+                            className="min-h-[150px] bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 transition-colors focus-visible:ring-blue-500"
                             placeholder="Nhập nội dung..."
                         />
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+                        <Button variant="outline" onClick={() => setIsModalOpen(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
                             Hủy
                         </Button>
                         <Button onClick={handleEditLog} className="bg-blue-600 hover:bg-blue-700 text-white">
-                            Lưu
+                            Lưu thay đổi
                         </Button>
                     </DialogFooter>
                 </DialogContent>

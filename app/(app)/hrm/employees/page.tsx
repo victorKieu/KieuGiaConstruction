@@ -9,7 +9,6 @@ export const metadata: Metadata = {
     description: "Danh sách và quản lý hồ sơ nhân viên",
 };
 
-// ✅ Fix cho Next.js 15: searchParams là Promise
 interface PageProps {
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
@@ -18,21 +17,19 @@ export default async function EmployeesPage(props: PageProps) {
     const searchParams = await props.searchParams;
     const queryStr = typeof searchParams.q === "string" ? searchParams.q : "";
 
-    // 1. Fetch dữ liệu song song
     const [employeesData, departmentOptions, statusOptions] = await Promise.all([
-        // ✅ Truyền tham số dạng Object chuẩn
         getEmployees({ search: queryStr, page: 1, limit: 10 }),
         getDictionaryOptions("DEPARTMENT"),
         getDictionaryOptions("JOB_STATUS"),
     ]);
 
-    // 2. Map options cho bộ lọc
     const departments = departmentOptions?.map((d: any) => d.name) || [];
     const statuses = statusOptions?.map((s: any) => s.name) || [];
 
     return (
-        <div className="h-full bg-slate-50/50 p-6">
-            <Suspense fallback={<div className="text-center p-10">Đang tải danh sách...</div>}>
+        // ✅ Thêm dark:bg-slate-900/50
+        <div className="h-full bg-slate-50/50 dark:bg-slate-900/50 p-6 transition-colors">
+            <Suspense fallback={<div className="text-center p-10 dark:text-slate-400">Đang tải danh sách...</div>}>
                 <EmployeesClientPage
                     initialEmployees={employeesData.employees}
                     initialTotalCount={employeesData.totalCount}

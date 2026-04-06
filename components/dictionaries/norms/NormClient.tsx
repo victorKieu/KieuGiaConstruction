@@ -14,6 +14,7 @@ import { deleteNorm, importNormsCSV, saveNorm } from "@/lib/action/normActions";
 import { crawlNormFromUrl } from "@/lib/action/crawlerActions";
 import NormForm from "@/components/dictionaries/norms/NormForm";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils/utils";
 
 interface NormClientProps { norms: any[]; totalItems: number; currentPage: number; pageSize: number; resources: any[]; initialSearch?: string; }
 
@@ -21,7 +22,6 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    // ✅ ĐÃ SỬA: Tách riêng giá trị đang gõ (searchInput) và giá trị thực sự dùng để search (appliedSearch)
     const [searchInput, setSearchInput] = useState(initialSearch);
     const [appliedSearch, setAppliedSearch] = useState(initialSearch);
 
@@ -42,7 +42,6 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
-    // ✅ ĐÃ SỬA: Chỉ push URL khi `appliedSearch` hoặc `page` thay đổi (Bỏ setTimeout/debounce)
     useEffect(() => {
         const params = new URLSearchParams(searchParams.toString());
         if (appliedSearch) params.set("q", appliedSearch); else params.delete("q");
@@ -51,11 +50,10 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
         router.push(`?${params.toString()}`, { scroll: false });
     }, [appliedSearch, page, router, searchParams]);
 
-    // ✅ XỬ LÝ NHẤN ENTER ĐỂ TÌM KIẾM
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            setPage(1); // Reset về trang 1 khi tìm kiếm mới
+            setPage(1);
             setAppliedSearch(searchInput);
         }
     };
@@ -134,39 +132,39 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
     };
 
     return (
-        <div className="flex flex-col h-full space-y-4 overflow-hidden">
+        <div className="flex flex-col h-full space-y-4 overflow-hidden transition-colors duration-500">
             {/* Toolbar */}
-            <div className="flex justify-between items-center bg-white p-3 rounded-lg border shadow-sm shrink-0">
-                <div className="relative w-[400px]">
+            <div className="flex flex-col lg:flex-row justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm shrink-0 gap-4 transition-colors">
+                <div className="relative w-full lg:w-[400px]">
                     <Search
-                        className="absolute left-2 top-2.5 h-4 w-4 text-slate-400 cursor-pointer hover:text-blue-600 transition-colors z-10"
+                        className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 cursor-pointer hover:text-blue-600 transition-colors z-10"
                         onClick={triggerSearch}
                     />
                     <Input
                         placeholder="Tìm mã hiệu, tên công tác + Nhấn Enter..."
-                        className="pl-8 bg-slate-50 focus-visible:ring-blue-500 border-slate-300"
+                        className="pl-10 bg-slate-50 dark:bg-slate-950 focus-visible:ring-blue-500 border-slate-200 dark:border-slate-800 transition-colors"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         onKeyDown={handleKeyDown}
                     />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
                     <Select value={importType} onValueChange={setImportType} disabled={isImporting}>
-                        <SelectTrigger className="w-[180px] h-9 bg-slate-50 border-slate-200">
+                        <SelectTrigger className="w-[180px] h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors">
                             <SelectValue placeholder="Loại định mức" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
                             <SelectItem value="company">Định mức Nội bộ</SelectItem>
                             <SelectItem value="state">Định mức Nhà nước</SelectItem>
                         </SelectContent>
                     </Select>
                     <div className="relative">
                         <input type="file" accept=".csv" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" />
-                        <Button variant="outline" disabled={isImporting} className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 h-9">
+                        <Button variant="outline" disabled={isImporting} className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/30 hover:bg-green-100 h-9 transition-colors">
                             {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />} Import CSV
                         </Button>
                     </div>
-                    <Button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 shadow-sm h-9">
+                    <Button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-9 transition-colors">
                         <Plus className="mr-2 h-4 w-4" /> Thêm định mức mới
                     </Button>
                 </div>
@@ -174,71 +172,70 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
 
             {/* Grid List */}
             <ScrollArea className="flex-1 pr-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 pb-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 pb-4">
                     {norms.map(norm => (
-                        <Card key={norm.id} className="hover:shadow-md transition-all border-l-4 group border-l-blue-400">
+                        <Card key={norm.id} className="hover:shadow-md transition-all border-l-4 group border-slate-200 dark:border-slate-800 border-l-blue-400 dark:border-l-blue-600 bg-white dark:bg-slate-900">
                             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 p-4">
-                                <div className="flex flex-col gap-1">
-                                    <Badge variant="secondary" className="font-mono font-bold bg-slate-100 text-slate-700 border-slate-200 w-fit">
+                                <div className="flex flex-col gap-1.5">
+                                    <Badge variant="secondary" className="font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 w-fit transition-colors">
                                         {norm.code}
                                     </Badge>
-                                    <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                                        {norm.type === 'state' ? '🏛️ Định mức Nhà nước' : '🏢 Định mức Nội bộ'}
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
+                                        {norm.type === 'state' ? '🏛️ Nhà nước' : '🏢 Nội bộ'}
                                     </span>
                                 </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:bg-emerald-50" title="So khớp Online" onClick={() => handleCompare(norm)}><GitCompare className="h-3.5 w-3.5" /></Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:bg-blue-50" title="Chỉnh sửa" onClick={() => handleEdit(norm)}><Edit className="h-3.5 w-3.5" /></Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-50" title="Xóa" onClick={() => handleDelete(norm.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                <div className="flex gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600 dark:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30" title="So khớp Online" onClick={() => handleCompare(norm)}><GitCompare className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30" title="Chỉnh sửa" onClick={() => handleEdit(norm)}><Edit className="h-4 w-4" /></Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30" title="Xóa" onClick={() => handleDelete(norm.id)}><Trash2 className="h-4 w-4" /></Button>
                                 </div>
                             </CardHeader>
                             <CardContent className="p-4 pt-0">
-                                <div className="text-base font-bold mb-1 line-clamp-2 text-slate-800" title={norm.name}>{norm.name}</div>
-                                <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
-                                    <span>Đơn vị tính: <span className="font-semibold text-slate-700">{norm.unit}</span></span>
-                                    <span title="Hệ số quy đổi">Hệ số: <span className="font-semibold text-orange-600">{norm.conversion_factor || 1}</span></span>
+                                <div className="text-base font-bold mb-2 line-clamp-2 text-slate-800 dark:text-slate-200 min-h-[3rem] leading-snug transition-colors" title={norm.name}>{norm.name}</div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400 mb-4 flex items-center justify-between transition-colors">
+                                    <span>ĐVT: <span className="font-bold text-slate-700 dark:text-slate-300">{norm.unit}</span></span>
+                                    <span title="Hệ số quy đổi">Hệ số: <span className="font-bold text-orange-600 dark:text-orange-400">{norm.conversion_factor || 1}</span></span>
                                 </div>
-                                <div className="bg-slate-50/80 p-2 rounded-md text-xs space-y-1 border border-slate-100">
+                                <div className="bg-slate-50/80 dark:bg-slate-950/50 p-3 rounded-lg text-xs space-y-1.5 border border-slate-100 dark:border-slate-800 transition-colors">
                                     {(!norm.details || norm.details.length === 0) ? (
-                                        <span className="italic text-slate-400 pl-1">Chưa khai báo hao phí</span>
+                                        <span className="italic text-slate-400 dark:text-slate-600 pl-1">Chưa khai báo hao phí</span>
                                     ) : (
                                         norm.details.slice(0, 5).map((d: any, idx: number) => {
-                                            const resCode = d.resource?.code || 'N/A';
                                             const resName = d.resource?.name || 'Vật tư không xác định';
                                             const resUnit = d.resource?.unit || '';
                                             return (
-                                                <div key={idx} className="flex justify-between border-b border-dashed border-slate-200 last:border-0 py-1 hover:bg-slate-100 px-1 rounded transition-colors">
-                                                    <span className="truncate pr-2" title={resName}>{resName} <span className="text-slate-400 font-mono">({resCode})</span></span>
-                                                    <span className="font-mono font-bold text-slate-700 shrink-0">{d.quantity} {resUnit}</span>
+                                                <div key={idx} className="flex justify-between items-center border-b border-dashed border-slate-200 dark:border-slate-800 last:border-0 pb-1.5 last:pb-0 transition-colors">
+                                                    <span className="truncate pr-4 text-slate-600 dark:text-slate-400" title={resName}>{resName}</span>
+                                                    <span className="font-mono font-bold text-slate-800 dark:text-slate-300 shrink-0">{d.quantity} {resUnit}</span>
                                                 </div>
                                             );
                                         })
                                     )}
-                                    {norm.details && norm.details.length > 5 && <div className="text-center pt-1 text-slate-400 italic">...và {norm.details.length - 5} hao phí khác</div>}
+                                    {norm.details && norm.details.length > 5 && <div className="text-center pt-1 text-slate-400 dark:text-slate-500 text-[10px] font-bold uppercase tracking-widest">+{norm.details.length - 5} hao phí khác</div>}
                                 </div>
                             </CardContent>
                         </Card>
                     ))}
                     {norms.length === 0 && (
-                        <div className="col-span-full flex flex-col items-center justify-center py-16 text-muted-foreground bg-white rounded-lg border border-dashed">
-                            <Filter className="w-10 h-10 mb-2 opacity-20" />
-                            <p>Không tìm thấy định mức nào phù hợp.</p>
+                        <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400 dark:text-slate-600 bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 transition-colors">
+                            <Filter className="w-12 h-12 mb-3 opacity-20" />
+                            <p className="font-medium text-lg">Không tìm thấy định mức nào phù hợp.</p>
                         </div>
                     )}
                 </div>
             </ScrollArea>
 
-            {/* THANH PHÂN TRANG */}
+            {/* Pagination */}
             {totalItems > 0 && (
-                <div className="flex justify-between items-center bg-white p-3 rounded-lg border shadow-sm shrink-0">
-                    <div className="text-sm text-slate-500">
-                        Hiển thị <span className="font-medium text-slate-800">{(page - 1) * pageSize + 1}</span> đến <span className="font-medium text-slate-800">{Math.min(page * pageSize, totalItems)}</span> trong tổng số <span className="font-medium text-slate-800">{totalItems}</span> định mức
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm shrink-0 gap-4 transition-colors">
+                    <div className="text-sm text-slate-500 dark:text-slate-400 transition-colors">
+                        Hiển thị <span className="font-bold text-slate-800 dark:text-slate-200">{(page - 1) * pageSize + 1}</span> - <span className="font-bold text-slate-800 dark:text-slate-200">{Math.min(page * pageSize, totalItems)}</span> / <span className="font-bold text-slate-800 dark:text-slate-200">{totalItems}</span> định mức
                     </div>
                     <div className="flex items-center gap-4">
-                        <span className="text-sm font-medium text-slate-600">Trang {page} / {totalPages}</span>
+                        <span className="text-sm font-bold text-slate-600 dark:text-slate-400">Trang {page} / {totalPages}</span>
                         <div className="flex gap-1">
-                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-400" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-400" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
                         </div>
                     </div>
                 </div>
@@ -246,38 +243,38 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
 
             {/* DIALOG FORM */}
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0 gap-0 flex flex-col">
-                    <DialogHeader className="p-6 pb-2 border-b bg-slate-50/50 sticky top-0 z-10 shrink-0">
-                        <DialogTitle className="text-xl text-slate-800">{editingNorm ? "Cập nhật định mức" : "Thêm định mức mới"}</DialogTitle>
+                <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col dark:bg-slate-900 dark:border-slate-800">
+                    <DialogHeader className="p-6 pb-4 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 sticky top-0 z-10 shrink-0 transition-colors">
+                        <DialogTitle className="text-xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">{editingNorm ? "Cập nhật định mức" : "Thêm định mức mới"}</DialogTitle>
                     </DialogHeader>
-                    <div className="p-6 flex-1">
+                    <div className="p-6 flex-1 overflow-y-auto">
                         <NormForm initialData={editingNorm} resources={resources} onSuccess={() => { setIsOpen(false); router.refresh(); }} />
                     </div>
                 </DialogContent>
             </Dialog>
 
-            {/* ✅ MODAL 1: NHẬP ĐƯỜNG LINK */}
+            {/* MODAL 1: NHẬP ĐƯỜNG LINK */}
             <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-                <DialogContent className="sm:max-w-[500px]">
+                <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <LinkIcon className="w-5 h-5 text-blue-600" /> Nhập link để lấy dữ liệu
+                        <DialogTitle className="flex items-center gap-2 dark:text-slate-100">
+                            <LinkIcon className="w-5 h-5 text-blue-600 dark:text-blue-500" /> Nhập link để lấy dữ liệu
                         </DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
-                        <p className="text-sm text-slate-600 mb-4">
-                            Hệ thống sẽ đối chiếu định mức <b className="text-blue-600 font-mono">{selectedLocalNorm?.code}</b>. Vui lòng dán đường link chi tiết từ DinhMucOnline vào ô bên dưới:
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 transition-colors">
+                            Hệ thống sẽ đối chiếu định mức <b className="text-blue-600 dark:text-blue-400 font-mono">{selectedLocalNorm?.code}</b>. Vui lòng dán đường link chi tiết từ DinhMucOnline:
                         </p>
                         <Input
-                            placeholder="VD: https://dinhmuconline.com/dinhmuc/104481"
+                            placeholder="https://dinhmuconline.com/..."
                             value={inputUrl}
                             onChange={(e) => setInputUrl(e.target.value)}
-                            className="bg-slate-50 border-slate-300"
+                            className="bg-slate-50 dark:bg-slate-950 border-slate-300 dark:border-slate-800 dark:text-slate-100 transition-colors"
                             autoFocus
                         />
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setLinkDialogOpen(false)} disabled={isFetchingUrl}>Hủy</Button>
+                    <DialogFooter className="dark:border-slate-800">
+                        <Button variant="outline" onClick={() => setLinkDialogOpen(false)} disabled={isFetchingUrl} className="dark:border-slate-700 dark:text-slate-300">Hủy</Button>
                         <Button onClick={handleFetchFromUrl} disabled={isFetchingUrl} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[140px]">
                             {isFetchingUrl ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
                             Bắt đầu lấy dữ liệu
@@ -286,81 +283,79 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
                 </DialogContent>
             </Dialog>
 
-            {/* ✅ MODAL 2: SO KHỚP ONLINE */}
+            {/* MODAL 2: SO KHỚP ONLINE */}
             <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
-                <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
-                    <DialogHeader className="p-4 border-b bg-slate-50 shrink-0">
-                        <DialogTitle className="text-lg flex items-center gap-2">
+                <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden p-0 flex flex-col dark:bg-slate-900 dark:border-slate-800">
+                    <DialogHeader className="p-4 border-b dark:border-slate-800 bg-slate-50 dark:bg-slate-950 transition-colors">
+                        <DialogTitle className="text-lg flex items-center gap-2 dark:text-slate-100 font-black">
                             <GitCompare className="w-5 h-5 text-emerald-600" />
-                            So khớp định mức: <span className="font-mono text-blue-700">{compareData?.local?.code}</span>
+                            SO KHỚP ĐỊNH MỨC: <span className="font-mono text-blue-700 dark:text-blue-400">{compareData?.local?.code}</span>
                         </DialogTitle>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-y-auto p-4 bg-slate-100/50">
+                    <div className="flex-1 overflow-y-auto p-4 bg-slate-100/50 dark:bg-slate-950/30 transition-colors">
                         {compareData && (
-                            <div className="grid grid-cols-2 gap-4 h-full">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {/* CỘT TRÁI: HIỆN TẠI */}
-                                <Card className="border-rose-200 shadow-sm">
-                                    <CardHeader className="bg-rose-50 p-3 border-b border-rose-100">
-                                        <h3 className="font-bold text-rose-800 text-sm">Dữ liệu hiện tại (Hệ thống)</h3>
+                                <Card className="border-rose-200 dark:border-rose-900/50 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
+                                    <CardHeader className="bg-rose-50 dark:bg-rose-950/20 p-3 border-b border-rose-100 dark:border-rose-900/30 transition-colors">
+                                        <h3 className="font-bold text-rose-800 dark:text-rose-400 text-xs uppercase tracking-widest">Dữ liệu hiện tại (Hệ thống)</h3>
                                     </CardHeader>
-                                    <CardContent className="p-4 space-y-4">
-                                        <div>
-                                            <div className="text-xs text-slate-500 mb-1">Tên công tác</div>
-                                            <div className="font-semibold text-slate-800 text-sm">{compareData.local.name}</div>
+                                    <CardContent className="p-5 space-y-4">
+                                        <div className="space-y-1">
+                                            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Tên công tác</div>
+                                            <div className="font-bold text-slate-800 dark:text-slate-200 text-sm leading-snug">{compareData.local.name}</div>
                                         </div>
-                                        <div>
-                                            <div className="text-xs text-slate-500 mb-1">Đơn vị tính</div>
-                                            <Badge variant="outline">{compareData.local.unit}</Badge>
+                                        <div className="space-y-1">
+                                            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Đơn vị tính</div>
+                                            <Badge variant="outline" className="dark:border-slate-700 dark:text-slate-300">{compareData.local.unit}</Badge>
                                         </div>
-                                        <div>
-                                            <div className="text-xs text-slate-500 mb-2">Hao phí vật tư ({compareData.local.details?.length || 0})</div>
-                                            <div className="space-y-1">
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Chi tiết hao phí ({compareData.local.details?.length || 0})</div>
+                                            <div className="space-y-1.5">
                                                 {compareData.local.details?.map((d: any, idx: number) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded text-xs border border-slate-100">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-semibold text-slate-700">{d.resource?.name || 'N/A'}</span>
-                                                            <span className="text-[10px] font-mono text-slate-400">{d.resource?.code || 'N/A'}</span>
+                                                    <div key={idx} className="flex justify-between items-center bg-slate-50 dark:bg-slate-950/50 p-2.5 rounded-lg text-xs border border-slate-100 dark:border-slate-800 transition-colors">
+                                                        <div className="flex flex-col min-w-0 pr-4">
+                                                            <span className="font-bold text-slate-700 dark:text-slate-300 truncate">{d.resource?.name || 'N/A'}</span>
+                                                            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{d.resource?.code || 'N/A'}</span>
                                                         </div>
-                                                        <span className="font-bold text-slate-800">{d.quantity} <span className="text-slate-500 font-normal">{d.resource?.unit}</span></span>
+                                                        <span className="font-black text-slate-900 dark:text-slate-200 shrink-0">{d.quantity} <span className="text-slate-500 font-normal">{d.resource?.unit}</span></span>
                                                     </div>
                                                 ))}
-                                                {(!compareData.local.details || compareData.local.details.length === 0) && <div className="text-slate-400 text-xs italic text-center py-2">Trống</div>}
                                             </div>
                                         </div>
                                     </CardContent>
                                 </Card>
 
                                 {/* CỘT PHẢI: ONLINE */}
-                                <Card className="border-emerald-200 shadow-sm relative">
-                                    <div className="absolute top-1/2 -left-3 transform -translate-y-1/2 bg-white rounded-full shadow-md z-10">
-                                        <ArrowRight className="w-5 h-5 text-slate-400" />
+                                <Card className="border-emerald-200 dark:border-emerald-900/50 shadow-sm bg-white dark:bg-slate-900 relative overflow-hidden">
+                                    <div className="hidden lg:block absolute top-1/2 -left-3.5 transform -translate-y-1/2 bg-white dark:bg-slate-900 border dark:border-slate-700 rounded-full shadow-md z-10 p-1">
+                                        <ArrowRight className="w-5 h-5 text-emerald-500" />
                                     </div>
-                                    <CardHeader className="bg-emerald-50 p-3 border-b border-emerald-100">
-                                        <h3 className="font-bold text-emerald-800 text-sm">Dữ liệu Online (Gợi ý)</h3>
+                                    <CardHeader className="bg-emerald-50 dark:bg-emerald-950/20 p-3 border-b border-emerald-100 dark:border-emerald-900/30 transition-colors">
+                                        <h3 className="font-bold text-emerald-800 dark:text-emerald-400 text-xs uppercase tracking-widest text-right">Dữ liệu Online (Nguồn cập nhật)</h3>
                                     </CardHeader>
-                                    <CardContent className="p-4 space-y-4">
-                                        <div>
-                                            <div className="text-xs text-slate-500 mb-1">Tên công tác</div>
-                                            <div className="font-semibold text-slate-800 text-sm">{compareData.online.name}</div>
+                                    <CardContent className="p-5 space-y-4">
+                                        <div className="space-y-1">
+                                            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Tên công tác</div>
+                                            <div className="font-bold text-slate-800 dark:text-slate-200 text-sm leading-snug">{compareData.online.name}</div>
                                         </div>
-                                        <div>
-                                            <div className="text-xs text-slate-500 mb-1">Đơn vị tính</div>
-                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{compareData.online.unit}</Badge>
+                                        <div className="space-y-1">
+                                            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Đơn vị tính</div>
+                                            <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">{compareData.online.unit}</Badge>
                                         </div>
-                                        <div>
-                                            <div className="text-xs text-slate-500 mb-2">Hao phí vật tư ({compareData.online.details?.length || 0})</div>
-                                            <div className="space-y-1">
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Chi tiết hao phí ({compareData.online.details?.length || 0})</div>
+                                            <div className="space-y-1.5">
                                                 {compareData.online.details?.map((d: any, idx: number) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-white p-2 rounded text-xs border border-emerald-100">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-semibold text-slate-700">{d.resource?.name || 'N/A'}</span>
-                                                            <span className="text-[10px] font-mono text-slate-400">{d.resource?.code || 'N/A'}</span>
+                                                    <div key={idx} className="flex justify-between items-center bg-white dark:bg-slate-950 p-2.5 rounded-lg text-xs border border-emerald-100 dark:border-emerald-900/40 transition-colors shadow-sm">
+                                                        <div className="flex flex-col min-w-0 pr-4">
+                                                            <span className="font-bold text-emerald-900 dark:text-emerald-400 truncate">{d.resource?.name || 'N/A'}</span>
+                                                            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{d.resource?.code || 'N/A'}</span>
                                                         </div>
-                                                        <span className="font-bold text-emerald-700">{d.quantity} <span className="text-slate-500 font-normal">{d.resource?.unit}</span></span>
+                                                        <span className="font-black text-emerald-700 dark:text-emerald-300 shrink-0">{d.quantity} <span className="text-slate-500 font-normal">{d.resource?.unit}</span></span>
                                                     </div>
                                                 ))}
-                                                {(!compareData.online.details || compareData.online.details.length === 0) && <div className="text-slate-400 text-xs italic text-center py-2">Trống</div>}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -369,11 +364,11 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
                         )}
                     </div>
 
-                    <DialogFooter className="p-4 border-t bg-white shrink-0">
-                        <Button variant="outline" onClick={() => setCompareOpen(false)} disabled={isUpdating}>Hủy bỏ</Button>
-                        <Button onClick={handleApplyOnlineData} disabled={isUpdating} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[200px]">
+                    <DialogFooter className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 transition-colors">
+                        <Button variant="outline" onClick={() => setCompareOpen(false)} disabled={isUpdating} className="dark:border-slate-700 dark:text-slate-300">Hủy bỏ</Button>
+                        <Button onClick={handleApplyOnlineData} disabled={isUpdating} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[220px] font-bold shadow-lg shadow-emerald-500/20">
                             {isUpdating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <GitCompare className="w-4 h-4 mr-2" />}
-                            Cập nhật bằng dữ liệu Online
+                            Áp dụng dữ liệu mới này
                         </Button>
                     </DialogFooter>
                 </DialogContent>

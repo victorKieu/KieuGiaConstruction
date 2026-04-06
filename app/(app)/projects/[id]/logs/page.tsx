@@ -1,4 +1,3 @@
-// app/(app)/projects/[id]/logs/page.tsx
 import ProjectLogsPageClient from "@/components/project-logs/ProjectLogsPageClient";
 import { getConstructionLogs } from "@/lib/action/log-actions";
 
@@ -14,17 +13,19 @@ export default async function ProjectLogsPage({ params }: PageProps) {
     // 2. Lấy dữ liệu từ Server
     const logs = await getConstructionLogs(projectId);
 
-    // 3. Normalize dữ liệu an toàn (tránh lỗi nếu logs là null/undefined)
-    // Nếu getConstructionLogs trả về object {data: [...]}, hãy sửa thành logs.data
-    const formattedLogs = Array.isArray(logs) ? logs : [];
+    // 3. Normalize dữ liệu thông minh (Tự động bắt cả 2 trường hợp Mảng hoặc Object)
+    const formattedLogs = Array.isArray(logs) ? logs : (logs?.data || []);
 
     return (
-        // ✅ FIX: Thêm wrapper bg-background min-h-screen để chuẩn Dark Mode toàn trang
-        <div className="container mx-auto py-6 bg-background min-h-screen">
-            <ProjectLogsPageClient
-                logs={formattedLogs}
-                projectId={projectId}
-            />
+        // ✅ Đã thay bg-background bằng hệ màu chuẩn: bg-slate-50 dark:bg-slate-950
+        // Đưa min-h-screen ra ngoài cùng để bao phủ toàn bộ chiều cao màn hình
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-500">
+            <div className="container mx-auto py-6">
+                <ProjectLogsPageClient
+                    logs={formattedLogs}
+                    projectId={projectId}
+                />
+            </div>
         </div>
     );
 }

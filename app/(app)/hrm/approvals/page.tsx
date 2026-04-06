@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, X, Clock, AlertCircle, CalendarDays, Loader2, User, FileText, Send } from "lucide-react";
+import { Check, X, Clock, AlertCircle, CalendarDays, Loader2, User, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils/utils";
 
@@ -62,22 +62,30 @@ export default function ApprovalDashboardPage() {
     const getRequestTypeInfo = (type: string, subType: string) => {
         if (type === 'leave') {
             const types: any = { annual: 'Nghỉ phép năm', unpaid: 'Nghỉ không lương', sick: 'Ốm/Thai sản', urgent: 'Nghỉ đột xuất' };
-            return { label: `Xin nghỉ: ${types[subType] || subType}`, color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CalendarDays };
+            return {
+                label: `Xin nghỉ: ${types[subType] || subType}`,
+                color: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30',
+                icon: CalendarDays
+            };
         } else {
             const types: any = { forgot_in: 'Quên chấm VÀO', forgot_out: 'Quên chấm RA', wrong_time: 'Lỗi chấm công', field_work: 'Công tác thực địa' };
-            return { label: `Giải trình: ${types[subType] || subType}`, color: 'bg-orange-100 text-orange-800 border-orange-200', icon: AlertCircle };
+            return {
+                label: `Giải trình: ${types[subType] || subType}`,
+                color: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:border-orange-500/30',
+                icon: AlertCircle
+            };
         }
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500 max-w-6xl mx-auto">
+        <div className="space-y-6 animate-in fade-in duration-500 max-w-6xl mx-auto p-4 md:p-6 transition-colors">
             {/* Header Trang */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Duyệt Đơn Từ & Giải Trình</h1>
-                    <p className="text-sm text-slate-500">Xem xét và phê duyệt các yêu cầu từ nhân viên</p>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 transition-colors">Duyệt Đơn Từ & Giải Trình</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 transition-colors">Xem xét và phê duyệt các yêu cầu từ nhân viên</p>
                 </div>
-                <Button variant="outline" onClick={loadData} disabled={isLoading}>
+                <Button variant="outline" onClick={loadData} disabled={isLoading} className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors w-full sm:w-auto shadow-sm">
                     {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Clock className="w-4 h-4 mr-2" />}
                     Làm mới dữ liệu
                 </Button>
@@ -86,13 +94,13 @@ export default function ApprovalDashboardPage() {
             {/* Vùng hiển thị dữ liệu */}
             {isLoading ? (
                 <div className="flex justify-center items-center h-64">
-                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
                 </div>
             ) : requests.length === 0 ? (
-                <div className="p-16 text-center bg-slate-50 border border-slate-200 rounded-xl border-dashed">
-                    <FileText className="w-16 h-16 mx-auto text-slate-300 mb-4" />
-                    <h3 className="text-xl font-medium text-slate-700">Tất cả đã hoàn thành!</h3>
-                    <p className="text-slate-500 mt-2">Hiện tại không có đơn từ nào đang chờ sếp duyệt.</p>
+                <div className="p-12 md:p-16 text-center bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl border-dashed shadow-sm transition-colors">
+                    <FileText className="w-16 h-16 mx-auto text-slate-300 dark:text-slate-600 mb-4 transition-colors" />
+                    <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 transition-colors">Tất cả đã hoàn thành!</h3>
+                    <p className="text-slate-500 dark:text-slate-400 mt-2 transition-colors">Hiện tại không có đơn từ nào đang chờ sếp duyệt.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -103,50 +111,53 @@ export default function ApprovalDashboardPage() {
                         const empCode = req.employee?.code || '???';
 
                         return (
-                            <Card key={req.id} className="shadow-sm border-slate-200 flex flex-col hover:shadow-md transition-shadow">
-                                <CardHeader className="pb-3 border-b bg-slate-50/50">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <Badge variant="outline" className={typeInfo.color}>
-                                            <Icon className="w-3 h-3 mr-1" /> {typeInfo.label}
+                            <Card key={req.id} className="shadow-sm border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col hover:shadow-md transition-all duration-300 overflow-hidden">
+                                <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-950/30 transition-colors">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <Badge variant="outline" className={`${typeInfo.color} font-bold px-2 py-0.5 shadow-sm transition-colors`}>
+                                            <Icon className="w-3.5 h-3.5 mr-1.5" /> {typeInfo.label}
                                         </Badge>
-                                        <span className="text-[11px] text-slate-400 font-medium">
-                                            {/* ✅ Fix: Dùng formatDate cho ngày tạo đơn */}
+                                        <span className="text-[11px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider transition-colors bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded">
                                             {formatDate(req.created_at)}
                                         </span>
                                     </div>
-                                    <div className="font-bold text-lg text-slate-800 flex items-center">
-                                        <User className="w-4 h-4 mr-2 text-slate-400" /> {empName}
+                                    <div className="font-black text-lg text-slate-800 dark:text-slate-100 flex items-center transition-colors">
+                                        <User className="w-4 h-4 mr-2 text-slate-400 dark:text-slate-500" /> {empName}
                                     </div>
-                                    <div className="text-xs text-slate-500 font-mono">Mã NV: {empCode}</div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono transition-colors">Mã NV: {empCode}</div>
                                 </CardHeader>
 
-                                <CardContent className="text-sm flex-1 pt-4 space-y-3">
+                                <CardContent className="text-sm flex-1 pt-4 space-y-4">
                                     {/* Thông tin ngày tháng */}
-                                    <div className="flex justify-between items-center bg-slate-50 p-2 rounded-md border border-slate-100">
-                                        <span className="text-slate-500">Ngày áp dụng:</span>
-                                        <span className="font-bold text-slate-700">
-                                            {/* ✅ Fix: Dùng formatDate cho khoảng thời gian áp dụng */}
+                                    <div className="flex flex-col gap-1.5 bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-100 dark:border-slate-800/50 transition-colors">
+                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Thời gian áp dụng</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 text-base">
                                             {formatDate(req.start_date)}
-                                            {req.end_date && req.end_date !== req.start_date && ` - ${formatDate(req.end_date)}`}
+                                            {req.end_date && req.end_date !== req.start_date && (
+                                                <>
+                                                    <span className="text-slate-400 dark:text-slate-500 mx-1.5 font-normal">đến</span>
+                                                    {formatDate(req.end_date)}
+                                                </>
+                                            )}
                                         </span>
                                     </div>
 
                                     {/* Khung Giờ thực tế (Chỉ cho đơn giải trình) */}
                                     {req.request_type === 'explanation' && (req.actual_in_time || req.actual_out_time) && (
-                                        <div className="flex justify-between items-center bg-orange-50 p-2 rounded-md border border-orange-100">
-                                            <span className="text-orange-700">Giờ khai báo:</span>
-                                            <span className="font-bold text-orange-700">
+                                        <div className="flex flex-col gap-1.5 bg-orange-50 dark:bg-orange-500/10 p-3 rounded-lg border border-orange-100 dark:border-orange-500/20 transition-colors">
+                                            <span className="text-xs font-bold uppercase tracking-wider text-orange-700 dark:text-orange-400">Giờ khai báo</span>
+                                            <span className="font-bold text-orange-700 dark:text-orange-300 text-base font-mono">
                                                 {req.actual_in_time ? req.actual_in_time.substring(0, 5) : '--:--'}
-                                                <span className="text-orange-400 mx-1 font-normal">đến</span>
+                                                <span className="text-orange-400 dark:text-orange-500/50 mx-2 font-sans font-normal text-sm">đến</span>
                                                 {req.actual_out_time ? req.actual_out_time.substring(0, 5) : '--:--'}
                                             </span>
                                         </div>
                                     )}
 
                                     {/* Lý do của nhân viên */}
-                                    <div>
-                                        <span className="text-xs text-slate-500 block mb-1 uppercase font-semibold">Lý do:</span>
-                                        <p className="text-slate-700 italic bg-white border border-slate-100 p-2 rounded">
+                                    <div className="space-y-1.5">
+                                        <span className="text-xs text-slate-500 dark:text-slate-400 block uppercase font-bold tracking-wider transition-colors">Lý do chi tiết</span>
+                                        <p className="text-slate-700 dark:text-slate-300 italic bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg leading-relaxed shadow-inner transition-colors">
                                             "{req.reason}"
                                         </p>
                                     </div>
@@ -155,24 +166,24 @@ export default function ApprovalDashboardPage() {
                                     <div className="pt-2">
                                         <Textarea
                                             placeholder="Ghi chú của Quản lý (Không bắt buộc)..."
-                                            className="text-xs min-h-[60px] resize-none"
+                                            className="text-xs min-h-[60px] resize-none dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 focus-visible:ring-blue-500 transition-colors"
                                             value={notes[req.id] || ""}
                                             onChange={(e) => handleNoteChange(req.id, e.target.value)}
                                         />
                                     </div>
                                 </CardContent>
 
-                                <CardFooter className="pt-0 flex gap-2">
+                                <CardFooter className="pt-0 flex gap-3 pb-5 px-6 border-t dark:border-slate-800 pt-5 mt-auto">
                                     <Button
                                         variant="outline"
-                                        className="w-1/2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        className="w-1/2 border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 bg-red-50/50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 transition-colors font-bold shadow-sm"
                                         onClick={() => handleProcess(req.id, 'rejected')}
                                         disabled={processingId !== null}
                                     >
                                         {processingId === req.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4 mr-1.5" />} Từ chối
                                     </Button>
                                     <Button
-                                        className="w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        className="w-1/2 bg-emerald-600 dark:bg-emerald-600 hover:bg-emerald-700 dark:hover:bg-emerald-700 text-white font-bold shadow-md transition-colors"
                                         onClick={() => handleProcess(req.id, 'approved')}
                                         disabled={processingId !== null}
                                     >

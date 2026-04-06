@@ -39,9 +39,9 @@ export default function ProjectQTOTab({ projectId, qtoItems = [], norms = [] }: 
             const freshItems = await getProjectQTO(projectId);
             const freshNorms = await getNorms();
 
-            // Bóc tách an toàn: Nếu là mảng thì lấy luôn, nếu là Object thì lấy lõi .data
-            const validItems = Array.isArray(freshItems) ? freshItems : (freshItems?.data || []);
-            const validNorms = Array.isArray(freshNorms) ? freshNorms : (freshNorms?.data || []);
+            // ✅ ĐÃ FIX LỖI TS2339: Ép kiểu (as any) để TypeScript bỏ qua việc check strict type
+            const validItems = Array.isArray(freshItems) ? freshItems : ((freshItems as any)?.data || []);
+            const validNorms = Array.isArray(freshNorms) ? freshNorms : ((freshNorms as any)?.data || []);
 
             setLocalItems(validItems);
             setLocalNorms(validNorms);
@@ -120,10 +120,10 @@ export default function ProjectQTOTab({ projectId, qtoItems = [], norms = [] }: 
 
     return (
         <div className="space-y-6">
-            <Card className="border-purple-200 bg-purple-50/50 dark:bg-purple-900/10 shadow-sm">
+            <Card className="border-purple-200 dark:border-purple-900/50 bg-purple-50/50 dark:bg-purple-900/10 shadow-sm transition-colors">
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-purple-800 dark:text-purple-300 flex items-center gap-2 text-lg">
-                        <Sparkles className="w-5 h-5" />
+                    <CardTitle className="text-purple-800 dark:text-purple-400 flex items-center gap-2 text-lg">
+                        <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-500" />
                         AI Bóc Tách Khối Lượng (Auto-QTO)
                     </CardTitle>
                     <p className="text-sm text-purple-600/80 dark:text-purple-400/80">
@@ -140,8 +140,8 @@ export default function ProjectQTOTab({ projectId, qtoItems = [], norms = [] }: 
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 disabled={isAnalyzing}
                             />
-                            <div className="flex items-center gap-3 p-3 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-white dark:bg-card hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
-                                <UploadCloud className="w-5 h-5 text-purple-500" />
+                            <div className="flex items-center gap-3 p-3 border-2 border-dashed border-purple-300 dark:border-purple-800/60 rounded-lg bg-white dark:bg-slate-950 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+                                <UploadCloud className="w-5 h-5 text-purple-500 dark:text-purple-400" />
                                 <span className="text-sm font-medium text-slate-600 dark:text-slate-300 truncate">
                                     {file ? file.name : "Nhấn để Chọn Bản Vẽ (Ảnh/PDF)..."}
                                 </span>
@@ -151,7 +151,7 @@ export default function ProjectQTOTab({ projectId, qtoItems = [], norms = [] }: 
                         <Button
                             onClick={handleAnalyzeAI}
                             disabled={isAnalyzing || !file}
-                            className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white shadow-md h-12 px-6"
+                            className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600 text-white shadow-md h-12 px-6 transition-colors"
                         >
                             {isAnalyzing ? (
                                 <>
@@ -168,25 +168,25 @@ export default function ProjectQTOTab({ projectId, qtoItems = [], norms = [] }: 
                 </CardContent>
             </Card>
 
-            <div className="bg-card p-1 rounded-lg border-none relative">
-                <div className="mb-4 flex justify-between items-center">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors relative">
+                <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                             Bảng Tiên Lượng (Khối lượng bóc tách)
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                             Kết quả do AI trả về hoặc do bạn tạo thủ công.
                         </p>
                     </div>
 
-                    <Button variant="outline" size="sm" onClick={fetchLatestData} disabled={isLoadingData}>
+                    <Button variant="outline" size="sm" onClick={fetchLatestData} disabled={isLoadingData} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
                         <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingData ? 'animate-spin' : ''}`} />
                         Làm mới
                     </Button>
                 </div>
 
                 {isLoadingData ? (
-                    <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
+                    <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500 dark:text-blue-400" /></div>
                 ) : (
                     <QTOClient
                         projectId={projectId}

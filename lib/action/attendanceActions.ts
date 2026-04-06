@@ -3,6 +3,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/utils";
 import tzlookup from "tz-lookup";
+import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
 // ============================================================================
 // 1. HÀM TÍNH KHOẢNG CÁCH (HAVERSINE)
@@ -306,26 +307,28 @@ export async function submitAttendanceRequest(payload: any) {
 export async function getPendingRequests() {
     const supabase = await createSupabaseServerClient();
     try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) return [];
+        // ✅ 1. Sử dụng hàm trung tâm của sếp để lấy Profile
+        const userProfile = await getUserProfile();
 
-        const { data: currentUser } = await supabase
-            .from('employees')
-            .select('id, role, department_id')
-            .eq('auth_id', user.id)
-            .single();
+        if (!userProfile || !userProfile.isAuthenticated || userProfile.type !== 'EMPLOYEE') {
+            console.log("❌ Không tìm thấy Profile nhân viên hợp lệ.");
+            return [];
+        }
 
-        if (!currentUser) return [];
-
-        const userRole = (currentUser.role || '').toLowerCase();
+        const currentEmployeeId = userProfile.entityId; // Đây chính là ID trong bảng employees
+        const userRole = (userProfile.role || '').toLowerCase();
         const isHR = userRole === 'admin' || userRole === 'hr' || userRole === 'giám đốc';
 
         let targetAuthIds: string[] = [];
 
         if (!isHR) {
-            const { data: managedDepts } = await supabase.from('department_managers').select('department_id').eq('manager_id', currentUser.id);
-            const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
+            // --- LOGIC PHÂN QUYỀN CHO QUẢN LÝ ---
+            const { data: managedDepts } = await supabase
+                .from('department_managers')
+                .select('department_id')
+                .eq('manager_id', currentEmployeeId); // Dùng entityId chuẩn
 
+            const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
             let allowedDeptIds = new Set<string>(directManagedDeptIds);
 
             if (directManagedDeptIds.length > 0) {
@@ -343,48 +346,37 @@ export async function getPendingRequests() {
                 }
             }
 
-            let deptEmps: any[] = [];
-            if (allowedDeptIds.size > 0) {
-                const { data } = await supabase.from('employees').select('auth_id').in('department_id', Array.from(allowedDeptIds));
-                if (data) deptEmps = data;
-            }
-
-            const { data: directReports } = await supabase.from('employees').select('auth_id').eq('manager_id', currentUser.id);
+            const { data: deptEmps } = await supabase.from('employees').select('auth_id').in('department_id', Array.from(allowedDeptIds));
+            const { data: directReports } = await supabase.from('employees').select('auth_id').eq('manager_id', currentEmployeeId);
 
             const combinedIds = new Set([
-                user.id,
-                ...deptEmps.map(e => e.auth_id),
+                userProfile.authId, // Chính mình (auth_id)
+                ...(deptEmps ? deptEmps.map(e => e.auth_id) : []),
                 ...(directReports ? directReports.map(e => e.auth_id) : [])
             ]);
-
             targetAuthIds = Array.from(combinedIds).filter(Boolean) as string[];
         }
 
-        let query = supabase
-            .from('attendance_requests')
-            .select('*')
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false });
-
+        // 2. TRUY VẤN DỮ LIỆU
+        let query = supabase.from('attendance_requests').select('*').eq('status', 'pending');
         if (!isHR) query = query.in('employee_id', targetAuthIds);
 
-        const { data: requests, error } = await query;
-        if (error) throw error;
-        if (!requests || requests.length === 0) return [];
+        const { data: requests, error } = await query.order('created_at', { ascending: false });
+        if (error || !requests) return [];
 
+        // 3. MAPPING THÔNG TIN NHÂN VIÊN
         const authIds = [...new Set(requests.map(r => r.employee_id))];
         const { data: employees } = await supabase.from('employees').select('auth_id, code, name').in('auth_id', authIds);
         const empMap = (employees || []).reduce((acc: any, emp: any) => {
-            if (emp.auth_id) acc[emp.auth_id] = emp;
+            acc[emp.auth_id] = emp;
             return acc;
         }, {});
 
         return requests.map(req => ({
             ...req,
-            start_date_formatted: formatDate(req.start_date), // (Đảm bảo có formatDate)
-            employee: empMap[req.employee_id] || { name: "Nhân viên đã nghỉ", code: "N/A" }
+            start_date_formatted: formatDate(req.start_date),
+            employee: empMap[req.employee_id] || { name: "N/A", code: "N/A" }
         }));
-
     } catch (e) {
         return [];
     }
@@ -507,29 +499,22 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
 export async function getAllAttendanceRecords(month: number, year: number, searchQuery: string = "") {
     const supabase = await createSupabaseServerClient();
     try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) return [];
+        // ✅ 1. Lấy Profile chuẩn
+        const userProfile = await getUserProfile();
+        if (!userProfile || !userProfile.isAuthenticated || userProfile.type !== 'EMPLOYEE') return [];
 
-        const { data: currentUser } = await supabase
-            .from('employees')
-            .select('id, role, department_id')
-            .eq('auth_id', user.id)
-            .single();
-
-        if (!currentUser) return [];
-
-        const userRole = (currentUser.role || '').toLowerCase();
+        const currentEmployeeId = userProfile.entityId;
+        const userRole = (userProfile.role || '').toLowerCase();
         const isHR = userRole === 'admin' || userRole === 'hr' || userRole === 'giám đốc';
 
         let targetAuthIds: string[] = [];
 
         if (!isHR) {
-            // LỚP 1: Quét từ bảng department_managers (Nguồn chuẩn duy nhất)
-            const { data: managedDepts } = await supabase.from('department_managers').select('department_id').eq('manager_id', currentUser.id);
+            // --- LOGIC TÌM CẤP DƯỚI ---
+            const { data: managedDepts } = await supabase.from('department_managers').select('department_id').eq('manager_id', currentEmployeeId);
             const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
 
             let allowedDeptIds = new Set<string>(directManagedDeptIds);
-
             if (directManagedDeptIds.length > 0) {
                 const { data: allDepts } = await supabase.from('sys_dictionaries').select('id, meta_data').eq('category', 'DEPARTMENT');
                 let addedNew = true;
@@ -545,58 +530,43 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
                 }
             }
 
-            let deptEmps: any[] = [];
-            if (allowedDeptIds.size > 0) {
-                const { data } = await supabase.from('employees').select('auth_id').in('department_id', Array.from(allowedDeptIds));
-                if (data) deptEmps = data;
-            }
+            const { data: deptEmps } = await supabase.from('employees').select('auth_id').in('department_id', Array.from(allowedDeptIds));
+            const { data: directReports } = await supabase.from('employees').select('auth_id').eq('manager_id', currentEmployeeId);
 
-            // LỚP 2: Lấy nhân viên báo cáo trực tiếp (Direct Reports)
-            const { data: directReports } = await supabase.from('employees').select('auth_id').eq('manager_id', currentUser.id);
-
-            // Gom tất cả vào chung 1 mảng (luôn bao gồm chính mình)
             const combinedIds = new Set([
-                user.id,
-                ...deptEmps.map(e => e.auth_id),
+                userProfile.authId,
+                ...(deptEmps ? deptEmps.map(e => e.auth_id) : []),
                 ...(directReports ? directReports.map(e => e.auth_id) : [])
             ]);
-
             targetAuthIds = Array.from(combinedIds).filter(Boolean) as string[];
         }
 
+        // 2. QUERY DỮ LIỆU
         const startDate = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
         const endDate = new Date(year, month, 0).toLocaleDateString('en-CA');
 
-        let query = supabase
-            .from('attendance_records')
-            .select('*')
-            .gte('date', startDate)
-            .lte('date', endDate)
-            .order('date', { ascending: false });
-
+        let query = supabase.from('attendance_records').select('*').gte('date', startDate).lte('date', endDate);
         if (!isHR) query = query.in('employee_id', targetAuthIds);
 
-        const { data: records, error } = await query;
-        if (error) throw error;
-        if (!records || records.length === 0) return [];
+        const { data: records, error } = await query.order('date', { ascending: false });
+        if (error || !records) return [];
 
         const authIds = [...new Set(records.map(r => r.employee_id))];
         const { data: employees } = await supabase.from('employees').select('auth_id, code, name').in('auth_id', authIds);
-
         const empMap = (employees || []).reduce((acc: any, emp: any) => {
-            if (emp.auth_id) acc[emp.auth_id] = emp;
+            acc[emp.auth_id] = emp;
             return acc;
         }, {});
 
         let formattedData = records.map((record: any) => {
-            const empInfo = empMap[record.employee_id] || { name: "Chưa cập nhật tên", code: "N/A" };
+            const empInfo = empMap[record.employee_id] || { name: "N/A", code: "N/A" };
             return {
                 id: record.id,
                 date: record.date,
                 employeeCode: empInfo.code,
                 name: empInfo.name,
-                checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : "",
-                checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : "",
+                checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "",
+                checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "",
                 status: record.status,
                 location: record.check_in_lat ? `${record.check_in_lat.toFixed(3)}, ${record.check_in_lng.toFixed(3)}` : ""
             };

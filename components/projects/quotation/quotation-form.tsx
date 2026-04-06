@@ -62,7 +62,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [serverError, setServerError] = useState<string | null>(null)
 
-    // ✅ STATE CHO MODAL XEM TRƯỚC BẢN IN
     const [previewOpen, setPreviewOpen] = useState(false)
     const [previewData, setPreviewData] = useState<any>(null)
     const printRef = useRef<HTMLDivElement>(null)
@@ -110,7 +109,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         }
     })
 
-    // ✅ Đã thêm lệnh 'replace' để thay thế mảng trong 1 lần duy nhất
     const { fields, append, remove, move, replace } = useFieldArray({
         control: form.control,
         name: "items"
@@ -140,7 +138,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         setIsSubmitting(true);
 
         try {
-            // Lưu ý: Nếu DB của sếp có cột order_index để sắp xếp kéo thả, sếp có thể đổi 'created_at' thành 'order_index'
             const { data: qtoData, error: qtoError } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
             const { data: estData, error: estError } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
 
@@ -167,13 +164,11 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             const markupPreTax = T > 0 ? (Gxd / T) : 1;
             const vatRate = Number(vatParam.quantity) || 0;
 
-            // ✅ TẠO MỘT MẢNG TẠM ĐỂ GOM TẤT CẢ DỮ LIỆU
             const newItems: any[] = [];
 
             const sections = qtoData.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
 
             sections.forEach(sec => {
-                // Đẩy Hạng mục vào mảng tạm
                 newItems.push({ item_type: 'section', work_item_name: sec.item_name.toUpperCase(), vat_rate: 0 });
 
                 const tasks = qtoData.filter(i => i.parent_id === sec.id && i.item_type !== 'section');
@@ -208,7 +203,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                         detailsText = detailsArr.join('\n');
                     }
 
-                    // Làm tròn khối lượng đến 2 chữ số thập phân
                     taskVol = Number(taskVol.toFixed(2));
 
                     const taskResources = normalItems.filter(i => i.qto_item_id === task.id);
@@ -216,7 +210,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                     const quotationCostPreTax = baseCost * markupPreTax;
                     const unitPrice = taskVol > 0 ? (quotationCostPreTax / taskVol) : quotationCostPreTax;
 
-                    // Đẩy Công tác vào mảng tạm
                     newItems.push({
                         item_type: 'item', work_item_name: task.item_name, unit: task.unit || "Lần", quantity: taskVol,
                         unit_price: Math.round(unitPrice), vat_rate: vatRate, details: detailsText, notes: ""
@@ -226,7 +219,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
             const standaloneItems = normalItems.filter(i => !i.qto_item_id);
             if (standaloneItems.length > 0) {
-                // Đẩy Hạng mục bổ sung vào mảng tạm
                 newItems.push({ item_type: 'section', work_item_name: "CHI PHÍ BỔ SUNG / KHÁC", vat_rate: 0 });
                 standaloneItems.forEach(item => {
                     const baseCost = Number(item.total_cost) || 0;
@@ -236,7 +228,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                     qty = Number(qty.toFixed(2));
 
                     const unitPrice = qty > 0 ? (quotationCostPreTax / qty) : quotationCostPreTax;
-                    // Đẩy Công tác bổ sung vào mảng tạm
                     newItems.push({
                         item_type: 'item', work_item_name: item.material_name || item.original_name || "Mục khác", unit: item.unit || "Gói",
                         quantity: qty, unit_price: Math.round(unitPrice), vat_rate: vatRate, details: "", notes: ""
@@ -244,14 +235,11 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                 });
             }
 
-            // ✅ SỬ DỤNG REPLACE ĐỂ ĐẨY TOÀN BỘ MẢNG VÀO FORM TRONG 1 LẦN DUY NHẤT (Sẽ không bao giờ bị loạn thứ tự)
             replace(newItems);
-
             alert("✨ Đã tạo bảng Báo Giá Tổng Hợp thành công!");
         } catch (err: any) { alert("Lỗi khi tải dữ liệu: " + err.message); } finally { setIsSubmitting(false); }
     };
 
-    // ✅ HÀM MỞ MODAL XEM TRƯỚC BẢN IN
     const handleOpenPreview = () => {
         const data = form.getValues();
         if (!data.quotation_number || !data.title) {
@@ -267,7 +255,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         setPreviewOpen(true);
     };
 
-    // ✅ HÀM KÍCH HOẠT LỆNH IN TỪ MODAL (MƯỢT NHƯ PHIẾU THU CHI)
     const handlePrintAction = () => {
         if (!printRef.current) return;
         const printContent = printRef.current.innerHTML;
@@ -335,77 +322,106 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
     return (
         <>
-            <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-6 animate-in fade-in duration-500">
+            <form onSubmit={form.handleSubmit(onSubmit, onError)} className="space-y-6 animate-in fade-in duration-500 transition-colors">
                 {serverError && <Alert variant="destructive"><AlertTitle>Lỗi</AlertTitle><AlertDescription>{serverError}</AlertDescription></Alert>}
 
-                <div className="flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm sticky top-0 z-20">
-                    <h2 className="text-lg font-bold text-gray-800">Soạn thảo Báo giá</h2>
+                <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-20 transition-colors">
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Soạn thảo Báo giá</h2>
                     <div className="flex gap-2">
-                        <Button type="button" variant="outline" onClick={handleOpenPreview} className="gap-2 text-indigo-600 bg-indigo-50 border-indigo-200">
+                        <Button type="button" variant="outline" onClick={handleOpenPreview} className="gap-2 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors">
                             <Printer className="w-4 h-4" /> In Báo Giá
                         </Button>
-                        <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 min-w-[120px]">
+                        <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px] transition-colors">
                             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Lưu
                         </Button>
                     </div>
                 </div>
 
-                <Card>
+                <Card className="border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                     <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>Số Báo Giá <span className="text-red-500">*</span></Label>
-                            <Input {...form.register("quotation_number")} />
+                            <Label className="dark:text-slate-300">Số Báo Giá <span className="text-red-500">*</span></Label>
+                            <Input {...form.register("quotation_number")} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors" />
                             {form.formState.errors.quotation_number?.message && <p className="text-red-500 text-xs">{form.formState.errors.quotation_number.message as string}</p>}
                         </div>
                         <div className="space-y-2">
-                            <Label>Ngày Báo Giá</Label>
-                            <Input type="date" {...form.register("issue_date")} />
+                            <Label className="dark:text-slate-300">Ngày Báo Giá</Label>
+                            <Input type="date" {...form.register("issue_date")} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors" />
                             {form.formState.errors.issue_date?.message && <p className="text-red-500 text-xs">{form.formState.errors.issue_date.message as string}</p>}
                         </div>
-                        <div className="space-y-2"><Label>KÍNH GỬI (Tự động từ Project)</Label><Input {...form.register("customer_name")} className="bg-slate-50 font-bold" /></div>
-                        <div className="space-y-2"><Label>CÔNG TRÌNH (Tự động từ Project)</Label><Input {...form.register("project_name")} className="bg-slate-50 font-bold" /></div>
-                        <div className="col-span-2 space-y-2"><Label>ĐỊA ĐIỂM (Tự động từ Project - Có thể sửa)</Label><Input {...form.register("address")} className="bg-slate-50" /></div>
+                        <div className="space-y-2">
+                            <Label className="dark:text-slate-300">KÍNH GỬI (Tự động từ Project)</Label>
+                            <Input {...form.register("customer_name")} className="bg-slate-50 dark:bg-slate-900/50 font-bold dark:text-slate-300 dark:border-slate-800 transition-colors" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="dark:text-slate-300">CÔNG TRÌNH (Tự động từ Project)</Label>
+                            <Input {...form.register("project_name")} className="bg-slate-50 dark:bg-slate-900/50 font-bold dark:text-slate-300 dark:border-slate-800 transition-colors" />
+                        </div>
                         <div className="col-span-2 space-y-2">
-                            <Label>HẠNG MỤC (Tiêu đề báo giá) <span className="text-red-500">*</span></Label>
-                            <Input {...form.register("title")} placeholder="VD: CẢI TẠO NỘI THẤT..." className="font-bold" />
+                            <Label className="dark:text-slate-300">ĐỊA ĐIỂM (Tự động từ Project - Có thể sửa)</Label>
+                            <Input {...form.register("address")} className="bg-slate-50 dark:bg-slate-900/50 dark:text-slate-300 dark:border-slate-800 transition-colors" />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                            <Label className="dark:text-slate-300">HẠNG MỤC (Tiêu đề báo giá) <span className="text-red-500">*</span></Label>
+                            <Input {...form.register("title")} placeholder="VD: CẢI TẠO NỘI THẤT..." className="font-bold dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors" />
                             {form.formState.errors.title?.message && <p className="text-red-500 text-xs">{form.formState.errors.title.message as string}</p>}
                         </div>
-                        <div className="col-span-2 space-y-2"><Label>Ghi chú (Hiện cuối trang)</Label><Textarea {...form.register("notes")} placeholder="Điều khoản thanh toán, bảo hành..." /></div>
+                        <div className="col-span-2 space-y-2">
+                            <Label className="dark:text-slate-300">Ghi chú (Hiện cuối trang)</Label>
+                            <Textarea {...form.register("notes")} placeholder="Điều khoản thanh toán, bảo hành..." className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors" />
+                        </div>
                     </CardContent>
                 </Card>
 
-                <Card className="overflow-hidden">
-                    <div className="bg-slate-50 p-3 border-b flex flex-wrap justify-between items-center gap-2">
-                        <h3 className="font-semibold text-slate-700 flex items-center"><Calculator className="w-4 h-4 mr-2" /> Chi tiết</h3>
+                <Card className="overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                    <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-3 flex flex-wrap justify-between items-center gap-2 transition-colors">
+                        <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center"><Calculator className="w-4 h-4 mr-2" /> Chi tiết</h3>
                         <div className="flex gap-2">
-                            <Button type="button" size="sm" onClick={handleImportFromEstimation} disabled={isSubmitting} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md animate-pulse-once">
+                            <Button type="button" size="sm" onClick={handleImportFromEstimation} disabled={isSubmitting} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md animate-pulse-once transition-colors">
                                 {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "✨ Lập Báo Giá Tự Động"}
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => append({ item_type: 'section', work_item_name: 'I. TÊN MỤC LỚN', vat_rate: 0 })} className="text-green-700 border-green-200"><Plus className="w-3 h-3 mr-1" /> Thêm Mục</Button>
-                            <Button type="button" size="sm" onClick={() => append({ item_type: 'item', work_item_name: '', unit: '', quantity: 1, unit_price: 0, vat_rate: 8, details: '', notes: '' })} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-3 h-3 mr-1" /> Thêm Việc</Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => append({ item_type: 'section', work_item_name: 'I. TÊN MỤC LỚN', vat_rate: 0 })} className="text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/50 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                                <Plus className="w-3 h-3 mr-1" /> Thêm Mục
+                            </Button>
+                            <Button type="button" size="sm" onClick={() => append({ item_type: 'item', work_item_name: '', unit: '', quantity: 1, unit_price: 0, vat_rate: 8, details: '', notes: '' })} className="bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                                <Plus className="w-3 h-3 mr-1" /> Thêm Việc
+                            </Button>
                         </div>
                     </div>
 
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-700 uppercase bg-gray-100">
+                            <thead className="text-xs text-slate-700 dark:text-slate-300 uppercase bg-slate-100 dark:bg-slate-800/50 border-b dark:border-slate-800 transition-colors">
                                 <tr>
-                                    <th className="px-2 py-3 w-[5%] text-center">TT</th><th className="px-2 py-3 w-[30%]">Nội dung / Diễn giải</th><th className="px-2 py-3 w-[8%] text-center">ĐVT</th>
-                                    <th className="px-2 py-3 w-[8%] text-center">KL</th><th className="px-2 py-3 w-[12%] text-right">Đơn giá</th><th className="px-2 py-3 w-[8%] text-center">VAT</th>
-                                    <th className="px-2 py-3 w-[12%] text-right">Thành tiền</th><th className="px-2 py-3 w-[12%] text-left">Ghi chú</th><th className="w-[5%]"></th>
+                                    <th className="px-2 py-3 w-[5%] text-center">TT</th>
+                                    <th className="px-2 py-3 w-[30%]">Nội dung / Diễn giải</th>
+                                    <th className="px-2 py-3 w-[8%] text-center">ĐVT</th>
+                                    <th className="px-2 py-3 w-[8%] text-center">KL</th>
+                                    <th className="px-2 py-3 w-[12%] text-right">Đơn giá</th>
+                                    <th className="px-2 py-3 w-[8%] text-center">VAT</th>
+                                    <th className="px-2 py-3 w-[12%] text-right">Thành tiền</th>
+                                    <th className="px-2 py-3 w-[12%] text-left">Ghi chú</th>
+                                    <th className="w-[5%]"></th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
                                 {fields.map((field, index) => {
                                     const type = form.watch(`items.${index}.item_type`);
                                     const itemError = (form.formState.errors.items as any)?.[index];
 
                                     if (type === 'section') {
                                         return (
-                                            <tr key={field.id} className="bg-green-50/50 border-b">
-                                                <td className="px-1 py-2 flex flex-col gap-1 items-center justify-center"><Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={() => index > 0 && move(index, index - 1)}><ArrowUp className="w-3 h-3" /></Button><Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={() => index < fields.length - 1 && move(index, index + 1)}><ArrowDown className="w-3 h-3" /></Button></td>
-                                                <td colSpan={7} className="px-2 py-2"><Input {...form.register(`items.${index}.work_item_name`)} className={`font-bold text-green-800 border-green-200 bg-transparent focus:bg-white uppercase ${itemError?.work_item_name ? 'border-red-500' : ''}`} placeholder="TÊN MỤC LỚN" /></td>
-                                                <td className="text-center px-2"><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-400"><Trash2 className="w-4 h-4" /></Button></td>
+                                            <tr key={field.id} className="bg-green-50/50 dark:bg-green-900/10 border-b dark:border-green-900/30 transition-colors">
+                                                <td className="px-1 py-2 flex flex-col gap-1 items-center justify-center">
+                                                    <Button type="button" variant="ghost" size="icon" className="h-5 w-5 dark:text-slate-400 dark:hover:bg-slate-800" onClick={() => index > 0 && move(index, index - 1)}><ArrowUp className="w-3 h-3" /></Button>
+                                                    <Button type="button" variant="ghost" size="icon" className="h-5 w-5 dark:text-slate-400 dark:hover:bg-slate-800" onClick={() => index < fields.length - 1 && move(index, index + 1)}><ArrowDown className="w-3 h-3" /></Button>
+                                                </td>
+                                                <td colSpan={7} className="px-2 py-2">
+                                                    <Input {...form.register(`items.${index}.work_item_name`)} className={`font-bold text-green-800 dark:text-green-400 border-green-200 dark:border-green-800/50 bg-transparent focus:bg-white dark:focus:bg-slate-900 uppercase transition-colors ${itemError?.work_item_name ? 'border-red-500' : ''}`} placeholder="TÊN MỤC LỚN" />
+                                                </td>
+                                                <td className="text-center px-2">
+                                                    <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-400 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 className="w-4 h-4" /></Button>
+                                                </td>
                                             </tr>
                                         );
                                     }
@@ -416,19 +432,32 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                     const total = qty * price * (1 + vat / 100);
 
                                     return (
-                                        <tr key={field.id} className="border-b hover:bg-slate-50 group align-top">
-                                            <td className="px-1 py-4 flex flex-col gap-1 items-center justify-center"><Button type="button" variant="ghost" size="icon" className="h-5 w-5 hover:bg-gray-200" onClick={() => index > 0 && move(index, index - 1)}><ArrowUp className="w-3 h-3 text-gray-500" /></Button><Button type="button" variant="ghost" size="icon" className="h-5 w-5 hover:bg-gray-200" onClick={() => index < fields.length - 1 && move(index, index + 1)}><ArrowDown className="w-3 h-3 text-gray-500" /></Button></td>
-                                            <td className="px-2 py-2 space-y-1">
-                                                <Textarea {...form.register(`items.${index}.work_item_name`)} placeholder="Tên công việc..." className={`font-medium min-h-[36px] border-slate-200 resize-none overflow-hidden ${itemError?.work_item_name ? 'border-red-500 bg-red-50' : ''}`} rows={1} onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }} />
-                                                <Textarea {...form.register(`items.${index}.details`)} placeholder="Diễn giải khối lượng..." className="text-gray-600 min-h-[40px] border-dashed border-slate-200 bg-slate-50/50 resize-none overflow-hidden" rows={1} onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }} />
+                                        <tr key={field.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 group align-top transition-colors">
+                                            <td className="px-1 py-4 flex flex-col gap-1 items-center justify-center">
+                                                <Button type="button" variant="ghost" size="icon" className="h-5 w-5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => index > 0 && move(index, index - 1)}><ArrowUp className="w-3 h-3 text-slate-500 dark:text-slate-400" /></Button>
+                                                <Button type="button" variant="ghost" size="icon" className="h-5 w-5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" onClick={() => index < fields.length - 1 && move(index, index + 1)}><ArrowDown className="w-3 h-3 text-slate-500 dark:text-slate-400" /></Button>
                                             </td>
-                                            <td className="px-1 py-2"><Input {...form.register(`items.${index}.unit`)} placeholder="ĐVT" className="text-center h-9" /></td>
-                                            <td className="px-1 py-2"><Input type="number" step="0.01" {...form.register(`items.${index}.quantity`)} className="text-center h-9" /></td>
-                                            <td className="px-1 py-2"><Input type="number" {...form.register(`items.${index}.unit_price`)} className="text-right h-9" /></td>
-                                            <td className="px-1 py-2"><Select defaultValue={String(form.getValues(`items.${index}.vat_rate`))} onValueChange={(val) => form.setValue(`items.${index}.vat_rate`, Number(val))}><SelectTrigger className="h-9 px-1 justify-center"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">0%</SelectItem><SelectItem value="5">5%</SelectItem><SelectItem value="8">8%</SelectItem><SelectItem value="10">10%</SelectItem></SelectContent></Select></td>
-                                            <td className="px-2 py-4 text-right font-medium text-slate-700 w-[120px]">{formatCurrency(total)}</td>
-                                            <td className="px-1 py-2"><Textarea {...form.register(`items.${index}.notes`)} placeholder="Ghi chú" className="text-left text-xs min-h-[36px] resize-none" rows={1} onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }} /></td>
-                                            <td className="px-2 py-2 text-center"><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></Button></td>
+                                            <td className="px-2 py-2 space-y-1">
+                                                <Textarea {...form.register(`items.${index}.work_item_name`)} placeholder="Tên công việc..." className={`font-medium min-h-[36px] border-slate-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 resize-none overflow-hidden transition-colors ${itemError?.work_item_name ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : ''}`} rows={1} onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }} />
+                                                <Textarea {...form.register(`items.${index}.details`)} placeholder="Diễn giải khối lượng..." className="text-slate-600 dark:text-slate-400 min-h-[40px] border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 resize-none overflow-hidden transition-colors" rows={1} onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }} />
+                                            </td>
+                                            <td className="px-1 py-2"><Input {...form.register(`items.${index}.unit`)} placeholder="ĐVT" className="text-center h-9 dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" /></td>
+                                            <td className="px-1 py-2"><Input type="number" step="0.01" {...form.register(`items.${index}.quantity`)} className="text-center h-9 dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" /></td>
+                                            <td className="px-1 py-2"><Input type="number" {...form.register(`items.${index}.unit_price`)} className="text-right h-9 dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors" /></td>
+                                            <td className="px-1 py-2">
+                                                <Select defaultValue={String(form.getValues(`items.${index}.vat_rate`))} onValueChange={(val) => form.setValue(`items.${index}.vat_rate`, Number(val))}>
+                                                    <SelectTrigger className="h-9 px-1 justify-center dark:bg-slate-950 dark:border-slate-700 dark:text-slate-200 transition-colors"><SelectValue /></SelectTrigger>
+                                                    <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                                        <SelectItem value="0" className="dark:text-slate-200">0%</SelectItem>
+                                                        <SelectItem value="5" className="dark:text-slate-200">5%</SelectItem>
+                                                        <SelectItem value="8" className="dark:text-slate-200">8%</SelectItem>
+                                                        <SelectItem value="10" className="dark:text-slate-200">10%</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </td>
+                                            <td className="px-2 py-4 text-right font-medium text-slate-700 dark:text-slate-300 w-[120px] transition-colors">{formatCurrency(total)}</td>
+                                            <td className="px-1 py-2"><Textarea {...form.register(`items.${index}.notes`)} placeholder="Ghi chú" className="text-left text-xs min-h-[36px] resize-none dark:bg-slate-950 dark:border-slate-700 dark:text-slate-300 transition-colors" rows={1} onInput={(e) => { e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px'; }} /></td>
+                                            <td className="px-2 py-2 text-center"><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-slate-300 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 className="w-4 h-4" /></Button></td>
                                         </tr>
                                     );
                                 })}
@@ -436,24 +465,25 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                         </table>
                     </div>
 
-                    <div className="bg-slate-50 p-4 border-t flex flex-col items-end gap-1">
-                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600"><span>Cộng trước thuế:</span><span className="font-medium">{formatCurrency(preTaxTotal)}</span></div>
-                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600"><span>Tổng tiền thuế VAT:</span><span className="font-medium">{formatCurrency(vatTotal)}</span></div>
-                        <div className="flex justify-between w-full md:w-1/3 text-lg font-bold text-blue-700 border-t border-slate-300 pt-2 mt-1"><span>TỔNG CỘNG:</span><span>{formatCurrency(totalAmount)}</span></div>
-                        <div className="text-xs text-slate-500 italic mt-1">{readMoneyToText(totalAmount)}</div>
+                    <div className="bg-slate-50 dark:bg-slate-900 p-4 border-t dark:border-slate-800 flex flex-col items-end gap-1 transition-colors">
+                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600 dark:text-slate-400 transition-colors"><span>Cộng trước thuế:</span><span className="font-medium">{formatCurrency(preTaxTotal)}</span></div>
+                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600 dark:text-slate-400 transition-colors"><span>Tổng tiền thuế VAT:</span><span className="font-medium">{formatCurrency(vatTotal)}</span></div>
+                        <div className="flex justify-between w-full md:w-1/3 text-lg font-bold text-blue-700 dark:text-blue-400 border-t border-slate-300 dark:border-slate-700 pt-2 mt-1 transition-colors"><span>TỔNG CỘNG:</span><span>{formatCurrency(totalAmount)}</span></div>
+                        <div className="text-xs text-slate-500 dark:text-slate-500 italic mt-1 transition-colors">{readMoneyToText(totalAmount)}</div>
                     </div>
                 </Card>
             </form>
 
+            {/* MODAL IN BÁO GIÁ */}
             <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-200 border-none">
-                    <div className="flex justify-between items-center border-b border-slate-300 pb-4 mb-4 sticky top-0 bg-slate-200 z-10 pt-4 px-6 -mx-6 -mt-6 shadow-sm">
-                        <DialogTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                            <FileText className="w-5 h-5 text-blue-600" /> Xem trước Bản In (A4 Ngang)
+                <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto bg-slate-200 dark:bg-slate-900 border-none transition-colors">
+                    <div className="flex justify-between items-center border-b border-slate-300 dark:border-slate-800 pb-4 mb-4 sticky top-0 bg-slate-200 dark:bg-slate-900 z-10 pt-4 px-6 -mx-6 -mt-6 shadow-sm transition-colors">
+                        <DialogTitle className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-slate-100 transition-colors">
+                            <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Xem trước Bản In (A4 Ngang)
                         </DialogTitle>
                         <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => setPreviewOpen(false)} className="bg-white">Đóng</Button>
-                            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={handlePrintAction}>
+                            <Button variant="outline" onClick={() => setPreviewOpen(false)} className="bg-white dark:bg-slate-950 dark:border-slate-700 dark:text-slate-300 transition-colors">Đóng</Button>
+                            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-colors" onClick={handlePrintAction}>
                                 <Printer className="w-4 h-4 mr-2" /> In Báo Giá Ngay
                             </Button>
                         </div>
@@ -463,7 +493,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                         {previewData && (
                             <div
                                 ref={printRef}
-                                className="print-container bg-white text-black"
+                                className="print-container bg-white text-black" // PHẦN NÀY BẮT BUỘC GIỮ LẠI ĐỂ IN TRÊN GIẤY TRẮNG
                                 style={{
                                     width: '297mm',
                                     minHeight: '210mm',
@@ -475,17 +505,24 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                 }}
                             >
                                 <style>{`
+                                    @page { size: A4 landscape; margin: 15mm 10mm; }
+                                    body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 0; background: #fff; color: #000; font-size: 12pt; }
+                                    * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+                                    table { page-break-inside: auto; }
+                                    tr { page-break-inside: avoid; page-break-after: auto; }
+                                    thead { display: table-header-group; }
+                                    .kg-avoid { page-break-inside: avoid; }
                                     .kg-header { width: 100%; border: none; margin-bottom: 15px; }
                                     .kg-header td { border: none; padding: 0; }
                                     .kg-title-box { text-align: center; margin: 15px 0 25px; }
                                     .kg-info-grid { display: grid; grid-template-columns: 120px 1fr 120px 1fr; gap: 6px 10px; margin-bottom: 20px; font-size: 12pt; }
                                     .kg-table { width: 100%; border-collapse: collapse; font-size: 12pt; table-layout: fixed; }
-                                    .kg-table th, .kg-table td { border: 1px solid #000; padding: 6px; }
+                                    .kg-table th, .kg-table td { border: 1px solid #000; padding: 6px; color: #000; }
                                     .kg-table th { background-color: #e5e7eb; text-align: center; font-weight: bold; vertical-align: middle; }
-                                    .kg-sec-row { background-color: #f3f4f6; font-weight: bold; text-transform: uppercase; }
-                                    .kg-tfoot td { text-align: right; font-weight: bold; border: 1px solid #000; padding: 6px; }
-                                    .kg-total-row td { background-color: #fff7ed; font-size: 14pt; }
-                                    .kg-sign-box { display: flex; justify-content: space-around; margin-top: 30px; text-align: center; }
+                                    .kg-sec-row td { background-color: #f3f4f6; font-weight: bold; text-transform: uppercase; color: #000; }
+                                    .kg-tfoot td { text-align: right; font-weight: bold; border: 1px solid #000; padding: 6px; color: #000; }
+                                    .kg-total-row td { background-color: #fff7ed; font-size: 14pt; color: #b91c1c; }
+                                    .kg-sign-box { display: flex; justify-content: space-around; margin-top: 30px; text-align: center; color: #000; }
                                 `}</style>
 
                                 <table className="kg-header">
@@ -494,7 +531,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                             <td width="130" style={{ verticalAlign: 'middle', textAlign: 'center' }}>
                                                 <img src={LOGO_URL} style={{ maxHeight: '70px', width: 'auto', objectFit: 'contain' }} alt="Logo" />
                                             </td>
-                                            <td style={{ paddingLeft: '15px', verticalAlign: 'middle' }}>
+                                            <td style={{ paddingLeft: '15px', verticalAlign: 'middle', color: '#000' }}>
                                                 <div style={{ fontSize: '14pt', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', marginBottom: '4px' }}>CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</div>
                                                 <div style={{ fontSize: '11pt' }}>ĐC: 72 Đường số 1, Khu nhà ở Thắng Lợi, KP. Chiêu Liêu, P. Dĩ An, TP.HCM, Việt Nam</div>
                                                 <div style={{ fontSize: '11pt' }}>Email: huy-kq@kieugia-construction.biz.vn - Hotline: 0918 265 365</div>
@@ -506,10 +543,10 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
                                 <div className="kg-title-box">
                                     <h1 style={{ fontSize: '22pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#b91c1c', margin: 0, letterSpacing: '1px' }}>BẢNG BÁO GIÁ</h1>
-                                    <div style={{ fontSize: '12pt', fontStyle: 'italic', marginTop: '5px' }}>Số: {previewData.quotation_number} | {formatDateVN(previewData.issue_date)}</div>
+                                    <div style={{ fontSize: '12pt', fontStyle: 'italic', marginTop: '5px', color: '#000' }}>Số: {previewData.quotation_number} | {formatDateVN(previewData.issue_date)}</div>
                                 </div>
 
-                                <div className="kg-info-grid">
+                                <div className="kg-info-grid" style={{ color: '#000' }}>
                                     <div style={{ fontWeight: 'bold' }}>KÍNH GỬI:</div>
                                     <div style={{ fontWeight: 'bold' }}>Ông/ Bà {previewData.customer_name ? previewData.customer_name.toUpperCase() : 'QUÝ KHÁCH HÀNG'}</div>
                                     <div style={{ fontWeight: 'bold', textAlign: 'right' }}>CÔNG TRÌNH:</div>
@@ -597,7 +634,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                     </tbody>
                                 </table>
 
-                                <div className="kg-avoid" style={{ pageBreakInside: 'avoid' }}>
+                                <div className="kg-avoid" style={{ pageBreakInside: 'avoid', color: '#000' }}>
                                     <div style={{ marginTop: '15px', fontWeight: 'bold', fontStyle: 'italic', textAlign: 'right', fontSize: '13pt' }}>
                                         Bằng chữ: {readMoneyToText(previewData.totalAmount)}
                                     </div>

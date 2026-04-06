@@ -8,22 +8,24 @@ export default async function AdminNormsPage({
 }: {
     searchParams: Promise<{ [key: string]: string | undefined }>
 }) {
+    // 1. Bảo mật
     const isAdmin = await checkIsAdmin();
     if (!isAdmin) redirect("/dashboard");
 
+    // 2. Xử lý Params
     const resolvedParams = await searchParams;
     const q = resolvedParams.q || "";
     const page = Number(resolvedParams.page) || 1;
     const pageSize = 50;
 
-    // ĐỔI SANG FETCH RESOURCES (Hao phí chuẩn) THAY VÌ MATERIALS
+    // 3. Fetch dữ liệu định mức và nguồn hao phí chuẩn (Resources)
     const [normsResult, resources] = await Promise.all([
         getNorms(q, page, pageSize),
-        getStandardResources() // <--- Gọi hàm mới ở đây
+        getStandardResources()
     ]);
 
     return (
-        <div className="flex-1 space-y-4 p-8 pt-6 bg-slate-50/50 h-[calc(100vh-80px)]">
+        <div className="flex-1 space-y-4 p-4 md:p-8 pt-6 bg-slate-50 dark:bg-slate-950 h-[calc(100vh-80px)] transition-colors duration-500 overflow-hidden">
             <NormClient
                 norms={normsResult.data}
                 totalItems={normsResult.total}

@@ -16,16 +16,6 @@ export default function ProjectFinanceTab({ stats }: { stats: any }) {
                 projectId={projectId}
             />
 
-            {/* CÁC THỐNG KÊ KHÁC (NẾU CẦN) */}
-            <div className="pt-8 border-t">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Tổng quan Thu Chi (Toàn dự án)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Bạn có thể render các biểu đồ cũ ở đây nếu muốn giữ lại */}
-                    <div className="p-4 bg-slate-50 rounded border text-center text-sm text-slate-500">
-                        Biểu đồ dòng tiền (Đang phát triển)
-                    </div>
-                </div>
-            </div>
         </div>
     );
 }
