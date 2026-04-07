@@ -244,7 +244,7 @@ export async function getMyAttendanceRecords() {
 
         return records.map((record: any) => ({
             id: record.id,
-            date: formatDate(record.date), // ✅ Đã fix: Dùng formatDate cho ngày
+            date: record.date,
             employeeCode: empCode,
             name: empName,
             checkIn: record.check_in_time
