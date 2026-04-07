@@ -2,9 +2,7 @@
 import "server-only";
 
 export async function sendPushToUser(userId: string, title: string, message: string, url: string = "/") {
-    const APP_ID = "978f37f7-9d77-4f3a-bf57-1a9fcfb3ef8f"; // Dùng lại App ID của sếp
-    // LƯU Ý: Sếp CẦN vào Dashboard OneSignal -> Settings -> Keys & IDs để lấy REST API KEY
-    // Sau đó cho vào biến môi trường .env.local: ONESIGNAL_REST_API_KEY="xxx..."
+    const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
     const API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 
     if (!API_KEY) {
@@ -15,13 +13,15 @@ export async function sendPushToUser(userId: string, title: string, message: str
     const payload = {
         app_id: APP_ID,
         target_channel: "push",
-        // Bắn trực tiếp đến cái userId (auth_id) đã login ở Frontend
         include_aliases: {
             external_id: [userId]
         },
         headings: { en: title },
         contents: { en: message },
-        url: url // Khi user bấm vào thông báo, nó sẽ mở trang web này ra
+        // ✅ Chuyển url vào trong mục 'data' (Tương ứng với additionalData ở Frontend)
+        data: {
+            url: url
+        }
     };
 
     try {

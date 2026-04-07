@@ -70,10 +70,14 @@ export async function middleware(request: NextRequest) {
     // 5. Logic chặn truy cập
     // Nếu đường dẫn bắt đầu bằng các path bảo vệ VÀ user chưa đăng nhập
     if (authRequiredPaths.some((path) => pathname.startsWith(path)) && !user) {
-        const url = request.nextUrl.clone();
-        url.pathname = "/login";
+        // Lấy toàn bộ đường dẫn họ đang muốn vào (Bao gồm cả tham số nếu có)
+        const redirectUrl = request.nextUrl.pathname + request.nextUrl.search;
+
+        // Tạo URL dẫn về trang login, nhét cái link cũ vào đuôi "?next=..."
+        const loginUrl = new URL(`/login?next=${encodeURIComponent(redirectUrl)}`, request.url);
+
         // Trả về login và kết thúc middleware
-        return NextResponse.redirect(url);
+        return NextResponse.redirect(loginUrl);
     }
 
     // 6. Logic ngược lại: Nếu đã login mà cố vào trang login/register -> Đẩy về Dashboard hoặc CRM

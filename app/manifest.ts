@@ -3,7 +3,7 @@ import { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
     return {
         name: 'Kiều Gia Construction',
-        short_name: 'Kiều Gia',
+        short_name: 'Kiều Gia Construction',
         description: 'Hệ thống quản lý Kiều Gia',
         start_url: '/',
         // 👇 CÂU THẦN CHÚ ĐỂ ẨN THANH TRÌNH DUYỆT TRÊN ANDROID NẰM Ở ĐÂY:

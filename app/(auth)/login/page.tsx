@@ -5,7 +5,6 @@ import { AuthProvider } from '@/lib/auth/auth-context';
 import { LoginForm } from "@/components/auth/login-form";
 import { Loader2 } from "lucide-react";
 import Image from "next/image";
-
 function isMobileUserAgent(userAgent: string | undefined) {
     if (!userAgent) return false;
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);

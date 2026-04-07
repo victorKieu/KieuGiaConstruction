@@ -126,7 +126,7 @@ export default function AttendancePage() {
                 {/* TAB 1: CHẤM CÔNG */}
                 <TabsContent value="checkin" className="space-y-4 mt-4">
                     <div className="block md:hidden">
-                        <MobileCheckIn />
+                        <MobileCheckIn onCheckInSuccess={loadRecords} />
                     </div>
 
                     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">

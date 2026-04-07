@@ -6,7 +6,12 @@ import { MapPin, MapPinned, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { submitMobileCheckIn } from "@/lib/action/attendanceActions";
 
-export function MobileCheckIn() {
+// ✅ Thêm interface để nhận hàm callback từ component cha
+interface MobileCheckInProps {
+    onCheckInSuccess?: () => void;
+}
+
+export function MobileCheckIn({ onCheckInSuccess }: MobileCheckInProps) {
     const [currentTime, setCurrentTime] = useState<string>("");
     const [currentDate, setCurrentDate] = useState<string>("");
     const [isLocating, setIsLocating] = useState(false);
@@ -36,7 +41,6 @@ export function MobileCheckIn() {
 
                 toast.loading("Đang gửi dữ liệu chấm công...", { id: "checkin-process" });
 
-                // ✅ ĐÃ FIX: Chỉ gửi lat và lng, Server sẽ tự lo phần thời gian và múi giờ!
                 const res = await submitMobileCheckIn({
                     lat: latitude,
                     lng: longitude
@@ -45,6 +49,11 @@ export function MobileCheckIn() {
                 if (res.success) {
                     toast.success("Chấm công thành công!", { id: "checkin-process" });
                     setLastAction({ type: res.type || 'SUCCESS', message: res.message || 'Đã ghi nhận' });
+
+                    // 🚀 GỌI HÀM REFRESH DATA CỦA THẰNG CHA
+                    if (onCheckInSuccess) {
+                        onCheckInSuccess();
+                    }
                 } else {
                     toast.error(res.error, { id: "checkin-process", duration: 5000 });
                 }
@@ -63,15 +72,15 @@ export function MobileCheckIn() {
     };
 
     return (
-        <Card className="border-indigo-100 shadow-lg bg-gradient-to-b from-indigo-50 to-white mx-auto max-w-md overflow-hidden">
+        <Card className="border-indigo-100 dark:border-slate-800 shadow-lg bg-gradient-to-b from-indigo-50 to-white dark:from-slate-900 dark:to-slate-950 mx-auto max-w-md overflow-hidden transition-colors">
             <CardContent className="pt-10 pb-12 flex flex-col items-center justify-center space-y-8">
 
                 {/* Đồng hồ */}
                 <div className="text-center space-y-2">
-                    <div className="text-5xl font-mono font-bold text-indigo-800 tracking-wider">
+                    <div className="text-5xl font-mono font-bold text-indigo-800 dark:text-indigo-400 tracking-wider">
                         {currentTime || "--:--:--"}
                     </div>
-                    <div className="text-sm font-medium text-slate-500 uppercase tracking-widest">
+                    <div className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                         {currentDate || "Đang tải ngày..."}
                     </div>
                 </div>
@@ -80,7 +89,7 @@ export function MobileCheckIn() {
                 <div className="relative">
                     {/* Hiệu ứng gợn sóng khi rảnh */}
                     {!isLocating && (
-                        <div className="absolute inset-0 rounded-full border-4 border-indigo-200 animate-ping opacity-75"></div>
+                        <div className="absolute inset-0 rounded-full border-4 border-indigo-200 dark:border-indigo-500/30 animate-ping opacity-75"></div>
                     )}
 
                     <button
@@ -90,8 +99,8 @@ export function MobileCheckIn() {
                             relative z-10 w-48 h-48 rounded-full flex flex-col items-center justify-center text-white 
                             shadow-2xl transition-all duration-300
                             ${isLocating
-                                ? "bg-indigo-400 scale-95 cursor-not-allowed"
-                                : "bg-indigo-600 hover:bg-indigo-700 active:scale-90 shadow-indigo-600/40 hover:shadow-indigo-600/60"
+                                ? "bg-indigo-400 dark:bg-indigo-600/50 scale-95 cursor-not-allowed"
+                                : "bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 dark:hover:bg-indigo-600 active:scale-90 shadow-indigo-600/40 dark:shadow-indigo-500/20 hover:shadow-indigo-600/60"
                             }
                         `}
                     >
@@ -104,7 +113,7 @@ export function MobileCheckIn() {
                             <>
                                 <MapPinned className="w-14 h-14 mb-2 drop-shadow-md" />
                                 <span className="font-bold text-2xl tracking-wide">CHẤM CÔNG</span>
-                                <span className="text-xs font-medium opacity-90 mt-1 bg-black/10 px-3 py-1 rounded-full">
+                                <span className="text-xs font-medium opacity-90 mt-1 bg-black/10 dark:bg-black/20 px-3 py-1 rounded-full">
                                     Bấm để quét GPS
                                 </span>
                             </>
@@ -115,12 +124,12 @@ export function MobileCheckIn() {
                 {/* Phản hồi trạng thái */}
                 <div className="h-16 flex items-center justify-center w-full px-4">
                     {lastAction ? (
-                        <div className="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-50 px-4 py-3 rounded-lg border border-emerald-100 w-full animate-in slide-in-from-bottom-2">
-                            <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-emerald-500" />
+                        <div className="flex items-start gap-2 text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-4 py-3 rounded-lg border border-emerald-100 dark:border-emerald-500/20 w-full animate-in slide-in-from-bottom-2">
+                            <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-emerald-500 dark:text-emerald-400" />
                             <span className="font-medium leading-snug">{lastAction.message}</span>
                         </div>
                     ) : (
-                        <div className="flex items-center text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+                        <div className="flex items-center text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 px-3 py-1.5 rounded-full border dark:border-slate-800">
                             <MapPin className="w-3.5 h-3.5 mr-1.5" />
                             Yêu cầu bật định vị (Location)
                         </div>

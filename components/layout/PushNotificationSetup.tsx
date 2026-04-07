@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import OneSignal from 'react-onesignal';
-import { BellRing } from 'lucide-react'; // Nhớ cài lucide-react nếu chưa có
+import { BellRing } from 'lucide-react';
+import { useRouter } from 'next/navigation'; // ✅ Thêm import Router của Next.js
 
 export default function PushNotificationSetup({ userId }: { userId?: string }) {
     const isInitTriggered = useRef(false);
     const [isSdkReady, setIsSdkReady] = useState(false);
     const [permissionStatus, setPermissionStatus] = useState<string>("default");
+
+    const router = useRouter(); // ✅ Khởi tạo Router
+    const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID as string; // Ép kiểu string để tránh lỗi TS
 
     // 1. Khởi tạo OneSignal
     useEffect(() => {
@@ -17,12 +21,26 @@ export default function PushNotificationSetup({ userId }: { userId?: string }) {
 
             try {
                 await OneSignal.init({
-                    appId: "978f37f7-9d77-4f3a-bf57-1a9fcfb3ef8f",
+                    appId: APP_ID,
                     allowLocalhostAsSecureOrigin: true,
                     notifyButton: { enable: false } as any,
                 });
 
                 setIsSdkReady(true);
+
+                // ✅ THÊM LOGIC BẮT SỰ KIỆN CLICK VÀO THÔNG BÁO
+                OneSignal.Notifications.addEventListener('click', (event) => {
+                    // Ép kiểu (typecast) để TypeScript hiểu cấu trúc của additionalData
+                    const customData = event.notification.additionalData as Record<string, any> | undefined;
+
+                    // Ưu tiên lấy url từ data (để không bị mở tab mới), nếu không có mới lấy launchURL
+                    const targetUrl = customData?.url || event.notification.launchURL;
+
+                    if (targetUrl) {
+                        // Dùng Next.js Router chuyển trang nội bộ
+                        router.push(targetUrl);
+                    }
+                });
 
                 // Kiểm tra xem đã cấp quyền chưa
                 const currentPermission = OneSignal.Notifications.permission;
@@ -37,8 +55,12 @@ export default function PushNotificationSetup({ userId }: { userId?: string }) {
                 console.error("❌ Lỗi khởi tạo OneSignal:", e);
             }
         };
-        initOneSignal();
-    }, []);
+
+        // Đảm bảo chỉ chạy trên client
+        if (typeof window !== "undefined") {
+            initOneSignal();
+        }
+    }, [APP_ID, router]);
 
     // 2. Gắn User ID
     useEffect(() => {

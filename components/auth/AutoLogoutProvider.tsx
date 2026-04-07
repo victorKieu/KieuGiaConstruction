@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client"; // Đảm bảo đường 
 import { toast } from "sonner";
 
 // Thời gian chờ: 5 phút = 5 * 60 * 1000 ms
-const LOGOUT_TIMER = 10 * 60 * 1000;
+const LOGOUT_TIMER = 30 * 60 * 1000;
 
 export default function AutoLogoutProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +10,10 @@ import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { BiometricAuth } from "./biometric-auth";
 import { toast } from "sonner";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function LoginForm({ isMobile }: { isMobile: boolean }) {
+    const searchParams = useSearchParams(); // Đọc URL để lấy tham số ?next=
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(false);
@@ -21,7 +22,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
     const [showPassword, setShowPassword] = useState(false);
 
     const { signIn } = useAuth();
-    const router = useRouter();
+    // const router = useRouter(); // Bỏ comment nếu muốn dùng router.push, nhưng dùng window.location.href sẽ sạch cache hơn với Supabase SSR
 
     useEffect(() => {
         const savedEmail = localStorage.getItem("biometric_auth_email");
@@ -39,7 +40,7 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
         e.preventDefault();
         setErrorMessage(null);
 
-        // ✅ XỬ LÝ NHANH: Kiểm tra lỗi trước, sai thì báo ngay không cần quay loading
+        // Kiển tra nhanh lỗi
         if (!validateEmail(email)) {
             setErrorMessage("Email không đúng định dạng.");
             return;
@@ -50,7 +51,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
             return;
         }
 
-        // Bắt đầu quay vòng loading khi thực sự gửi API
         setIsLoading(true);
 
         try {
@@ -64,13 +64,15 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
             toast.success("Đăng nhập thành công!");
 
-            // ✅ TỐI ƯU TỐC ĐỘ: 
-            // 1. Không dùng setTimeout bắt user đợi
-            // 2. Dùng window.location.href để force reload, xóa sạch cache cũ, Next.js sẽ nhận diện Cookie đăng nhập ngay lập tức.
-            window.location.href = "/dashboard";
+            // ✅ NÂNG CẤP CHUYỂN HƯỚNG TỪ THÔNG BÁO:
+            // Đọc xem trên link có đuôi ?next=... không (do middleware đá ra)
+            const nextUrl = searchParams.get('next');
 
-            // Chú ý: Cố tình KHÔNG set setIsLoading(false) ở đây. 
-            // Để nguyên trạng thái quay loading trong lúc trình duyệt đang chuyển trang cho mượt.
+            // Nếu có link đích -> Về link đích. Nếu không có -> Về dashboard.
+            const targetUrl = nextUrl ? decodeURIComponent(nextUrl) : "/dashboard";
+
+            // Dùng window.location.href để force reload, giúp Middleware nhận diện Cookie mới
+            window.location.href = targetUrl;
 
         } catch (error: any) {
             console.error("Login Error:", error);
@@ -88,20 +90,22 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
             setErrorMessage(message);
             toast.error(message);
-
-            // Chỉ tắt loading nếu có lỗi để user nhập lại
             setIsLoading(false);
         }
     };
 
     const handleBiometricSuccess = () => {
         toast.success("Xác thực sinh trắc học thành công!");
-        window.location.href = "/dashboard";
+
+        // ✅ Áp dụng logic tương tự cho đăng nhập bằng Sinh trắc học (Vân tay/FaceID)
+        const nextUrl = searchParams.get('next');
+        const targetUrl = nextUrl ? decodeURIComponent(nextUrl) : "/dashboard";
+
+        window.location.href = targetUrl;
     };
 
     return (
         <div className="space-y-6">
-            {/* Hiển thị lỗi */}
             {errorMessage && (
                 <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md animate-in fade-in slide-in-from-top-1 dark:bg-red-900/20 dark:border-red-900 dark:text-red-400">
                     <AlertCircle className="w-4 h-4" />
@@ -110,7 +114,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Input Email */}
                 <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input
@@ -125,7 +128,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                     />
                 </div>
 
-                {/* Input Password */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <Label htmlFor="password">Mật khẩu</Label>
@@ -158,7 +160,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                     </div>
                 </div>
 
-                {/* Checkbox Remember Me */}
                 <div className="flex items-center space-x-2">
                     <Checkbox
                         id="remember"
@@ -170,14 +171,12 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
                     </Label>
                 </div>
 
-                {/* Nút Submit */}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : null}
                     Đăng nhập
                 </Button>
             </form>
 
-            {/* Biometric cho Mobile */}
             {isMobile && (
                 <div className="pt-2 border-t mt-4 border-border">
                     <BiometricAuth email={email} onSuccess={handleBiometricSuccess} />
