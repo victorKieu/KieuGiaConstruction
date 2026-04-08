@@ -142,15 +142,46 @@ export default function ApprovalDashboardPage() {
                                         </span>
                                     </div>
 
-                                    {/* Khung Giờ thực tế (Chỉ cho đơn giải trình) */}
-                                    {req.request_type === 'explanation' && (req.actual_in_time || req.actual_out_time) && (
-                                        <div className="flex flex-col gap-1.5 bg-orange-50 dark:bg-orange-500/10 p-3 rounded-lg border border-orange-100 dark:border-orange-500/20 transition-colors">
-                                            <span className="text-xs font-bold uppercase tracking-wider text-orange-700 dark:text-orange-400">Giờ khai báo</span>
-                                            <span className="font-bold text-orange-700 dark:text-orange-300 text-base font-mono">
-                                                {req.actual_in_time ? req.actual_in_time.substring(0, 5) : '--:--'}
-                                                <span className="text-orange-400 dark:text-orange-500/50 mx-2 font-sans font-normal text-sm">đến</span>
-                                                {req.actual_out_time ? req.actual_out_time.substring(0, 5) : '--:--'}
-                                            </span>
+                                    {/* ✅ KHUNG ĐỐI CHIẾU GIỜ MÁY & GIỜ XIN SỬA */}
+                                    {req.request_type === 'explanation' && req.sub_type !== 'field_work' && (req.machine_in_time || req.machine_out_time || req.actual_in_time || req.actual_out_time) && (
+                                        <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800 transition-colors">
+                                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Đối chiếu giờ giấc</span>
+
+                                            {/* CA SÁNG (VÀO) */}
+                                            {(req.machine_in_time || req.actual_in_time) && (
+                                                <div className="bg-white dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-800">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-slate-500 text-[11px] uppercase">Giờ máy ghi nhận</span>
+                                                        <span className="font-mono text-sm text-red-500 line-through decoration-red-300">
+                                                            {req.machine_in_time ? new Date(req.machine_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-emerald-600 font-medium text-[11px] uppercase">Xin sửa thành</span>
+                                                        <span className="font-mono text-sm font-bold text-emerald-600">
+                                                            {req.actual_in_time ? req.actual_in_time.substring(0, 5) : '--:--'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* CA CHIỀU (RA) */}
+                                            {(req.machine_out_time || req.actual_out_time) && (
+                                                <div className="bg-white dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-800 mt-1">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-slate-500 text-[11px] uppercase">Giờ máy ghi nhận</span>
+                                                        <span className="font-mono text-sm text-red-500 line-through decoration-red-300">
+                                                            {req.machine_out_time ? new Date(req.machine_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-emerald-600 font-medium text-[11px] uppercase">Xin sửa thành</span>
+                                                        <span className="font-mono text-sm font-bold text-emerald-600">
+                                                            {req.actual_out_time ? req.actual_out_time.substring(0, 5) : '--:--'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 

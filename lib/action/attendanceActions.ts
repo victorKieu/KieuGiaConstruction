@@ -33,14 +33,12 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
     const supabase = await createSupabaseServerClient();
 
     try {
-        // --- 1. KIỂM TRA PHIÊN ĐĂNG NHẬP ---
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) {
             return { success: false, error: "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại." };
         }
         const authId = user.id;
 
-        // --- 2. LẤY DANH SÁCH TỌA ĐỘ CHO PHÉP (GEOFENCING) ---
         const { data: companySetting } = await supabase
             .from('company_settings')
             .select('name, geocode, attendance_radius')
@@ -49,7 +47,6 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
 
         let allowedLocations: Array<{ name: string, lat: number, lng: number, radius: number }> = [];
 
-        // Add Trụ sở chính
         if (companySetting && companySetting.geocode) {
             const parts = companySetting.geocode.split(',');
             if (parts.length >= 2) {
@@ -66,7 +63,6 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
             }
         }
 
-        // Add Công trình của nhân viên
         const { data: memberProjects } = await supabase
             .from('project_members')
             .select(`project_id, projects ( name, geocode )`)
@@ -85,7 +81,7 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
                                 name: `Công trình: ${proj.name}`,
                                 lat: projLat,
                                 lng: projLng,
-                                radius: 300 // Bán kính công trình
+                                radius: 300
                             });
                         }
                     }
@@ -93,7 +89,6 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
             });
         }
 
-        // --- 3. KIỂM TRA VỊ TRÍ HIỆN TẠI VỚI GEOFENCING ---
         let isValidLocation = false;
         let matchedLocationName = "";
 
@@ -113,10 +108,6 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
         if (!isValidLocation) {
             return { success: false, error: `Tọa độ hiện tại không hợp lệ. Vui lòng di chuyển vào khu vực quy định.` };
         }
-
-        // ==========================================================
-        // 🚀 4. LOGIC TÍNH TOÁN MÚI GIỜ CHUẨN TỪ GPS
-        // ==========================================================
 
         const exactTimeZone = tzlookup(payload.lat, payload.lng);
         const serverNow = new Date();
@@ -150,26 +141,20 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
                 const checkInTime = new Date(existingRecord.check_in_time);
                 const diffMs = serverNow.getTime() - checkInTime.getTime();
 
-                // Tính số giờ làm việc thực tế (Quy đổi ra giờ)
+                // Tính toán giờ làm việc ĐỒNG BỘ MỚI (Trừ 1.5h nghỉ trưa nếu làm > 5h)
                 let workingHours = diffMs / (1000 * 60 * 60);
-
-                // Nếu khoảng thời gian làm việc > 5 tiếng, tự động trừ 1 tiếng nghỉ trưa
                 if (workingHours > 5) {
-                    workingHours -= 1;
+                    workingHours -= 1.5;
                 }
+                workingHours = Math.max(0, workingHours);
                 workingHours = parseFloat(workingHours.toFixed(2));
 
-                // Phân loại trạng thái theo LOGIC MỚI
+                // Phân loại trạng thái ĐỒNG BỘ MỚI
                 let status = 'Đủ công';
-                if (workingHours > 8.5) {
-                    status = 'Tăng ca (OT)'; // Làm dư giờ
-                } else if (workingHours >= 7.5) {
-                    status = 'Đủ công'; // Làm 8 tiếng (Cho phép chênh lệch nhẹ)
-                } else if (workingHours >= 4) {
-                    status = 'Nửa công';
-                } else {
-                    status = 'Về sớm';
-                }
+                if (workingHours >= 8.5) status = 'Tăng ca (OT)';
+                else if (workingHours >= 7.5) status = 'Đủ công';
+                else if (workingHours >= 3.5) status = 'Nửa công';
+                else status = 'Về sớm';
 
                 await supabase.from('attendance_records').update({
                     check_out_time: dbTimeStr,
@@ -186,7 +171,6 @@ export async function submitMobileCheckIn(payload: { lat: number, lng: number })
             }
         } else {
             // VÀO CA (CHECK-IN)
-            // Giờ chuẩn là 8:00. Nếu check-in sau 8:00 (VD: 8:01) -> Đi muộn
             const checkInHour = parseInt(tp.hour);
             const checkInMinute = parseInt(tp.minute);
 
@@ -221,7 +205,6 @@ export async function getMyAttendanceRecords() {
         if (!user) return [];
         const authId = user.id;
 
-        // Lấy lịch sử theo auth_id
         const { data: records, error } = await supabase
             .from('attendance_records')
             .select('*')
@@ -229,10 +212,8 @@ export async function getMyAttendanceRecords() {
             .order('date', { ascending: false })
             .limit(30);
 
-        if (error) throw error;
-        if (!records || records.length === 0) return [];
+        if (error || !records || records.length === 0) return [];
 
-        // TRUY VẤN BẢNG EMPLOYEES ĐỂ LẤY TÊN VÀ MÃ (Khớp bằng auth_id)
         const { data: employee } = await supabase
             .from('employees')
             .select('code, name')
@@ -242,20 +223,40 @@ export async function getMyAttendanceRecords() {
         const empName = employee?.name || user.email?.split('@')[0] || "Người dùng";
         const empCode = employee?.code || "Chưa có mã";
 
-        return records.map((record: any) => ({
-            id: record.id,
-            date: record.date,
-            employeeCode: empCode,
-            name: empName,
-            checkIn: record.check_in_time
-                ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })
-                : "",
-            checkOut: record.check_out_time
-                ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })
-                : "",
-            status: record.status,
-            location: record.check_in_lat ? `Tọa độ: ${record.check_in_lat.toFixed(3)}, ${record.check_in_lng.toFixed(3)}` : ""
-        }));
+        // ✅ FIX: KÉO ĐƠN GIẢI TRÌNH ĐÃ DUYỆT LÊN ĐỂ LẤY GIỜ ĐIỀU CHỈNH
+        const minDate = records[records.length - 1].date;
+        const maxDate = records[0].date;
+
+        const { data: approvedRequests } = await supabase
+            .from('attendance_requests')
+            .select('start_date, actual_in_time, actual_out_time')
+            .eq('employee_id', authId)
+            .eq('status', 'approved')
+            .eq('request_type', 'explanation')
+            .gte('start_date', minDate)
+            .lte('start_date', maxDate)
+            .order('created_at', { ascending: true }); // Ưu tiên đơn duyệt sau cùng
+
+        const reqMap = (approvedRequests || []).reduce((acc: any, req: any) => {
+            acc[req.start_date] = req;
+            return acc;
+        }, {});
+
+        return records.map((record: any) => {
+            const reqInfo = reqMap[record.date];
+            return {
+                id: record.id,
+                date: record.date,
+                employeeCode: empCode,
+                name: empName,
+                checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : "",
+                checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : "",
+                adjustedCheckIn: reqInfo?.actual_in_time ? reqInfo.actual_in_time.substring(0, 5) : undefined,
+                adjustedCheckOut: reqInfo?.actual_out_time ? reqInfo.actual_out_time.substring(0, 5) : undefined,
+                status: record.status,
+                location: record.check_in_lat ? `Tọa độ: ${record.check_in_lat.toFixed(3)}, ${record.check_in_lng.toFixed(3)}` : ""
+            };
+        });
     } catch (e) {
         return [];
     }
@@ -271,36 +272,44 @@ export async function submitAttendanceRequest(payload: any) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Vui lòng đăng nhập." };
 
-        // 1. Insert đơn từ vào database
+        // Kiểm tra quota giải trình trong tháng
+        if (payload.request_type === 'explanation' && payload.sub_type !== 'field_work') {
+            const reqDate = new Date(payload.start_date);
+            const firstDay = new Date(reqDate.getFullYear(), reqDate.getMonth(), 1).toLocaleDateString('en-CA');
+            const lastDay = new Date(reqDate.getFullYear(), reqDate.getMonth() + 1, 0).toLocaleDateString('en-CA');
+
+            const { count } = await supabase
+                .from('attendance_requests')
+                .select('*', { count: 'exact', head: true })
+                .eq('employee_id', user.id)
+                .eq('request_type', 'explanation')
+                .neq('sub_type', 'field_work')
+                .gte('start_date', firstDay)
+                .lte('start_date', lastDay);
+
+            if (count !== null && count >= 3) {
+                return { success: false, error: "Bạn đã hết lượt giải trình (Tối đa 3 lần/tháng). Hệ thống từ chối nhận đơn." };
+            }
+        }
+
         const { error } = await supabase.from('attendance_requests').insert({
             employee_id: user.id,
             ...payload
         });
         if (error) throw error;
 
-        // 2. TÌM QUẢN LÝ & BẮN THÔNG BÁO
         const { data: employee } = await supabase.from('employees').select('name, manager_id').eq('auth_id', user.id).single();
-
         if (employee && employee.manager_id) {
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
-
             if (manager && manager.auth_id) {
                 const reqTypeName = payload.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
-
-                // Chuẩn bị nội dung thông báo
                 const notifTitle = `Có đơn ${reqTypeName} mới cần duyệt`;
                 const notifMessage = `Nhân viên ${employee.name} vừa gửi đơn ${reqTypeName} cho ngày ${formatDate(payload.start_date)}. Vui lòng kiểm tra!`;
                 const notifLink = '/hrm/approvals';
 
-                // A. Lưu vào chuông thông báo (In-app)
                 await supabase.from('notifications').insert({
-                    user_id: manager.auth_id,
-                    title: notifTitle,
-                    message: notifMessage,
-                    link: notifLink
+                    user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
                 });
-
-                // B. Bắn Push Notification xuống điện thoại của Quản lý 🚀
                 await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
             }
         }
@@ -318,27 +327,17 @@ export async function submitAttendanceRequest(payload: any) {
 export async function getPendingRequests() {
     const supabase = await createSupabaseServerClient();
     try {
-        // ✅ 1. Sử dụng hàm trung tâm của sếp để lấy Profile
         const userProfile = await getUserProfile();
+        if (!userProfile || !userProfile.isAuthenticated || userProfile.type !== 'EMPLOYEE') return [];
 
-        if (!userProfile || !userProfile.isAuthenticated || userProfile.type !== 'EMPLOYEE') {
-            console.log("❌ Không tìm thấy Profile nhân viên hợp lệ.");
-            return [];
-        }
-
-        const currentEmployeeId = userProfile.entityId; // Đây chính là ID trong bảng employees
+        const currentEmployeeId = userProfile.entityId;
         const userRole = (userProfile.role || '').toLowerCase();
         const isHR = userRole === 'admin' || userRole === 'hr' || userRole === 'giám đốc';
 
         let targetAuthIds: string[] = [];
 
         if (!isHR) {
-            // --- LOGIC PHÂN QUYỀN CHO QUẢN LÝ ---
-            const { data: managedDepts } = await supabase
-                .from('department_managers')
-                .select('department_id')
-                .eq('manager_id', currentEmployeeId); // Dùng entityId chuẩn
-
+            const { data: managedDepts } = await supabase.from('department_managers').select('department_id').eq('manager_id', currentEmployeeId);
             const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
             let allowedDeptIds = new Set<string>(directManagedDeptIds);
 
@@ -361,21 +360,19 @@ export async function getPendingRequests() {
             const { data: directReports } = await supabase.from('employees').select('auth_id').eq('manager_id', currentEmployeeId);
 
             const combinedIds = new Set([
-                userProfile.authId, // Chính mình (auth_id)
+                userProfile.authId,
                 ...(deptEmps ? deptEmps.map(e => e.auth_id) : []),
                 ...(directReports ? directReports.map(e => e.auth_id) : [])
             ]);
             targetAuthIds = Array.from(combinedIds).filter(Boolean) as string[];
         }
 
-        // 2. TRUY VẤN DỮ LIỆU
         let query = supabase.from('attendance_requests').select('*').eq('status', 'pending');
         if (!isHR) query = query.in('employee_id', targetAuthIds);
 
         const { data: requests, error } = await query.order('created_at', { ascending: false });
         if (error || !requests) return [];
 
-        // 3. MAPPING THÔNG TIN NHÂN VIÊN
         const authIds = [...new Set(requests.map(r => r.employee_id))];
         const { data: employees } = await supabase.from('employees').select('auth_id, code, name').in('auth_id', authIds);
         const empMap = (employees || []).reduce((acc: any, emp: any) => {
@@ -383,11 +380,32 @@ export async function getPendingRequests() {
             return acc;
         }, {});
 
-        return requests.map(req => ({
-            ...req,
-            start_date_formatted: formatDate(req.start_date),
-            employee: empMap[req.employee_id] || { name: "N/A", code: "N/A" }
+        const enrichedRequests = await Promise.all(requests.map(async (req) => {
+            let machine_in_time = null;
+            let machine_out_time = null;
+
+            if (req.request_type === 'explanation' && req.sub_type !== 'field_work') {
+                const { data: record } = await supabase
+                    .from('attendance_records')
+                    .select('check_in_time, check_out_time')
+                    .eq('employee_id', req.employee_id)
+                    .eq('date', req.start_date)
+                    .maybeSingle();
+
+                machine_in_time = record?.check_in_time || null;
+                machine_out_time = record?.check_out_time || null;
+            }
+
+            return {
+                ...req,
+                start_date_formatted: formatDate(req.start_date),
+                employee: empMap[req.employee_id] || { name: "N/A", code: "N/A" },
+                machine_in_time,
+                machine_out_time
+            };
         }));
+
+        return enrichedRequests;
     } catch (e) {
         return [];
     }
@@ -402,80 +420,84 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
         const { data: request, error: reqError } = await supabase.from('attendance_requests').select('*').eq('id', requestId).single();
         if (reqError || !request) throw new Error("Không tìm thấy đơn từ.");
 
-        // 1. CẬP NHẬT TRẠNG THÁI ĐƠN
         await supabase.from('attendance_requests').update({ status: newStatus }).eq('id', requestId);
 
-        // 2. LOGIC VÁ BẢNG CÔNG (Áp dụng nếu được Approved)
+        // 2. LOGIC VÁ BẢNG CÔNG 
         if (newStatus === 'approved') {
             if (request.request_type === 'explanation') {
-                // --- Xử lý Đơn giải trình ---
                 const { data: record } = await supabase.from('attendance_records').select('*').eq('employee_id', request.employee_id).eq('date', request.start_date).single();
                 const formatTimeStr = (t: string) => t.length > 5 ? t.substring(0, 5) : t;
 
-                let finalStatus = 'Đủ công';
-                if (request.sub_type === 'field_work') finalStatus = 'Công tác (CT)';
+                const targetInTimeStr = request.actual_in_time;
+                const targetOutTimeStr = request.actual_out_time;
+
+                let finalInDate = record?.check_in_time ? new Date(record.check_in_time) : null;
+                let finalOutDate = record?.check_out_time ? new Date(record.check_out_time) : null;
+
+                if (targetInTimeStr) {
+                    finalInDate = new Date(`${request.start_date}T${formatTimeStr(targetInTimeStr)}:00+07:00`);
+                }
+                if (targetOutTimeStr) {
+                    finalOutDate = new Date(`${request.start_date}T${formatTimeStr(targetOutTimeStr)}:00+07:00`);
+                }
+
+                // ✅ FIX: TÍNH LẠI CHUẨN XÁC THEO LOGIC MỚI
+                let wHoursToSave = 0;
+                let calcStatus = 'Đủ công';
+
+                if (finalInDate && finalOutDate) {
+                    let diffMs = finalOutDate.getTime() - finalInDate.getTime();
+                    let wHours = diffMs / (1000 * 60 * 60);
+                    if (wHours > 5) wHours -= 1.5; // Nghỉ trưa 1.5h
+
+                    wHours = Math.max(0, wHours);
+                    wHoursToSave = parseFloat(wHours.toFixed(2));
+
+                    if (wHoursToSave >= 8.5) calcStatus = 'Tăng ca (OT)';
+                    else if (wHoursToSave >= 7.5) calcStatus = 'Đủ công';
+                    else if (wHoursToSave >= 3.5) calcStatus = 'Nửa công';
+                    else calcStatus = 'Thiếu giờ/Về sớm';
+                } else {
+                    calcStatus = 'Thiếu giờ';
+                }
+
+                const finalStatus = request.sub_type === 'field_work' ? 'Công tác (CT)' : `${calcStatus} (Có GT)`;
 
                 if (record) {
-                    let updateData: any = { status: finalStatus };
-                    if (request.sub_type === 'forgot_in' && request.actual_in_time) {
-                        updateData.check_in_time = `${request.start_date}T${formatTimeStr(request.actual_in_time)}:00+07:00`;
-                    } else if (request.sub_type === 'forgot_out' && request.actual_out_time) {
-                        updateData.check_out_time = `${request.start_date}T${formatTimeStr(request.actual_out_time)}:00+07:00`;
-                    }
-
-                    const inTime = updateData.check_in_time || record.check_in_time;
-                    const outTime = updateData.check_out_time || record.check_out_time;
-
-                    if (inTime && outTime) {
-                        let diffMs = new Date(outTime).getTime() - new Date(inTime).getTime();
-                        let wHours = diffMs / (1000 * 60 * 60);
-                        if (wHours > 5) wHours -= 1;
-                        updateData.working_hours = parseFloat(wHours.toFixed(2));
-                    }
-                    await supabase.from('attendance_records').update(updateData).eq('id', record.id);
+                    // CHỈ UPDATE STATUS VÀ GIỜ LÀM. KHÔNG GHI ĐÈ GIỜ MÁY!
+                    await supabase.from('attendance_records').update({
+                        status: finalStatus,
+                        working_hours: request.sub_type === 'field_work' ? 8 : wHoursToSave
+                    }).eq('id', record.id);
                 } else {
-                    if (request.actual_in_time && request.actual_out_time) {
-                        const checkIn = `${request.start_date}T${formatTimeStr(request.actual_in_time)}:00+07:00`;
-                        const checkOut = `${request.start_date}T${formatTimeStr(request.actual_out_time)}:00+07:00`;
-                        let diffMs = new Date(checkOut).getTime() - new Date(checkIn).getTime();
-                        let wHours = diffMs / (1000 * 60 * 60);
-                        if (wHours > 5) wHours -= 1;
-
-                        await supabase.from('attendance_records').insert({
-                            employee_id: request.employee_id,
-                            date: request.start_date,
-                            check_in_time: checkIn,
-                            check_out_time: checkOut,
-                            status: finalStatus,
-                            working_hours: parseFloat(wHours.toFixed(2))
-                        });
-                    }
+                    // Nếu ngày đó vắng hoàn toàn thì mới Insert giờ vào
+                    await supabase.from('attendance_records').insert({
+                        employee_id: request.employee_id,
+                        date: request.start_date,
+                        check_in_time: finalInDate ? finalInDate.toISOString() : null,
+                        check_out_time: finalOutDate ? finalOutDate.toISOString() : null,
+                        status: finalStatus,
+                        working_hours: request.sub_type === 'field_work' ? 8 : wHoursToSave
+                    });
                 }
             } else if (request.request_type === 'leave') {
-                // --- Xử lý Đơn nghỉ phép ---
                 let leaveStatus = 'Nghỉ (P)';
                 let workingHoursToLog = 8;
-
                 if (request.sub_type === 'unpaid') {
                     leaveStatus = 'Nghỉ không lương (UL)';
                     workingHoursToLog = 0;
                 }
-
                 let currDate = new Date(request.start_date);
                 const endDate = new Date(request.end_date || request.start_date);
 
                 while (currDate <= endDate) {
                     const dateStr = currDate.toISOString().split('T')[0];
                     const { data: extRecord } = await supabase.from('attendance_records').select('id').eq('employee_id', request.employee_id).eq('date', dateStr).maybeSingle();
-
                     if (extRecord) {
                         await supabase.from('attendance_records').update({ status: leaveStatus, working_hours: workingHoursToLog }).eq('id', extRecord.id);
                     } else {
                         await supabase.from('attendance_records').insert({
-                            employee_id: request.employee_id,
-                            date: dateStr,
-                            status: leaveStatus,
-                            working_hours: workingHoursToLog
+                            employee_id: request.employee_id, date: dateStr, status: leaveStatus, working_hours: workingHoursToLog
                         });
                     }
                     currDate.setDate(currDate.getDate() + 1);
@@ -483,27 +505,18 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
             }
         }
 
-        // 3. THÔNG BÁO KẾT QUẢ CHO NHÂN VIÊN
         const statusText = newStatus === 'approved' ? 'ĐÃ ĐƯỢC DUYỆT' : 'ĐÃ BỊ TỪ CHỐI';
         const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
-
-        // Chuẩn bị nội dung thông báo
         const notifTitle = `Cập nhật trạng thái đơn ${reqTypeName}`;
         const notifMessage = `Đơn xin ${reqTypeName} của bạn (áp dụng ngày ${formatDate(request.start_date)}) ${statusText}. ${adminNotes ? `Ghi chú: ${adminNotes}` : ''}`;
         const notifLink = '/my-attendance?tab=requests';
 
-        // A. Lưu vào chuông (In-app)
         await supabase.from('notifications').insert({
-            user_id: request.employee_id,
-            title: notifTitle,
-            message: notifMessage,
-            link: notifLink
+            user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
         });
-
-        // B. Bắn Push Notification xuống điện thoại nhân viên 🚀
         await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
 
-        return { success: true, message: newStatus === 'approved' ? 'Đã duyệt đơn và vá bảng công!' : 'Đã từ chối đơn.' };
+        return { success: true, message: newStatus === 'approved' ? 'Đã duyệt đơn và cập nhật bảng công!' : 'Đã từ chối đơn.' };
     } catch (e: any) {
         return { success: false, error: e.message || "Có lỗi xảy ra khi xử lý hệ thống." };
     }
@@ -516,7 +529,6 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
 export async function getAllAttendanceRecords(month: number, year: number, searchQuery: string = "") {
     const supabase = await createSupabaseServerClient();
     try {
-        // ✅ 1. Lấy Profile chuẩn
         const userProfile = await getUserProfile();
         if (!userProfile || !userProfile.isAuthenticated || userProfile.type !== 'EMPLOYEE') return [];
 
@@ -527,7 +539,6 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
         let targetAuthIds: string[] = [];
 
         if (!isHR) {
-            // --- LOGIC TÌM CẤP DƯỚI ---
             const { data: managedDepts } = await supabase.from('department_managers').select('department_id').eq('manager_id', currentEmployeeId);
             const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
 
@@ -558,7 +569,6 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
             targetAuthIds = Array.from(combinedIds).filter(Boolean) as string[];
         }
 
-        // 2. QUERY DỮ LIỆU
         const startDate = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
         const endDate = new Date(year, month, 0).toLocaleDateString('en-CA');
 
@@ -566,7 +576,7 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
         if (!isHR) query = query.in('employee_id', targetAuthIds);
 
         const { data: records, error } = await query.order('date', { ascending: false });
-        if (error || !records) return [];
+        if (error || !records || records.length === 0) return [];
 
         const authIds = [...new Set(records.map(r => r.employee_id))];
         const { data: employees } = await supabase.from('employees').select('auth_id, code, name').in('auth_id', authIds);
@@ -575,8 +585,25 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
             return acc;
         }, {});
 
+        // ✅ FIX: KÉO ĐƠN GIẢI TRÌNH ĐÃ DUYỆT ĐỂ LẤY GIỜ ĐIỀU CHỈNH
+        const { data: approvedRequests } = await supabase
+            .from('attendance_requests')
+            .select('employee_id, start_date, actual_in_time, actual_out_time')
+            .eq('status', 'approved')
+            .eq('request_type', 'explanation')
+            .gte('start_date', startDate)
+            .lte('start_date', endDate)
+            .order('created_at', { ascending: true });
+
+        const reqMap = (approvedRequests || []).reduce((acc: any, req: any) => {
+            acc[`${req.employee_id}_${req.start_date}`] = req;
+            return acc;
+        }, {});
+
         let formattedData = records.map((record: any) => {
             const empInfo = empMap[record.employee_id] || { name: "N/A", code: "N/A" };
+            const reqInfo = reqMap[`${record.employee_id}_${record.date}`];
+
             return {
                 id: record.id,
                 date: record.date,
@@ -584,6 +611,8 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
                 name: empInfo.name,
                 checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "",
                 checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : "",
+                adjustedCheckIn: reqInfo?.actual_in_time ? reqInfo.actual_in_time.substring(0, 5) : undefined,
+                adjustedCheckOut: reqInfo?.actual_out_time ? reqInfo.actual_out_time.substring(0, 5) : undefined,
                 status: record.status,
                 location: record.check_in_lat ? `${record.check_in_lat.toFixed(3)}, ${record.check_in_lng.toFixed(3)}` : ""
             };
@@ -618,7 +647,6 @@ export async function getMyRequests() {
         if (error) throw error;
         return data || [];
     } catch (e) {
-        console.error("Lỗi lấy đơn cá nhân:", e);
         return [];
     }
 }

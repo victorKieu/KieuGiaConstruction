@@ -16,8 +16,10 @@ export interface AttendanceRecord {
     date: string;
     employeeCode: string;
     name: string;
-    checkIn: string;
-    checkOut: string;
+    checkIn: string;           // Giờ máy gốc
+    checkOut: string;          // Giờ máy gốc
+    adjustedCheckIn?: string;  // Giờ đã duyệt điều chỉnh (Nếu có)
+    adjustedCheckOut?: string; // Giờ đã duyệt điều chỉnh (Nếu có)
     status: string;
     location?: string;
 }
@@ -28,29 +30,59 @@ interface AttendanceTableProps {
 
 export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => {
 
-    // ✅ Hàm render Badge màu sắc theo trạng thái (Hỗ trợ Dark Mode mượt mà)
+    // ✅ KIỂM TRA & RENDER MÀU BADGE TRẠNG THÁI (Đã thêm Đủ công Có GT)
     const getStatusBadge = (status: string) => {
-        if (status.includes('Đủ công'))
+        if (!status) return <Badge variant="outline">-</Badge>;
+
+        if (status.includes('Đủ công (Có GT)'))
+            return <Badge className="bg-lime-500 hover:bg-lime-600 dark:bg-lime-500/20 dark:text-lime-400 dark:border-lime-500/30 dark:hover:bg-lime-500/30 transition-colors">Đủ công (Có GT)</Badge>;
+
+        if (status === 'Đủ công' || status === 'Đủ công ')
             return <Badge className="bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 dark:hover:bg-emerald-500/30 transition-colors">Đủ công</Badge>;
+
         if (status.includes('Đi muộn') || status.includes('Về sớm') || status.includes('Đi trễ'))
             return <Badge className="bg-amber-500 hover:bg-amber-600 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30 dark:hover:bg-amber-500/30 transition-colors">{status}</Badge>;
+
         if (status.includes('Nửa công'))
             return <Badge className="bg-blue-500 hover:bg-blue-600 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30 dark:hover:bg-blue-500/30 transition-colors">Nửa công</Badge>;
+
         if (status.includes('Tăng ca (OT)'))
             return <Badge className="bg-teal-500 hover:bg-teal-600 dark:bg-teal-500/20 dark:text-teal-400 dark:border-teal-500/30 dark:hover:bg-teal-500/30 transition-colors">Tăng ca (OT)</Badge>;
+
         if (status.includes('Nghỉ (P)') || status.includes('Nghỉ lễ/Tết (L)'))
             return <Badge className="bg-violet-500 hover:bg-violet-600 dark:bg-violet-500/20 dark:text-violet-400 dark:border-violet-500/30 dark:hover:bg-violet-500/30 transition-colors">{status}</Badge>;
+
         if (status.includes('Nghỉ không lương (UL)') || status.includes('Vắng mặt'))
             return <Badge className="bg-rose-500 hover:bg-rose-600 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30 dark:hover:bg-rose-500/30 transition-colors">{status}</Badge>;
+
         if (status.includes('Công tác (CT)'))
             return <Badge className="bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30 dark:hover:bg-indigo-500/30 transition-colors">Công tác (CT)</Badge>;
+
         if (status.includes('Quên chấm công (QC)'))
             return <Badge className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500/20 dark:text-slate-400 dark:border-slate-500/30 dark:hover:bg-slate-500/30 transition-colors">Quên CC (QC)</Badge>;
+
         if (status.includes('Đang làm việc'))
             return <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 animate-pulse dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30 transition-colors">Đang làm việc</Badge>;
 
-        // Default
         return <Badge variant="outline" className="text-slate-500 dark:text-slate-400 dark:border-slate-700 transition-colors">{status}</Badge>;
+    };
+
+    // ✅ HÀM TÍNH SỐ PHÚT CHÊNH LỆCH
+    const getDiffMinutes = (original: string, adjusted: string) => {
+        try {
+            const [oH, oM] = original.split(':').map(Number);
+            const [aH, aM] = adjusted.split(':').map(Number);
+            return (aH * 60 + aM) - (oH * 60 + oM);
+        } catch {
+            return 0;
+        }
+    };
+
+    // ✅ HÀM FORMAT SỐ PHÚT HIỂN THỊ (VD: -45p, +30p)
+    const formatDiff = (original: string, adjusted: string) => {
+        const diff = getDiffMinutes(original, adjusted);
+        if (diff === 0) return '0p';
+        return diff > 0 ? `+${diff}p` : `${diff}p`;
     };
 
     const formatDisplayDate = (dateString: string) => {
@@ -83,8 +115,8 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
                         <TableHead className="w-[120px] font-bold text-slate-700 dark:text-slate-200">Ngày</TableHead>
                         <TableHead className="w-[100px] font-bold text-slate-700 dark:text-slate-200">Mã NV</TableHead>
                         <TableHead className="min-w-[180px] font-bold text-slate-700 dark:text-slate-200">Họ tên</TableHead>
-                        <TableHead className="w-[120px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ vào</TableHead>
-                        <TableHead className="w-[120px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ ra</TableHead>
+                        <TableHead className="w-[130px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ vào</TableHead>
+                        <TableHead className="w-[130px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ ra</TableHead>
                         <TableHead className="min-w-[200px] font-bold text-slate-700 dark:text-slate-200">Vị trí (GPS)</TableHead>
                         <TableHead className="w-[120px] text-right font-bold text-slate-700 dark:text-slate-200">Trạng thái</TableHead>
                     </TableRow>
@@ -104,20 +136,50 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
                                 {r.name}
                             </TableCell>
 
+                            {/* CỘT GIỜ VÀO */}
                             <TableCell className="text-center">
                                 {r.checkIn ? (
-                                    <div className="flex items-center justify-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-500/10 py-1 rounded-md border border-emerald-100 dark:border-emerald-500/20 transition-colors">
-                                        <LogIn className="w-3.5 h-3.5" /> {r.checkIn}
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div className={`flex items-center justify-center gap-1.5 py-1 px-2 rounded-md border transition-colors ${r.adjustedCheckIn
+                                                ? 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 line-through decoration-slate-400 font-medium'
+                                                : 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20'
+                                            }`}>
+                                            <LogIn className="w-3.5 h-3.5" /> {r.checkIn}
+                                        </div>
+                                        {/* Dòng hiển thị Giờ Điều Chỉnh (Nếu có) */}
+                                        {r.adjustedCheckIn && (
+                                            <div className="flex items-center mt-1 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded px-1.5 py-0.5">
+                                                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{r.adjustedCheckIn}</span>
+                                                <span className={`text-[10px] ml-1 font-medium ${getDiffMinutes(r.checkIn, r.adjustedCheckIn) < 0 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                                    ({formatDiff(r.checkIn, r.adjustedCheckIn)})
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <span className="text-slate-300 dark:text-slate-600">-</span>
                                 )}
                             </TableCell>
 
+                            {/* CỘT GIỜ RA */}
                             <TableCell className="text-center">
                                 {r.checkOut ? (
-                                    <div className="flex items-center justify-center gap-1.5 text-orange-700 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-500/10 py-1 rounded-md border border-orange-100 dark:border-orange-500/20 transition-colors">
-                                        <LogOut className="w-3.5 h-3.5" /> {r.checkOut}
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div className={`flex items-center justify-center gap-1.5 py-1 px-2 rounded-md border transition-colors ${r.adjustedCheckOut
+                                                ? 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 line-through decoration-slate-400 font-medium'
+                                                : 'text-orange-700 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-500/10 border-orange-100 dark:border-orange-500/20'
+                                            }`}>
+                                            <LogOut className="w-3.5 h-3.5" /> {r.checkOut}
+                                        </div>
+                                        {/* Dòng hiển thị Giờ Điều Chỉnh (Nếu có) */}
+                                        {r.adjustedCheckOut && (
+                                            <div className="flex items-center mt-1 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded px-1.5 py-0.5">
+                                                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">{r.adjustedCheckOut}</span>
+                                                <span className={`text-[10px] ml-1 font-medium ${getDiffMinutes(r.checkOut, r.adjustedCheckOut) > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                                    ({formatDiff(r.checkOut, r.adjustedCheckOut)})
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <span className="text-slate-300 dark:text-slate-600">-</span>

@@ -22,12 +22,17 @@ export function NotificationBell() {
 
     // Hàm load thông báo
     const fetchNotifications = async (currentUserId: string) => {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from("notifications")
             .select("*")
             .eq("user_id", currentUserId)
             .order("created_at", { ascending: false })
             .limit(10);
+
+        if (error) {
+            console.error("Lỗi lấy thông báo:", error);
+            return;
+        }
 
         if (data) {
             setNotifications(data);
@@ -44,17 +49,16 @@ export function NotificationBell() {
                 setUserId(user.id);
                 fetchNotifications(user.id);
 
-                // 🚀 LẮNG NGHE REALTIME TẤT CẢ SỰ KIỆN (THÊM, SỬA, XÓA)
+                // LẮNG NGHE REALTIME
                 channel = supabase
                     .channel(`realtime_notifications_${user.id}`)
                     .on('postgres_changes', {
-                        event: '*', // Lắng nghe mọi thay đổi (Bắt buộc Supabase phải bật Realtime cho bảng này)
+                        event: '*',
                         schema: 'public',
                         table: 'notifications',
                         filter: `user_id=eq.${user.id}`
                     }, (payload) => {
-                        console.log("CÓ THAY ĐỔI THÔNG BÁO!", payload);
-                        // Có thay đổi là gọi lại hàm fetch để update UI ngay lập tức
+                        console.log("CÓ THAY ĐỔI THÔNG BÁO TỪ DB!", payload);
                         fetchNotifications(user.id);
                     })
                     .subscribe();
@@ -66,29 +70,59 @@ export function NotificationBell() {
         return () => { if (channel) supabase.removeChannel(channel); }
     }, []);
 
+    // ✅ ĐÃ FIX: Click 1 thông báo
     const handleRead = async (id: string) => {
-        await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-        // Không cần fetchNotifications ở đây nữa vì đã có Realtime lo vụ UPDATE rồi
-        setOpen(false);
+        setOpen(false); // Đóng popover trước cho mượt
+
+        // 1. Cập nhật UI ngay lập tức (Optimistic Update)
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+
+        // 2. Cập nhật DB ngầm
+        const { error } = await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+        if (error) console.error("Lỗi đánh dấu đã đọc DB:", error);
     };
 
+    // ✅ ĐÃ FIX: Đánh dấu đã đọc tất cả
     const handleMarkAllAsRead = async () => {
         if (!userId) return;
-        await supabase
+
+        // 1. Cập nhật UI ngay lập tức
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        setUnreadCount(0);
+
+        // 2. Cập nhật DB ngầm
+        const { error } = await supabase
             .from("notifications")
             .update({ is_read: true })
             .eq("user_id", userId)
             .eq("is_read", false);
+
+        if (error) {
+            console.error("Lỗi đánh dấu tất cả đã đọc DB:", error);
+            alert("Lỗi kết nối CSDL. Thông báo chưa được đánh dấu.");
+        }
     };
 
+    // ✅ ĐÃ FIX: Xóa tất cả
     const handleDeleteAll = async () => {
         if (!userId) return;
         if (!window.confirm("Bạn có chắc chắn muốn xóa toàn bộ thông báo không?")) return;
 
-        await supabase
+        // 1. Cập nhật UI ngay lập tức
+        setNotifications([]);
+        setUnreadCount(0);
+
+        // 2. Xóa DB ngầm
+        const { error } = await supabase
             .from("notifications")
             .delete()
             .eq("user_id", userId);
+
+        if (error) {
+            console.error("Lỗi xóa thông báo DB:", error);
+            alert("Lỗi kết nối CSDL. Thông báo chưa được xóa.");
+        }
     };
 
     return (
