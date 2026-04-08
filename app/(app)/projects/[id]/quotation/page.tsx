@@ -1,31 +1,29 @@
-import { Suspense } from "react"
-import { getQuotations, getQuotationById } from "@/lib/action/quotationActions"
-import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
-import QuotationList from "@/components/projects/quotation/quotation-list"
-import QuotationPageClient from "./page-client" // Tách Client Component để xử lý state Form
+import QuotationPageClient from "./page-client";
+import { getQuotations } from "@/lib/action/quotationActions";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-// Server Component chính
 export default async function QuotationPage({ params }: { params: { id: string } }) {
-    const projectId = params.id
+    // 1. Lấy ID dự án từ URL
+    const projectId = params.id;
 
-    // Fetch dữ liệu danh sách
-    const { data: quotations } = await getQuotations(projectId)
+    // 2. Lấy danh sách báo giá
+    const { data: quotations } = await getQuotations(projectId);
+
+    // 3. ✅ FIX LỖI TẠI ĐÂY: Lấy thêm thông tin chi tiết của Dự án (kèm Khách hàng)
+    const supabase = await createSupabaseServerClient();
+    const { data: project } = await supabase
+        .from('projects')
+        .select('*, customers(*)') // Join để lấy tên khách hàng truyền xuống Form
+        .eq('id', projectId)
+        .single();
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Quản lý Báo Giá</h1>
-                    <p className="text-sm text-slate-500">Lập và quản lý các báo giá cho dự án này</p>
-                </div>
-            </div>
-
-            {/* Gọi Client Component để xử lý logic đóng mở form */}
+        <div className="w-full">
             <QuotationPageClient
                 projectId={projectId}
                 quotations={quotations || []}
+                project={project} // ✅ Truyền thêm prop này xuống để hết báo lỗi đỏ
             />
         </div>
-    )
+    );
 }

@@ -19,7 +19,7 @@ import { readMoneyToText } from "@/lib/utils/readNumber"
 import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 
-const LOGO_URL = "https://oshquiqzokyyawgoemql.supabase.co/storage/v1/object/sign/logo/53350f6b-9e2e-4a99-aaff-33ed9f89f362/KG%20Logo.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8wYTI4MzQ5Ni1iODVhLTQwMmYtYWU0NS1lMGYyMmU3ZDRjOGEiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJsb2dvLzUzMzUwZjZiLTllMmUtNGE5OS1hYWZmLTMzZWQ5Zjg5ZjM2Mi9LRyBMb2dvLnBuZyIsImlhdCI6MTc2Nzc4NDUzMSwiZXhwIjo2MDg3Nzg0NTMxfQ.V9jUhkfi9TPss2WKkNhay5tqV6A7Xb3lH7Lyy0L53OY";
+const LOGO_URL = "/images/logo.png";
 
 // --- 1. SCHEMA ---
 const quotationSchema = z.object({
@@ -74,6 +74,17 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
     const defaultProjectName = projectNameFromProject;
     const defaultAddress = initialData?.address || addressFromProject;
 
+    // ✅ BỘ LỌC 1: Sắp xếp tuyệt đối dữ liệu cũ khi F5 trang
+    const sortedInitialItems = initialData?.items ? [...initialData.items].sort((a: any, b: any) => {
+        const idxA = a.order_index ?? 99999;
+        const idxB = b.order_index ?? 99999;
+        if (idxA !== idxB) return idxA - idxB;
+        // Backup: Nếu trùng/không có order_index, giữ nguyên thứ tự tạo
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return timeA - timeB;
+    }) : null;
+
     const form = useForm({
         resolver: zodResolver(quotationSchema),
         defaultValues: initialData ? {
@@ -82,7 +93,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             customer_name: defaultCustomerName,
             project_name: defaultProjectName,
             address: defaultAddress,
-            items: initialData.items?.map((i: any) => ({
+            items: sortedInitialItems?.map((i: any) => ({
                 ...i,
                 item_type: i.item_type || 'item',
                 work_item_name: i.work_item_name || '',
@@ -97,13 +108,13 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             customer_name: defaultCustomerName,
             project_name: defaultProjectName,
             address: defaultAddress,
-            title: "",
+            //title: defaultDescription,
             issue_date: new Date().toISOString().split('T')[0],
             status: 'draft',
             notes: '',
             vat_rate: 8,
             items: [
-                { item_type: 'section', work_item_name: 'I. PHẦN THÔ', vat_rate: 0 },
+                { item_type: 'section', work_item_name: 'I. HẠNG MỤC CÔNG VIỆC', vat_rate: 0 },
                 { item_type: 'item', work_item_name: '', unit: '', quantity: 1, unit_price: 0, vat_rate: 8, details: '', notes: '' }
             ]
         }
@@ -138,7 +149,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         setIsSubmitting(true);
 
         try {
-            const { data: qtoData, error: qtoError } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
+            const { data: qtoData, error: qtoError } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId);
             const { data: estData, error: estError } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
 
             if (qtoError) throw qtoError;
@@ -166,12 +177,21 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
             const newItems: any[] = [];
 
-            const sections = qtoData.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
+            // ✅ BỘ LỌC 2: Khóa cấu trúc CÂY (Phân tách Mục Lớn và Việc Nhỏ)
+            // Lấy ra các Mục lớn (Section)
+            const sections = qtoData.filter(i => i.item_type === 'section' || !i.parent_id);
+            // Sắp xếp Mục lớn theo vị trí
+            sections.sort((a, b) => (a.order_index ?? 99999) - (b.order_index ?? 99999) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 
             sections.forEach(sec => {
-                newItems.push({ item_type: 'section', work_item_name: sec.item_name.toUpperCase(), vat_rate: 0 });
+                // Đẩy mục lớn vào bảng
+                newItems.push({ item_type: 'section', work_item_name: (sec.item_name || "HẠNG MỤC").toUpperCase(), vat_rate: 0 });
 
+                // Tìm các việc nhỏ (Tasks) nằm trong mục lớn này
                 const tasks = qtoData.filter(i => i.parent_id === sec.id && i.item_type !== 'section');
+                // Sắp xếp các việc nhỏ
+                tasks.sort((a, b) => (a.order_index ?? 99999) - (b.order_index ?? 99999) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
                 tasks.forEach(task => {
                     let taskVol = Number(task.quantity) || 0;
                     let detailsText = "";
@@ -179,6 +199,9 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                     if (task.details && task.details.length > 0) {
                         let volSum = 0;
                         const detailsArr: string[] = [];
+
+                        // ✅ BỘ LỌC 3: Ép Sắp xếp các dòng diễn giải
+                        task.details.sort((a: any, b: any) => (a.order_index ?? 99999) - (b.order_index ?? 99999) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 
                         task.details.forEach((d: any) => {
                             const exp = d.explanation || "Diễn giải";
@@ -210,6 +233,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                     const quotationCostPreTax = baseCost * markupPreTax;
                     const unitPrice = taskVol > 0 ? (quotationCostPreTax / taskVol) : quotationCostPreTax;
 
+                    // Đẩy công việc vào bảng
                     newItems.push({
                         item_type: 'item', work_item_name: task.item_name, unit: task.unit || "Lần", quantity: taskVol,
                         unit_price: Math.round(unitPrice), vat_rate: vatRate, details: detailsText, notes: ""
@@ -217,9 +241,12 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                 });
             });
 
+            // Xử lý các chi phí phát sinh không nằm trong Rễ nào
             const standaloneItems = normalItems.filter(i => !i.qto_item_id);
             if (standaloneItems.length > 0) {
                 newItems.push({ item_type: 'section', work_item_name: "CHI PHÍ BỔ SUNG / KHÁC", vat_rate: 0 });
+                standaloneItems.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
                 standaloneItems.forEach(item => {
                     const baseCost = Number(item.total_cost) || 0;
                     const quotationCostPreTax = baseCost * markupPreTax;
@@ -299,11 +326,19 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             const payload: QuotationInput = {
                 id: data.id || '', project_id: data.project_id, customer_id: customerId, quotation_number: data.quotation_number,
                 title: data.title, issue_date: data.issue_date, status: data.status, notes: data.notes, total_amount: totalAmount,
-                items: data.items.map(item => ({
-                    id: item.id?.startsWith('new-') ? undefined : item.id, item_type: item.item_type, work_item_name: item.work_item_name,
-                    details: item.details, unit: item.unit, quantity: item.quantity || 0, unit_price: item.unit_price || 0,
-                    vat_rate: item.vat_rate || 0, notes: item.notes
-                }))
+                // ✅ CHỐT CHẶN: Ép backend phải lưu lại đúng order_index của mảng UI
+                items: data.items.map((item, index) => ({
+                    id: item.id?.startsWith('new-') ? undefined : item.id,
+                    item_type: item.item_type,
+                    work_item_name: item.work_item_name,
+                    details: item.details,
+                    unit: item.unit,
+                    quantity: item.quantity || 0,
+                    unit_price: item.unit_price || 0,
+                    vat_rate: item.vat_rate || 0,
+                    notes: item.notes,
+                    order_index: index // Đây là xương sống để không bao giờ bị lệch khi reload
+                } as any))
             };
 
             const result = await saveQuotation(payload);
@@ -529,7 +564,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                     <tbody>
                                         <tr>
                                             <td width="130" style={{ verticalAlign: 'middle', textAlign: 'center' }}>
-                                                <img src={LOGO_URL} style={{ maxHeight: '70px', width: 'auto', objectFit: 'contain' }} alt="Logo" />
+                                                <img src={LOGO_URL} style={{ maxHeight: '150px', width: 'auto', objectFit: 'contain' }} alt="Logo" />
                                             </td>
                                             <td style={{ paddingLeft: '15px', verticalAlign: 'middle', color: '#000' }}>
                                                 <div style={{ fontSize: '14pt', fontWeight: 'bold', color: '#b91c1c', textTransform: 'uppercase', marginBottom: '4px' }}>CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</div>

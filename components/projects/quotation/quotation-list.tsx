@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
-import { Edit, CheckCircle, Trash2, FileText, Loader2, FileSignature } from "lucide-react"
+import { Edit, CheckCircle, Trash2, FileText, Loader2, FileSignature, Printer } from "lucide-react"
 import { formatCurrency } from "@/lib/utils/utils"
 import { deleteQuotation, approveQuotation } from "@/lib/action/quotationActions"
 import { useRouter } from "next/navigation"
@@ -17,9 +17,10 @@ interface QuotationListProps {
     projectId: string
     onEdit: (quotation: any) => void
     onCreateContract?: (quotationId: string) => void
+    onPrint?: (quotation: any) => void // ✅ BỔ SUNG PROP IN BÁO GIÁ
 }
 
-export default function QuotationList({ quotations, projectId, onEdit, onCreateContract }: QuotationListProps) {
+export default function QuotationList({ quotations, projectId, onEdit, onCreateContract, onPrint }: QuotationListProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [processingId, setProcessingId] = useState<string | null>(null)
@@ -130,6 +131,20 @@ export default function QuotationList({ quotations, projectId, onEdit, onCreateC
                                 <TableCell>{getStatusBadge(q.status)}</TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1">
+                                        {/* ✅ NÚT IN BÁO GIÁ */}
+                                        {onPrint && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => onPrint(q)}
+                                                disabled={isLoading}
+                                                title="In báo giá"
+                                                className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                                            >
+                                                <Printer className="w-4 h-4" />
+                                            </Button>
+                                        )}
+
                                         {q.status !== 'accepted' && (
                                             <Button
                                                 variant="ghost"

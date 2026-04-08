@@ -11,17 +11,19 @@ function docHangChuc(so: number, daydu: boolean): string {
     if (chuc > 1) {
         chuoi = " " + CHU_SO[chuc] + " mươi";
         if (donvi === 1) chuoi += " mốt";
+        else if (donvi === 4) chuoi += " tư";
+        else if (donvi === 5) chuoi += " lăm";
+        else if (donvi > 0) chuoi += " " + CHU_SO[donvi];
     } else if (chuc === 1) {
         chuoi = " mười";
-        if (donvi === 1) chuoi += " một";
-    } else if (daydu && donvi > 0) {
-        chuoi = " lẻ";
-    }
-
-    if (donvi === 5 && chuc >= 1) {
-        chuoi += " lăm";
-    } else if (donvi > 1 || (donvi === 1 && chuc === 0)) {
-        chuoi += " " + CHU_SO[donvi];
+        if (donvi === 5) chuoi += " lăm";
+        else if (donvi > 0) chuoi += " " + CHU_SO[donvi];
+    } else { // chuc === 0
+        if (daydu && donvi > 0) {
+            chuoi = " lẻ " + CHU_SO[donvi];
+        } else if (donvi > 0) {
+            chuoi = " " + CHU_SO[donvi];
+        }
     }
     return chuoi;
 }
@@ -48,7 +50,8 @@ function docSo(so: number): string {
     do {
         const ty = so % 1000;
         if (ty > 0) {
-            const s = docKhoi(ty, i > 0 && so > 999);
+            // Đã fix lỗi i > 0: Chỉ cần so > 999 là khối hiện tại bắt buộc phải đọc "không trăm..."
+            const s = docKhoi(ty, so > 999);
             chuoi = s + hauto + chuoi;
         }
         i++;
@@ -56,11 +59,16 @@ function docSo(so: number): string {
         so = Math.floor(so / 1000);
     } while (so > 0);
 
-    return chuoi.trim();
+    // Xóa khoảng trắng thừa do cộng chuỗi
+    return chuoi.replace(/\s+/g, ' ').trim();
 }
 
 export function readMoneyToText(amount: number): string {
     if (!amount || amount === 0) return "Không đồng";
+
+    // Làm tròn số để tránh lỗi parse khi user truyền số thập phân (VD: 1000.5)
+    amount = Math.round(amount);
+
     let str = docSo(amount);
     // Viết hoa chữ cái đầu
     str = str.charAt(0).toUpperCase() + str.slice(1);

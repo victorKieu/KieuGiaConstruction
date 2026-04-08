@@ -11,7 +11,7 @@ import { createContractFromQuotation } from "@/lib/action/contractActions"
 import ContractList from "@/components/projects/contract/ContractList"
 import { Separator } from "@/components/ui/separator"
 import { useRouter } from "next/navigation"
-
+import { QuotationViewer } from "@/components/projects/quotation/quotation-viewer";
 interface Props {
     projectId: string,
     project: any,
@@ -23,7 +23,7 @@ type ViewMode = 'list' | 'quotation-form' | 'contract-form';
 
 export default function QuotationPageClient({ projectId, project, quotations, contracts = [] }: Props) {
     const router = useRouter();
-
+    const [viewQuotationData, setViewQuotationData] = useState<any>(null);
     const [view, setView] = useState<ViewMode>('list')
     const [editingData, setEditingData] = useState<any>(null)
 
@@ -34,7 +34,15 @@ export default function QuotationPageClient({ projectId, project, quotations, co
         setEditingData(null)
         setView('quotation-form')
     }
-
+    const handlePrintQuotation = async (quotation: any) => {
+        // Vì ở danh sách chỉ có Header, ta cần gọi API lấy full items về để in
+        const res = await getQuotationById(quotation.id);
+        if (res.success) {
+            setViewQuotationData(res.data); // Mở modal Viewer
+        } else {
+            alert("Lỗi tải chi tiết: " + res.error);
+        }
+    };
     const handleEditQuotation = async (quotation: any) => {
         const res = await getQuotationById(quotation.id)
         if (res.success) {
@@ -151,6 +159,13 @@ export default function QuotationPageClient({ projectId, project, quotations, co
                     projectId={projectId}
                     onEdit={handleEditQuotation}
                     onCreateContract={handleCreateContract}
+                    onPrint={handlePrintQuotation}
+                />
+                {/* ✅ NHÚNG MODAL QUOTATION VIEWER VÀO ĐÂY */}
+                <QuotationViewer
+                    quotation={viewQuotationData}
+                    open={!!viewQuotationData}
+                    onOpenChange={(open) => !open && setViewQuotationData(null)}
                 />
             </div>
         </div>
