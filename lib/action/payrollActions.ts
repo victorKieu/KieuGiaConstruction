@@ -44,11 +44,11 @@ export async function getPayrollByMonth(month: number, year: number) {
         const startDate = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
         const endDate = new Date(year, month, 0).toLocaleDateString('en-CA');
 
-        // 1. KÉO DỮ LIỆU NHÂN SỰ: Bổ sung cả basic_salary và base_salary
+        // 1. KÉO DỮ LIỆU NHÂN SỰ: Đã đổi auth_id thành id
         const { data: employees, error: empError } = await supabase
             .from('employees')
             .select(`
-                auth_id, code, name, department_id, 
+                id, code, name, department_id, 
                 basic_salary, base_salary, allowance_amount, dependents_count, is_insurance_active,
                 department:sys_dictionaries!employees_department_id_fkey(name)
             `);
@@ -87,7 +87,8 @@ export async function getPayrollByMonth(month: number, year: number) {
 
         // 3. THUẬT TOÁN TÍNH LƯƠNG CHÍNH
         const payrollData = employees.map(emp => {
-            const att = attendanceMap.get(emp.auth_id) || { actualDays: 0, otHours: 0 };
+            // ✅ Đã đổi từ emp.auth_id thành emp.id
+            const att = attendanceMap.get(emp.id) || { actualDays: 0, otHours: 0 };
 
             // PHÂN TÁCH RÕ RÀNG 2 LOẠI LƯƠNG
             const contractSalary = Number(emp.basic_salary) || 0; // Lương thực tế (Dùng chia ngày công)
@@ -126,7 +127,7 @@ export async function getPayrollByMonth(month: number, year: number) {
             const netSalary = grossSalary - insuranceDeduction - taxDeduction - advancePayment;
 
             return {
-                id: emp.auth_id,
+                id: emp.id, // ✅ Trả về ID gốc cho UI key
                 employeeCode: emp.code || 'N/A',
                 name: emp.name || 'N/A',
                 department: emp.department?.name || 'Chưa phân bổ',
@@ -153,8 +154,8 @@ export async function getPayrollByMonth(month: number, year: number) {
 }
 
 /**
-* Lấy Bảng Công Tổng Hợp theo Tháng/Năm (Ma trận 31 ngày)
-*/
+ * Lấy Bảng Công Tổng Hợp theo Tháng/Năm (Ma trận 31 ngày)
+ */
 export async function getMonthlyAttendanceBoard(month: number, year: number) {
     const supabase = await createSupabaseServerClient();
 
@@ -163,19 +164,23 @@ export async function getMonthlyAttendanceBoard(month: number, year: number) {
         const endDate = new Date(year, month, 0).toLocaleDateString('en-CA');
         const daysInMonth = new Date(year, month, 0).getDate();
 
-        // 1. Kéo toàn bộ nhân sự đang làm việc
+        // 1. Kéo toàn bộ nhân sự đang làm việc (Đã đổi auth_id thành id)
         const { data: employees, error: empError } = await supabase
             .from('employees')
             .select(`
-                auth_id, code, name, department_id, department:sys_dictionaries!employees_department_id_fkey(name)
+                id, code, name, department_id, department:sys_dictionaries!employees_department_id_fkey(name)
             `);
 
+        if (empError) throw new Error(`Lỗi CSDL Nhân sự: ${empError.message}`);
+
         // 2. Kéo toàn bộ dữ liệu chấm công trong tháng
-        const { data: records } = await supabase
+        const { data: records, error: attError } = await supabase
             .from('attendance_records')
             .select('employee_id, date, status, working_hours')
             .gte('date', startDate)
             .lte('date', endDate);
+
+        if (attError) throw new Error("Lỗi lấy dữ liệu chấm công");
 
         // 3. Hàm phụ trợ: Chuyển đổi trạng thái dài thành Ký hiệu viết tắt cho bảng công
         const getShortStatus = (status: string) => {
@@ -184,16 +189,18 @@ export async function getMonthlyAttendanceBoard(month: number, year: number) {
             if (s.includes('đủ công') || s.includes('tăng ca')) return 'X';
             if (s.includes('nửa công')) return 'X/2';
             if (s.includes('nghỉ (p)')) return 'P';
-            if (s.includes('không lương') || s.includes('vắng')) return 'K';
+            if (s.includes('không lương') || s.includes('vắng') || s.includes('không phép')) return 'K';
             if (s.includes('công tác')) return 'CT';
             if (s.includes('muộn') || s.includes('về sớm')) return 'M';
             if (s.includes('đang làm việc')) return 'Đ';
+            if (s.includes('nghỉ ca')) return 'NC'; // Thêm case nghỉ ca cho rõ
             return '?';
         };
 
         // 4. Ghép dữ liệu thành Ma trận (Matrix)
         const boardData = (employees || []).map(emp => {
-            const empRecords = (records || []).filter(r => r.employee_id === emp.auth_id);
+            // ✅ Đã đổi từ emp.auth_id thành emp.id
+            const empRecords = (records || []).filter(r => r.employee_id === emp.id);
             const dailyData: { [key: number]: { status: string, tooltip: string } } = {};
 
             let totalPaidDays = 0;
@@ -221,7 +228,7 @@ export async function getMonthlyAttendanceBoard(month: number, year: number) {
             }
 
             return {
-                id: emp.auth_id,
+                id: emp.id, // ✅ Trả về ID gốc cho UI key
                 employeeCode: emp.code || 'N/A',
                 name: emp.name || 'N/A',
                 department: emp.department?.name || 'Chưa phân bổ',

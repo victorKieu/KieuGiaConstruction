@@ -593,3 +593,22 @@ async function generateEmployeeCode(contractTypeId: string | null, supabase: any
 
     return `${prefix}-${paddedNumber}`;
 }
+
+/**
+* Lấy danh sách nhân viên rút gọn dùng cho các Combobox/Select
+*/
+export async function getEmployeeOptions() {
+    try {
+        const supabase = await createSupabaseServerClient();
+        const { data, error } = await supabase
+            .from('employees')
+            .select('id, code, name')
+            .order('code', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.error("[ERROR] getEmployeeOptions:", error);
+        return [];
+    }
+}

@@ -20,7 +20,6 @@ export function NotificationBell() {
 
     const supabase = createClient();
 
-    // Hàm load thông báo
     const fetchNotifications = async (currentUserId: string) => {
         const { data, error } = await supabase
             .from("notifications")
@@ -40,89 +39,73 @@ export function NotificationBell() {
         }
     };
 
+    // ✅ Đã fix: Quản lý Realtime Channel chặt chẽ hơn để tránh memory leak
     useEffect(() => {
-        let channel: any;
+        let channel: ReturnType<typeof supabase.channel> | null = null;
 
-        const init = async () => {
+        const initRealtime = async () => {
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                setUserId(user.id);
-                fetchNotifications(user.id);
+            if (!user) return;
 
-                // LẮNG NGHE REALTIME
-                channel = supabase
-                    .channel(`realtime_notifications_${user.id}`)
-                    .on('postgres_changes', {
-                        event: '*',
-                        schema: 'public',
-                        table: 'notifications',
-                        filter: `user_id=eq.${user.id}`
-                    }, (payload) => {
-                        console.log("CÓ THAY ĐỔI THÔNG BÁO TỪ DB!", payload);
-                        fetchNotifications(user.id);
-                    })
-                    .subscribe();
-            }
+            setUserId(user.id);
+            await fetchNotifications(user.id);
+
+            channel = supabase
+                .channel(`realtime_notifications_${user.id}`)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `user_id=eq.${user.id}`
+                }, () => {
+                    // Không cần truyền payload vào fetch vì ta sẽ kéo lại 10 thông báo mới nhất
+                    fetchNotifications(user.id);
+                })
+                .subscribe();
         };
 
-        init();
+        initRealtime();
 
-        return () => { if (channel) supabase.removeChannel(channel); }
-    }, []);
+        // Cleanup function chạy khi component unmount
+        return () => {
+            if (channel) {
+                supabase.removeChannel(channel);
+            }
+        };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ✅ ĐÃ FIX: Click 1 thông báo
     const handleRead = async (id: string) => {
-        setOpen(false); // Đóng popover trước cho mượt
-
-        // 1. Cập nhật UI ngay lập tức (Optimistic Update)
+        setOpen(false);
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
         setUnreadCount(prev => Math.max(0, prev - 1));
 
-        // 2. Cập nhật DB ngầm
         const { error } = await supabase.from("notifications").update({ is_read: true }).eq("id", id);
         if (error) console.error("Lỗi đánh dấu đã đọc DB:", error);
     };
 
-    // ✅ ĐÃ FIX: Đánh dấu đã đọc tất cả
     const handleMarkAllAsRead = async () => {
         if (!userId) return;
-
-        // 1. Cập nhật UI ngay lập tức
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
         setUnreadCount(0);
 
-        // 2. Cập nhật DB ngầm
         const { error } = await supabase
             .from("notifications")
             .update({ is_read: true })
             .eq("user_id", userId)
             .eq("is_read", false);
 
-        if (error) {
-            console.error("Lỗi đánh dấu tất cả đã đọc DB:", error);
-            alert("Lỗi kết nối CSDL. Thông báo chưa được đánh dấu.");
-        }
+        if (error) console.error("Lỗi đánh dấu tất cả đã đọc DB:", error);
     };
 
-    // ✅ ĐÃ FIX: Xóa tất cả
     const handleDeleteAll = async () => {
         if (!userId) return;
         if (!window.confirm("Bạn có chắc chắn muốn xóa toàn bộ thông báo không?")) return;
 
-        // 1. Cập nhật UI ngay lập tức
         setNotifications([]);
         setUnreadCount(0);
 
-        // 2. Xóa DB ngầm
-        const { error } = await supabase
-            .from("notifications")
-            .delete()
-            .eq("user_id", userId);
-
-        if (error) {
-            console.error("Lỗi xóa thông báo DB:", error);
-            alert("Lỗi kết nối CSDL. Thông báo chưa được xóa.");
-        }
+        const { error } = await supabase.from("notifications").delete().eq("user_id", userId);
+        if (error) console.error("Lỗi xóa thông báo DB:", error);
     };
 
     return (
@@ -136,32 +119,18 @@ export function NotificationBell() {
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 p-0 dark:bg-slate-950 dark:border-slate-800 shadow-lg" align="end">
-                {/* Header của Popover */}
                 <div className="flex items-center justify-between p-3 border-b dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 transition-colors">
                     <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Thông báo của bạn</span>
                     <div className="flex items-center gap-1">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 dark:hover:text-blue-400 transition-colors"
-                            onClick={handleMarkAllAsRead}
-                            title="Đánh dấu đã đọc tất cả"
-                        >
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 dark:hover:text-blue-400 transition-colors" onClick={handleMarkAllAsRead} title="Đánh dấu đã đọc tất cả">
                             <CheckCheck className="h-4 w-4" />
                         </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 dark:hover:text-red-400 transition-colors"
-                            onClick={handleDeleteAll}
-                            title="Xóa tất cả"
-                        >
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 dark:hover:text-red-400 transition-colors" onClick={handleDeleteAll} title="Xóa tất cả">
                             <Trash2 className="h-4 w-4" />
                         </Button>
                     </div>
                 </div>
 
-                {/* Danh sách thông báo */}
                 <ScrollArea className="h-[350px]">
                     {notifications.length === 0 ? (
                         <div className="p-8 flex flex-col items-center justify-center text-center text-sm text-slate-500 dark:text-slate-400">
