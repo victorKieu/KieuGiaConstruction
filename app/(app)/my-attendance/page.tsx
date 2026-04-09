@@ -15,6 +15,8 @@ import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTa
 import { MobileCheckIn } from "@/components/hrm/MobileCheckIn";
 import { formatDate } from "@/lib/utils/utils";
 import { cn } from "@/lib/utils/utils";
+import { deleteMyRequest, updateMyRequest } from "@/lib/action/attendanceActions";
+import { Trash2, Edit, Save } from "lucide-react";
 
 // Import các hàm API Backend thật
 import { getMyAttendanceRecords, submitAttendanceRequest, getMyRequests } from "@/lib/action/attendanceActions";
@@ -29,7 +31,7 @@ export default function AttendancePage() {
     const [explOpen, setExplOpen] = useState(false);
     const [explForm, setExplForm] = useState({ date: "", type: "", inTime: "", outTime: "", reason: "" });
 
-    // State cho Form Nghỉ phép (Đã chuyển sang dùng Date chuẩn thay vì Lịch phức tạp để Mobile dễ chọn)
+    // State cho Form Nghỉ phép
     const [leaveOpen, setLeaveOpen] = useState(false);
     const [leaveForm, setLeaveForm] = useState({
         type: "",
@@ -119,7 +121,7 @@ export default function AttendancePage() {
 
             <Tabs defaultValue="checkin" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
-                    <TabsTrigger value="checkin">Chấm công GPS</TabsTrigger>
+                    <TabsTrigger value="checkin">Bảng Chấm Công</TabsTrigger>
                     <TabsTrigger value="requests">Đơn từ & Phép</TabsTrigger>
                 </TabsList>
 
@@ -137,7 +139,6 @@ export default function AttendancePage() {
                                 </CardTitle>
                             </div>
                             <div className="flex gap-2">
-                                {/* DIALOG BÁO QUÊN / GIẢI TRÌNH */}
                                 <Dialog open={explOpen} onOpenChange={setExplOpen}>
                                     <DialogTrigger asChild>
                                         <Button variant="outline" className="border-orange-200 dark:border-orange-500/30 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 dark:bg-slate-950 h-8 text-xs transition-colors">
@@ -145,6 +146,7 @@ export default function AttendancePage() {
                                         </Button>
                                     </DialogTrigger>
                                     <DialogContent className="sm:max-w-[450px] dark:bg-slate-900 dark:border-slate-800">
+                                        {/* ... (Các nội dung form giữ nguyên) ... */}
                                         <DialogHeader>
                                             <DialogTitle className="text-orange-600 dark:text-orange-500 flex items-center">
                                                 <FileEdit className="w-5 h-5 mr-2" /> Tạo Đơn Giải Trình
@@ -170,23 +172,11 @@ export default function AttendancePage() {
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <Label className={explForm.type === 'forgot_out' ? 'text-slate-400 dark:text-slate-600' : 'dark:text-slate-300'}>Giờ VÀO thực tế</Label>
-                                                    <Input
-                                                        type="time"
-                                                        value={explForm.inTime}
-                                                        onChange={e => setExplForm({ ...explForm, inTime: e.target.value })}
-                                                        disabled={explForm.type === 'forgot_out' || explForm.type === 'field_work'}
-                                                        className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"
-                                                    />
+                                                    <Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} disabled={explForm.type === 'forgot_out' || explForm.type === 'field_work'} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
                                                 </div>
                                                 <div className="space-y-2">
                                                     <Label className={explForm.type === 'forgot_in' ? 'text-slate-400 dark:text-slate-600' : 'dark:text-slate-300'}>Giờ RA thực tế</Label>
-                                                    <Input
-                                                        type="time"
-                                                        value={explForm.outTime}
-                                                        onChange={e => setExplForm({ ...explForm, outTime: e.target.value })}
-                                                        disabled={explForm.type === 'forgot_in' || explForm.type === 'field_work'}
-                                                        className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"
-                                                    />
+                                                    <Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} disabled={explForm.type === 'forgot_in' || explForm.type === 'field_work'} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
                                                 </div>
                                             </div>
                                             <div className="space-y-2">
@@ -213,7 +203,8 @@ export default function AttendancePage() {
                                 <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" /></div>
                             ) : (
                                 <div className="min-w-[600px]">
-                                    <AttendanceTable records={realRecords} />
+                                    {/* THÊM PROP TẠI ĐÂY LÀ CHÌA KHÓA */}
+                                    <AttendanceTable records={realRecords} hideEmployeeInfo={true} />
                                 </div>
                             )}
                         </CardContent>
@@ -229,8 +220,6 @@ export default function AttendancePage() {
                                     <CalendarDays className="w-4 h-4 mr-2 text-emerald-600 dark:text-emerald-500" /> Danh sách Đơn xin nghỉ
                                 </CardTitle>
                             </div>
-
-                            {/* DIALOG XIN NGHỈ PHÉP (Sử dụng 2 ô Date Input chuẩn UX Mobile) */}
                             <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs shadow-sm">
@@ -256,29 +245,16 @@ export default function AttendancePage() {
                                                 </SelectContent>
                                             </Select>
                                         </div>
-
-                                        {/* Chuyển DateRange phức tạp thành 2 ô Input Date đơn giản */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label className="dark:text-slate-300">Từ ngày <span className="text-red-500">*</span></Label>
-                                                <Input
-                                                    type="date"
-                                                    value={leaveForm.startDate}
-                                                    onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
-                                                    className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"
-                                                />
+                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
                                             </div>
                                             <div className="space-y-2">
                                                 <Label className="dark:text-slate-300">Đến ngày <span className="text-red-500">*</span></Label>
-                                                <Input
-                                                    type="date"
-                                                    value={leaveForm.endDate}
-                                                    onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                                                    className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"
-                                                />
+                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
                                             </div>
                                         </div>
-
                                         <div className="space-y-2">
                                             <Label className="dark:text-slate-300">Lý do chi tiết <span className="text-red-500">*</span></Label>
                                             <Textarea placeholder="Nêu rõ lý do xin nghỉ..." className="h-24 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
@@ -304,22 +280,76 @@ export default function AttendancePage() {
 }
 
 // ====================================================================================
-// Component hiển thị danh sách đơn cá nhân
+// Component hiển thị danh sách đơn cá nhân (Đã nâng cấp chức năng Tự phục vụ)
 // ====================================================================================
 function PersonalRequestsList() {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+    // State cho Modal Sửa đơn
+    const [editOpen, setEditOpen] = useState(false);
+    const [editingReq, setEditingReq] = useState<any>(null);
+    const [editForm, setEditForm] = useState<any>({});
+
+    const fetchReqs = async () => {
+        setLoading(true);
+        const data = await getMyRequests();
+        setRequests(data);
+        setLoading(false);
+    };
 
     useEffect(() => {
-        const fetchReqs = async () => {
-            const data = await getMyRequests();
-            setRequests(data);
-            setLoading(false);
-        };
         fetchReqs();
     }, []);
 
-    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-500 dark:text-blue-400" /></div>;
+    // Xử lý Xóa đơn
+    const handleDelete = async (id: string) => {
+        if (!window.confirm("Bạn có chắc chắn muốn hủy đơn này không?")) return;
+        setActionLoadingId(id);
+        const res = await deleteMyRequest(id);
+        if (res.success) {
+            toast.success(res.message);
+            setRequests(prev => prev.filter(r => r.id !== id));
+        } else {
+            toast.error(res.error);
+        }
+        setActionLoadingId(null);
+    };
+
+    // Mở form Sửa đơn
+    const openEditModal = (req: any) => {
+        setEditingReq(req);
+        setEditForm({
+            sub_type: req.sub_type,
+            start_date: req.start_date,
+            end_date: req.end_date || req.start_date,
+            actual_in_time: req.actual_in_time || "",
+            actual_out_time: req.actual_out_time || "",
+            reason: req.reason
+        });
+        setEditOpen(true);
+    };
+
+    // Xử lý Submit Sửa đơn
+    const handleUpdateSubmit = async () => {
+        if (!editForm.start_date || !editForm.reason || !editForm.sub_type) {
+            return toast.error("Vui lòng điền đủ thông tin bắt buộc!");
+        }
+        setActionLoadingId('updating');
+        const res = await updateMyRequest(editingReq.id, editForm);
+        setActionLoadingId(null);
+
+        if (res.success) {
+            toast.success(res.message);
+            setEditOpen(false);
+            fetchReqs(); // Tải lại danh sách
+        } else {
+            toast.error(res.error);
+        }
+    };
+
+    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>;
 
     if (requests.length === 0) return (
         <div className="p-12 text-center text-slate-500 dark:text-slate-400">
@@ -329,9 +359,9 @@ function PersonalRequestsList() {
     );
 
     const getStatusStyle = (status: string) => {
-        if (status === 'approved') return <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-medium border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">Đã duyệt</span>;
-        if (status === 'rejected') return <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-medium border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">Từ chối</span>;
-        return <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 font-medium border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">Chờ duyệt</span>;
+        if (status === 'approved') return <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-bold border border-emerald-200">Đã duyệt</span>;
+        if (status === 'rejected') return <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-bold border border-red-200">Từ chối</span>;
+        return <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 font-bold border border-amber-200 animate-pulse">Chờ duyệt</span>;
     };
 
     return (
@@ -340,14 +370,27 @@ function PersonalRequestsList() {
                 <div key={req.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                     <div className="flex justify-between items-start mb-2">
                         <div>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                            <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
                                 {req.request_type === 'leave' ? 'Đơn Xin Nghỉ Phép' : 'Đơn Giải Trình'}
                             </span>
                             <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">
                                 (Ngày gửi: {formatDate(req.created_at)})
                             </span>
                         </div>
-                        {getStatusStyle(req.status)}
+                        <div className="flex items-center gap-3">
+                            {/* Nút Sửa/Xóa chỉ hiện khi đơn đang Pending */}
+                            {req.status === 'pending' && (
+                                <div className="flex gap-1.5 mr-2 border-r border-slate-200 dark:border-slate-700 pr-3">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:bg-blue-100" onClick={() => openEditModal(req)} disabled={actionLoadingId !== null}>
+                                        <Edit className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:bg-red-100" onClick={() => handleDelete(req.id)} disabled={actionLoadingId !== null}>
+                                        {actionLoadingId === req.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                    </Button>
+                                </div>
+                            )}
+                            {getStatusStyle(req.status)}
+                        </div>
                     </div>
                     <div className="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950 p-3 rounded border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
@@ -359,20 +402,102 @@ function PersonalRequestsList() {
                                 </span>
                             </div>
                             {req.request_type === 'explanation' && (req.actual_in_time || req.actual_out_time) && (
-                                <div><span className="text-slate-400 dark:text-slate-500">Giờ khai báo: </span><span className="font-medium text-blue-600 dark:text-blue-400">{req.actual_in_time?.substring(0, 5) || '--:--'} đến {req.actual_out_time?.substring(0, 5) || '--:--'}</span></div>
+                                <div><span className="text-slate-400 dark:text-slate-500">Giờ khai báo: </span><span className="font-bold text-blue-600 dark:text-blue-400">{req.actual_in_time?.substring(0, 5) || '--:--'} đến {req.actual_out_time?.substring(0, 5) || '--:--'}</span></div>
                             )}
                         </div>
                         <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                             <span className="text-slate-400 dark:text-slate-500">Lý do: </span> <span className="italic">"{req.reason}"</span>
                         </div>
                         {req.approver_note && (
-                            <div className="mt-2 p-2 bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-400 text-xs rounded border border-red-100 dark:border-red-500/20 transition-colors">
-                                <strong>Quản lý phản hồi:</strong> {req.approver_note}
+                            <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 text-xs rounded border border-amber-200 dark:border-amber-500/20">
+                                <strong>Ghi chú từ Quản lý / HR:</strong> {req.approver_note}
                             </div>
                         )}
                     </div>
                 </div>
             ))}
+
+            {/* DIALOG SỬA ĐƠN TỪ (CHỈ DÀNH CHO NHÂN VIÊN) */}
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogContent className="sm:max-w-[450px] dark:bg-slate-900">
+                    <DialogHeader>
+                        <DialogTitle className="text-blue-600 flex items-center">
+                            <Edit className="w-5 h-5 mr-2" /> Điều chỉnh nội dung đơn
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {editingReq && (
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                                <Label>Loại lý do <span className="text-red-500">*</span></Label>
+                                {editingReq.request_type === 'leave' ? (
+                                    <Select value={editForm.sub_type} onValueChange={v => setEditForm({ ...editForm, sub_type: v })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="annual">Nghỉ phép năm</SelectItem>
+                                            <SelectItem value="unpaid">Nghỉ không lương</SelectItem>
+                                            <SelectItem value="sick">Nghỉ ốm / Thai sản</SelectItem>
+                                            <SelectItem value="urgent">Nghỉ đột xuất</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <Select value={editForm.sub_type} onValueChange={v => setEditForm({ ...editForm, sub_type: v })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="forgot_in">Quên chấm VÀO</SelectItem>
+                                            <SelectItem value="forgot_out">Quên chấm RA</SelectItem>
+                                            <SelectItem value="wrong_time">Lỗi chấm công</SelectItem>
+                                            <SelectItem value="field_work">Công tác thực địa</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+
+                            {editingReq.request_type === 'leave' ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Từ ngày <span className="text-red-500">*</span></Label>
+                                        <Input type="date" value={editForm.start_date} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Đến ngày <span className="text-red-500">*</span></Label>
+                                        <Input type="date" value={editForm.end_date} onChange={e => setEditForm({ ...editForm, end_date: e.target.value })} />
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label>Ngày áp dụng <span className="text-red-500">*</span></Label>
+                                        <Input type="date" value={editForm.start_date} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Giờ VÀO</Label>
+                                            <Input type="time" value={editForm.actual_in_time} disabled={editForm.sub_type === 'forgot_out' || editForm.sub_type === 'field_work'} onChange={e => setEditForm({ ...editForm, actual_in_time: e.target.value })} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Giờ RA</Label>
+                                            <Input type="time" value={editForm.actual_out_time} disabled={editForm.sub_type === 'forgot_in' || editForm.sub_type === 'field_work'} onChange={e => setEditForm({ ...editForm, actual_out_time: e.target.value })} />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            <div className="space-y-2">
+                                <Label>Giải trình lý do <span className="text-red-500">*</span></Label>
+                                <Textarea className="h-24" value={editForm.reason} onChange={e => setEditForm({ ...editForm, reason: e.target.value })} />
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditOpen(false)}>Hủy</Button>
+                        <Button disabled={actionLoadingId === 'updating'} onClick={handleUpdateSubmit} className="bg-blue-600 hover:bg-blue-700">
+                            {actionLoadingId === 'updating' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Cập nhật
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

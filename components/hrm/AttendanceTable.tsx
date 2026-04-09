@@ -26,11 +26,13 @@ export interface AttendanceRecord {
 
 interface AttendanceTableProps {
     records: AttendanceRecord[];
+    // Prop quyết định việc ẩn hiện thông tin nhân viên
+    hideEmployeeInfo?: boolean;
 }
 
-export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => {
+export function AttendanceTable({ records, hideEmployeeInfo = false }: AttendanceTableProps) {
 
-    // ✅ KIỂM TRA & RENDER MÀU BADGE TRẠNG THÁI (Đã thêm Đủ công Có GT)
+    // ✅ KIỂM TRA & RENDER MÀU BADGE TRẠNG THÁI
     const getStatusBadge = (status: string) => {
         if (!status) return <Badge variant="outline">-</Badge>;
 
@@ -113,8 +115,15 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
                 <TableHeader>
                     <TableRow className="bg-slate-100 dark:bg-slate-800/50 border-b-2 border-slate-200 dark:border-slate-800 transition-colors">
                         <TableHead className="w-[120px] font-bold text-slate-700 dark:text-slate-200">Ngày</TableHead>
-                        <TableHead className="w-[100px] font-bold text-slate-700 dark:text-slate-200">Mã NV</TableHead>
-                        <TableHead className="min-w-[180px] font-bold text-slate-700 dark:text-slate-200">Họ tên</TableHead>
+
+                        {/* Chỉ hiển thị 2 cột này nếu hideEmployeeInfo = false */}
+                        {!hideEmployeeInfo && (
+                            <>
+                                <TableHead className="w-[100px] font-bold text-slate-700 dark:text-slate-200">Mã NV</TableHead>
+                                <TableHead className="min-w-[180px] font-bold text-slate-700 dark:text-slate-200">Họ tên</TableHead>
+                            </>
+                        )}
+
                         <TableHead className="w-[130px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ vào</TableHead>
                         <TableHead className="w-[130px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ ra</TableHead>
                         <TableHead className="min-w-[200px] font-bold text-slate-700 dark:text-slate-200">Vị trí (GPS)</TableHead>
@@ -128,21 +137,25 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
                                 {formatDisplayDate(r.date)}
                             </TableCell>
 
-                            <TableCell className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
-                                {r.employeeCode}
-                            </TableCell>
-
-                            <TableCell className="font-bold text-slate-800 dark:text-slate-200">
-                                {r.name}
-                            </TableCell>
+                            {/* Chỉ hiển thị dữ liệu 2 cột này nếu hideEmployeeInfo = false */}
+                            {!hideEmployeeInfo && (
+                                <>
+                                    <TableCell className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
+                                        {r.employeeCode}
+                                    </TableCell>
+                                    <TableCell className="font-bold text-slate-800 dark:text-slate-200">
+                                        {r.name}
+                                    </TableCell>
+                                </>
+                            )}
 
                             {/* CỘT GIỜ VÀO */}
                             <TableCell className="text-center">
                                 {r.checkIn ? (
                                     <div className="flex flex-col items-center justify-center">
                                         <div className={`flex items-center justify-center gap-1.5 py-1 px-2 rounded-md border transition-colors ${r.adjustedCheckIn
-                                                ? 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 line-through decoration-slate-400 font-medium'
-                                                : 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20'
+                                            ? 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 line-through decoration-slate-400 font-medium'
+                                            : 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20'
                                             }`}>
                                             <LogIn className="w-3.5 h-3.5" /> {r.checkIn}
                                         </div>
@@ -166,8 +179,8 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ records }) => 
                                 {r.checkOut ? (
                                     <div className="flex flex-col items-center justify-center">
                                         <div className={`flex items-center justify-center gap-1.5 py-1 px-2 rounded-md border transition-colors ${r.adjustedCheckOut
-                                                ? 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 line-through decoration-slate-400 font-medium'
-                                                : 'text-orange-700 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-500/10 border-orange-100 dark:border-orange-500/20'
+                                            ? 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 line-through decoration-slate-400 font-medium'
+                                            : 'text-orange-700 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-500/10 border-orange-100 dark:border-orange-500/20'
                                             }`}>
                                             <LogOut className="w-3.5 h-3.5" /> {r.checkOut}
                                         </div>

@@ -36,34 +36,17 @@ export default async function EditEmployeePage({ params }: PageProps) {
 
     return (
         <div className="p-6 max-w-[1200px] mx-auto animate-in fade-in zoom-in duration-300 transition-colors">
-
             {/* --- HEADER --- */}
             <div className="flex items-center justify-between mb-6 border-b border-slate-200 dark:border-slate-800 pb-4">
-                <div className="flex items-center gap-4">
-                    <Link
-                        href="/hrm/employees"
-                        className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 transition-colors"
-                        title="Quay lại danh sách"
-                    >
-                        ←
-                    </Link>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 transition-colors">Chỉnh sửa hồ sơ</h1>
-                        <div className="flex items-center gap-2 mt-1 text-sm text-slate-500 dark:text-slate-400">
-                            <span>Nhân viên:</span>
-                            <span className="font-semibold text-blue-600 dark:text-blue-400 text-base">
-                                {employeeData.name}
-                            </span>
-                            {employeeData.code && (
-                                <span className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-2 py-0.5 rounded text-xs border border-slate-200 dark:border-slate-700 transition-colors">
-                                    {employeeData.code}
-                                </span>
-                            )}
-                        </div>
-                    </div>
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                        Chỉnh sửa hồ sơ: <span className="text-blue-600 dark:text-blue-400">{employeeData.name}</span>
+                    </h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                        Cập nhật thông tin chi tiết của nhân sự trong hệ thống.
+                    </p>
                 </div>
-
-                <div className="hidden md:block text-right">
+                <div className="text-right">
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">System ID</span>
                     <code className="text-xs text-slate-500 bg-slate-50 dark:text-slate-400 dark:bg-slate-900/50 px-2 py-1 rounded border border-slate-200 dark:border-slate-800 transition-colors">
                         {id}
@@ -92,7 +75,7 @@ export default async function EditEmployeePage({ params }: PageProps) {
     );
 }
 
-// 2. Thêm Type Return: Promise<Metadata>
+// Thêm Type Return: Promise<Metadata> cho chuẩn Next.js 15
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
     const { id } = await params;
     const employee = await getEmployeeById(id);

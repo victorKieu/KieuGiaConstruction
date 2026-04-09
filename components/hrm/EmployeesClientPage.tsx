@@ -19,15 +19,20 @@ import { toast } from "sonner";
 interface EmployeesClientPageProps {
     initialEmployees: Employee[];
     initialTotalCount: number;
-    statusOptions: string[];
-    departments: string[];
+    options: {
+        departments: any[];
+        positions: any[];
+        genders: any[];
+        statuses: any[];
+        contractTypes: any[];
+        maritalStatuses: any[];
+    };
 }
 
 export default function EmployeesClientPage({
     initialEmployees,
     initialTotalCount,
-    statusOptions,
-    departments,
+    options,
 }: EmployeesClientPageProps) {
     const router = useRouter();
 
@@ -41,8 +46,10 @@ export default function EmployeesClientPage({
     const [isLoading, setIsLoading] = React.useState(false);
     const [isFormOpen, setIsFormOpen] = React.useState(false);
     const [processingId, setProcessingId] = React.useState<string | null>(null);
-
+    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
     const isFirstRender = React.useRef(true);
+    const statusOptions = options?.statuses?.map((s: any) => s.name) || [];
+    const departmentOptions = options?.departments?.map((d: any) => d.name) || [];
 
     React.useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearch(search), 500);
@@ -119,24 +126,29 @@ export default function EmployeesClientPage({
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Quản lý Nhân sự</h1>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Tổng số: <span className="font-semibold text-slate-900 dark:text-slate-100">{totalEmployees}</span> hồ sơ nhân viên</p>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Nhân sự</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Quản lý danh sách và hồ sơ nhân viên</p>
                 </div>
 
-                <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button className="bg-blue-600 hover:bg-blue-700 shadow-sm transition-all text-white">
+                        <Button className="bg-blue-600 hover:bg-blue-700 text-white">
                             <Plus className="w-4 h-4 mr-2" /> Thêm nhân viên
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto dark:bg-slate-900 border-slate-200 dark:border-slate-800">
                         <DialogHeader>
-                            <DialogTitle>Tạo hồ sơ nhân viên mới</DialogTitle>
-                            <DialogDescription>Nhập thông tin chi tiết để tạo hồ sơ và cấp tài khoản (nếu cần).</DialogDescription>
+                            <DialogTitle className="text-2xl font-bold text-slate-800 dark:text-slate-100">Thêm nhân viên mới</DialogTitle>
                         </DialogHeader>
-                        <CreateEmployeeForm onSuccess={() => { setIsFormOpen(false); fetchEmployeesData(); }} />
+
+                        {/* ✅ TRUYỀN OPTIONS VÀO ĐÂY, COMBOBOX SẼ CÓ DATA NGAY LẬP TỨC */}
+                        <CreateEmployeeForm
+                            options={options}
+                            onSuccess={() => setIsDialogOpen(false)}
+                        />
+
                     </DialogContent>
                 </Dialog>
             </div>
@@ -173,7 +185,7 @@ export default function EmployeesClientPage({
                                 onChange={(e) => { setSelectedDepartment(e.target.value); setCurrentPage(1); }}
                             >
                                 <option value="Tất cả">Tất cả phòng ban</option>
-                                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                                {departmentOptions.map((d: string) => <option key={d} value={d}>{d}</option>)}
                             </select>
                         </div>
                     </div>

@@ -17,24 +17,39 @@ export default async function EmployeesPage(props: PageProps) {
     const searchParams = await props.searchParams;
     const queryStr = typeof searchParams.q === "string" ? searchParams.q : "";
 
-    const [employeesData, departmentOptions, statusOptions] = await Promise.all([
+    // ✅ LẤY ĐẦY ĐỦ 6 TỪ ĐIỂN ĐỂ TRUYỀN XUỐNG POPUP BÊN CLIENT
+    const [
+        employeesData,
+        departments,
+        positions,
+        genders,
+        statuses,
+        contractTypes,
+        maritalStatuses
+    ] = await Promise.all([
         getEmployees({ search: queryStr, page: 1, limit: 10 }),
         getDictionaryOptions("DEPARTMENT"),
+        getDictionaryOptions("POSITION"),
+        getDictionaryOptions("GENDER"),
         getDictionaryOptions("JOB_STATUS"),
+        getDictionaryOptions("CONTRACT_TYPE"),
+        getDictionaryOptions("MARITAL_STATUS"),
     ]);
 
-    const departments = departmentOptions?.map((d: any) => d.name) || [];
-    const statuses = statusOptions?.map((s: any) => s.name) || [];
-
     return (
-        // ✅ Thêm dark:bg-slate-900/50
         <div className="h-full bg-slate-50/50 dark:bg-slate-900/50 p-6 transition-colors">
             <Suspense fallback={<div className="text-center p-10 dark:text-slate-400">Đang tải danh sách...</div>}>
                 <EmployeesClientPage
                     initialEmployees={employeesData.employees}
                     initialTotalCount={employeesData.totalCount}
-                    departments={departments}
-                    statusOptions={statuses}
+                    options={{
+                        departments: departments || [],
+                        positions: positions || [],
+                        genders: genders || [],
+                        statuses: statuses || [],
+                        contractTypes: contractTypes || [],
+                        maritalStatuses: maritalStatuses || [],
+                    }}
                 />
             </Suspense>
         </div>

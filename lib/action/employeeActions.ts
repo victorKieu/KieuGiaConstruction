@@ -11,6 +11,7 @@ import {
     Employee,
     ActionResponse
 } from "@/types/employee";
+import crypto from 'crypto';
 
 // --- 1. HÀM TIỆN ÍCH (UTILS) ---
 
@@ -189,157 +190,189 @@ export async function getProjectManagers() {
 }
 
 // --- 3. ACTIONS (CREATE / UPDATE / DELETE / AUTH) ---
-
-export async function createEmployee(prevState: any, formData: FormData) {
-    // ✅ Dùng Admin Client để bypass RLS, tránh việc bị chặn ngầm khi Insert
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
-        auth: { autoRefreshToken: false, persistSession: false }
-    });
-    const rawData = Object.fromEntries(formData.entries());
-
+/**
+ * HÀM THÊM MỚI NHÂN VIÊN (BẢN ĐẦY ĐỦ 100%)
+ */
+export async function createEmployee(formData: FormData) {
     try {
-        const sharedId = uuidv4();
-        // Lấy Type ID
-        const { data: typeData } = await supabaseAdmin
-            .from("sys_dictionaries")
-            .select("id").eq("code", "EMPLOYEE").eq("category", "USER_TYPE").single();
+        const supabase = await createSupabaseServerClient();
 
-        if (!typeData) throw new Error("Chưa cấu hình loại nhân viên (USER_TYPE) trong từ điển.");
+        // 1. Trích xuất dữ liệu cơ bản
+        const name = formData.get("name") as string;
+        const email = formData.get("email") as string;
+        const avatar_url = formData.get("avatar_url") as string; // Lấy avatar từ form
 
-        // ✅ ĐÃ FIX: Truyền thêm sharedId vào để tính toán phân cấp
-        const autoManagerId = await findDepartmentManagerId(supabaseAdmin, cleanUUID(rawData.department_id), sharedId);
+        // ... (Các trường khác trích xuất như bình thường)
+        const phone = formData.get("phone") as string;
+        const hire_date = formData.get("hire_date") as string;
+        const birth_date = formData.get("birth_date") as string;
+        const address = formData.get("address") as string;
+        const current_address = formData.get("current_address") as string;
+        const identity_card = formData.get("identity_card") as string;
+        const identity_date = formData.get("identity_date") as string;
+        const identity_place = formData.get("identity_place") as string;
+        const place_of_birth = formData.get("place_of_birth") as string;
 
-        // B1: TẠO USER_PROFILE
-        const { error: pError } = await supabaseAdmin.from("user_profiles").insert({
-            id: sharedId,
-            type_id: typeData.id,
-            name: String(rawData.name),
-            email: String(rawData.email),
-            avatar_url: String(rawData.avatar_url || ""),
-            role_id: cleanUUID(rawData.role_id)
-        });
-        if (pError) throw pError;
+        const tax_code = formData.get("tax_code") as string;
+        const bank_name = formData.get("bank_name") as string;
+        const bank_account = formData.get("bank_account") as string;
 
-        // B2: TẠO EMPLOYEE (Lưu Full các trường theo Schema)
-        const { error: eError } = await supabaseAdmin.from("employees").insert({
-            id: sharedId,
-            name: String(rawData.name),
-            email: String(rawData.email), // ✅ Đã bổ sung Email
-            phone: String(rawData.phone || ""),
-            address: String(rawData.address || ""),
-            current_address: String(rawData.current_address || ""),
-            place_of_birth: String(rawData.place_of_birth || ""),
+        const department_id = cleanUUID(formData.get("department_id"));
+        const position_id = cleanUUID(formData.get("position_id"));
+        const status_id = cleanUUID(formData.get("status_id"));
+        const contract_type_id = cleanUUID(formData.get("contract_type_id"));
+        const gender_id = cleanUUID(formData.get("gender_id"));
+        const marital_status_id = cleanUUID(formData.get("marital_status_id"));
 
-            identity_card: String(rawData.identity_card || ""),
-            identity_date: rawData.identity_date ? String(rawData.identity_date) : null,
-            identity_place: String(rawData.identity_place || ""),
+        const basic_salary = Number(formData.get("basic_salary")) || 0;
+        const allowance_amount = Number(formData.get("allowance_amount")) || 0;
+        const dependents_count = Number(formData.get("dependents_count")) || 0;
+        const is_insurance_active = formData.get("is_insurance_active") === "on";
 
-            tax_code: String(rawData.tax_code || ""),
-            bank_name: String(rawData.bank_name || ""),
-            bank_account: String(rawData.bank_account || ""),
-
-            basic_salary: Number(rawData.basic_salary) || 0,
-            gender_id: cleanUUID(rawData.gender_id),
-            department_id: cleanUUID(rawData.department_id),
-            position_id: cleanUUID(rawData.position_id),
-            status_id: cleanUUID(rawData.status_id),
-            contract_type_id: cleanUUID(rawData.contract_type_id),
-            marital_status_id: cleanUUID(rawData.marital_status_id),
-            hire_date: rawData.hire_date ? String(rawData.hire_date) : null,
-            birth_date: rawData.birth_date ? String(rawData.birth_date) : null,
-
-            manager_id: autoManagerId
-        });
-
-        if (eError) {
-            await supabaseAdmin.from("user_profiles").delete().eq("id", sharedId);
-            throw eError;
+        if (!name || !email || !hire_date) {
+            return { success: false, error: "Vui lòng điền đầy đủ Tên, Email và Ngày vào làm.", fields: {} };
         }
 
-        //revalidatePath("/hrm/employees", "layout"); // ✅ Phá vỡ toàn bộ Cache
-        return { success: true, message: "Thêm nhân viên thành công!", fields: {} };
-    } catch (error: any) {
-        console.error("❌ Lỗi Create Employee:", error);
-        return { success: false, error: error.message, fields: rawData };
+        // ✅ BƯỚC 2: SINH ID CHUNG VÀ TẠO USER_PROFILE TRƯỚC (Để thỏa mãn Khóa ngoại)
+        const newEmployeeId = crypto.randomUUID();
+        const code = await generateEmployeeCode(contract_type_id, supabase);
+
+        const { error: profileError } = await supabase.from('user_profiles').insert({
+            id: newEmployeeId,
+            name: name,               // Đã sửa từ full_name -> name
+            email: email,             // Lưu thêm email vào profile
+            avatar_url: avatar_url || null,
+            type_id: null             // Ép bằng null để tránh lỗi gen_random_uuid() đụng độ khóa ngoại
+        });
+
+        if (profileError) {
+            console.error("[DB_PROFILE_ERROR]", profileError.message);
+            return { success: false, error: `Lỗi tạo Profile: ${profileError.message}`, fields: {} };
+        }
+
+        // ✅ BƯỚC 3: TẠO DỮ LIỆU EMPLOYEES (Dùng chung ID với Profile)
+        const employeeData = {
+            id: newEmployeeId, // Ràng buộc khóa ngoại sẽ pass qua đoạn này!
+            code,
+            name, email, phone,
+            hire_date: hire_date || null,
+            birth_date: birth_date || null,
+            address, current_address,
+            identity_card, identity_date: identity_date || null,
+            identity_place, place_of_birth,
+            department_id, position_id, status_id, contract_type_id,
+            gender_id, marital_status_id,
+            tax_code, bank_name, bank_account,
+            basic_salary, allowance_amount, dependents_count, is_insurance_active
+        };
+
+        const { error: empError } = await supabase.from('employees').insert(employeeData);
+
+        if (empError) {
+            console.error("[DB_EMP_ERROR]", empError.message);
+            // Rollback: Nếu lưu employee thất bại, xóa luôn profile vừa tạo để tránh rác DB
+            await supabase.from('user_profiles').delete().eq('id', newEmployeeId);
+
+            if (empError.code === '23505') return { success: false, error: "Email đã tồn tại.", fields: employeeData };
+            return { success: false, error: "Lỗi cơ sở dữ liệu khi tạo nhân sự.", fields: employeeData };
+        }
+
+        revalidatePath('/hrm/employees');
+        return { success: true, message: `Thêm thành công nhân sự mã ${code}!`, fields: employeeData };
+    } catch (e: any) {
+        console.error("[SERVER_ERROR] createEmployee:", e);
+        return { success: false, error: "Hệ thống đang bận.", fields: {} };
     }
 }
 
-export async function updateEmployee(id: string, prevState: any, formData: FormData) {
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey!, {
-        auth: { autoRefreshToken: false, persistSession: false }
-    });
-
-    const rawData = Object.fromEntries(formData.entries());
-
+/**
+ * HÀM CẬP NHẬT NHÂN VIÊN (BẢN ĐẦY ĐỦ 100%)
+ */
+export async function updateEmployee(id: string, formData: FormData) {
     try {
-        const { data: oldData } = await supabaseAdmin.from("user_profiles").select("avatar_url").eq("id", id).single();
-        const newAvatarUrl = String(rawData.avatar_url || "");
+        const supabase = await createSupabaseServerClient();
 
-        if (oldData?.avatar_url && newAvatarUrl !== oldData.avatar_url) {
-            await deleteOldAvatar(oldData.avatar_url);
+        const name = formData.get("name") as string;
+        const email = formData.get("email") as string;
+        const avatar_url = formData.get("avatar_url") as string;
+
+        // ... (Trích xuất các trường y hệt hàm create)
+        const phone = formData.get("phone") as string;
+        const hire_date = formData.get("hire_date") as string;
+        const birth_date = formData.get("birth_date") as string;
+        const address = formData.get("address") as string;
+        const current_address = formData.get("current_address") as string;
+        const identity_card = formData.get("identity_card") as string;
+        const identity_date = formData.get("identity_date") as string;
+        const identity_place = formData.get("identity_place") as string;
+        const place_of_birth = formData.get("place_of_birth") as string;
+
+        const tax_code = formData.get("tax_code") as string;
+        const bank_name = formData.get("bank_name") as string;
+        const bank_account = formData.get("bank_account") as string;
+
+        const department_id = cleanUUID(formData.get("department_id"));
+        const position_id = cleanUUID(formData.get("position_id"));
+        const status_id = cleanUUID(formData.get("status_id"));
+        const contract_type_id = cleanUUID(formData.get("contract_type_id"));
+        const gender_id = cleanUUID(formData.get("gender_id"));
+        const marital_status_id = cleanUUID(formData.get("marital_status_id"));
+
+        const basic_salary = Number(formData.get("basic_salary")) || 0;
+        const allowance_amount = Number(formData.get("allowance_amount")) || 0;
+        const dependents_count = Number(formData.get("dependents_count")) || 0;
+        const is_insurance_active = formData.get("is_insurance_active") === "on";
+
+        // ✅ 1. CẬP NHẬT USER_PROFILES TRƯỚC (Full name & Avatar)
+        const { error: profileError } = await supabase.from('user_profiles')
+            .update({
+                name: name,
+                email: email,
+                avatar_url: avatar_url || null
+            })
+            .eq('id', id);
+
+        if (profileError) {
+            console.error("[DB_PROFILE_UPDATE_ERROR]", profileError.message);
         }
 
-        // ✅ ĐÃ FIX: Truyền thêm id của nhân viên đang update vào để check xem có phải sếp không
-        const autoManagerId = await findDepartmentManagerId(supabaseAdmin, cleanUUID(rawData.department_id), id);
-
-        // ✅ B2: ÉP SUPABASE PHẢI TRẢ VỀ DỮ LIỆU BẰNG .select() ĐỂ TRÁNH SILENT FAIL
-        const { data: updatedEmp, error: eError } = await supabaseAdmin.from("employees").update({
-            name: String(rawData.name),
-            email: String(rawData.email), // ✅ B1: Cập nhật Email bị thiếu
-            phone: String(rawData.phone || ""),
-            address: String(rawData.address || ""),
-            current_address: String(rawData.current_address || ""),
-            place_of_birth: String(rawData.place_of_birth || ""),
-
-            identity_card: String(rawData.identity_card || ""),
-            identity_date: rawData.identity_date ? String(rawData.identity_date) : null,
-            identity_place: String(rawData.identity_place || ""),
-
-            tax_code: String(rawData.tax_code || ""),
-            bank_name: String(rawData.bank_name || ""),
-            bank_account: String(rawData.bank_account || ""),
-
-            basic_salary: Number(rawData.basic_salary) || 0,
-            gender_id: cleanUUID(rawData.gender_id),
-            department_id: cleanUUID(rawData.department_id),
-            position_id: cleanUUID(rawData.position_id),
-            status_id: cleanUUID(rawData.status_id),
-            contract_type_id: cleanUUID(rawData.contract_type_id),
-            marital_status_id: cleanUUID(rawData.marital_status_id),
-            hire_date: rawData.hire_date ? String(rawData.hire_date) : null,
-            birth_date: rawData.birth_date ? String(rawData.birth_date) : null,
-
-            manager_id: autoManagerId,
-            updated_at: new Date().toISOString()
-        }).eq("id", id).select(); // <--- CHỐT CHẶN Ở ĐÂY
-
-        if (eError) throw eError;
-
-        // Nếu không có lỗi nhưng update được 0 dòng (ID sai)
-        if (!updatedEmp || updatedEmp.length === 0) {
-            throw new Error(`Không tìm thấy hồ sơ nhân viên để cập nhật (ID không khớp)!`);
+        // ✅ 2. XỬ LÝ ĐỔI MÃ NẾU ĐỔI LOẠI HỢP ĐỒNG
+        let code = formData.get("code") as string;
+        const { data: oldEmp } = await supabase.from('employees').select('contract_type_id').eq('id', id).single();
+        if (oldEmp && oldEmp.contract_type_id !== contract_type_id) {
+            code = await generateEmployeeCode(contract_type_id, supabase);
+        } else if (!code) {
+            code = await generateEmployeeCode(contract_type_id, supabase);
         }
 
-        // Cập nhật bảng user_profiles
-        const { error: pError } = await supabaseAdmin.from("user_profiles").update({
-            name: String(rawData.name),
-            email: String(rawData.email),
-            avatar_url: newAvatarUrl || null,
+        // ✅ 3. CẬP NHẬT EMPLOYEES
+        const updateData = {
+            code, name, email, phone,
+            hire_date: hire_date || null,
+            birth_date: birth_date || null,
+            address, current_address,
+            identity_card, identity_date: identity_date || null,
+            identity_place, place_of_birth,
+            department_id, position_id, status_id, contract_type_id,
+            gender_id, marital_status_id,
+            tax_code, bank_name, bank_account,
+            basic_salary, allowance_amount, dependents_count, is_insurance_active,
             updated_at: new Date().toISOString()
-        }).eq("id", id);
+        };
 
-        if (pError) throw pError;
+        const { error } = await supabase.from('employees').update(updateData).eq('id', id);
 
-        // ✅ B3: Phá vỡ toàn bộ Cache nhánh nhân sự
-        //revalidatePath(`/hrm/employees/${id}`, 'page');
-        //revalidatePath("/hrm/employees", 'layout');
+        if (error) {
+            if (error.code === '23505') return { success: false, error: "Email bị trùng lặp.", fields: { ...updateData, id } };
+            return { success: false, error: "Lỗi cơ sở dữ liệu khi cập nhật.", fields: { ...updateData, id } };
+        }
 
-        return { success: true, message: "Cập nhật thành công!", fields: rawData };
-    } catch (error: any) {
-        console.error("❌ Lỗi Update Employee:", error);
-        return { success: false, error: error.message, fields: rawData };
+        revalidatePath('/hrm/employees');
+        revalidatePath(`/hrm/employees/${id}`);
+        return { success: true, message: "Cập nhật hồ sơ thành công!", fields: { ...updateData, id } };
+    } catch (e: any) {
+        console.error("[SERVER_ERROR] updateEmployee:", e);
+        return { success: false, error: "Hệ thống đang bận.", fields: {} };
     }
 }
 
@@ -510,4 +543,53 @@ async function findDepartmentManagerId(supabase: any, departmentId: string | nul
         console.error("❌ Lỗi logic tìm manager_id:", e);
         return null;
     }
+}
+
+/**
+* HÀM TẠO MÃ NHÂN VIÊN TỰ ĐỘNG DỰA TRÊN LOẠI HỢP ĐỒNG
+* - Chính thức: KG-XXX
+* - Thử việc: TVC-XXX
+* - Thời vụ: TVU-XXX
+*/
+async function generateEmployeeCode(contractTypeId: string | null, supabase: any): Promise<string> {
+    let prefix = 'EMP'; // Mặc định nếu không có hợp đồng
+
+    if (contractTypeId) {
+        // Lấy tên loại hợp đồng từ bảng từ điển
+        const { data: contractType } = await supabase
+            .from('sys_dictionaries')
+            .select('name')
+            .eq('id', contractTypeId)
+            .single();
+
+        const typeName = (contractType?.name || '').toLowerCase();
+
+        if (typeName.includes('chính thức')) prefix = 'KG';
+        else if (typeName.includes('thử việc')) prefix = 'TVC';
+        else if (typeName.includes('thời vụ')) prefix = 'TVU';
+    }
+
+    // Lấy toàn bộ mã hiện tại có cùng Prefix để tìm số lớn nhất
+    // (Tránh lỗi sắp xếp chuỗi KG-999 > KG-1000 của SQL)
+    const { data: existingEmps } = await supabase
+        .from('employees')
+        .select('code')
+        .ilike('code', `${prefix}-%`);
+
+    let maxNumber = 0;
+    for (const emp of (existingEmps || [])) {
+        const parts = emp.code.split('-');
+        if (parts.length === 2) {
+            const num = parseInt(parts[1], 10);
+            if (!isNaN(num) && num > maxNumber) {
+                maxNumber = num;
+            }
+        }
+    }
+
+    const nextNumber = maxNumber + 1;
+    // Format thành 3 chữ số, VD: 001, 042, 150
+    const paddedNumber = nextNumber.toString().padStart(3, '0');
+
+    return `${prefix}-${paddedNumber}`;
 }

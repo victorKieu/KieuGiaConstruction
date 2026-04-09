@@ -298,6 +298,7 @@ export async function submitAttendanceRequest(payload: any) {
         });
         if (error) throw error;
 
+        // BẮN THÔNG BÁO CHO QUẢN LÝ (ĐÃ ĐƯỢC BỌC BẢO VỆ)
         const { data: employee } = await supabase.from('employees').select('name, manager_id').eq('auth_id', user.id).single();
         if (employee && employee.manager_id) {
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
@@ -307,10 +308,21 @@ export async function submitAttendanceRequest(payload: any) {
                 const notifMessage = `Nhân viên ${employee.name} vừa gửi đơn ${reqTypeName} cho ngày ${formatDate(payload.start_date)}. Vui lòng kiểm tra!`;
                 const notifLink = '/hrm/approvals';
 
-                await supabase.from('notifications').insert({
-                    user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
-                });
-                await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
+                try {
+                    // Ghi DB cho thông báo Web
+                    await supabase.from('notifications').insert({
+                        user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
+                    });
+
+                    // GỌI PUSH MOBILE ĐỘC LẬP: Lỗi OneSignal không làm sập tiến trình gửi đơn
+                    try {
+                        await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
+                    } catch (pushErr) {
+                        console.error("[NOTIFY_PUSH_ERROR]", pushErr);
+                    }
+                } catch (dbErr) {
+                    console.error("[NOTIFY_DB_ERROR]", dbErr);
+                }
             }
         }
 
@@ -420,7 +432,13 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
         const { data: request, error: reqError } = await supabase.from('attendance_requests').select('*').eq('id', requestId).single();
         if (reqError || !request) throw new Error("Không tìm thấy đơn từ.");
 
-        await supabase.from('attendance_requests').update({ status: newStatus }).eq('id', requestId);
+        // ✅ FIX LỚN NHẤT Ở ĐÂY: Lưu lại approver_id và note để Audit Trail
+        await supabase.from('attendance_requests').update({
+            status: newStatus,
+            approver_id: user.id,
+            approver_note: adminNotes || null,
+            updated_at: new Date().toISOString()
+        }).eq('id', requestId);
 
         // 2. LOGIC VÁ BẢNG CÔNG 
         if (newStatus === 'approved') {
@@ -441,7 +459,6 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
                     finalOutDate = new Date(`${request.start_date}T${formatTimeStr(targetOutTimeStr)}:00+07:00`);
                 }
 
-                // ✅ FIX: TÍNH LẠI CHUẨN XÁC THEO LOGIC MỚI
                 let wHoursToSave = 0;
                 let calcStatus = 'Đủ công';
 
@@ -470,7 +487,7 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
                         working_hours: request.sub_type === 'field_work' ? 8 : wHoursToSave
                     }).eq('id', record.id);
                 } else {
-                    // Nếu ngày đó vắng hoàn toàn thì mới Insert giờ vào
+                    // Nếu ngày đó vắng hoàn toàn thì mới Insert
                     await supabase.from('attendance_records').insert({
                         employee_id: request.employee_id,
                         date: request.start_date,
@@ -505,16 +522,26 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
             }
         }
 
+        // BẮN THÔNG BÁO CHO NHÂN VIÊN (ĐÃ ĐƯỢC BỌC BẢO VỆ)
         const statusText = newStatus === 'approved' ? 'ĐÃ ĐƯỢC DUYỆT' : 'ĐÃ BỊ TỪ CHỐI';
         const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
         const notifTitle = `Cập nhật trạng thái đơn ${reqTypeName}`;
         const notifMessage = `Đơn xin ${reqTypeName} của bạn (áp dụng ngày ${formatDate(request.start_date)}) ${statusText}. ${adminNotes ? `Ghi chú: ${adminNotes}` : ''}`;
         const notifLink = '/my-attendance?tab=requests';
 
-        await supabase.from('notifications').insert({
-            user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
-        });
-        await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
+        try {
+            await supabase.from('notifications').insert({
+                user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
+            });
+            // Bọc lỗi OneSignal
+            try {
+                await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
+            } catch (pushErr) {
+                console.error("[NOTIFY_PUSH_ERROR]", pushErr);
+            }
+        } catch (dbErr) {
+            console.error("[NOTIFY_DB_ERROR]", dbErr);
+        }
 
         return { success: true, message: newStatus === 'approved' ? 'Đã duyệt đơn và cập nhật bảng công!' : 'Đã từ chối đơn.' };
     } catch (e: any) {
@@ -648,5 +675,369 @@ export async function getMyRequests() {
         return data || [];
     } catch (e) {
         return [];
+    }
+}
+
+/**
+ * 1. Lấy danh sách các đơn đã được xử lý (APPROVED hoặc REJECTED)
+ * @returns Array chứa danh sách đơn từ và thông tin nhân viên
+ */
+export async function getProcessedRequests() {
+    try {
+        const supabase = await createSupabaseServerClient();
+
+        const { data, error } = await supabase
+            .from('attendance_requests')
+            .select(`
+                *,
+                employee:employees!fk_requests_employee(name, code),
+                approver:employees!fk_requests_approver(name)
+            `)
+            .in('status', ['approved', 'rejected'])
+            .order('updated_at', { ascending: false });
+
+        if (error) {
+            console.error("[DB_ERROR] Lấy lịch sử đơn từ thất bại:", error.message);
+            return [];
+        }
+
+        return data || [];
+    } catch (error: any) {
+        console.error("[SERVER_ERROR] Lỗi hàm getProcessedRequests:", error.message);
+        return [];
+    }
+}
+
+/**
+ * 2. HR/Quản lý cập nhật lại trạng thái và ghi chú của đơn đã duyệt
+ * ĐÃ TÍCH HỢP PUSH NOTIFICATION & ROLLBACK ĐỒNG BỘ BẢNG CÔNG
+ */
+export async function updateAttendanceRequest(id: string, newStatus: 'approved' | 'rejected' | 'pending', newNote: string) {
+    try {
+        const supabase = await createSupabaseServerClient();
+
+        // 🚀 ĐIỂM QUAN TRỌNG: Nếu HR update thành 'approved' -> Chuyển luồng cho processAttendanceRequest tính giờ
+        if (newStatus === 'approved') {
+            return await processAttendanceRequest(id, 'approved', newNote);
+        }
+
+        // 1. Lấy thông tin đơn từ để biết gửi thông báo cho ai
+        const { data: request, error: reqError } = await supabase
+            .from('attendance_requests')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (reqError || !request) {
+            return { success: false, error: "Không tìm thấy thông tin đơn từ trong hệ thống." };
+        }
+
+        // 2. 🚀 XỬ LÝ ROLLBACK: Nếu đơn đang APPROVED mà bị giáng xuống REJECTED/PENDING
+        if (request.status === 'approved') {
+            await rollbackAttendanceRecords(supabase, request.employee_id, request.start_date, request.end_date);
+        }
+
+        // 3. Thực hiện cập nhật Database
+        const { error: updateError } = await supabase
+            .from('attendance_requests')
+            .update({
+                status: newStatus,
+                approver_note: newNote,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (updateError) {
+            console.error("[DB_ERROR] Cập nhật đơn thất bại:", updateError.message);
+            return { success: false, error: "Không thể lưu thay đổi vào cơ sở dữ liệu." };
+        }
+
+        // 4. 🚀 XỬ LÝ BẮN THÔNG BÁO CHO NHÂN VIÊN
+        const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
+        let statusText = 'ĐÃ ĐƯỢC ĐIỀU CHỈNH';
+
+        if (newStatus === 'rejected') statusText = 'ĐÃ BỊ TỪ CHỐI (HỦY)';
+        else if (newStatus === 'pending') statusText = 'ĐƯỢC HOÀN TÁC (CHỜ XỬ LÝ LẠI)';
+
+        const notifTitle = `HR thay đổi trạng thái đơn ${reqTypeName}`;
+        const notifMessage = `Đơn ${reqTypeName} (áp dụng ${formatDate(request.start_date)}) của bạn ${statusText}. ${newNote ? `Ghi chú: ${newNote}` : ''}`;
+        const notifLink = '/my-attendance?tab=requests';
+
+        try {
+            // Ghi vào DB
+            await supabase.from('notifications').insert({
+                user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
+            });
+
+            // Push Notification (Bọc try-catch độc lập)
+            try {
+                await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
+            } catch (pushErr) {
+                console.error("[NOTIFY_PUSH_ERROR]", pushErr);
+            }
+        } catch (dbErr) {
+            console.error("[NOTIFY_DB_ERROR]", dbErr);
+        }
+
+        return { success: true, message: "Đã cập nhật trạng thái đơn, đồng bộ bảng công và gửi thông báo." };
+    } catch (error: any) {
+        console.error("[SERVER_ERROR] Lỗi hàm updateAttendanceRequest:", error.message);
+        return { success: false, error: "Lỗi hệ thống khi xử lý yêu cầu." };
+    }
+}
+
+/**
+ * 3. HR Xóa vĩnh viễn đơn từ (Hard Delete)
+ * ĐÃ TÍCH HỢP PUSH NOTIFICATION & ROLLBACK ĐỒNG BỘ BẢNG CÔNG
+ */
+export async function deleteAttendanceRequest(id: string) {
+    try {
+        const supabase = await createSupabaseServerClient();
+
+        // 1. QUAN TRỌNG: Lấy thông tin đơn TRƯỚC KHI XÓA
+        const { data: request, error: reqError } = await supabase
+            .from('attendance_requests')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (reqError || !request) {
+            return { success: false, error: "Không tìm thấy đơn từ để xóa." };
+        }
+
+        // 2. 🚀 XỬ LÝ ROLLBACK: Nếu đơn ĐÃ DUYỆT mà bị Xóa
+        if (request.status === 'approved') {
+            await rollbackAttendanceRecords(supabase, request.employee_id, request.start_date, request.end_date);
+        }
+
+        // 3. Thực hiện xóa (Hard Delete)
+        const { error: deleteError } = await supabase
+            .from('attendance_requests')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) {
+            console.error("[DB_ERROR] Xóa đơn thất bại:", deleteError.message);
+            return { success: false, error: "Không thể xóa đơn từ khỏi cơ sở dữ liệu." };
+        }
+
+        // 4. 🚀 XỬ LÝ BẮN THÔNG BÁO
+        const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
+        const notifTitle = `⚠️ Đơn ${reqTypeName} đã bị xóa`;
+        const notifMessage = `Đơn ${reqTypeName} (áp dụng ngày ${formatDate(request.start_date)}) của bạn đã bị Bộ phận Nhân sự xóa khỏi hệ thống. Vui lòng liên hệ trực tiếp nếu có thắc mắc.`;
+        const notifLink = '/my-attendance';
+
+        try {
+            // Ghi DB
+            await supabase.from('notifications').insert({
+                user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
+            });
+
+            // Push Notification (Bọc try-catch độc lập)
+            try {
+                await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
+            } catch (pushErr) {
+                console.error("[NOTIFY_PUSH_ERROR]", pushErr);
+            }
+        } catch (dbErr) {
+            console.error("[NOTIFY_DB_ERROR]", dbErr);
+        }
+
+        return { success: true, message: "Đã xóa đơn từ thành công, khôi phục bảng công và thông báo cho nhân viên." };
+    } catch (error: any) {
+        console.error("[SERVER_ERROR] Lỗi hàm deleteAttendanceRequest:", error.message);
+        return { success: false, error: "Lỗi hệ thống khi xóa yêu cầu." };
+    }
+}
+
+/**
+ * NHÂN VIÊN TỰ SỬA ĐƠN (Chỉ áp dụng cho đơn Pending)
+ * Đã bổ sung Notification cho Quản lý
+ */
+export async function updateMyRequest(id: string, payload: any) {
+    try {
+        const supabase = await createSupabaseServerClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { success: false, error: "Hết phiên đăng nhập." };
+
+        // 1. Kiểm tra quyền sở hữu và trạng thái đơn
+        const { data: request } = await supabase
+            .from('attendance_requests')
+            .select('status, employee_id, request_type')
+            .eq('id', id)
+            .single();
+
+        if (!request || request.employee_id !== user.id) {
+            return { success: false, error: "Bạn không có quyền thao tác trên đơn này." };
+        }
+        if (request.status !== 'pending') {
+            return { success: false, error: "Chỉ có thể sửa đơn đang ở trạng thái Chờ duyệt." };
+        }
+
+        // 2. Thực hiện cập nhật
+        const { error } = await supabase
+            .from('attendance_requests')
+            .update({
+                sub_type: payload.sub_type,
+                start_date: payload.start_date,
+                end_date: payload.end_date || null,
+                actual_in_time: payload.actual_in_time || null,
+                actual_out_time: payload.actual_out_time || null,
+                reason: payload.reason,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // 3. 🚀 BẮN THÔNG BÁO CHO QUẢN LÝ (Người duyệt)
+        const { data: employee } = await supabase.from('employees').select('name, manager_id').eq('auth_id', user.id).single();
+        if (employee && employee.manager_id) {
+            const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
+
+            if (manager && manager.auth_id) {
+                const reqTypeName = request.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
+                const notifTitle = `📝 Đơn ${reqTypeName} vừa được cập nhật`;
+                const notifMessage = `Nhân viên ${employee.name} vừa chỉnh sửa và gửi lại nội dung đơn ${reqTypeName} (áp dụng ngày ${formatDate(payload.start_date)}). Vui lòng kiểm tra lại.`;
+                const notifLink = '/hrm/approvals';
+
+                try {
+                    await supabase.from('notifications').insert({
+                        user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
+                    });
+                    try {
+                        await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
+                    } catch (pushErr) {
+                        console.error("[NOTIFY_PUSH_ERROR]", pushErr);
+                    }
+                } catch (dbErr) {
+                    console.error("[NOTIFY_DB_ERROR]", dbErr);
+                }
+            }
+        }
+
+        return { success: true, message: "Đã cập nhật thông tin và gửi thông báo cho Quản lý." };
+    } catch (e: any) {
+        console.error("[SERVER_ERROR] Lỗi sửa đơn cá nhân:", e);
+        return { success: false, error: "Hệ thống đang bận, vui lòng thử lại sau." };
+    }
+}
+
+/**
+ * NHÂN VIÊN TỰ XÓA ĐƠN (Chỉ áp dụng cho đơn Pending)
+ * Đã bổ sung Notification cho Quản lý
+ */
+export async function deleteMyRequest(id: string) {
+    try {
+        const supabase = await createSupabaseServerClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { success: false, error: "Hết phiên đăng nhập." };
+
+        // 1. Kiểm tra quyền sở hữu và trạng thái đơn (Phải lấy type và date để làm thông báo)
+        const { data: request } = await supabase
+            .from('attendance_requests')
+            .select('status, employee_id, request_type, start_date')
+            .eq('id', id)
+            .single();
+
+        if (!request || request.employee_id !== user.id) {
+            return { success: false, error: "Bạn không có quyền thao tác trên đơn này." };
+        }
+        if (request.status !== 'pending') {
+            return { success: false, error: "Chỉ có thể xóa đơn đang ở trạng thái Chờ duyệt." };
+        }
+
+        // 2. Thực hiện xóa
+        const { error } = await supabase.from('attendance_requests').delete().eq('id', id);
+        if (error) throw error;
+
+        // 3. 🚀 BẮN THÔNG BÁO CHO QUẢN LÝ
+        const { data: employee } = await supabase.from('employees').select('name, manager_id').eq('auth_id', user.id).single();
+        if (employee && employee.manager_id) {
+            const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
+
+            if (manager && manager.auth_id) {
+                const reqTypeName = request.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
+                const notifTitle = `🗑️ Nhân viên đã rút đơn`;
+                const notifMessage = `Nhân viên ${employee.name} đã tự hủy đơn ${reqTypeName} (áp dụng ngày ${formatDate(request.start_date)}). Bạn không cần duyệt đơn này nữa.`;
+                const notifLink = '/hrm/approvals';
+
+                try {
+                    await supabase.from('notifications').insert({
+                        user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
+                    });
+                    try {
+                        await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
+                    } catch (pushErr) {
+                        console.error("[NOTIFY_PUSH_ERROR]", pushErr);
+                    }
+                } catch (dbErr) {
+                    console.error("[NOTIFY_DB_ERROR]", dbErr);
+                }
+            }
+        }
+
+        return { success: true, message: "Đã hủy đơn từ thành công." };
+    } catch (e: any) {
+        console.error("[SERVER_ERROR] Lỗi xóa đơn cá nhân:", e);
+        return { success: false, error: "Hệ thống đang bận, vui lòng thử lại sau." };
+    }
+}
+
+// ============================================================================
+// HÀM HELPER: ROLLBACK BẢNG CÔNG VỀ TRẠNG THÁI GỐC (KHI HỦY/SỬA ĐƠN ĐÃ DUYỆT)
+// ============================================================================
+async function rollbackAttendanceRecords(supabase: any, employeeId: string, startDate: string, endDate: string | null) {
+    let currDate = new Date(startDate);
+    const lastDate = new Date(endDate || startDate);
+
+    while (currDate <= lastDate) {
+        const dateStr = currDate.toISOString().split('T')[0];
+
+        // Lấy record của ngày đó
+        const { data: record } = await supabase
+            .from('attendance_records')
+            .select('*')
+            .eq('employee_id', employeeId)
+            .eq('date', dateStr)
+            .maybeSingle();
+
+        if (record) {
+            const checkIn = record.check_in_time ? new Date(record.check_in_time) : null;
+            const checkOut = record.check_out_time ? new Date(record.check_out_time) : null;
+
+            if (!checkIn && !checkOut) {
+                // Nếu ngày đó hoàn toàn không có giờ máy thực tế (Đơn xin nghỉ nguyên ngày)
+                // -> Hủy đơn thì phải xóa luôn dòng chấm công này
+                await supabase.from('attendance_records').delete().eq('id', record.id);
+            } else {
+                // Nếu có giờ máy -> Tính lại giờ làm việc theo máy (Bỏ qua giờ đã xin sửa)
+                let wHoursToSave = 0;
+                let calcStatus = 'Thiếu giờ';
+
+                if (checkIn && checkOut) {
+                    let diffMs = checkOut.getTime() - checkIn.getTime();
+                    let wHours = diffMs / (1000 * 60 * 60);
+                    if (wHours > 5) wHours -= 1.5; // Trừ giờ nghỉ trưa
+
+                    wHours = Math.max(0, wHours);
+                    wHoursToSave = parseFloat(wHours.toFixed(2));
+
+                    if (wHoursToSave >= 8.5) calcStatus = 'Tăng ca (OT)';
+                    else if (wHoursToSave >= 7.5) calcStatus = 'Đủ công';
+                    else if (wHoursToSave >= 3.5) calcStatus = 'Nửa công';
+                    else calcStatus = 'Thiếu giờ/Về sớm';
+                } else if (checkIn) {
+                    calcStatus = 'Đang làm việc'; // Hoặc Quên chấm ra
+                }
+
+                // Cập nhật lại record gốc
+                await supabase.from('attendance_records').update({
+                    status: calcStatus,
+                    working_hours: wHoursToSave
+                }).eq('id', record.id);
+            }
+        }
+        currDate.setDate(currDate.getDate() + 1);
     }
 }
