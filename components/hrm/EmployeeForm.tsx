@@ -7,8 +7,13 @@ import { formatCurrency } from "@/lib/utils/utils";
 import { DictionaryOption } from "@/types/employee";
 import { createEmployee, updateEmployee } from "@/lib/action/employeeActions";
 import AvatarUpload from "./AvatarUpload";
-import { Loader2, Save, Briefcase, Banknote, ShieldCheck, UserCircle, MapPin, Landmark, FileText } from "lucide-react";
+import { Loader2, Save, Briefcase, Banknote, ShieldCheck, UserCircle, MapPin, Landmark, FileText, ScanFace } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+
+// ✅ IMPORT COMPONENT FACE REGISTRATION
+import FaceRegistration from "./FaceRegistration";
 
 export interface ActionState {
     success: boolean;
@@ -47,6 +52,9 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
     const [avatarUrl, setAvatarUrl] = useState<string>(
         initialData?.user_profiles?.avatar_url || initialData?.avatar_url || ""
     );
+
+    // ✅ STATE QUẢN LÝ MODAL FACE ID
+    const [isFaceIdModalOpen, setIsFaceIdModalOpen] = useState(false);
 
     // --- QUẢN LÝ TIỀN TỆ ---
     const [basicSalaryDisplay, setBasicSalaryDisplay] = useState<string>(
@@ -123,15 +131,44 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
 
             {/* PHẦN NỘI DUNG CHÍNH */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-8">
-                {/* CỘT TRÁI: AVATAR NẰM CỐ ĐỊNH */}
+                {/* CỘT TRÁI: AVATAR & FACE ID NẰM CỐ ĐỊNH */}
                 <div className="lg:col-span-1">
                     <div className="sticky top-6 flex flex-col items-center bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                         <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-4">Ảnh hồ sơ</label>
                         <AvatarUpload defaultValue={avatarUrl} onUploadSuccess={(url) => setAvatarUrl(url)} />
-                        <div className="mt-4 text-center">
+                        <div className="mt-4 text-center w-full">
                             <h3 className="font-bold text-lg">{getFieldValue("name") || "Họ và tên"}</h3>
                             <p className="text-sm text-slate-500">{getFieldValue("code") || "Mã NV"}</p>
                         </div>
+
+                        {/* ✅ NÚT KÍCH HOẠT FACE REGISTRATION */}
+                        <div className="mt-6 w-full pt-6 border-t border-slate-100 dark:border-slate-800">
+                            {initialData?.id ? (
+                                <Dialog open={isFaceIdModalOpen} onOpenChange={setIsFaceIdModalOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button type="button" variant="outline" className="w-full flex items-center justify-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/50 dark:hover:bg-indigo-900/20">
+                                            <ScanFace className="w-4 h-4" />
+                                            Đăng ký Face ID
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="sm:max-w-[400px] p-0 border-none bg-transparent shadow-none">
+                                        <FaceRegistration
+                                            employeeId={initialData.id}
+                                            employeeName={getFieldValue("name")}
+                                            onSuccess={() => setIsFaceIdModalOpen(false)}
+                                        />
+                                    </DialogContent>
+                                </Dialog>
+                            ) : (
+                                <div className="text-center bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                                    <ScanFace className="w-6 h-6 mx-auto mb-2 text-slate-400" />
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                        Vui lòng <strong>Lưu hồ sơ</strong> trước khi đăng ký Face ID cho nhân sự này.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
                     </div>
                 </div>
 
@@ -379,7 +416,6 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                 </div>
             </div>
 
-            {/* ✅ ĐÃ ĐỔI TỪ FIXED THÀNH STICKY BOTTOM ĐỂ TỰ ĐỘNG BÁM ĐÁY VÙNG CHỨA */}
             <div className="mt-auto sticky bottom-0 z-50 flex justify-end gap-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-200 dark:border-slate-800">
                 <button
                     type="button"

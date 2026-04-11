@@ -262,3 +262,18 @@ export async function getProjectMilestones(projectId: string): Promise<ActionFet
     const { data, error } = await supabase.from("project_milestones").select("*").eq("project_id", projectId).order("planned_start_date", { ascending: true });
     return { data: data as MilestoneData[], error: error ? { message: error.message, code: error.code } : null };
 }
+
+export async function getActiveProjectsForSelect() {
+    const supabase = await createSupabaseServerClient();
+    // Lấy danh sách dự án (bạn có thể thêm .eq('status', 'active') nếu cần)
+    const { data, error } = await supabase
+        .from('projects')
+        .select('id, name')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Lỗi lấy danh sách dự án:", error);
+        return [];
+    }
+    return data || [];
+}

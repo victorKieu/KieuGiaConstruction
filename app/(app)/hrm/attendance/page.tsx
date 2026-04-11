@@ -9,9 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Search, Download, Loader2, Users, Clock, AlertTriangle, CheckCircle2, Plus, Save, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
-import { getAllAttendanceRecords } from "@/lib/action/attendanceActions";
+import { getAllAttendanceRecords, createManualAttendance } from "@/lib/action/attendanceActions";
 import { getEmployeeOptions } from "@/lib/action/employeeActions";
-import { createManualAttendance } from "@/lib/action/attendanceActions";
 
 // ✅ IMPORT COMPONENT FACE ID (Đảm bảo đường dẫn này đúng với project của bạn)
 import FaceIDCheckIn from "@/components/hrm/FaceIDCheckIn";
@@ -43,13 +42,12 @@ export default function HRMAttendancePage() {
         loadData();
     }, [month, year]);
 
-    // Tự động kéo danh sách nhân viên khi Popup được mở lần đầu
+    // Tự động kéo danh sách nhân viên khi Popup thủ công được mở lần đầu
     useEffect(() => {
         if (isManualModalOpen && employeeList.length === 0) {
             getEmployeeOptions().then(data => setEmployeeList(data));
         }
         if (!isManualModalOpen) {
-            // Reset state khi đóng popup
             setSelectedEmpId("");
             setAttendanceType("WORKING");
         }
@@ -93,10 +91,10 @@ export default function HRMAttendancePage() {
 
             if (result.success) {
                 toast.success(result.message);
-                setIsManualModalOpen(false); // Đóng popup
-                loadData(); // Tự động load lại bảng ở dưới
+                setIsManualModalOpen(false);
+                loadData();
             } else {
-                toast.error(result.error); // Hiển thị lỗi nếu DB từ chối
+                toast.error(result.error);
             }
         } catch (error) {
             toast.error("Lỗi hệ thống khi ghi nhận công.");
@@ -117,7 +115,10 @@ export default function HRMAttendancePage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-                    {/* ✅ NÚT KÍCH HOẠT FACE ID */}
+
+                    {/* ========================================================= */}
+                    {/* ✅ MODAL KÍCH HOẠT FACE ID (ĐÃ DỌN SẠCH Ô CHỌN DỰ ÁN) */}
+                    {/* ========================================================= */}
                     <Dialog open={isFaceIdModalOpen} onOpenChange={setIsFaceIdModalOpen}>
                         <DialogTrigger asChild>
                             <Button className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-colors">
@@ -130,17 +131,13 @@ export default function HRMAttendancePage() {
                                     <Camera className="h-5 w-5 text-indigo-400" />
                                     Quét khuôn mặt nhân công
                                 </DialogTitle>
-                                <p className="text-slate-400 text-sm">
-                                    Đưa khuôn mặt vào khung hình để tự động nhận diện và chấm công.
+                                <p className="text-slate-400 text-sm mt-1">
+                                    Hệ thống sẽ tự động quét dự án gần bạn và bật máy ảnh.
                                 </p>
                             </DialogHeader>
                             <div className="p-6">
-                                {/* GỌI COMPONENT AI */}
-                                {/* LƯU Ý: Bạn cần truyền projectId thực tế mà Giám sát đang đứng vào đây */}
-                                <FaceIDCheckIn
-                                    projectId={"ID_DU_AN_CUA_GIAM_SAT"}
-                                    supervisorId={"ID_CUA_GIAM_SAT"}
-                                />
+                                {/* LÕI XỬ LÝ FACE ID: Không cần truyền Prop gì vì nó tự lấy vị trí */}
+                                {isFaceIdModalOpen && <FaceIDCheckIn onScanSuccess={loadData} />}
                             </div>
                         </DialogContent>
                     </Dialog>
@@ -158,8 +155,6 @@ export default function HRMAttendancePage() {
                             </DialogHeader>
 
                             <form ref={manualFormRef} onSubmit={handleManualSubmit} className="space-y-4 mt-4">
-
-                                {/* COMBOBOX TÌM KIẾM NHÂN VIÊN */}
                                 <div className="space-y-1">
                                     <label className="text-sm font-medium">Nhân viên *</label>
                                     <div className="relative">
@@ -214,9 +209,6 @@ export default function HRMAttendancePage() {
                                             <label className="text-sm font-medium">Giờ ra (Check-out) *</label>
                                             <input type="time" name="check_out_time" required className={inputStyle} />
                                         </div>
-                                        <div className="col-span-2 text-xs text-slate-500">
-                                            Dành cho nhân sự không có App hoặc quên quét vân tay/khuôn mặt.
-                                        </div>
                                     </div>
                                 ) : (
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 space-y-3">
@@ -229,9 +221,6 @@ export default function HRMAttendancePage() {
                                                 <option value="KHONG_PHEP">Nghỉ không phép (Không lương)</option>
                                                 <option value="OM_DAU">Nghỉ ốm đau / Thai sản</option>
                                             </select>
-                                        </div>
-                                        <div className="text-xs text-slate-500">
-                                            * Hệ thống sẽ tự động ghi đè trạng thái của ngày này nếu đã có dữ liệu trước đó.
                                         </div>
                                     </div>
                                 )}
@@ -293,7 +282,6 @@ export default function HRMAttendancePage() {
             <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">
                 <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 py-4 transition-colors">
                     <div className="flex flex-col md:flex-row justify-between gap-4">
-                        {/* Cụm Tìm kiếm */}
                         <div className="relative w-full md:w-[300px]">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400 dark:text-slate-500" />
                             <Input
@@ -305,7 +293,6 @@ export default function HRMAttendancePage() {
                             />
                         </div>
 
-                        {/* Cụm Lọc Thời gian */}
                         <div className="flex gap-2">
                             <Select value={month} onValueChange={setMonth}>
                                 <SelectTrigger className="w-[130px] bg-white dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors">

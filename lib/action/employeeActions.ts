@@ -460,3 +460,27 @@ export async function deleteEmployee(id: string) {
         return { success: false, error: error.message };
     }
 }
+
+export async function registerFaceDescriptor(employeeId: string, descriptor: number[]) {
+    const supabase = await createSupabaseServerClient(); // Hoặc hàm tạo client của bạn
+
+    try {
+        const { error } = await supabase
+            .from('employees')
+            .update({
+                // Postgres JSONB có thể lưu mảng array trực tiếp
+                face_descriptor: descriptor
+            })
+            .eq('id', employeeId);
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath('/hrm/employees');
+        revalidatePath('/hrm/attendance'); // Xóa cache trang chấm công
+
+        return { success: true, message: 'Đăng ký dữ liệu khuôn mặt thành công!' };
+    } catch (error: any) {
+        console.error("Lỗi lưu khuôn mặt:", error);
+        return { success: false, error: error.message };
+    }
+}
