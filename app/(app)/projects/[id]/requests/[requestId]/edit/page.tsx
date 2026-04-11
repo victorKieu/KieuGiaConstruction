@@ -42,7 +42,7 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
                     // Ánh xạ (Map) dữ liệu DB cho khớp với cấu trúc Form
                     setRequestData({
                         code: data.code,
-                        priority: data.priority,
+                        priority: data.priority === "medium" ? "normal" : (data.priority || "normal"),
                         deadline_date: data.deadline_date ? new Date(data.deadline_date).toISOString().split('T')[0] : "",
                         destination_warehouse_id: data.destination_warehouse_id || "",
                         notes: data.notes || "",

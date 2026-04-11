@@ -33,7 +33,7 @@ export interface RequestItemForm {
 
 export interface UnifiedRequestFormData {
     code: string;
-    priority: "low" | "medium" | "high" | "urgent";
+    priority: "low" | "normal" | "high" | "urgent";
     deadline_date: string;
     destination_warehouse_id: string;
     notes: string;
@@ -92,7 +92,7 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
     const form = useForm<UnifiedRequestFormData>({
         defaultValues: {
             code: initialData?.code || `MR-${Date.now().toString().slice(-6)}`,
-            priority: initialData?.priority || "medium",
+            priority: initialData?.priority || "normal",
             deadline_date: initialData?.deadline_date || new Date().toISOString().split('T')[0],
             destination_warehouse_id: initialData?.destination_warehouse_id || "",
             notes: initialData?.notes || "",
@@ -119,7 +119,7 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
                         <SelectTrigger className={inputStyle}><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="low">Thấp</SelectItem>
-                            <SelectItem value="medium">Bình thường</SelectItem> {/* 👈 Sửa value thành "medium" */}
+                            <SelectItem value="normal">Bình thường</SelectItem> {/* 👈 Sửa value thành "medium" */}
                             <SelectItem value="high">Cao</SelectItem>
                             <SelectItem value="urgent">Khẩn cấp</SelectItem>
                         </SelectContent>

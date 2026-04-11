@@ -25,7 +25,8 @@ import {
     getMaterialRequests,
     checkRequestFeasibility,
     approveAndProcessRequest,
-    getCurrentRequesterInfo
+    getCurrentRequesterInfo,
+    getProjectStandardizedMaterials
 } from "@/lib/action/procurement";
 // Lưu ý: Import thêm getProjectWarehouses để lấy danh sách kho truyền vào Form
 import { getProjectWarehouses } from "@/lib/action/requestActions";
@@ -70,19 +71,21 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
     const loadData = async () => {
         try {
-            // Kéo thêm budgetMaterials
+            // Thứ tự gọi: 1.Requests, 2.UserInfo, 3.Warehouses, 4.StandardizedMaterials
             const [reqs, userInfo, whList, budgetMats] = await Promise.all([
                 getMaterialRequests(projectId),
                 getCurrentRequesterInfo(),
                 getProjectWarehouses(projectId),
-                getProjectStandardizedMaterials(projectId) // ✅ Fetch danh mục dự toán
+                getProjectStandardizedMaterials(projectId) // ✅ Gọi hàm ở vị trí thứ 4
             ]);
+
             setRequests(reqs || []);
             setWarehouses(whList || []);
-            setBudgetMaterials(budgetMats || []); // ✅ Lưu vào state
+            setBudgetMaterials(budgetMats || []); // ✅ Gán dữ liệu vào state
+
             if (userInfo) setCurrentUser({ id: userInfo.id, name: userInfo.name });
         } catch (error) {
-            console.error(error);
+            console.error("Lỗi loadData:", error);
             toast.error("Lỗi tải dữ liệu");
         } finally {
             setLoading(false);
@@ -118,9 +121,25 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Xóa phiếu này?")) return;
-        await deleteMaterialRequest(id, projectId);
-        loadData();
+        if (!confirm("Bạn có chắc chắn muốn xóa phiếu yêu cầu này?")) return;
+
+        // Hiển thị toast loading ngay lập tức
+        const toastId = toast.loading("Đang xóa phiếu...");
+
+        try {
+            // Đợi kết quả từ action
+            const res = await deleteMaterialRequest(id, projectId);
+
+            // Bây giờ 'res' đã có kiểu dữ liệu { success: boolean, error?: string }
+            if (res && res.success) {
+                toast.success("Đã xóa phiếu thành công!", { id: toastId });
+                loadData(); // Tải lại danh sách
+            } else {
+                toast.error(res?.error || "Lỗi không xác định khi xóa", { id: toastId });
+            }
+        } catch (error) {
+            toast.error("Lỗi hệ thống, vui lòng thử lại sau", { id: toastId });
+        }
     };
 
     // --- APPROVAL HANDLERS (Giữ nguyên) ---
@@ -266,13 +285,25 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
                                     {req.status === 'pending' && isActive && (
                                         <>
-                                            <Button variant="outline" size="icon" className="h-7 w-7 text-blue-600 hover:text-blue-700 bg-white shadow-sm" onClick={() => router.push(`/projects/${projectId}/requests/${req.id}/edit`)} title="Sửa phiếu">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="..."
+                                                // Thêm / ở đầu và đảm bảo cấu trúc: /projects/[projectId]/requests/[requestId]/edit
+                                                onClick={() => router.push(`/projects/${projectId}/requests/${req.id}/edit`)}
+                                            >
                                                 <Edit className="w-3 h-3" />
                                             </Button>
                                             <Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm px-2 text-white" onClick={() => handleOpenProcess(req)}>
                                                 Duyệt
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(req.id)} title="Xóa phiếu">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                onClick={() => handleDelete(req.id)}
+                                                title="Xóa phiếu"
+                                            >
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>
                                         </>

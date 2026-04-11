@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Download, Loader2, Users, Clock, AlertTriangle, CheckCircle2, Plus, Save } from "lucide-react";
+import { Search, Download, Loader2, Users, Clock, AlertTriangle, CheckCircle2, Plus, Save, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
 import { getAllAttendanceRecords } from "@/lib/action/attendanceActions";
 import { getEmployeeOptions } from "@/lib/action/employeeActions";
 import { createManualAttendance } from "@/lib/action/attendanceActions";
+
+// ✅ IMPORT COMPONENT FACE ID (Đảm bảo đường dẫn này đúng với project của bạn)
+import FaceIDCheckIn from "@/components/hrm/FaceIDCheckIn";
 
 export default function HRMAttendancePage() {
     const currentDate = new Date();
@@ -29,9 +32,12 @@ export default function HRMAttendancePage() {
     const [attendanceType, setAttendanceType] = useState<"WORKING" | "LEAVE">("WORKING");
     const manualFormRef = useRef<HTMLFormElement>(null);
 
-    // ✅ STATES CHO COMBOBOX NHÂN VIÊN
+    // STATES CHO COMBOBOX NHÂN VIÊN
     const [employeeList, setEmployeeList] = useState<{ id: string, code: string, name: string }[]>([]);
     const [selectedEmpId, setSelectedEmpId] = useState<string>("");
+
+    // ✅ STATE CHO MODAL FACE ID
+    const [isFaceIdModalOpen, setIsFaceIdModalOpen] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -56,8 +62,8 @@ export default function HRMAttendancePage() {
             setRecords(data);
 
             const total = data.length;
-            const onTime = data.filter(r => r.status === 'Đủ công').length;
-            const late = data.filter(r => r.status === 'Đi trễ').length;
+            const onTime = data.filter((r: any) => r.status === 'Đủ công').length;
+            const late = data.filter((r: any) => r.status === 'Đi trễ').length;
             setStats({ total, onTime, late });
         } catch (error) {
             toast.error("Lỗi khi tải dữ liệu chấm công.");
@@ -83,7 +89,6 @@ export default function HRMAttendancePage() {
         const formData = new FormData(manualFormRef.current);
 
         try {
-            // ✅ GỌI API THẬT
             const result = await createManualAttendance(formData);
 
             if (result.success) {
@@ -105,13 +110,42 @@ export default function HRMAttendancePage() {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header & Actions */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 transition-colors">Bảng Tổng Hợp Chấm Công</h1>
                     <p className="text-sm text-slate-500 dark:text-slate-400 transition-colors">Quản lý và điều chỉnh thời gian làm việc của nhân sự</p>
                 </div>
 
-                <div className="flex gap-2 w-full sm:w-auto">
+                <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                    {/* ✅ NÚT KÍCH HOẠT FACE ID */}
+                    <Dialog open={isFaceIdModalOpen} onOpenChange={setIsFaceIdModalOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-colors">
+                                <Camera className="w-4 h-4 mr-2" /> Chấm công Face ID
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden bg-slate-900 border-slate-800">
+                            <DialogHeader className="p-6 pb-0">
+                                <DialogTitle className="text-white flex items-center gap-2 text-xl">
+                                    <Camera className="h-5 w-5 text-indigo-400" />
+                                    Quét khuôn mặt nhân công
+                                </DialogTitle>
+                                <p className="text-slate-400 text-sm">
+                                    Đưa khuôn mặt vào khung hình để tự động nhận diện và chấm công.
+                                </p>
+                            </DialogHeader>
+                            <div className="p-6">
+                                {/* GỌI COMPONENT AI */}
+                                {/* LƯU Ý: Bạn cần truyền projectId thực tế mà Giám sát đang đứng vào đây */}
+                                <FaceIDCheckIn
+                                    projectId={"ID_DU_AN_CUA_GIAM_SAT"}
+                                    supervisorId={"ID_CUA_GIAM_SAT"}
+                                />
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* Nút Chấm công thủ công */}
                     <Dialog open={isManualModalOpen} onOpenChange={setIsManualModalOpen}>
                         <DialogTrigger asChild>
                             <Button variant="outline" className="flex-1 sm:flex-none border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-400 dark:hover:bg-blue-900/20">
@@ -125,7 +159,7 @@ export default function HRMAttendancePage() {
 
                             <form ref={manualFormRef} onSubmit={handleManualSubmit} className="space-y-4 mt-4">
 
-                                {/* ✅ COMBOBOX TÌM KIẾM NHÂN VIÊN */}
+                                {/* COMBOBOX TÌM KIẾM NHÂN VIÊN */}
                                 <div className="space-y-1">
                                     <label className="text-sm font-medium">Nhân viên *</label>
                                     <div className="relative">
@@ -135,7 +169,6 @@ export default function HRMAttendancePage() {
                                             className={inputStyle}
                                             required
                                             onChange={(e) => {
-                                                // So khớp chuỗi nhập vào với danh sách để lấy ra UUID thật
                                                 const match = employeeList.find(emp => `${emp.code} - ${emp.name}` === e.target.value);
                                                 setSelectedEmpId(match ? match.id : "");
                                             }}
@@ -145,7 +178,6 @@ export default function HRMAttendancePage() {
                                                 <option key={emp.id} value={`${emp.code} - ${emp.name}`} />
                                             ))}
                                         </datalist>
-                                        {/* Hidden input chứa UUID thực sự gửi lên Database */}
                                         <input type="hidden" name="employee_id" value={selectedEmpId} />
                                     </div>
                                     {!selectedEmpId && (

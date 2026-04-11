@@ -5,6 +5,70 @@ import { revalidatePath } from "next/cache";
 import { supplierSchema, purchaseOrderSchema, SupplierFormValues, PurchaseOrderFormValues } from "@/lib/schemas/procurement";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
+// ✅ IMPORT HÀM GỬI PUSH NOTIFICATION MOBILE
+import { sendPushToUser } from "@/lib/action/pushNotification";
+
+// ==============================================================================
+// HỆ THỐNG THÔNG BÁO (NOTIFICATION ENGINE - APP & MOBILE)
+// ==============================================================================
+
+/**
+ * Hàm tiện ích gửi thông báo đa kênh (Web + Mobile Push)
+ * @param targetEmployeeId ID của nhân viên nhận (employee.id)
+ * @param targetRole Role hoặc Phòng ban nhận (vd: 'procurement', 'warehouse', 'accounting', 'director')
+ * @param title Tiêu đề thông báo
+ * @param message Nội dung
+ * @param link Link điều hướng khi click vào thông báo
+ */
+async function sendSystemNotification(supabase: any, params: { targetEmployeeId?: string, targetRole?: string, title: string, message: string, link?: string }) {
+    try {
+        let authIdsToNotify: string[] = [];
+
+        // 1. Tìm Auth ID của một nhân viên cụ thể
+        if (params.targetEmployeeId) {
+            const { data: emp } = await supabase.from('employees').select('auth_id').eq('id', params.targetEmployeeId).single();
+            if (emp?.auth_id) authIdsToNotify.push(emp.auth_id);
+        }
+
+        // 2. Tìm Auth ID của cả một phòng ban / chức vụ
+        if (params.targetRole) {
+            // LƯU Ý: Giả định bạn lưu thông tin phòng ban ở cột 'department' trong bảng 'employees'
+            // Bạn có thể sửa 'department' thành cột thực tế của bạn (vd: 'position', 'role')
+            const { data: users } = await supabase
+                .from('employees')
+                .select('auth_id')
+                .ilike('department', `%${params.targetRole}%`);
+
+            if (users) {
+                authIdsToNotify.push(...users.map((u: any) => u.auth_id).filter(Boolean));
+            }
+        }
+
+        // 3. Lọc bỏ các ID trùng lặp
+        authIdsToNotify = [...new Set(authIdsToNotify)];
+        if (authIdsToNotify.length === 0) return;
+
+        // 4. Lưu thông báo vào Database (Cho chuông thông báo trên Web App)
+        const notifications = authIdsToNotify.map(authId => ({
+            user_id: authId,
+            title: params.title,
+            message: params.message,
+            link: params.link || '#',
+            is_read: false,
+            created_at: new Date().toISOString()
+        }));
+        await supabase.from('notifications').insert(notifications);
+
+        // 5. Gửi thông báo Push về Mobile qua OneSignal
+        for (const authId of authIdsToNotify) {
+            await sendPushToUser(authId, params.title, params.message, params.link || '/');
+        }
+
+    } catch (error) {
+        console.error("🔥 Lỗi khi gửi thông báo hệ thống:", error);
+    }
+}
+
 // ==============================================================================
 // PHẦN 1: QUẢN LÝ ĐỀ XUẤT VẬT TƯ (MATERIAL REQUESTS)
 // ==============================================================================
@@ -32,7 +96,6 @@ export async function getMaterialRequests(projectId: string) {
 export async function createMaterialRequest(data: any, items: any[]) {
     const supabase = await createClient();
     try {
-        // 1. Tự động sinh mã phiếu nếu thiếu (PR-YYYYMMDD-XXX)
         if (!data.code) {
             const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
             const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
@@ -42,7 +105,6 @@ export async function createMaterialRequest(data: any, items: any[]) {
         if (!data.requester_id) throw new Error("Thiếu thông tin người đề xuất (Requester ID).");
         if (!data.project_id) throw new Error("Thiếu thông tin dự án.");
 
-        // 2. Insert Header (Phiếu yêu cầu)
         const { data: req, error: reqError } = await supabase
             .from('material_requests')
             .insert({
@@ -56,57 +118,53 @@ export async function createMaterialRequest(data: any, items: any[]) {
             .select()
             .single();
 
-        if (reqError) {
-            console.error("Lỗi tạo Header:", reqError);
-            throw new Error("Lỗi tạo phiếu: " + reqError.message);
-        }
+        if (reqError) throw new Error("Lỗi tạo phiếu: " + reqError.message);
 
-        // 3. Insert Items (Chi tiết)
         if (items && items.length > 0) {
-            const cleanItems = items.map((i: any) => {
-                // ✅ LOGIC AN TOÀN: Tìm tên ở mọi biến thể có thể
-                const safeName = i.name || i.item_name || i.material_name || "Vật tư không tên";
+            const cleanItems = items.map((i: any) => ({
+                request_id: req.id,
+                item_name: i.name || i.item_name || i.material_name || "Vật tư không tên",
+                material_code: i.code || i.material_code || null,
+                unit: i.unit || 'cái',
+                quantity: Number(i.quantity) || 0,
+                note: i.note || ''
+            }));
 
-                // ✅ LOGIC AN TOÀN: Tìm mã
-                const safeCode = i.code || i.material_code || null;
-
-                return {
-                    request_id: req.id,
-
-                    // Map đúng vào cột database 'item_name'
-                    item_name: safeName,
-                    material_code: safeCode,
-
-                    unit: i.unit || 'cái',
-                    quantity: Number(i.quantity) || 0,
-                    note: i.note || ''
-                };
-            });
-
-            const { error: itemError } = await supabase
-                .from('material_request_items')
-                .insert(cleanItems);
-
+            const { error: itemError } = await supabase.from('material_request_items').insert(cleanItems);
             if (itemError) {
-                console.error("Lỗi tạo Items:", itemError);
                 await supabase.from('material_requests').delete().eq('id', req.id);
                 throw new Error("Lỗi lưu chi tiết vật tư: " + itemError.message);
             }
+        }
+
+        // 🔔 THÔNG BÁO 1: Tạo đơn thành công -> Báo cho Quản lý của người tạo (Manager theo Org Chart)
+        const { data: emp } = await supabase.from('employees').select('manager_id, name').eq('id', data.requester_id).single();
+        if (emp && emp.manager_id) {
+            await sendSystemNotification(supabase, {
+                targetEmployeeId: emp.manager_id,
+                title: "Có đề xuất vật tư mới",
+                message: `Nhân viên ${emp.name} vừa tạo đề xuất ${data.code}. Vui lòng kiểm tra và phê duyệt.`,
+                link: `/projects/${data.project_id}/requests/${req.id}`
+            });
         }
 
         revalidatePath(`/projects/${data.project_id}`);
         return { success: true, message: "Gửi yêu cầu thành công!", requestId: req.id };
 
     } catch (e: any) {
-        console.error("Create Request Exception:", e);
         return { success: false, error: e.message };
     }
 }
 
 export async function deleteMaterialRequest(id: string, projectId: string) {
-    const supabase = await createClient();
-    await supabase.from('material_requests').delete().eq('id', id);
-    revalidatePath(`/projects/${projectId}`);
+    try {
+        const supabase = await createClient();
+        const { error } = await supabase.from("material_requests").delete().eq("id", id);
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 export async function getProjectMembers(projectId: string) {
@@ -155,70 +213,132 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
     const { data: { user } } = await supabase.auth.getUser();
 
     try {
+        let employeeId = null;
+        if (user) {
+            const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
+            employeeId = emp?.id || null;
+        }
+
         const toIssueItems = approvedItems.filter(i => i.action_issue > 0);
         const toPurchaseItems = approvedItems.filter(i => i.action_purchase > 0);
 
+        // Lấy thông tin người tạo phiếu
+        const { data: originalReq } = await supabase.from('material_requests').select('code, requester_id').eq('id', requestId).single();
+
         if (toIssueItems.length === 0 && toPurchaseItems.length === 0) {
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
-            return { success: true, message: "Đã duyệt phiếu." };
-        }
+        } else {
+            // A. XUẤT KHO
+            if (toIssueItems.length > 0) {
+                if (!warehouseId) throw new Error("Dự án chưa được gán kho vật tư.");
+                const issueCode = `PXK-${Date.now().toString().slice(-6)}`;
 
-        // A. XUẤT KHO
-        if (toIssueItems.length > 0) {
-            if (!warehouseId) throw new Error("Dự án chưa có kho.");
-            const issueCode = `PXK-${Date.now().toString().slice(-6)}`;
-            const { data: issue, error: issueErr } = await supabase.from('goods_issues').insert({
-                code: issueCode, project_id: projectId, warehouse_id: warehouseId, type: 'out', issue_date: new Date().toISOString(),
-                status: 'approved', description: `Xuất tự động từ Đề xuất`, reference_id: requestId, created_by: user?.id
-            }).select().single();
+                const { data: issue, error: issueErr } = await supabase.from('goods_issues').insert({
+                    code: issueCode, project_id: projectId, warehouse_id: warehouseId, type: 'out',
+                    issue_date: new Date().toISOString(), status: 'approved', description: `Xuất tự động từ Đề xuất`,
+                    reference_id: requestId, created_by: employeeId
+                }).select().single();
 
-            if (issueErr) throw new Error("Lỗi tạo phiếu xuất: " + issueErr.message);
+                if (issueErr) throw new Error("Lỗi tạo phiếu xuất: " + issueErr.message);
 
-            const issueDetails = toIssueItems.map(item => ({ issue_id: issue.id, item_name: item.item_name, unit: item.unit, quantity: Number(item.action_issue), unit_price: 0 }));
-            await supabase.from('goods_issue_items').insert(issueDetails);
+                const issueDetails = toIssueItems.map(item => ({
+                    issue_id: issue.id, item_name: item.item_name, unit: item.unit, quantity: Number(item.action_issue), unit_price: 0
+                }));
 
-            for (const item of toIssueItems) {
-                const { data: stock } = await supabase.from('project_inventory').select('id, quantity_on_hand').eq('warehouse_id', warehouseId).ilike('item_name', item.item_name).maybeSingle();
-                if (stock) await supabase.from('project_inventory').update({ quantity_on_hand: stock.quantity_on_hand - Number(item.action_issue) }).eq('id', stock.id);
+                const { error: issueItemsErr } = await supabase.from('goods_issue_items').insert(issueDetails);
+                if (issueItemsErr) throw new Error("Lỗi thêm chi tiết phiếu xuất: " + issueItemsErr.message);
+
+                // Trừ tồn kho
+                for (const item of toIssueItems) {
+                    const { data: stock } = await supabase.from('project_inventory').select('id, quantity_on_hand')
+                        .eq('warehouse_id', warehouseId).ilike('item_name', item.item_name).maybeSingle();
+                    if (stock) await supabase.from('project_inventory').update({ quantity_on_hand: stock.quantity_on_hand - Number(item.action_issue) }).eq('id', stock.id);
+                }
             }
+
+            // B. MUA HÀNG PO
+            if (toPurchaseItems.length > 0) {
+                const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
+                    project_id: projectId, code: `PO-AUTO-${Date.now().toString().slice(-6)}`, status: 'draft',
+                    order_date: new Date().toISOString(), notes: `Tự động tạo từ Đề xuất`, reference_id: requestId,
+                    created_by: employeeId, warehouse_id: warehouseId
+                }).select().single();
+
+                if (poErr) throw new Error("Lỗi tạo PO: " + poErr.message);
+
+                const poDetails = toPurchaseItems.map(item => ({
+                    po_id: po.id, item_name: item.item_name, unit: item.unit, quantity: Number(item.action_purchase), unit_price: 0
+                }));
+                const { error: poItemsErr } = await supabase.from('purchase_order_items').insert(poDetails);
+                if (poItemsErr) throw new Error("Lỗi thêm chi tiết PO: " + poItemsErr.message);
+            }
+
+            await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         }
 
-        // B. MUA HÀNG (PO DRAFT)
-        if (toPurchaseItems.length > 0) {
-            const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
-                project_id: projectId, code: `PO-AUTO-${Date.now().toString().slice(-6)}`, status: 'draft',
-                order_date: new Date().toISOString(), notes: `Tự động tạo từ Đề xuất`, reference_id: requestId,
-                created_by: user?.id, warehouse_id: warehouseId
-            }).select().single();
+        // 🔔 THÔNG BÁO 2a: Duyệt thành công -> Báo cho Người tạo
+        if (originalReq) {
+            await sendSystemNotification(supabase, {
+                targetEmployeeId: originalReq.requester_id,
+                title: "Đề xuất đã được duyệt",
+                message: `Đề xuất ${originalReq.code} của bạn đã được Giám đốc/Quản lý phê duyệt.`,
+                link: `/projects/${projectId}/requests/${requestId}`
+            });
 
-            if (poErr) throw new Error("Lỗi tạo PO: " + poErr.message);
-
-            const poDetails = toPurchaseItems.map(item => ({ po_id: po.id, item_name: item.item_name, unit: item.unit, quantity: Number(item.action_purchase), unit_price: 0 }));
-            await supabase.from('purchase_order_items').insert(poDetails);
+            // 🔔 THÔNG BÁO 2b: Báo cho bộ phận Procurement tiếp tục xử lý
+            await sendSystemNotification(supabase, {
+                targetRole: 'procurement', // Giả định mã bộ phận là 'procurement'
+                title: "Đề xuất cần tiến hành mua sắm",
+                message: `Phiếu yêu cầu ${originalReq.code} đã được duyệt. Vui lòng tiến hành tìm kiếm NCC và báo giá.`,
+                link: `/procurement/orders`
+            });
         }
 
-        await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         revalidatePath(`/projects/${projectId}`);
         return { success: true, message: "Đã duyệt và thực thi thành công!" };
 
-    } catch (e: any) { return { success: false, error: e.message }; }
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+export async function rejectMaterialRequest(requestId: string, projectId: string, reason: string) {
+    const supabase = await createClient();
+    try {
+        await supabase.from('material_requests').update({ status: 'rejected', note: reason }).eq('id', requestId);
+
+        const { data: req } = await supabase.from('material_requests').select('code, requester_id').eq('id', requestId).single();
+
+        if (req) {
+            const { data: emp } = await supabase.from('employees').select('manager_id').eq('id', req.requester_id).single();
+            const message = `Đề xuất ${req.code} đã bị từ chối. Lý do: ${reason}`;
+            const link = `/projects/${projectId}/requests/${requestId}`;
+
+            // 🔔 THÔNG BÁO TỪ CHỐI 1: Gửi cho người tạo
+            await sendSystemNotification(supabase, { targetEmployeeId: req.requester_id, title: "Đề xuất bị từ chối", message, link });
+
+            // 🔔 THÔNG BÁO TỪ CHỐI 2: Gửi cho Quản lý của người tạo
+            if (emp?.manager_id) {
+                await sendSystemNotification(supabase, { targetEmployeeId: emp.manager_id, title: "Đề xuất của nhân viên bị từ chối", message, link });
+            }
+        }
+
+        revalidatePath(`/projects/${projectId}`);
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
 
 // ==============================================================================
-// PHẦN 3: CENTRAL PROCUREMENT & SPLIT PO (ĐÃ FIX - BỔ SUNG ĐẦY ĐỦ)
+// PHẦN 3: CENTRAL PROCUREMENT & SPLIT PO
 // ==============================================================================
 
-// 1. Lấy dữ liệu cho trang Central Request
 export async function getAllPendingRequests() {
     const supabase = await createClient();
     const { data, error } = await supabase
         .from('material_requests')
-        .select(`
-            *,
-            items:material_request_items(*),
-            project:projects(id, name, code),
-            requester:requester_id(name)
-        `)
+        .select(`*, items:material_request_items(*), project:projects(id, name, code), requester:requester_id(name)`)
         .in('status', ['approved', 'processing'])
         .order('created_at', { ascending: false });
 
@@ -226,23 +346,15 @@ export async function getAllPendingRequests() {
     return data || [];
 }
 
-// 2. Lấy chi tiết Yêu cầu để tạo PO (Tính số lượng còn lại)
 export async function getMaterialRequestForPO(requestId: string) {
     const supabase = await createClient();
-
-    // Lấy Header
     const { data: req } = await supabase.from('material_requests').select('id, project_id, code').eq('id', requestId).single();
     if (!req) return null;
 
-    // Lấy Items
     const { data: requestItems } = await supabase.from('material_request_items').select('*').eq('request_id', requestId);
     if (!requestItems) return { projectId: req.project_id, items: [] };
 
-    // Lấy các PO đã tạo từ Request này để trừ lùi
-    const { data: existingPos } = await supabase
-        .from('purchase_orders')
-        .select('id, items:purchase_order_items(item_name, quantity)')
-        .eq('reference_id', requestId); // Dùng reference_id
+    const { data: existingPos } = await supabase.from('purchase_orders').select('id, items:purchase_order_items(item_name, quantity)').eq('reference_id', requestId);
 
     const orderedMap = new Map<string, number>();
     existingPos?.forEach(po => {
@@ -258,32 +370,15 @@ export async function getMaterialRequestForPO(requestId: string) {
         const remaining = Math.max(0, requested - ordered);
 
         return {
-            id: item.id,
-            item_name: item.item_name,
-            unit: item.unit,
-            quantity: requested,
-            remaining_quantity: remaining,
-            is_fully_ordered: remaining === 0,
-            unit_price: 0,
-            vat_rate: 0
+            id: item.id, item_name: item.item_name, unit: item.unit, quantity: requested,
+            remaining_quantity: remaining, is_fully_ordered: remaining === 0, unit_price: 0, vat_rate: 0
         };
     });
 
-    return {
-        projectId: req.project_id,
-        items: itemsToOrder
-    };
+    return { projectId: req.project_id, items: itemsToOrder };
 }
 
-// 3. Tạo Split PO (ĐÃ FIX: Trả về object đúng chuẩn)
-export async function createSplitPOAction(
-    projectId: string,
-    requestId: string,
-    supplierId: string,
-    warehouseId: string,
-    deliveryDate: string,
-    itemsToOrder: any[]
-) {
+export async function createSplitPOAction(projectId: string, requestId: string, supplierId: string, warehouseId: string, deliveryDate: string, itemsToOrder: any[]) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -295,44 +390,35 @@ export async function createSplitPOAction(
 
         const code = `PO-${Date.now().toString().slice(-6)}`;
 
-        const { data: po, error: poError } = await supabase
-            .from('purchase_orders')
-            .insert({
-                project_id: projectId,
-                reference_id: requestId,
-                supplier_id: supplierId,
-                warehouse_id: warehouseId || null,
-                code: code,
-                order_date: new Date().toISOString(),
-                expected_delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null,
-                status: 'ordered',
-                total_amount: 0,
-                created_by: user?.id
-            })
-            .select()
-            .single();
+        const { data: po, error: poError } = await supabase.from('purchase_orders').insert({
+            project_id: projectId, reference_id: requestId, supplier_id: supplierId, warehouse_id: warehouseId || null,
+            code: code, order_date: new Date().toISOString(),
+            expected_delivery_date: deliveryDate ? new Date(deliveryDate).toISOString() : null,
+            status: 'ordered', total_amount: 0, created_by: user?.id
+        }).select().single();
 
         if (poError) throw new Error("Lỗi tạo PO: " + poError.message);
 
         const poItemsData = itemsToOrder.map(item => ({
-            po_id: po.id,
-            item_name: item.item_name,
-            unit: item.unit,
-            quantity: Number(item.quantity),
-            unit_price: Number(item.unit_price || 0),
-            vat_rate: 0
+            po_id: po.id, item_name: item.item_name, unit: item.unit,
+            quantity: Number(item.quantity), unit_price: Number(item.unit_price || 0), vat_rate: 0
         }));
 
         const { error: itemsError } = await supabase.from('purchase_order_items').insert(poItemsData);
         if (itemsError) throw new Error("Lỗi lưu chi tiết: " + itemsError.message);
 
-        // Update trạng thái Request
         await supabase.from('material_requests').update({ status: 'processing' }).eq('id', requestId);
+
+        // 🔔 THÔNG BÁO 3: Chốt được NCC và Giá (Tạo PO) -> Báo cho bộ phận Kho chờ nhận hàng
+        await sendSystemNotification(supabase, {
+            targetRole: 'warehouse', // Mã bộ phận Kho
+            title: "Đơn mua hàng PO mới sắp giao",
+            message: `Thu mua đã chốt đơn hàng ${code} với NCC. Vui lòng theo dõi tiến độ và chuẩn bị nhận hàng.`,
+            link: `/inventory/inbound` // Link tới màn hình chờ nhận hàng
+        });
 
         revalidatePath(`/procurement`);
         revalidatePath(`/procurement/orders`);
-
-        // ✅ TRẢ VỀ ĐÚNG FORMAT MÀ FRONTEND MONG ĐỢI
         return { success: true, message: "Đã tạo Đơn hàng thành công!", poId: po.id };
 
     } catch (e: any) {
@@ -341,7 +427,7 @@ export async function createSplitPOAction(
 }
 
 // ==============================================================================
-// PHẦN 4: CRUD PO & SUPPLIER (GIỮ NGUYÊN)
+// PHẦN 4: CRUD PO & GIAO NHẬN & THANH TOÁN
 // ==============================================================================
 
 export async function getSuppliers() {
@@ -422,23 +508,36 @@ export async function createGoodsReceiptAction(poId: string, notes: string, targ
     const { data: po } = await supabase.from("purchase_orders").select(`*, items:purchase_order_items(*)`).eq("id", poId).single();
     if (!po) return { success: false, error: "Không tìm thấy PO" };
 
-    await supabase.from("goods_receipts").insert({ po_id: poId, received_date: new Date().toISOString(), notes, receipt_image_url: image_url });
+    try {
+        await supabase.from("goods_receipts").insert({ po_id: poId, received_date: new Date().toISOString(), notes, receipt_image_url: image_url });
 
-    for (const item of po.items) {
-        const { data: stock } = await supabase.from("project_inventory").select("*").eq("warehouse_id", targetWarehouseId).eq("item_name", item.item_name).single();
-        if (stock) {
-            const newQty = stock.quantity_on_hand + item.quantity;
-            await supabase.from("project_inventory").update({ quantity_on_hand: newQty }).eq("id", stock.id);
-        } else {
-            await supabase.from("project_inventory").insert({
-                project_id: po.project_id, warehouse_id: targetWarehouseId, item_name: item.item_name,
-                unit: item.unit, quantity_on_hand: item.quantity, avg_price: item.unit_price
-            });
+        for (const item of po.items) {
+            const { data: stock } = await supabase.from("project_inventory").select("*").eq("warehouse_id", targetWarehouseId).eq("item_name", item.item_name).single();
+            if (stock) {
+                const newQty = stock.quantity_on_hand + item.quantity;
+                await supabase.from("project_inventory").update({ quantity_on_hand: newQty }).eq("id", stock.id);
+            } else {
+                await supabase.from("project_inventory").insert({
+                    project_id: po.project_id, warehouse_id: targetWarehouseId, item_name: item.item_name,
+                    unit: item.unit, quantity_on_hand: item.quantity, avg_price: item.unit_price
+                });
+            }
         }
+        await supabase.from("purchase_orders").update({ status: 'received' }).eq("id", poId);
+
+        // 🔔 THÔNG BÁO 4: Đã nhận hàng -> Báo cho Kế toán để tiến hành thanh toán
+        await sendSystemNotification(supabase, {
+            targetRole: 'accounting', // Mã bộ phận Kế toán
+            title: "Hàng đã nhập kho, chờ thanh toán",
+            message: `Đơn hàng ${po.code} đã hoàn tất thủ tục nhập kho. Vui lòng kiểm tra chứng từ và tiến hành thanh toán cho NCC.`,
+            link: `/finance/payables`
+        });
+
+        revalidatePath(`/procurement/orders/${poId}`);
+        return { success: true, message: "Nhập kho thành công" };
+    } catch (e: any) {
+        return { success: false, error: e.message };
     }
-    await supabase.from("purchase_orders").update({ status: 'received' }).eq("id", poId);
-    revalidatePath(`/procurement/orders/${poId}`);
-    return { success: true, message: "Nhập kho thành công" };
 }
 
 export async function getExpenseCategories() {
@@ -455,18 +554,31 @@ export async function getPOTransactions(poId: string) {
 
 export async function createPaymentForPOAction(poId: string, projectId: string, amount: number, categoryId: string, paymentDate: Date, method: string, notes: string) {
     const supabase = await createClient();
-    if (!categoryId) return { success: false, error: "Chọn hạng mục chi" };
-    await supabase.from("finance_transactions").insert({
-        amount, type: 'expense', category_id: categoryId, project_id: projectId, po_id: poId,
-        description: notes, transaction_date: paymentDate.toISOString(), payment_method: method
-    });
+    try {
+        if (!categoryId) return { success: false, error: "Chọn hạng mục chi" };
+        await supabase.from("finance_transactions").insert({
+            amount, type: 'expense', category_id: categoryId, project_id: projectId, po_id: poId,
+            description: notes, transaction_date: paymentDate.toISOString(), payment_method: method
+        });
 
-    // Auto complete PO if paid enough (logic đơn giản)
-    const { data: po } = await supabase.from("purchase_orders").select("total_amount").eq("id", poId).single();
-    if (po && amount >= po.total_amount) await supabase.from("purchase_orders").update({ status: 'completed' }).eq("id", poId);
+        const { data: po } = await supabase.from("purchase_orders").select("code, total_amount").eq("id", poId).single();
+        if (po && amount >= po.total_amount) {
+            await supabase.from("purchase_orders").update({ status: 'completed' }).eq("id", poId);
+        }
 
-    revalidatePath(`/procurement/orders/${poId}`);
-    return { success: true, message: "Đã chi tiền" };
+        // 🔔 THÔNG BÁO 5: Thanh toán hoàn tất -> Báo cáo Ban Giám Đốc nắm thông tin
+        await sendSystemNotification(supabase, {
+            targetRole: 'director', // Mã Role Giám đốc
+            title: "Hoàn tất thanh toán đơn hàng",
+            message: `Kế toán đã thanh toán thành công số tiền ${amount.toLocaleString()} VNĐ cho đơn hàng ${po?.code || poId}.`,
+            link: `/finance/transactions`
+        });
+
+        revalidatePath(`/procurement/orders/${poId}`);
+        return { success: true, message: "Đã chi tiền" };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
 }
 
 // PHẦN CENTRAL & QTO
@@ -478,7 +590,6 @@ export async function getProjectStandardizedMaterials(projectId: string) {
     const { data: budget } = await supabase.from('project_material_budget').select('material_name, unit, budget_quantity').eq('project_id', projectId);
     if (budget?.length) return budget.map(i => ({ name: i.material_name, unit: i.unit, budget: i.budget_quantity }));
 
-    // Fallback: Raw QTO
     const { data: raw } = await supabase.from('qto_items_calculated').select(`material_name, unit, quantity, qto_items!inner(project_id)`).eq('qto_items.project_id', projectId);
     if (raw?.length) {
         const map = new Map();
@@ -493,53 +604,20 @@ export async function getProjectStandardizedMaterials(projectId: string) {
     return [];
 }
 
-// --- BỔ SUNG HÀM TẠO NHÀ CUNG CẤP ---
+// --- TẠO NHÀ CUNG CẤP ---
 export async function createSupplierAction(data: any) {
-    // 1. Log dữ liệu nhận được từ Frontend
-    console.log("🚀 [ServerAction] createSupplierAction called");
-    console.log("📦 Data received:", JSON.stringify(data, null, 2));
-
     const supabase = await createClient();
-
-    // Kiểm tra User (Optional: Nếu có RLS bắt buộc user phải đăng nhập)
-    const { data: { user } } = await supabase.auth.getUser();
-    console.log("👤 User performing action:", user?.id || "Anonymous");
-
     try {
-        // Chuẩn bị payload
         const payload = {
-            name: data.name,
-            type: data.type,
-            contact_person: data.contact_person,
-            phone: data.phone,
-            email: data.email,
-            address: data.address,
-            tax_code: data.tax_code,
-            created_at: new Date().toISOString()
-            // Nếu bảng suppliers có cột user_id hoặc created_by, bạn nên thêm vào đây
-            // created_by: user?.id 
+            name: data.name, type: data.type, contact_person: data.contact_person, phone: data.phone,
+            email: data.email, address: data.address, tax_code: data.tax_code, created_at: new Date().toISOString()
         };
-
-        console.log("db Inserting payload:", payload);
-
-        const { data: insertedData, error } = await supabase
-            .from('suppliers')
-            .insert(payload)
-            .select() // Thêm select để check dữ liệu trả về
-            .single();
-
-        if (error) {
-            console.error("❌ [Supabase Error]:", error);
-            throw new Error(error.message); // Ném lỗi để catch bắt được
-        }
-
-        console.log("✅ Insert Success:", insertedData);
+        const { error } = await supabase.from('suppliers').insert(payload).select().single();
+        if (error) throw new Error(error.message);
 
         revalidatePath('/procurement/suppliers');
         return { success: true, message: "Thêm nhà cung cấp thành công!" };
-
     } catch (e: any) {
-        console.error("💥 [Catch Error]:", e);
         return { success: false, error: "Lỗi Server: " + e.message };
     }
 }
@@ -549,14 +627,8 @@ export async function updateSupplierAction(id: string, data: any) {
     const supabase = await createClient();
     try {
         const { error } = await supabase.from('suppliers').update({
-            name: data.name,
-            type: data.type,
-            contact_person: data.contact_person,
-            phone: data.phone,
-            email: data.email,
-            address: data.address,
-            tax_code: data.tax_code,
-            // updated_at: new Date().toISOString() // Bỏ comment nếu DB có cột này
+            name: data.name, type: data.type, contact_person: data.contact_person, phone: data.phone,
+            email: data.email, address: data.address, tax_code: data.tax_code,
         }).eq('id', id);
 
         if (error) throw new Error(error.message);
@@ -572,11 +644,8 @@ export async function updateSupplierAction(id: string, data: any) {
 export async function deleteSupplierAction(id: string) {
     const supabase = await createClient();
     try {
-        // Kiểm tra ràng buộc trước khi xóa (Ví dụ: đã có PO chưa?)
         const { data: po } = await supabase.from('purchase_orders').select('id').eq('supplier_id', id).limit(1);
-        if (po && po.length > 0) {
-            return { success: false, error: "Không thể xóa: NCC này đã có đơn hàng." };
-        }
+        if (po && po.length > 0) return { success: false, error: "Không thể xóa: NCC này đã có đơn hàng." };
 
         const { error } = await supabase.from('suppliers').delete().eq('id', id);
         if (error) throw new Error(error.message);

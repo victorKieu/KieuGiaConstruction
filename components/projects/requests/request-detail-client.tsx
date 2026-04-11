@@ -43,7 +43,7 @@ export default function RequestDetailClient({ request }: { request: any }) {
 
             {/* THAH CÔNG CỤ (Sẽ bị ẩn khi in nhờ class print:hidden) */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
-                <Button variant="ghost" onClick={() => router.back()} className="hover:bg-slate-100">
+                <Button variant="ghost" onClick={() => router.push(`/projects/${request.project_id}/?tab=requests`)} className="hover:bg-slate-100">
                     <ArrowLeft className="w-4 h-4 mr-2" /> Quay lại
                 </Button>
 
@@ -57,8 +57,9 @@ export default function RequestDetailClient({ request }: { request: any }) {
                     {request.status === 'pending' && (
                         <Button
                             variant="default"
-                            onClick={() => router.push(`/requests/${request.id}/edit`)}
-                            className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700"
+                            // Phải dùng template string với dấu / ở đầu để Next.js hiểu đây là đường dẫn gốc
+                            onClick={() => router.push(`/projects/${request.project_id}/requests/${request.id}/edit`)}
+                            className="..."
                         >
                             <Edit className="w-4 h-4 mr-2" /> Sửa phiếu
                         </Button>

@@ -999,3 +999,56 @@ export async function createManualAttendance(formData: FormData) {
         return { success: false, error: "Hệ thống đang bận, vui lòng thử lại." };
     }
 }
+
+// 1. Lấy danh sách khuôn mặt của TẤT CẢ nhân viên thuộc dự án
+export async function getProjectMembersFaceData(projectId: string) {
+    const supabase = await createClient();
+
+    // Join bảng project_members và employees
+    const { data, error } = await supabase
+        .from('project_members')
+        .select(`
+            employee_id,
+            employees!inner(name, code, face_descriptor)
+        `)
+        .eq('project_id', projectId)
+        .not('employees.face_descriptor', 'is', null);
+
+    if (error) {
+        console.error("Lỗi lấy data khuôn mặt:", error);
+        return [];
+    }
+
+    return data.map((item: any) => ({
+        id: item.employee_id,
+        name: item.employees.name,
+        code: item.employees.code,
+        // Parse jsonb trả về mảng số thực
+        descriptor: item.employees.face_descriptor
+    }));
+}
+
+// 2. Ghi nhận chấm công
+export async function recordFaceAttendance(employeeId: string, projectId: string, location: { lat: number, lng: number }, supervisorId?: string) {
+    const supabase = await createClient();
+
+    try {
+        const { error } = await supabase.from('attendance_logs').insert({
+            employee_id: employeeId,
+            project_id: projectId,
+            check_in_time: new Date().toISOString(),
+            latitude: location.lat,
+            longitude: location.lng,
+            method: 'face_id',
+            recorded_by: supervisorId, // ID của giám sát cầm máy
+            status: 'present'
+        });
+
+        if (error) throw error;
+
+        revalidatePath(`/projects/${projectId}/attendance`);
+        return { success: true, message: "Chấm công thành công!" };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
