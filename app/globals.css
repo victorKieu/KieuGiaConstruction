@@ -127,3 +127,22 @@ html, body {
     overflow: auto;
     height: 100%;
 }
+
+@media print {
+    /* Ẩn Sidebar, Navbar chung của hệ thống khi in Tem */
+    nav, header, footer, aside {
+        display: none !important;
+    }
+    /* Bỏ margin/padding thừa của body để in tem sát mép giấy */
+    body {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+    }
+
+    @page {
+        /* Set kích thước giấy in tem chuẩn (VD: máy in tem Xprinter) */
+        size: 100mm 150mm; /* Thay đổi tùy kích thước cuộn tem của bạn */
+        margin: 0;
+    }
+}

@@ -1,19 +1,23 @@
 import { getMaterialRequestById } from "@/lib/action/requestActions";
-// Import component Client đã tách ra
 import RequestDetailClient from "@/components/projects/requests/request-detail-client";
 
-// Đây là Server Component (Fetch dữ liệu)
-export default async function RequestDetailPage({ params }: { params: Promise<{ id: string; requestId: string }> }) {
-    const { id: projectId, requestId } = await params;
+export default async function RequestDetailPage({
+    params
+}: {
+    params: Promise<{ id: string; requestId: string }>
+}) {
+    // 🚨 QUAN TRỌNG VỚI NEXT.JS 15: Phải await params trước khi dùng
+    const resolvedParams = await params;
+    const { requestId } = resolvedParams;
 
-    // 1. Lấy dữ liệu từ Database
-    const req = await getMaterialRequestById(requestId);
+    // Fetch dữ liệu từ Database
+    const requestData = await getMaterialRequestById(requestId);
 
-    // 2. Nếu không có dữ liệu -> Báo lỗi
-    if (!req) {
-        return <div className="p-8 text-center text-muted-foreground">Không tìm thấy phiếu yêu cầu hoặc phiếu đã bị xóa.</div>;
+    // Nếu lấy data lỗi (null), log ra server để dễ debug
+    if (!requestData) {
+        console.error("❌ Không tìm thấy Request ID:", requestId);
     }
 
-    // 3. Truyền dữ liệu xuống Client Component để hiển thị
-    return <RequestDetailClient req={req} projectId={projectId} />;
+    // Truyền data xuống Client Component
+    return <RequestDetailClient request={requestData} />;
 }
