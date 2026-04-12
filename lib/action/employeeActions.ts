@@ -484,3 +484,29 @@ export async function registerFaceDescriptor(employeeId: string, descriptor: num
         return { success: false, error: error.message };
     }
 }
+
+// Thêm vào lib/action/employeeActions.ts
+
+export async function deleteFaceDescriptor(employeeId: string) {
+    const supabase = await createSupabaseServerClient();
+
+    try {
+        const { error } = await supabase
+            .from('employees')
+            .update({
+                face_descriptor: null // Xóa mảng 128 số về null
+            })
+            .eq('id', employeeId);
+
+        if (error) throw new Error(error.message);
+
+        // Làm mới dữ liệu ở các trang liên quan
+        revalidatePath('/hrm/employees');
+        revalidatePath('/hrm/attendance');
+
+        return { success: true, message: 'Đã gỡ bỏ dữ liệu khuôn mặt thành công!' };
+    } catch (error: any) {
+        console.error("Lỗi xóa khuôn mặt:", error);
+        return { success: false, error: error.message };
+    }
+}

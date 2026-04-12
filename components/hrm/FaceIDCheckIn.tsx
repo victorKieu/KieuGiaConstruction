@@ -56,7 +56,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                 async (pos) => {
                     if (!isMounted) return;
                     setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                    setStatusMsg("Đang quét dự án trong bán kính 300m...");
+                    setStatusMsg("Đang quét dự án trong bán kính 50m...");
 
                     const res = await getNearbyProjectAndFaceData(pos.coords.latitude, pos.coords.longitude);
                     if (!isMounted) return;
@@ -111,6 +111,14 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
     }, []);
 
     // 2. VÒNG LẶP QUÉT TỰ ĐỘNG (DỪNG KHI isPaused = true)
+    const stopCamera = () => {
+        setIsCameraActive(false);
+        if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
+    };
     useEffect(() => {
         let scanInterval: NodeJS.Timeout;
 
@@ -153,6 +161,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
 
                             // ✅ TẠM NGƯNG AI (Đợi người dùng bấm nút)
                             setIsPaused(true);
+                            stopCamera();
                         }
                     }
                 } catch (error) {
@@ -171,6 +180,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
         setIsPaused(false); // Mở khóa vòng lặp AI
         isProcessingRef.current = false;
         setIsScanningStatus(false);
+        startVideo();
     };
 
     const handleStop = () => {
@@ -180,6 +190,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
         if (videoRef.current?.srcObject) {
             (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
             videoRef.current.srcObject = null;
+            stopCamera();
         }
     };
 

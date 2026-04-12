@@ -7,10 +7,11 @@ import { formatCurrency } from "@/lib/utils/utils";
 import { DictionaryOption } from "@/types/employee";
 import { createEmployee, updateEmployee } from "@/lib/action/employeeActions";
 import AvatarUpload from "./AvatarUpload";
-import { Loader2, Save, Briefcase, Banknote, ShieldCheck, UserCircle, MapPin, Landmark, FileText, ScanFace } from "lucide-react";
+import { Loader2, Save, Briefcase, Banknote, ShieldCheck, UserCircle, MapPin, Landmark, FileText, ScanFace, CheckCircle2, XCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
+import { registerFaceDescriptor, deleteFaceDescriptor } from "@/lib/action/employeeActions";
 
 // ✅ IMPORT COMPONENT FACE REGISTRATION
 import FaceRegistration from "./FaceRegistration";
@@ -52,7 +53,7 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
     const [avatarUrl, setAvatarUrl] = useState<string>(
         initialData?.user_profiles?.avatar_url || initialData?.avatar_url || ""
     );
-
+    const [hasFaceId, setHasFaceId] = useState<boolean>(!!initialData?.face_descriptor);
     // ✅ STATE QUẢN LÝ MODAL FACE ID
     const [isFaceIdModalOpen, setIsFaceIdModalOpen] = useState(false);
 
@@ -116,6 +117,26 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
             setIsSubmitting(false);
         }
     };
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDeleteFaceId = async () => {
+        if (!confirm("Bạn có chắc chắn muốn xóa dữ liệu Face ID của nhân viên này? Thao tác này không thể hoàn tác.")) return;
+
+        setIsDeleting(true);
+        try {
+            const res = await deleteFaceDescriptor(initialData.id);
+            if (res.success) {
+                toast.success(res.message);
+                setHasFaceId(false); // Cập nhật trạng thái giao diện ngay lập tức
+            } else {
+                toast.error(res.error);
+            }
+        } catch (error) {
+            toast.error("Lỗi kết nối khi xóa dữ liệu.");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     const safeOptions = (list: DictionaryOption[] | undefined) => list || [];
     const getFieldValue = (fieldName: string) => state.fields?.[fieldName] || "";
@@ -141,24 +162,61 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                             <p className="text-sm text-slate-500">{getFieldValue("code") || "Mã NV"}</p>
                         </div>
 
-                        {/* ✅ NÚT KÍCH HOẠT FACE REGISTRATION */}
+                        {/* ✅ TRẠNG THÁI & NÚT FACE REGISTRATION */}
                         <div className="mt-6 w-full pt-6 border-t border-slate-100 dark:border-slate-800">
                             {initialData?.id ? (
-                                <Dialog open={isFaceIdModalOpen} onOpenChange={setIsFaceIdModalOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button type="button" variant="outline" className="w-full flex items-center justify-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/50 dark:hover:bg-indigo-900/20">
-                                            <ScanFace className="w-4 h-4" />
-                                            Đăng ký Face ID
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="sm:max-w-[400px] p-0 border-none bg-transparent shadow-none">
-                                        <FaceRegistration
-                                            employeeId={initialData.id}
-                                            employeeName={getFieldValue("name")}
-                                            onSuccess={() => setIsFaceIdModalOpen(false)}
-                                        />
-                                    </DialogContent>
-                                </Dialog>
+                                <div className="space-y-4">
+                                    {/* Hiển thị Trạng thái kèm nút Xóa */}
+                                    <div className="flex flex-col gap-2 items-center">
+                                        {hasFaceId ? (
+                                            <div className="flex items-center gap-2">
+                                                <span className="flex items-center text-[13px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full">
+                                                    <CheckCircle2 className="w-4 h-4 mr-1.5" /> Đã đăng ký Face ID
+                                                </span>
+                                                {/* Nút Xóa dữ liệu */}
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    disabled={isDeleting}
+                                                    onClick={handleDeleteFaceId}
+                                                    className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                                    title="Xóa dữ liệu khuôn mặt"
+                                                >
+                                                    {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <span className="flex items-center text-[13px] text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full">
+                                                <XCircle className="w-4 h-4 mr-1.5" /> Chưa có dữ liệu Face ID
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Nút đăng ký (hoặc cập nhật lại) */}
+                                    <Dialog open={isFaceIdModalOpen} onOpenChange={setIsFaceIdModalOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button type="button" variant="outline" className="w-full flex items-center justify-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/50 dark:hover:bg-indigo-900/20">
+                                                <ScanFace className="w-4 h-4" />
+                                                {hasFaceId ? "Cập nhật Face ID" : "Đăng ký Face ID"}
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="sm:max-w-[400px] p-0 border-none bg-transparent shadow-none">
+                                            <DialogTitle className="sr-only">Đăng ký hoặc Cập nhật Face ID</DialogTitle>
+                                            {/* ✅ BỌC isFaceIdModalOpen VÀO ĐÂY ĐỂ ÉP HỦY COMPONENT KHI ĐÓNG POPUP */}
+                                            {isFaceIdModalOpen && (
+                                                <FaceRegistration
+                                                    employeeId={initialData.id}
+                                                    employeeName={getFieldValue("name")}
+                                                    onSuccess={() => {
+                                                        setIsFaceIdModalOpen(false);
+                                                        setHasFaceId(true);
+                                                    }}
+                                                />
+                                            )}
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
                             ) : (
                                 <div className="text-center bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
                                     <ScanFace className="w-6 h-6 mx-auto mb-2 text-slate-400" />
