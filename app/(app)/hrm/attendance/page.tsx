@@ -137,7 +137,12 @@ export default function HRMAttendancePage() {
                             </DialogHeader>
                             <div className="p-6">
                                 {/* LÕI XỬ LÝ FACE ID: Không cần truyền Prop gì vì nó tự lấy vị trí */}
-                                {isFaceIdModalOpen && <FaceIDCheckIn onScanSuccess={loadData} />}
+                                {isFaceIdModalOpen && (
+                                    <FaceIDCheckIn
+                                        onScanSuccess={loadData}
+                                        onClose={() => setIsFaceIdModalOpen(false)} // ✅ BẮT BUỘC PHẢI CÓ DÒNG NÀY
+                                    />
+                                )}
                             </div>
                         </DialogContent>
                     </Dialog>

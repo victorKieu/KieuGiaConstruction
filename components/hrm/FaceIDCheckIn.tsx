@@ -10,11 +10,11 @@ import { getNearbyProjectAndFaceData, processFaceAttendance } from '@/lib/action
 interface FaceIDCheckInProps {
     supervisorId?: string;
     onScanSuccess?: () => void;
+    onClose?: () => void; // ✅ Prop dùng để báo cho Component cha đóng Form
 }
 
-export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDCheckInProps) {
+export default function FaceIDCheckIn({ supervisorId, onScanSuccess, onClose }: FaceIDCheckInProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
-
     const isProcessingRef = useRef(false);
 
     const [isModelLoaded, setIsModelLoaded] = useState(false);
@@ -24,13 +24,24 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
     const [cameraError, setCameraError] = useState<boolean>(false);
     const [isCameraActive, setIsCameraActive] = useState(false);
 
-    // ✅ STATE MỚI: Tạm ngưng AI sau khi có kết quả và trạng thái Dừng thủ công
     const [isPaused, setIsPaused] = useState(false);
     const [isStopped, setIsStopped] = useState(false);
 
     const [activeProject, setActiveProject] = useState<{ id: string, name: string, distance: number } | null>(null);
     const [statusMsg, setStatusMsg] = useState("Đang định vị GPS...");
     const [scanResult, setScanResult] = useState<{ name: string, code: string, message: string, type: 'CHECK_IN' | 'CHECK_OUT' | 'ERROR' } | null>(null);
+
+    // =======================================================================
+    // ✅ HÀM TẮT CAMERA CHUYÊN DỤNG (CẮT SẠCH LUỒNG)
+    // =======================================================================
+    const stopCamera = () => {
+        setIsCameraActive(false);
+        if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
+    };
 
     const startVideo = () => {
         setCameraError(false);
@@ -47,7 +58,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
             });
     };
 
-    // 1. Tự động Khởi tạo hệ thống
+    // 1. Tự động Khởi tạo
     useEffect(() => {
         let isMounted = true;
 
@@ -56,7 +67,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                 async (pos) => {
                     if (!isMounted) return;
                     setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                    setStatusMsg("Đang quét dự án trong bán kính 50m...");
+                    setStatusMsg("Đang quét dự án trong bán kính 300m...");
 
                     const res = await getNearbyProjectAndFaceData(pos.coords.latitude, pos.coords.longitude);
                     if (!isMounted) return;
@@ -87,7 +98,6 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                             });
                             setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.55));
                             setStatusMsg("Sẵn sàng quét tự động!");
-
                             startVideo();
                         } else {
                             setStatusMsg("Dự án chưa có data khuôn mặt.");
@@ -102,27 +112,17 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
         };
         initSystem();
 
+        // Dọn dẹp khi unmount (Đóng form đột ngột)
         return () => {
             isMounted = false;
-            if (videoRef.current?.srcObject) {
-                (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
-            }
+            stopCamera();
         };
     }, []);
 
-    // 2. VÒNG LẶP QUÉT TỰ ĐỘNG (DỪNG KHI isPaused = true)
-    const stopCamera = () => {
-        setIsCameraActive(false);
-        if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
-        }
-    };
+    // 2. VÒNG LẶP QUÉT
     useEffect(() => {
         let scanInterval: NodeJS.Timeout;
 
-        // ✅ Chỉ chạy Interval khi Camera đang bật, AI sẵn sàng và KHÔNG BỊ TẠM NGƯNG
         if (isCameraActive && faceMatcher && activeProject && location && !isPaused && !isStopped) {
             scanInterval = setInterval(async () => {
                 if (isProcessingRef.current || !videoRef.current) return;
@@ -138,7 +138,6 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
 
                         if (bestMatch.label === 'unknown') {
                             toast.error("⚠️ KHÔNG KHỚP: Nhân công lạ hoặc góc sáng xấu!");
-                            // Tự động nhả luồng sau 2.5s nếu quét xịt để quét tiếp (Không hiện nút bấm)
                             setTimeout(() => {
                                 isProcessingRef.current = false;
                                 setIsScanningStatus(false);
@@ -146,22 +145,16 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                         } else {
                             const [id, code, name] = bestMatch.label.split('|');
 
-                            // GỌI API CHẤM CÔNG VÀO/RA CA
                             const res = await processFaceAttendance(id, activeProject.id, location, supervisorId);
 
                             if (res.success) {
                                 setScanResult({ name, code, message: res.message!, type: res.type as any });
-
-                                // ✅ THÊM DÒNG NÀY: Báo cho Component cha biết để load lại bảng
-                                if (onScanSuccess) onScanSuccess();
-
+                                if (onScanSuccess) onScanSuccess(); // Báo cập nhật bảng công ở ngoài
                             } else {
                                 setScanResult({ name, code, message: res.error!, type: 'ERROR' });
                             }
 
-                            // ✅ TẠM NGƯNG AI (Đợi người dùng bấm nút)
-                            setIsPaused(true);
-                            stopCamera();
+                            setIsPaused(true); // Tạm dừng quét đợi thao tác
                         }
                     }
                 } catch (error) {
@@ -170,27 +163,25 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
             }, 1000);
         }
 
-        // Cleanup function tự dọn dẹp interval khi state thay đổi
         return () => { if (scanInterval) clearInterval(scanInterval); };
     }, [isCameraActive, faceMatcher, activeProject, location, supervisorId, isPaused, isStopped]);
 
-    // ✅ CÁC HÀM XỬ LÝ NÚT BẤM SAU KHI QUÉT XONG
+    // =======================================================================
+    // ✅ CÁC HÀM XỬ LÝ NÚT BẤM (TIẾP TỤC & DỪNG LẠI)
+    // =======================================================================
     const handleContinue = () => {
         setScanResult(null);
-        setIsPaused(false); // Mở khóa vòng lặp AI
+        setIsPaused(false);
         isProcessingRef.current = false;
         setIsScanningStatus(false);
-        startVideo();
     };
 
     const handleStop = () => {
-        handleContinue();
-        setIsStopped(true); // Ghi nhận trạng thái dừng thủ công
-        setIsCameraActive(false);
-        if (videoRef.current?.srcObject) {
-            (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
-            stopCamera();
+        stopCamera(); // 1. Tắt hoàn toàn camera
+        if (onClose) {
+            onClose(); // 2. Yêu cầu Component cha đóng Modal
+        } else {
+            setIsStopped(true); // Fallback nếu quên truyền onClose
         }
     };
 
@@ -229,7 +220,6 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-400 p-6 text-center bg-slate-900">
                         <ScanFace className="w-16 h-16 mb-4 opacity-50" />
 
-                        {/* Xử lý UI linh hoạt khi Camera tắt */}
                         {!activeProject ? (
                             <p className="text-sm text-red-400 opacity-80">Camera bị khóa vì không tìm thấy dự án gần đây.</p>
                         ) : !isModelLoaded ? (
@@ -241,8 +231,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                             </div>
                         ) : isStopped ? (
                             <div className="space-y-4">
-                                <p className="text-sm text-slate-300">Camera đã được tạm dừng.</p>
-                                <Button onClick={startVideo} className="bg-indigo-600 hover:bg-indigo-700">Mở lại Camera</Button>
+                                <p className="text-sm text-slate-300">Đã dừng chấm công.</p>
                             </div>
                         ) : (
                             <p className="text-sm opacity-60 flex items-center animate-pulse">Khởi động Camera...</p>
@@ -256,7 +245,6 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                     className={`object-cover w-full h-full transform scale-x-[-1] transition-opacity duration-300 ${isPaused ? 'opacity-50 grayscale' : 'opacity-100'}`}
                 />
 
-                {/* Lưới Quét */}
                 {isCameraActive && !isPaused && (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center">
                         <div className={`w-2/3 aspect-square border-[3px] border-dashed rounded-full transition-colors duration-300 ${isScanningStatus ? 'border-green-400 shadow-[0_0_20px_rgba(74,222,128,0.5)]' : 'border-white/30'}`}></div>
@@ -269,7 +257,7 @@ export default function FaceIDCheckIn({ supervisorId, onScanSuccess }: FaceIDChe
                 )}
             </div>
 
-            {/* ✅ VÙNG HIỂN THỊ KẾT QUẢ & NÚT BẤM */}
+            {/* VÙNG HIỂN THỊ KẾT QUẢ & NÚT BẤM */}
             <div className="min-h-[140px] w-full flex flex-col justify-end">
                 {isScanningStatus && !scanResult && (
                     <div className="flex items-center justify-center h-[90px] text-indigo-600 font-semibold bg-indigo-50 rounded-xl animate-in zoom-in-95">
