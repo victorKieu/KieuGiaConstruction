@@ -2,297 +2,382 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as faceapi from 'face-api.js';
-import { Camera, MapPin, CheckCircle2, XCircle, Loader2, Building2, AlertOctagon, ScanFace, Play, SquareSquare } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Play, Users, UserSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import { getNearbyProjectAndFaceData, processFaceAttendance } from '@/lib/action/attendanceActions';
 
 interface FaceIDCheckInProps {
-    supervisorId?: string;
+    userRole?: string;
     onScanSuccess?: () => void;
-    onClose?: () => void; // ✅ Prop dùng để báo cho Component cha đóng Form
+    onClose?: () => void;
 }
 
-export default function FaceIDCheckIn({ supervisorId, onScanSuccess, onClose }: FaceIDCheckInProps) {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const isProcessingRef = useRef(false);
+type ScanMode = "self" | "proxy";
 
+export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClose }: FaceIDCheckInProps) {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    const [mode, setMode] = useState<ScanMode>("self");
     const [isModelLoaded, setIsModelLoaded] = useState(false);
     const [faceMatcher, setFaceMatcher] = useState<faceapi.FaceMatcher | null>(null);
-    const [isScanningStatus, setIsScanningStatus] = useState(false);
     const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
     const [cameraError, setCameraError] = useState<boolean>(false);
-    const [isCameraActive, setIsCameraActive] = useState(false);
 
-    const [isPaused, setIsPaused] = useState(false);
-    const [isStopped, setIsStopped] = useState(false);
-
-    const [activeProject, setActiveProject] = useState<{ id: string, name: string, distance: number } | null>(null);
-    const [statusMsg, setStatusMsg] = useState("Đang định vị GPS...");
-    const [scanResult, setScanResult] = useState<{ name: string, code: string, message: string, type: 'CHECK_IN' | 'CHECK_OUT' | 'ERROR' } | null>(null);
+    // Giao diện điều hướng AI
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [instruction, setInstruction] = useState("Đang tìm khuôn mặt...");
+    const [scanProgress, setScanProgress] = useState(0); // 0 -> 100
+    const [scanResult, setScanResult] = useState<{ success: boolean, type?: string, message: string, name?: string } | null>(null);
 
     // =======================================================================
-    // ✅ HÀM TẮT CAMERA CHUYÊN DỤNG (CẮT SẠCH LUỒNG)
+    // 0. HÀM QUẢN LÝ PHẦN CỨNG CAMERA
     // =======================================================================
     const stopCamera = () => {
-        setIsCameraActive(false);
-        if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => {
+                track.stop();
+                track.enabled = false;
+            });
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
             videoRef.current.srcObject = null;
         }
     };
 
-    const startVideo = () => {
-        setCameraError(false);
-        setIsCameraActive(false);
-        setIsStopped(false);
-
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-            .then(stream => {
-                if (videoRef.current) videoRef.current.srcObject = stream;
-            })
-            .catch(err => {
+    const startCamera = async (currentMode: ScanMode) => {
+        try {
+            setCameraError(false);
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                toast.error("Trình duyệt chặn Camera. Bạn cần dùng HTTPS hoặc Localhost.");
                 setCameraError(true);
-                toast.error("Không thể mở Camera. Vui lòng kiểm tra quyền truy cập.");
+                return;
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: currentMode === "self" ? "user" : "environment",
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                }
             });
+
+            streamRef.current = stream;
+
+            if (!videoRef.current) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            } else {
+                toast.error("Lỗi giao diện: Không thể gắn luồng Video.");
+            }
+        } catch (err: any) {
+            console.error("Camera Error:", err);
+            setCameraError(true);
+            toast.error("Không thể mở Camera.");
+        }
     };
 
-    // 1. Tự động Khởi tạo
+    // =======================================================================
+    // 1. TẢI MODEL AI
+    // =======================================================================
     useEffect(() => {
-        let isMounted = true;
-
-        const initSystem = async () => {
-            navigator.geolocation.getCurrentPosition(
-                async (pos) => {
-                    if (!isMounted) return;
-                    setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                    setStatusMsg("Đang quét dự án trong bán kính 300m...");
-
-                    const res = await getNearbyProjectAndFaceData(pos.coords.latitude, pos.coords.longitude);
-                    if (!isMounted) return;
-
-                    if (!res.success || !res.project) {
-                        toast.error(res.error);
-                        setStatusMsg(res.error || "Không tìm thấy dự án hợp lệ.");
-                        return;
-                    }
-
-                    setActiveProject(res.project);
-                    setStatusMsg("Đã thấy dự án! Đang tải AI Model...");
-
-                    try {
-                        await Promise.all([
-                            faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
-                            faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-                            faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-                        ]);
-
-                        if (!isMounted) return;
-                        setIsModelLoaded(true);
-
-                        if (res.members && res.members.length > 0) {
-                            const labeledDescriptors = res.members.map((member: any) => {
-                                const floatArray = new Float32Array(member.descriptor);
-                                return new faceapi.LabeledFaceDescriptors(`${member.id}|${member.code}|${member.name}`, [floatArray]);
-                            });
-                            setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.55));
-                            setStatusMsg("Sẵn sàng quét tự động!");
-                            startVideo();
-                        } else {
-                            setStatusMsg("Dự án chưa có data khuôn mặt.");
-                        }
-                    } catch (err) {
-                        if (isMounted) setStatusMsg("Lỗi tải tệp tin AI Model.");
-                    }
-                },
-                () => { if (isMounted) setStatusMsg("Lỗi GPS: Bị từ chối quyền."); },
-                { enableHighAccuracy: true }
-            );
+        const loadModels = async () => {
+            try {
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
+                    faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+                ]);
+                setIsModelLoaded(true);
+            } catch (error) {
+                console.error("Lỗi tải model FaceAPI:", error);
+                toast.error("Không thể tải AI model.");
+            }
         };
-        initSystem();
+        loadModels();
 
-        // Dọn dẹp khi unmount (Đóng form đột ngột)
-        return () => {
-            isMounted = false;
-            stopCamera();
-        };
+        return () => stopCamera();
     }, []);
 
-    // 2. VÒNG LẶP QUÉT
+    // =======================================================================
+    // 2. LẤY ĐỊA ĐIỂM VÀ TẢI DỮ LIỆU NHÂN VIÊN
+    // =======================================================================
     useEffect(() => {
-        let scanInterval: NodeJS.Timeout;
+        if (!isModelLoaded) return;
 
-        if (isCameraActive && faceMatcher && activeProject && location && !isPaused && !isStopped) {
-            scanInterval = setInterval(async () => {
-                if (isProcessingRef.current || !videoRef.current) return;
+        const initializeData = async () => {
+            stopCamera();
+            setFaceMatcher(null);
+            setScanResult(null);
+            setIsProcessing(false);
+            setScanProgress(0);
 
-                try {
-                    const detection = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
+            startCamera(mode);
+            toast.info("Đang lấy định vị...", { id: 'locating' });
 
-                    if (detection) {
-                        isProcessingRef.current = true;
-                        setIsScanningStatus(true);
+            if (!navigator.geolocation) {
+                toast.error("Thiết bị không hỗ trợ GPS", { id: 'locating' });
+                return;
+            }
 
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    setLocation(coords);
+
+                    try {
+                        const { success, members, error } = await getNearbyProjectAndFaceData(coords, mode === "proxy");
+                        if (!success || !members || members.length === 0) {
+                            toast.error(error || "Không tìm thấy dữ liệu khuôn mặt.", { id: 'locating' });
+                            return;
+                        }
+
+                        const labeledDescriptors = members.map((member: any) => {
+                            const floatArray = new Float32Array(Object.values(member.descriptor));
+                            return new faceapi.LabeledFaceDescriptors(`${member.id}::${member.name}`, [floatArray]);
+                        });
+
+                        setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.45));
+                        toast.success("Hệ thống đã sẵn sàng!", { id: 'locating' });
+                    } catch (err) {
+                        toast.error("Lỗi kết nối máy chủ.", { id: 'locating' });
+                    }
+                },
+                (error) => {
+                    toast.error("Vui lòng cấp quyền truy cập vị trí.", { id: 'locating' });
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        };
+
+        initializeData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, isModelLoaded]);
+
+    // =======================================================================
+    // 3. LOGIC CĂN CHỈNH VÀ NHẬN DIỆN (Tốc độ cao 300ms)
+    // =======================================================================
+    const handleVideoPlay = () => {
+        let stableCount = 0;
+        const STABLE_THRESHOLD = 4; // Tương đương khoảng 1.2 giây ổn định
+
+        intervalRef.current = setInterval(async () => {
+            if (!videoRef.current || !faceMatcher || !location || isProcessing || scanResult) return;
+
+            try {
+                // Nhận diện nhanh
+                const detection = await faceapi.detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+
+                if (!detection) {
+                    setInstruction("Đang tìm khuôn mặt...");
+                    setScanProgress(0);
+                    stableCount = 0;
+                    return;
+                }
+
+                // Căn chỉnh giao diện
+                const box = detection.detection.box;
+                const videoW = videoRef.current.videoWidth;
+                const videoH = videoRef.current.videoHeight;
+
+                const isLargeEnough = box.width > (videoW * 0.3);
+                const faceCenterX = box.x + box.width / 2;
+                const faceCenterY = box.y + box.height / 2;
+                const isCentered =
+                    Math.abs(faceCenterX - (videoW / 2)) < (videoW * 0.15) &&
+                    Math.abs(faceCenterY - (videoH / 2)) < (videoH * 0.15);
+
+                if (!isLargeEnough) {
+                    setInstruction("Hãy đưa mặt lại gần hơn");
+                    setScanProgress(0);
+                    stableCount = 0;
+                } else if (!isCentered) {
+                    setInstruction("Di chuyển khuôn mặt vào giữa");
+                    setScanProgress(0);
+                    stableCount = 0;
+                } else {
+                    setInstruction("Giữ nguyên...");
+                    stableCount += 1;
+                    setScanProgress((stableCount / STABLE_THRESHOLD) * 100);
+
+                    // ==========================================
+                    // 4. KHI ĐẠT NGƯỠNG ỔN ĐỊNH -> XỬ LÝ API NHANH
+                    // ==========================================
+                    if (stableCount >= STABLE_THRESHOLD) {
+                        clearInterval(intervalRef.current!);
+                        setIsProcessing(true); // Overlay loading
+
+                        // Đối chiếu descriptor đã trích xuất
                         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
-                        if (bestMatch.label === 'unknown') {
-                            toast.error("⚠️ KHÔNG KHỚP: Nhân công lạ hoặc góc sáng xấu!");
-                            setTimeout(() => {
-                                isProcessingRef.current = false;
-                                setIsScanningStatus(false);
-                            }, 2500);
-                        } else {
-                            const [id, code, name] = bestMatch.label.split('|');
+                        if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.45) {
+                            stopCamera(); // Dừng ngay camera để tối ưu tốc độ và UI
 
-                            const res = await processFaceAttendance(id, activeProject.id, location, supervisorId);
+                            const [empId, empName] = bestMatch.label.split('::');
+                            setInstruction(`Đang ghi nhận: ${empName}...`);
 
-                            if (res.success) {
-                                setScanResult({ name, code, message: res.message!, type: res.type as any });
-                                if (onScanSuccess) onScanSuccess(); // Báo cập nhật bảng công ở ngoài
+                            const result = await processFaceAttendance(empId, location, mode === "proxy");
+
+                            if (result.success) {
+                                toast.success(result.message);
+                                setScanResult({ success: true, type: result.type, message: result.message!, name: empName });
+                                if (onScanSuccess) onScanSuccess();
                             } else {
-                                setScanResult({ name, code, message: res.error!, type: 'ERROR' });
+                                toast.error(result.error);
+                                setScanResult({ success: false, message: result.error!, name: empName });
                             }
-
-                            setIsPaused(true); // Tạm dừng quét đợi thao tác
+                        } else {
+                            toast.error("Khuôn mặt không có trong hệ thống.");
+                            setIsProcessing(false);
+                            setInstruction("Thử lại...");
+                            setScanProgress(0);
+                            stableCount = 0;
+                            // Reset interval (sẽ tự chạy lại vì hàm handleVideoPlay vẫn gắn onPlay)
                         }
                     }
-                } catch (error) {
-                    console.error("Lỗi Auto-scan:", error);
                 }
-            }, 1000);
-        }
-
-        return () => { if (scanInterval) clearInterval(scanInterval); };
-    }, [isCameraActive, faceMatcher, activeProject, location, supervisorId, isPaused, isStopped]);
-
-    // =======================================================================
-    // ✅ CÁC HÀM XỬ LÝ NÚT BẤM (TIẾP TỤC & DỪNG LẠI)
-    // =======================================================================
-    const handleContinue = () => {
-        setScanResult(null);
-        setIsPaused(false);
-        isProcessingRef.current = false;
-        setIsScanningStatus(false);
+            } catch (error) {
+                console.error("Scan error:", error);
+            }
+        }, 300); // Quét mỗi 300ms thay vì 1500ms
     };
 
-    const handleStop = () => {
-        stopCamera(); // 1. Tắt hoàn toàn camera
-        if (onClose) {
-            onClose(); // 2. Yêu cầu Component cha đóng Modal
-        } else {
-            setIsStopped(true); // Fallback nếu quên truyền onClose
-        }
+    const handleClose = () => {
+        stopCamera();
+        if (onClose) onClose();
     };
+
+    const canProxyCheckIn = ['admin', 'manager', 'project_manager', 'team_leader'].includes(userRole.toLowerCase());
 
     return (
-        <div className="flex flex-col items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-xl max-w-md mx-auto">
-            {/* Thông tin Dự án */}
-            <div className={`w-full p-3 rounded-lg border mb-4 flex items-start gap-3 ${activeProject ? 'bg-indigo-50 border-indigo-100' : 'bg-slate-100 border-slate-200'}`}>
-                <div className={`p-2 rounded-full ${activeProject ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-500'}`}>
-                    <Building2 className="w-5 h-5" />
-                </div>
-                <div>
-                    <p className={`text-xs font-semibold uppercase ${activeProject ? 'text-indigo-500' : 'text-slate-500'}`}>Khu vực thi công</p>
-                    {activeProject ? (
-                        <h4 className="font-bold text-indigo-900 text-sm leading-tight">{activeProject.name}</h4>
+        <div className="flex flex-col h-full w-full bg-slate-900 text-white overflow-hidden relative">
+            <div className="p-3 bg-slate-950 border-b border-slate-800 z-10 shadow-md">
+                <Tabs value={mode} onValueChange={(v) => setMode(v as ScanMode)} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 bg-slate-800">
+                        <TabsTrigger value="self" className="font-medium data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+                            <UserSquare className="w-4 h-4 mr-2" /> Cá nhân
+                        </TabsTrigger>
+                        {canProxyCheckIn && (
+                            <TabsTrigger value="proxy" className="font-medium data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+                                <Users className="w-4 h-4 mr-2" /> Chấm Đội
+                            </TabsTrigger>
+                        )}
+                    </TabsList>
+                </Tabs>
+            </div>
+
+            <div className="relative flex-1 flex flex-col items-center justify-center p-4">
+
+                {/* Vòng tròn Camera */}
+                <div className="relative w-full max-w-[320px] aspect-square bg-slate-950 rounded-full overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] flex items-center justify-center">
+
+                    {!isModelLoaded ? (
+                        <div className="flex flex-col items-center text-slate-400">
+                            <Loader2 className="w-8 h-8 animate-spin mb-3 text-emerald-500" />
+                            <span className="text-sm">Đang tải Engine...</span>
+                        </div>
+                    ) : cameraError ? (
+                        <div className="flex flex-col items-center text-red-400 text-center p-4">
+                            <XCircle className="w-10 h-10 mb-2 opacity-60" />
+                            <span className="text-sm">Lỗi Camera</span>
+                            <Button onClick={() => startCamera(mode)} variant="outline" className="mt-4 border-red-500 text-red-400">Thử lại</Button>
+                        </div>
+                    ) : scanResult ? (
+                        // Màn hình kết quả thành công/thất bại
+                        <div className={`flex flex-col items-center justify-center w-full h-full p-4 animate-in zoom-in duration-300 ${scanResult.success ? 'bg-emerald-900/30' : 'bg-red-900/30'}`}>
+                            {scanResult.success ? (
+                                <CheckCircle2 className="w-20 h-20 text-emerald-400 mb-2" />
+                            ) : (
+                                <XCircle className="w-20 h-20 text-red-400 mb-2" />
+                            )}
+                            <h3 className="font-bold text-lg text-center truncate w-full px-4">{scanResult.name}</h3>
+                            <p className={`text-sm text-center line-clamp-2 px-2 ${scanResult.success ? 'text-emerald-300' : 'text-red-300'}`}>
+                                {scanResult.message}
+                            </p>
+                        </div>
                     ) : (
-                        <p className="text-sm font-medium text-slate-600 mt-1">{statusMsg}</p>
+                        <>
+                            {/* Stream Camera */}
+                            <video
+                                ref={videoRef}
+                                onPlay={handleVideoPlay}
+                                autoPlay
+                                playsInline
+                                muted
+                                className={`object-cover w-full h-full transform ${mode === 'self' ? 'scale-x-[-1]' : ''} transition-opacity duration-300 ${isProcessing ? 'opacity-30' : 'opacity-100'}`}
+                            />
+
+                            {/* Vòng định hướng UI */}
+                            {!isProcessing && (
+                                <div className={`absolute inset-0 border-[6px] m-6 rounded-full pointer-events-none transition-colors duration-300 ${scanProgress > 0 ? 'border-emerald-500/80 shadow-[0_0_20px_rgba(16,185,129,0.4)_inset]' : 'border-dashed border-white/20'}`}>
+                                </div>
+                            )}
+
+                            {/* Vòng đếm quá trình nhận diện */}
+                            {scanProgress > 0 && scanProgress < 100 && !isProcessing && (
+                                <div className="absolute inset-0 m-6 rounded-full pointer-events-none" style={{
+                                    background: `conic-gradient(#10b981 ${scanProgress}%, transparent 0)`,
+                                    WebkitMask: "radial-gradient(transparent 68%, black 68%)",
+                                    mask: "radial-gradient(transparent 68%, black 68%)"
+                                }}></div>
+                            )}
+
+                            {/* Lớp phủ khi đang gửi API lên máy chủ */}
+                            {isProcessing && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+                                    <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-3" />
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
-            </div>
 
-            {/* Trạng thái hệ thống */}
-            <div className="flex w-full justify-between mb-3 text-xs font-semibold px-2">
-                <span className={`flex items-center ${isModelLoaded ? 'text-green-600' : 'text-slate-400'}`}>
-                    {isModelLoaded ? <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> : <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
-                    AI Model
-                </span>
-                <span className={`flex items-center ${activeProject ? 'text-green-600' : 'text-slate-400'}`}>
-                    {activeProject ? <MapPin className="w-3.5 h-3.5 mr-1" /> : <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
-                    GPS
-                </span>
-            </div>
+                {/* Khung hướng dẫn hành động */}
+                <div className={`mt-8 h-12 flex items-center justify-center w-full max-w-[320px] px-4 rounded-lg font-medium transition-colors duration-300 ${scanResult?.success ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/40' :
+                        scanResult && !scanResult.success ? 'bg-red-900/50 text-red-400 border border-red-500/40' :
+                            isProcessing ? 'bg-blue-900/50 text-blue-400 border border-blue-500/40' :
+                                scanProgress > 0 ? 'bg-amber-900/50 text-amber-400 border border-amber-500/40' :
+                                    'bg-slate-800 text-slate-300'
+                    }`}>
+                    {scanResult ? (scanResult.success ? "Chấm công hoàn tất!" : "Không hợp lệ") : instruction}
+                </div>
 
-            {/* Khung Camera */}
-            <div className="relative w-full aspect-[3/4] bg-black rounded-2xl overflow-hidden mb-4 shadow-xl border-[5px] border-slate-800">
-                {!isCameraActive && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-400 p-6 text-center bg-slate-900">
-                        <ScanFace className="w-16 h-16 mb-4 opacity-50" />
-
-                        {!activeProject ? (
-                            <p className="text-sm text-red-400 opacity-80">Camera bị khóa vì không tìm thấy dự án gần đây.</p>
-                        ) : !isModelLoaded ? (
-                            <p className="text-sm opacity-60 flex items-center animate-pulse">Đang tải AI...</p>
-                        ) : cameraError ? (
-                            <div className="space-y-3">
-                                <p className="text-sm text-orange-400">Không có quyền truy cập máy ảnh!</p>
-                                <Button onClick={startVideo} variant="secondary" size="sm">Thử lại</Button>
-                            </div>
-                        ) : isStopped ? (
-                            <div className="space-y-4">
-                                <p className="text-sm text-slate-300">Đã dừng chấm công.</p>
-                            </div>
-                        ) : (
-                            <p className="text-sm opacity-60 flex items-center animate-pulse">Khởi động Camera...</p>
-                        )}
-                    </div>
-                )}
-
-                <video
-                    ref={videoRef} autoPlay muted playsInline
-                    onPlaying={() => setIsCameraActive(true)}
-                    className={`object-cover w-full h-full transform scale-x-[-1] transition-opacity duration-300 ${isPaused ? 'opacity-50 grayscale' : 'opacity-100'}`}
-                />
-
-                {isCameraActive && !isPaused && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center">
-                        <div className={`w-2/3 aspect-square border-[3px] border-dashed rounded-full transition-colors duration-300 ${isScanningStatus ? 'border-green-400 shadow-[0_0_20px_rgba(74,222,128,0.5)]' : 'border-white/30'}`}></div>
-                        {!scanResult && !isScanningStatus && (
-                            <p className="absolute bottom-10 bg-black/50 text-white/80 text-xs px-4 py-1.5 rounded-full backdrop-blur-sm">
-                                Đưa khuôn mặt vào khung viền
-                            </p>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* VÙNG HIỂN THỊ KẾT QUẢ & NÚT BẤM */}
-            <div className="min-h-[140px] w-full flex flex-col justify-end">
-                {isScanningStatus && !scanResult && (
-                    <div className="flex items-center justify-center h-[90px] text-indigo-600 font-semibold bg-indigo-50 rounded-xl animate-in zoom-in-95">
-                        <Loader2 className="w-6 h-6 mr-2 animate-spin" /> Đang nhận diện và chấm công...
-                    </div>
-                )}
-
+                {/* Các phím điều khiển nhanh */}
                 {scanResult && (
-                    <div className={`flex flex-col w-full p-4 rounded-xl border animate-in slide-in-from-bottom-4 shadow-sm ${scanResult.type === 'CHECK_IN' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
-                            scanResult.type === 'CHECK_OUT' ? 'bg-blue-50 border-blue-200 text-blue-800' :
-                                'bg-red-50 border-red-200 text-red-800'
-                        }`}>
-                        <div className="mb-3">
-                            <p className="text-[11px] font-bold uppercase tracking-widest opacity-70 mb-0.5">{scanResult.type === 'ERROR' ? 'THẤT BẠI' : scanResult.type}</p>
-                            <p className="font-bold text-lg leading-tight truncate">{scanResult.name}</p>
-                            <p className="text-sm opacity-90 mt-1 line-clamp-2">{scanResult.message}</p>
-                        </div>
-
-                        {/* HAI NÚT HÀNH ĐỘNG */}
-                        <div className="flex gap-2 mt-auto">
-                            <Button onClick={handleContinue} className={`flex-1 h-11 shadow-sm ${scanResult.type === 'CHECK_IN' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' :
-                                    scanResult.type === 'CHECK_OUT' ? 'bg-blue-600 hover:bg-blue-700 text-white' :
-                                        'bg-red-600 hover:bg-red-700 text-white'
-                                }`}>
-                                <Play className="w-4 h-4 mr-2" /> Tiếp tục quét
+                    <div className="flex gap-4 mt-6 w-full max-w-[320px]">
+                        <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => {
+                            setScanResult(null);
+                            startCamera(mode);
+                        }}>
+                            <Play className="w-4 h-4 mr-2" /> Tiếp tục
+                        </Button>
+                        {onClose && (
+                            <Button variant="outline" className="flex-1 border-slate-700 hover:bg-slate-800 text-slate-300" onClick={handleClose}>
+                                Đóng
                             </Button>
-                            <Button onClick={handleStop} variant="outline" className={`flex-1 h-11 bg-white hover:bg-slate-50 ${scanResult.type === 'CHECK_IN' ? 'border-emerald-200 text-emerald-700' :
-                                    scanResult.type === 'CHECK_OUT' ? 'border-blue-200 text-blue-700' :
-                                        'border-red-200 text-red-700'
-                                }`}>
-                                <SquareSquare className="w-4 h-4 mr-2" /> Dừng
-                            </Button>
-                        </div>
+                        )}
                     </div>
                 )}
+
+                {!scanResult && onClose && (
+                    <Button variant="ghost" className="mt-4 text-slate-500 hover:text-slate-300" onClick={handleClose}>
+                        Hủy bỏ
+                    </Button>
+                )}
+
             </div>
         </div>
     );

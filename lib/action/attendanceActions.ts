@@ -8,10 +8,10 @@ import { sendPushToUser } from "@/lib/action/pushNotification";
 import { revalidatePath } from "next/cache";
 
 // ============================================================================
-// 1. HÀM TÍNH KHOẢNG CÁCH (HAVERSINE)
+// 1. HÀM TÍNH KHOẢNG CÁCH (HAVERSINE) TRÊN SERVER
 // ============================================================================
 function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371e3;
+    const R = 6371e3; // Bán kính Trái Đất (mét)
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
     const a =
@@ -23,133 +23,228 @@ function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number,
 }
 
 // ============================================================================
-// 2. API CHẤM CÔNG GPS (SỬ DỤNG AUTH_ID)
+// 2. LÕI CHẤM CÔNG CHÍNH: KẾT HỢP FACE ID + GPS SERVER
 // ============================================================================
-
-export async function submitGPSCheckIn(payload: { lat: number, lng: number }) {
-    return submitMobileCheckIn(payload);
-}
-
-export async function submitMobileCheckIn(payload: { lat: number, lng: number }) {
-    const supabase = await createSupabaseServerClient();
-
+export async function processFaceAttendance(
+    scannedEmployeeId: string,
+    location: { lat: number; lng: number },
+    isProxyCheckIn: boolean = false
+) {
     try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) return { success: false, error: "Phiên đăng nhập hết hạn." };
+        const supabase = await createSupabaseServerClient();
 
-        // 🚀 LẤY ID GỐC CỦA NHÂN VIÊN TỪ AUTH_ID
-        const { data: currentEmp } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
-        if (!currentEmp) return { success: false, error: "Không tìm thấy hồ sơ nhân viên được liên kết với tài khoản này." };
-        const employeeId = currentEmp.id;
+        // BƯỚC 1: XÁC THỰC NGƯỜI CẦM MÁY
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Phiên đăng nhập không hợp lệ.");
 
-        // ... Lấy cấu hình công ty và dự án (Giữ nguyên)
-        const { data: companySetting } = await supabase.from('company_settings').select('name, geocode, attendance_radius').limit(1).single();
-        let allowedLocations: Array<{ name: string, lat: number, lng: number, radius: number }> = [];
+        const { data: employee } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
+        const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
 
-        if (companySetting && companySetting.geocode) {
-            const parts = companySetting.geocode.split(',');
-            if (parts.length >= 2) {
-                const hoLat = parseFloat(parts[0].trim());
-                const hoLng = parseFloat(parts[1].trim());
-                if (!isNaN(hoLat) && !isNaN(hoLng)) {
-                    allowedLocations.push({
-                        name: companySetting.name || "Trụ sở chính", lat: hoLat, lng: hoLng,
-                        radius: companySetting.attendance_radius || 150
-                    });
+        if (!employee || !profile) throw new Error("Không tìm thấy hồ sơ người dùng.");
+
+        const currentEmpId = employee.id;
+        const isAdmin = profile.role_id === 'admin';
+
+        if (!isProxyCheckIn && currentEmpId !== scannedEmployeeId) {
+            throw new Error("TỪ CHỐI: Khuôn mặt không khớp với tài khoản đang đăng nhập.");
+        }
+
+        // BƯỚC 2: CHỐT THỜI GIAN
+        const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+        const todayStr = vnTime.toISOString().split('T')[0];
+        const dbTimeStr = vnTime.toISOString();
+        const checkInHour = vnTime.getHours();
+        const checkInMinute = vnTime.getMinutes();
+
+        // BƯỚC 3: AUTO GEOFENCING (TỰ ĐỘNG ĐỊNH VỊ)
+        let currentLocationId: string | null = null;
+        let currentLocationName = "";
+        let isAtOffice = false;
+        let minDistance = Infinity;
+
+        const { data: companySetting } = await supabase.from('company_settings').select('geocode, attendance_radius').single();
+        const ALLOWED_RADIUS = companySetting?.attendance_radius || 50;
+
+        if (companySetting?.geocode) {
+            const [lat, lng] = companySetting.geocode.split(',').map(Number);
+            const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, lat, lng);
+            minDistance = Math.min(minDistance, dist);
+            if (dist <= ALLOWED_RADIUS) {
+                isAtOffice = true;
+                currentLocationName = "Văn phòng Công ty";
+            }
+        }
+
+        if (!isAtOffice) {
+            const { data: activeProjects } = await supabase.from('projects').select('id, name, geocode').not('geocode', 'is', null);
+            if (activeProjects) {
+                for (const proj of activeProjects) {
+                    const [pLat, pLng] = proj.geocode.split(',').map(Number);
+                    const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, pLat, pLng);
+                    minDistance = Math.min(minDistance, dist);
+
+                    if (dist <= ALLOWED_RADIUS) {
+                        currentLocationId = proj.id;
+                        currentLocationName = proj.name;
+                        break;
+                    }
                 }
             }
         }
 
-        const { data: memberProjects } = await supabase.from('project_members').select(`project_id, projects ( name, geocode )`).eq('user_id', user.id);
-        if (memberProjects && memberProjects.length > 0) {
-            memberProjects.forEach((mp: any) => {
-                const proj = mp.projects;
-                if (proj && proj.geocode) {
-                    const parts = proj.geocode.split(',');
-                    if (parts.length >= 2) {
-                        const projLat = parseFloat(parts[0].trim());
-                        const projLng = parseFloat(parts[1].trim());
-                        if (!isNaN(projLat) && !isNaN(projLng)) {
-                            allowedLocations.push({ name: `Công trình: ${proj.name}`, lat: projLat, lng: projLng, radius: 300 });
-                        }
-                    }
+        if (!isAtOffice && !currentLocationId) {
+            throw new Error(`Ngoài vùng chấm công! Điểm dự án gần nhất cách ${Math.round(minDistance)}m (Yêu cầu < ${ALLOWED_RADIUS}m).`);
+        }
+
+        // BƯỚC 4: KIỂM TRA QUYỀN
+        if (isProxyCheckIn) {
+            if (isAtOffice) {
+                const hrRoles = ['hr_manager', 'hr_staff'];
+                if (!isAdmin && !hrRoles.includes(profile.role_id)) {
+                    throw new Error("Chấm công hộ tại văn phòng chỉ dành cho phòng Hành chính Nhân sự.");
                 }
-            });
+            } else {
+                const { data: supLink } = await supabase.from('project_members').select('role_id').eq('project_id', currentLocationId).eq('employee_id', currentEmpId).single();
+                const validRoles = ['project_manager', 'manager', 'team_leader', 'DIRECTOR', 'MANAGER', 'TEAM_LEADER'];
+                if (!isAdmin && (!supLink || !validRoles.includes(supLink.role_id))) {
+                    throw new Error("TỪ CHỐI: Bạn không có quyền Tổ trưởng/Quản lý tại dự án này để chấm công hộ.");
+                }
+            }
+
+            if (currentLocationId) {
+                const { data: workerLink } = await supabase.from('project_members').select('id').eq('project_id', currentLocationId).eq('employee_id', scannedEmployeeId).single();
+                if (!workerLink) throw new Error("TỪ CHỐI: Nhân sự này chưa được thêm vào danh sách thi công của dự án.");
+            }
+        } else {
+            if (!isAtOffice && currentLocationId && !isAdmin) {
+                const { data: myLink } = await supabase.from('project_members').select('id').eq('project_id', currentLocationId).eq('employee_id', currentEmpId).single();
+                if (!myLink) throw new Error("TỪ CHỐI: Bạn không có tên trong danh sách nhân sự thi công của dự án này.");
+            }
         }
 
-        let isValidLocation = false;
-        if (allowedLocations.length === 0) return { success: false, error: "Chưa có cấu hình tọa độ chấm công." };
-
-        for (const loc of allowedLocations) {
-            const distance = getDistanceFromLatLonInMeters(payload.lat, payload.lng, loc.lat, loc.lng);
-            if (distance <= loc.radius) { isValidLocation = true; break; }
-        }
-
-        if (!isValidLocation) return { success: false, error: `Tọa độ không hợp lệ. Vui lòng vào khu vực quy định.` };
-
-        const exactTimeZone = tzlookup(payload.lat, payload.lng);
-        const serverNow = new Date();
-        const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: exactTimeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        const parts = formatter.formatToParts(serverNow);
-        const tp = parts.reduce((acc: any, part) => { acc[part.type] = part.value; return acc; }, {});
-
-        const todayStr = `${tp.year}-${tp.month}-${tp.day}`;
-        const dbTimeStr = serverNow.toISOString();
-
-        // 🚀 SỬ DỤNG EMPLOYEE_ID ĐỂ TRUY VẤN
-        const { data: existingRecord } = await supabase
-            .from('attendance_records')
-            .select('*')
-            .eq('employee_id', employeeId)
-            .eq('date', todayStr)
-            .maybeSingle();
+        // BƯỚC 5: GHI NHẬN DB
+        const { data: existingRecord } = await supabase.from('attendance_records').select('*').eq('employee_id', scannedEmployeeId).eq('date', todayStr).single();
+        const messageParams = isProxyCheckIn ? `(Quản lý xác nhận)` : '';
 
         if (existingRecord) {
             if (!existingRecord.check_out_time) {
-                // CHỐT CA
                 const checkInTime = new Date(existingRecord.check_in_time);
-                const diffMs = serverNow.getTime() - checkInTime.getTime();
-                let workingHours = diffMs / (1000 * 60 * 60);
-                if (workingHours > 5) workingHours -= 1.5;
-                workingHours = parseFloat(Math.max(0, workingHours).toFixed(2));
-
-                let status = 'Đủ công';
-                if (workingHours >= 8.5) status = 'Tăng ca (OT)';
-                else if (workingHours >= 7.5) status = 'Đủ công';
-                else if (workingHours >= 3.5) status = 'Nửa công';
-                else status = 'Về sớm';
+                let workingHours = (vnTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+                if (workingHours > 5) workingHours -= 1.5; // Trừ nghỉ trưa nếu làm > 5 tiếng
 
                 await supabase.from('attendance_records').update({
-                    check_out_time: dbTimeStr, check_out_lat: payload.lat, check_out_lng: payload.lng,
-                    status: status, working_hours: workingHours, updated_at: new Date().toISOString()
+                    check_out_time: dbTimeStr, check_out_lat: location.lat, check_out_lng: location.lng,
+                    status: workingHours >= 8 ? 'Hoàn thành' : 'Về sớm',
+                    working_hours: parseFloat(Math.max(0, workingHours).toFixed(2)), updated_at: dbTimeStr
                 }).eq('id', existingRecord.id);
 
-                return { success: true, type: 'CHECK_OUT', message: `Chốt ca! Giờ làm: ${workingHours}h - ${status}` };
+                revalidatePath(`/hrm/attendance`);
+                return { success: true, type: 'CHECK_OUT', message: `Chốt ca thành công tại ${currentLocationName}! ${messageParams}` };
             } else {
-                return { success: false, error: "Bạn đã hoàn thành chấm công hôm nay." };
+                return { success: false, error: "Nhân sự này đã hoàn thành chấm công hôm nay." };
             }
         } else {
-            // VÀO CA
-            const checkInHour = parseInt(tp.hour);
-            const checkInMinute = parseInt(tp.minute);
             const isLate = checkInHour > 8 || (checkInHour === 8 && checkInMinute > 0);
-            const status = isLate ? 'Đi muộn' : 'Đang làm việc';
-
-            // 🚀 INSERT VỚI EMPLOYEE_ID
             await supabase.from('attendance_records').insert({
-                employee_id: employeeId, date: todayStr, check_in_time: dbTimeStr,
-                check_in_lat: payload.lat, check_in_lng: payload.lng, status: status
+                employee_id: scannedEmployeeId, date: todayStr, check_in_time: dbTimeStr,
+                check_in_lat: location.lat, check_in_lng: location.lng, status: isLate ? 'Đi muộn' : 'Đang làm việc'
             });
 
-            return { success: true, type: 'CHECK_IN', message: `Vào ca lúc ${tp.hour}:${tp.minute}. Trạng thái: ${status}` };
+            revalidatePath(`/hrm/attendance`);
+            return { success: true, type: 'CHECK_IN', message: `Vào ca thành công tại ${currentLocationName}! ${messageParams}` };
         }
     } catch (error: any) {
-        return { success: false, error: "Lỗi hệ thống không xác định." };
+        return { success: false, error: error.message || 'Lỗi hệ thống khi xử lý chấm công.' };
     }
 }
 
 // ============================================================================
-// 3. LẤY BẢNG CÔNG CÁ NHÂN (TRUY VẤN NGƯỢC TỪ AUTH_ID SANG EMPLOYEES)
+// 3. TẢI DỮ LIỆU KHUÔN MẶT ĐỂ ĐỐI CHIẾU (DÙNG CHUNG AUTO-GEOFENCING)
+// ============================================================================
+export async function getNearbyProjectAndFaceData(location: { lat: number; lng: number }, isProxyCheckIn: boolean = false) {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Hết phiên đăng nhập." };
+
+    const { data: employee } = await supabase.from('employees').select('id, name, code, face_descriptor').eq('auth_id', user.id).single();
+    const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
+
+    if (!employee || !profile) return { success: false, error: "Hồ sơ không hợp lệ." };
+
+    const isAdmin = profile.role_id === 'admin';
+
+    // ĐỊNH VỊ (Giống hệt processFaceAttendance)
+    let currentLocationId: string | null = null;
+    let currentLocationName = "";
+    let isAtOffice = false;
+    let minDistance = Infinity;
+
+    const { data: companySetting } = await supabase.from('company_settings').select('geocode, attendance_radius').single();
+    const ALLOWED_RADIUS = companySetting?.attendance_radius || 50;
+
+    if (companySetting?.geocode) {
+        const [lat, lng] = companySetting.geocode.split(',').map(Number);
+        const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, lat, lng);
+        if (dist <= ALLOWED_RADIUS) {
+            isAtOffice = true; currentLocationName = "Văn phòng Công ty"; minDistance = dist;
+        }
+    }
+
+    if (!isAtOffice) {
+        const { data: activeProjects } = await supabase.from('projects').select('id, name, geocode').not('geocode', 'is', null);
+        if (activeProjects) {
+            for (const proj of activeProjects) {
+                const [pLat, pLng] = proj.geocode.split(',').map(Number);
+                const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, pLat, pLng);
+                if (dist <= ALLOWED_RADIUS && dist < minDistance) {
+                    currentLocationId = proj.id; currentLocationName = proj.name; minDistance = dist;
+                }
+            }
+        }
+    }
+
+    if (!isAtOffice && !currentLocationId) {
+        return { success: false, error: `Ngoài vùng chấm công! Khoảng cách hiện tại: ${Math.round(minDistance)}m.` };
+    }
+
+    // TẢI KHUÔN MẶT THEO CHẾ ĐỘ
+    let members: any[] = [];
+
+    if (isProxyCheckIn) {
+        if (isAtOffice) return { success: false, error: "Chấm công hộ chỉ khả dụng tại công trường." };
+
+        // Load toàn bộ nhân viên dự án
+        const { data: mems } = await supabase.from('project_members')
+            .select(`employee_id, employees!inner(id, name, code, face_descriptor)`)
+            .eq('project_id', currentLocationId)
+            .not('employees.face_descriptor', 'is', null);
+
+        members = mems || [];
+    } else {
+        // Tự chấm công -> Chỉ lấy bản thân mình
+        if (employee.face_descriptor) {
+            members = [{ employee_id: employee.id, employees: employee }];
+        }
+    }
+
+    if (members.length === 0) return { success: false, error: "Không tìm thấy dữ liệu khuôn mặt hợp lệ (Chưa đăng ký Face ID)." };
+
+    const formattedMembers = members.map((item: any) => ({
+        id: item.employees.id,
+        name: item.employees.name,
+        code: item.employees.code,
+        descriptor: item.employees.face_descriptor
+    }));
+
+    return {
+        success: true,
+        project: { id: currentLocationId, name: currentLocationName, distance: Math.round(minDistance) },
+        members: formattedMembers
+    };
+}
+
+// ============================================================================
+// CÁC HÀM CŨ LIÊN QUAN ĐẾN ĐƠN TỪ / QUẢN LÝ (Giữ nguyên)
 // ============================================================================
 
 export async function getMyAttendanceRecords() {
@@ -158,43 +253,24 @@ export async function getMyAttendanceRecords() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return [];
 
-        // 🚀 Lấy thông tin gốc
         const { data: employee } = await supabase.from('employees').select('id, code, name').eq('auth_id', user.id).single();
         if (!employee) return [];
 
-        const { data: records, error } = await supabase
-            .from('attendance_records')
-            .select('*')
-            .eq('employee_id', employee.id)
-            .order('date', { ascending: false })
-            .limit(30);
+        const { data: records, error } = await supabase.from('attendance_records').select('*').eq('employee_id', employee.id).order('date', { ascending: false }).limit(30);
 
         if (error || !records || records.length === 0) return [];
-
-        const empName = employee.name;
-        const empCode = employee.code;
 
         const minDate = records[records.length - 1].date;
         const maxDate = records[0].date;
 
-        const { data: approvedRequests } = await supabase
-            .from('attendance_requests')
-            .select('start_date, actual_in_time, actual_out_time')
-            .eq('employee_id', employee.id) // 🚀
-            .eq('status', 'approved')
-            .eq('request_type', 'explanation')
-            .gte('start_date', minDate)
-            .lte('start_date', maxDate)
-            .order('created_at', { ascending: true });
+        const { data: approvedRequests } = await supabase.from('attendance_requests').select('start_date, actual_in_time, actual_out_time').eq('employee_id', employee.id).eq('status', 'approved').eq('request_type', 'explanation').gte('start_date', minDate).lte('start_date', maxDate).order('created_at', { ascending: true });
 
-        const reqMap = (approvedRequests || []).reduce((acc: any, req: any) => {
-            acc[req.start_date] = req; return acc;
-        }, {});
+        const reqMap = (approvedRequests || []).reduce((acc: any, req: any) => { acc[req.start_date] = req; return acc; }, {});
 
         return records.map((record: any) => {
             const reqInfo = reqMap[record.date];
             return {
-                id: record.id, date: record.date, employeeCode: empCode, name: empName,
+                id: record.id, date: record.date, employeeCode: employee.code, name: employee.name,
                 checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : "",
                 checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }) : "",
                 adjustedCheckIn: reqInfo?.actual_in_time ? reqInfo.actual_in_time.substring(0, 5) : undefined,
@@ -206,17 +282,12 @@ export async function getMyAttendanceRecords() {
     } catch (e) { return []; }
 }
 
-// ============================================================================
-// 4. GỬI ĐƠN TỪ (BẰNG AUTH_ID)
-// ============================================================================
-
 export async function submitAttendanceRequest(payload: any) {
     const supabase = await createSupabaseServerClient();
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Vui lòng đăng nhập." };
 
-        // 🚀 LẤY ID NHÂN VIÊN
         const { data: employee } = await supabase.from('employees').select('id, name, manager_id').eq('auth_id', user.id).single();
         if (!employee) return { success: false, error: "Hồ sơ không hợp lệ." };
 
@@ -225,34 +296,14 @@ export async function submitAttendanceRequest(payload: any) {
             const firstDay = new Date(reqDate.getFullYear(), reqDate.getMonth(), 1).toLocaleDateString('en-CA');
             const lastDay = new Date(reqDate.getFullYear(), reqDate.getMonth() + 1, 0).toLocaleDateString('en-CA');
 
-            const { count, error: countError } = await supabase
-                .from('attendance_requests')
-                .select('*', { count: 'exact', head: true })
-                .eq('employee_id', employee.id)
-                .eq('request_type', 'explanation')
-                .neq('sub_type', 'field_work')
-                .gte('start_date', firstDay).lte('start_date', lastDay);
-
-            if (countError) {
-                return { success: false, error: `Lỗi đếm số lượng đơn: ${countError.message}` };
-            }
-
+            const { count, error: countError } = await supabase.from('attendance_requests').select('*', { count: 'exact', head: true }).eq('employee_id', employee.id).eq('request_type', 'explanation').neq('sub_type', 'field_work').gte('start_date', firstDay).lte('start_date', lastDay);
+            if (countError) return { success: false, error: `Lỗi đếm số lượng đơn: ${countError.message}` };
             if (count !== null && count >= 3) return { success: false, error: "Tối đa 3 lần giải trình/tháng." };
         }
 
-        // 🚀 Lưu theo ID nhân viên
-        const { error } = await supabase.from('attendance_requests').insert({
-            ...payload,
-            employee_id: employee.id
-        });
+        const { error } = await supabase.from('attendance_requests').insert({ ...payload, employee_id: employee.id });
+        if (error) return { success: false, error: `Lỗi DB: ${error.message}` };
 
-        // ✅ HIỂN THỊ LỖI THẬT CỦA DATABASE NẾU INSERT THẤT BẠI
-        if (error) {
-            console.error("[DB_INSERT_REQUEST_ERROR]", error);
-            return { success: false, error: `Lỗi DB: ${error.message}` };
-        }
-
-        // Bắn thông báo (Dùng AUTH_ID của quản lý)
         if (employee.manager_id) {
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
             if (manager && manager.auth_id) {
@@ -266,15 +317,8 @@ export async function submitAttendanceRequest(payload: any) {
             }
         }
         return { success: true, message: "Đã gửi đơn thành công!" };
-    } catch (e: any) {
-        console.error("[SERVER_CATCH_ERROR]", e);
-        return { success: false, error: `Lỗi hệ thống: ${e.message}` };
-    }
+    } catch (e: any) { return { success: false, error: `Lỗi hệ thống: ${e.message}` }; }
 }
-
-// ============================================================================
-// 5. API QUẢN LÝ: DANH SÁCH ĐƠN & DUYỆT ĐƠN
-// ============================================================================
 
 export async function getPendingRequests() {
     const supabase = await createSupabaseServerClient();
@@ -282,7 +326,7 @@ export async function getPendingRequests() {
         const userProfile = await getUserProfile();
         if (!userProfile || !userProfile.isAuthenticated) return [];
 
-        const currentEmployeeId = userProfile.entityId; // 🚀 entityId chính là employees.id
+        const currentEmployeeId = userProfile.entityId;
         const userRole = (userProfile.role || '').toLowerCase();
         const isHR = userRole === 'admin' || userRole === 'hr' || userRole === 'giám đốc';
 
@@ -293,7 +337,6 @@ export async function getPendingRequests() {
             const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
             let allowedDeptIds = new Set<string>(directManagedDeptIds);
 
-            // ... Logic đệ quy phòng ban con (giữ nguyên)
             if (directManagedDeptIds.length > 0) {
                 const { data: allDepts } = await supabase.from('sys_dictionaries').select('id, meta_data').eq('category', 'DEPARTMENT');
                 let addedNew = true;
@@ -308,7 +351,6 @@ export async function getPendingRequests() {
                 }
             }
 
-            // 🚀 SỬ DỤNG ID (THAY VÌ AUTH_ID)
             const { data: deptEmps } = await supabase.from('employees').select('id').in('department_id', Array.from(allowedDeptIds));
             const { data: directReports } = await supabase.from('employees').select('id').eq('manager_id', currentEmployeeId);
 
@@ -321,21 +363,19 @@ export async function getPendingRequests() {
         }
 
         let query = supabase.from('attendance_requests').select('*').eq('status', 'pending');
-        if (!isHR) query = query.in('employee_id', targetEmpIds); // 🚀
+        if (!isHR) query = query.in('employee_id', targetEmpIds);
 
         const { data: requests, error } = await query.order('created_at', { ascending: false });
         if (error || !requests) return [];
 
         const empIds = [...new Set(requests.map(r => r.employee_id))];
-        // 🚀 DÙNG ID ĐỂ QUERY THÔNG TIN
         const { data: employees } = await supabase.from('employees').select('id, code, name').in('id', empIds);
         const empMap = (employees || []).reduce((acc: any, emp: any) => { acc[emp.id] = emp; return acc; }, {});
 
-        const enrichedRequests = await Promise.all(requests.map(async (req) => {
+        return await Promise.all(requests.map(async (req) => {
             let machine_in_time = null, machine_out_time = null;
             if (req.request_type === 'explanation' && req.sub_type !== 'field_work') {
-                const { data: record } = await supabase.from('attendance_records').select('check_in_time, check_out_time')
-                    .eq('employee_id', req.employee_id).eq('date', req.start_date).maybeSingle();
+                const { data: record } = await supabase.from('attendance_records').select('check_in_time, check_out_time').eq('employee_id', req.employee_id).eq('date', req.start_date).maybeSingle();
                 machine_in_time = record?.check_in_time || null;
                 machine_out_time = record?.check_out_time || null;
             }
@@ -345,7 +385,6 @@ export async function getPendingRequests() {
                 machine_in_time, machine_out_time
             };
         }));
-        return enrichedRequests;
     } catch (e) { return []; }
 }
 
@@ -355,30 +394,25 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Lỗi phiên." };
 
-        // 🚀 LẤY ID QUẢN LÝ
         const { data: approverEmp } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
-
         const { data: request } = await supabase.from('attendance_requests').select('*').eq('id', requestId).single();
         if (!request) throw new Error("Không tìm thấy đơn.");
 
         await supabase.from('attendance_requests').update({
-            status: newStatus, approver_id: approverEmp?.id || null, // 🚀 Lưu ID Quản lý
+            status: newStatus, approver_id: approverEmp?.id || null,
             approver_note: adminNotes || null, updated_at: new Date().toISOString()
         }).eq('id', requestId);
 
-        // 2. LOGIC VÁ BẢNG CÔNG (Giữ nguyên logic của bạn)
         if (newStatus === 'approved') {
             if (request.request_type === 'explanation') {
                 const { data: record } = await supabase.from('attendance_records').select('*').eq('employee_id', request.employee_id).eq('date', request.start_date).single();
                 const formatTimeStr = (t: string) => t.length > 5 ? t.substring(0, 5) : t;
-                const targetInTimeStr = request.actual_in_time;
-                const targetOutTimeStr = request.actual_out_time;
 
                 let finalInDate = record?.check_in_time ? new Date(record.check_in_time) : null;
                 let finalOutDate = record?.check_out_time ? new Date(record.check_out_time) : null;
 
-                if (targetInTimeStr) finalInDate = new Date(`${request.start_date}T${formatTimeStr(targetInTimeStr)}:00+07:00`);
-                if (targetOutTimeStr) finalOutDate = new Date(`${request.start_date}T${formatTimeStr(targetOutTimeStr)}:00+07:00`);
+                if (request.actual_in_time) finalInDate = new Date(`${request.start_date}T${formatTimeStr(request.actual_in_time)}:00+07:00`);
+                if (request.actual_out_time) finalOutDate = new Date(`${request.start_date}T${formatTimeStr(request.actual_out_time)}:00+07:00`);
 
                 let wHoursToSave = 0, calcStatus = 'Đủ công';
                 if (finalInDate && finalOutDate) {
@@ -420,7 +454,6 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
             }
         }
 
-        // BẮN THÔNG BÁO CHO NHÂN VIÊN (Lấy auth_id của nhân viên để Push)
         const { data: targetEmp } = await supabase.from('employees').select('auth_id').eq('id', request.employee_id).single();
         if (targetEmp && targetEmp.auth_id) {
             const notifTitle = `Đơn ${request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình'} ${newStatus === 'approved' ? 'ĐÃ DUYỆT' : 'BỊ TỪ CHỐI'}`;
@@ -430,10 +463,6 @@ export async function processAttendanceRequest(requestId: string, newStatus: 'ap
         return { success: true, message: "Đã xử lý." };
     } catch (e: any) { return { success: false, error: "Lỗi hệ thống." }; }
 }
-
-// ============================================================================
-// 6. LẤY BẢNG CÔNG TOÀN CÔNG TY DÀNH CHO HR
-// ============================================================================
 
 export async function getAllAttendanceRecords(month: number, year: number, searchQuery: string = "") {
     const supabase = await createSupabaseServerClient();
@@ -448,11 +477,9 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
         let targetEmpIds: string[] = [];
 
         if (!isHR) {
-            // Lọc theo quản lý phòng ban (Tương tự getPendingRequests)
             const { data: managedDepts } = await supabase.from('department_managers').select('department_id').eq('manager_id', currentEmployeeId);
             const directManagedDeptIds = managedDepts ? managedDepts.map(d => d.department_id) : [];
             let allowedDeptIds = new Set<string>(directManagedDeptIds);
-            // ... (Logic đệ quy bỏ qua cho gọn code, đảm bảo đã fill allowedDeptIds)
 
             const { data: deptEmps } = await supabase.from('employees').select('id').in('department_id', Array.from(allowedDeptIds));
             const { data: directReports } = await supabase.from('employees').select('id').eq('manager_id', currentEmployeeId);
@@ -499,9 +526,6 @@ export async function getAllAttendanceRecords(month: number, year: number, searc
     } catch (e) { return []; }
 }
 
-// ============================================================================
-// 7. LẤY DANH SÁCH ĐƠN CÁ NHÂN
-// ============================================================================
 export async function getMyRequests() {
     const supabase = await createSupabaseServerClient();
     try {
@@ -515,182 +539,66 @@ export async function getMyRequests() {
     } catch (e) { return []; }
 }
 
-/**
- * 1. Lấy danh sách các đơn đã được xử lý (APPROVED hoặc REJECTED)
- * @returns Array chứa danh sách đơn từ và thông tin nhân viên
- */
 export async function getProcessedRequests() {
     try {
         const supabase = await createSupabaseServerClient();
-
         const { data, error } = await supabase
             .from('attendance_requests')
-            .select(`
-                *,
-                employee:employees!fk_requests_employee(name, code),
-                approver:employees!fk_requests_approver(name)
-            `)
+            .select(`*, employee:employees!fk_requests_employee(name, code), approver:employees!fk_requests_approver(name)`)
             .in('status', ['approved', 'rejected'])
             .order('updated_at', { ascending: false });
-
-        if (error) {
-            console.error("[DB_ERROR] Lấy lịch sử đơn từ thất bại:", error.message);
-            return [];
-        }
-
-        return data || [];
-    } catch (error: any) {
-        console.error("[SERVER_ERROR] Lỗi hàm getProcessedRequests:", error.message);
-        return [];
-    }
+        return error ? [] : (data || []);
+    } catch (error: any) { return []; }
 }
 
-/**
- * 2. HR/Quản lý cập nhật lại trạng thái và ghi chú của đơn đã duyệt
- * ĐÃ TÍCH HỢP PUSH NOTIFICATION & ROLLBACK ĐỒNG BỘ BẢNG CÔNG
- */
 export async function updateAttendanceRequest(id: string, newStatus: 'approved' | 'rejected' | 'pending', newNote: string) {
     try {
+        if (newStatus === 'approved') return await processAttendanceRequest(id, 'approved', newNote);
         const supabase = await createSupabaseServerClient();
 
-        // 🚀 ĐIỂM QUAN TRỌNG: Nếu HR update thành 'approved' -> Chuyển luồng cho processAttendanceRequest tính giờ
-        if (newStatus === 'approved') {
-            return await processAttendanceRequest(id, 'approved', newNote);
-        }
+        const { data: request } = await supabase.from('attendance_requests').select('*').eq('id', id).single();
+        if (!request) return { success: false, error: "Không tìm thấy thông tin đơn." };
 
-        // 1. Lấy thông tin đơn từ để biết gửi thông báo cho ai
-        const { data: request, error: reqError } = await supabase
-            .from('attendance_requests')
-            .select('*')
-            .eq('id', id)
-            .single();
-
-        if (reqError || !request) {
-            return { success: false, error: "Không tìm thấy thông tin đơn từ trong hệ thống." };
-        }
-
-        // 2. 🚀 XỬ LÝ ROLLBACK: Nếu đơn đang APPROVED mà bị giáng xuống REJECTED/PENDING
         if (request.status === 'approved') {
             await rollbackAttendanceRecords(supabase, request.employee_id, request.start_date, request.end_date);
         }
 
-        // 3. Thực hiện cập nhật Database
-        const { error: updateError } = await supabase
-            .from('attendance_requests')
-            .update({
-                status: newStatus,
-                approver_note: newNote,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', id);
+        await supabase.from('attendance_requests').update({ status: newStatus, approver_note: newNote, updated_at: new Date().toISOString() }).eq('id', id);
 
-        if (updateError) {
-            console.error("[DB_ERROR] Cập nhật đơn thất bại:", updateError.message);
-            return { success: false, error: "Không thể lưu thay đổi vào cơ sở dữ liệu." };
-        }
-
-        // 4. 🚀 XỬ LÝ BẮN THÔNG BÁO CHO NHÂN VIÊN
         const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
-        let statusText = 'ĐÃ ĐƯỢC ĐIỀU CHỈNH';
-
-        if (newStatus === 'rejected') statusText = 'ĐÃ BỊ TỪ CHỐI (HỦY)';
-        else if (newStatus === 'pending') statusText = 'ĐƯỢC HOÀN TÁC (CHỜ XỬ LÝ LẠI)';
-
+        let statusText = newStatus === 'rejected' ? 'ĐÃ BỊ TỪ CHỐI (HỦY)' : 'ĐƯỢC HOÀN TÁC (CHỜ XỬ LÝ LẠI)';
         const notifTitle = `HR thay đổi trạng thái đơn ${reqTypeName}`;
-        const notifMessage = `Đơn ${reqTypeName} (áp dụng ${formatDate(request.start_date)}) của bạn ${statusText}. ${newNote ? `Ghi chú: ${newNote}` : ''}`;
-        const notifLink = '/my-attendance?tab=requests';
+        const notifMessage = `Đơn của bạn (áp dụng ${formatDate(request.start_date)}) ${statusText}.`;
 
         try {
-            // Ghi vào DB
-            await supabase.from('notifications').insert({
-                user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
-            });
+            await supabase.from('notifications').insert({ user_id: request.employee_id, title: notifTitle, message: notifMessage, link: '/my-attendance?tab=requests' });
+            await sendPushToUser(request.employee_id, notifTitle, notifMessage, '/my-attendance?tab=requests');
+        } catch (e) { }
 
-            // Push Notification (Bọc try-catch độc lập)
-            try {
-                await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
-            } catch (pushErr) {
-                console.error("[NOTIFY_PUSH_ERROR]", pushErr);
-            }
-        } catch (dbErr) {
-            console.error("[NOTIFY_DB_ERROR]", dbErr);
-        }
-
-        return { success: true, message: "Đã cập nhật trạng thái đơn, đồng bộ bảng công và gửi thông báo." };
-    } catch (error: any) {
-        console.error("[SERVER_ERROR] Lỗi hàm updateAttendanceRequest:", error.message);
-        return { success: false, error: "Lỗi hệ thống khi xử lý yêu cầu." };
-    }
+        return { success: true, message: "Đã cập nhật trạng thái đơn." };
+    } catch (error: any) { return { success: false, error: "Lỗi hệ thống khi xử lý yêu cầu." }; }
 }
 
-/**
- * 3. HR Xóa vĩnh viễn đơn từ (Hard Delete)
- * ĐÃ TÍCH HỢP PUSH NOTIFICATION & ROLLBACK ĐỒNG BỘ BẢNG CÔNG
- */
 export async function deleteAttendanceRequest(id: string) {
     try {
         const supabase = await createSupabaseServerClient();
+        const { data: request } = await supabase.from('attendance_requests').select('*').eq('id', id).single();
+        if (!request) return { success: false, error: "Không tìm thấy đơn từ để xóa." };
 
-        // 1. QUAN TRỌNG: Lấy thông tin đơn TRƯỚC KHI XÓA
-        const { data: request, error: reqError } = await supabase
-            .from('attendance_requests')
-            .select('*')
-            .eq('id', id)
-            .single();
-
-        if (reqError || !request) {
-            return { success: false, error: "Không tìm thấy đơn từ để xóa." };
-        }
-
-        // 2. 🚀 XỬ LÝ ROLLBACK: Nếu đơn ĐÃ DUYỆT mà bị Xóa
         if (request.status === 'approved') {
             await rollbackAttendanceRecords(supabase, request.employee_id, request.start_date, request.end_date);
         }
 
-        // 3. Thực hiện xóa (Hard Delete)
-        const { error: deleteError } = await supabase
-            .from('attendance_requests')
-            .delete()
-            .eq('id', id);
+        await supabase.from('attendance_requests').delete().eq('id', id);
 
-        if (deleteError) {
-            console.error("[DB_ERROR] Xóa đơn thất bại:", deleteError.message);
-            return { success: false, error: "Không thể xóa đơn từ khỏi cơ sở dữ liệu." };
-        }
-
-        // 4. 🚀 XỬ LÝ BẮN THÔNG BÁO
         const reqTypeName = request.request_type === 'leave' ? 'nghỉ phép' : 'giải trình';
-        const notifTitle = `⚠️ Đơn ${reqTypeName} đã bị xóa`;
-        const notifMessage = `Đơn ${reqTypeName} (áp dụng ngày ${formatDate(request.start_date)}) của bạn đã bị Bộ phận Nhân sự xóa khỏi hệ thống. Vui lòng liên hệ trực tiếp nếu có thắc mắc.`;
-        const notifLink = '/my-attendance';
-
         try {
-            // Ghi DB
-            await supabase.from('notifications').insert({
-                user_id: request.employee_id, title: notifTitle, message: notifMessage, link: notifLink
-            });
+            await supabase.from('notifications').insert({ user_id: request.employee_id, title: `⚠️ Đơn đã bị xóa`, message: `Đơn ${reqTypeName} ngày ${formatDate(request.start_date)} đã bị HR xóa.`, link: '/my-attendance' });
+        } catch (e) { }
 
-            // Push Notification (Bọc try-catch độc lập)
-            try {
-                await sendPushToUser(request.employee_id, notifTitle, notifMessage, notifLink);
-            } catch (pushErr) {
-                console.error("[NOTIFY_PUSH_ERROR]", pushErr);
-            }
-        } catch (dbErr) {
-            console.error("[NOTIFY_DB_ERROR]", dbErr);
-        }
-
-        return { success: true, message: "Đã xóa đơn từ thành công, khôi phục bảng công và thông báo cho nhân viên." };
-    } catch (error: any) {
-        console.error("[SERVER_ERROR] Lỗi hàm deleteAttendanceRequest:", error.message);
-        return { success: false, error: "Lỗi hệ thống khi xóa yêu cầu." };
-    }
+        return { success: true, message: "Đã xóa đơn từ thành công." };
+    } catch (error: any) { return { success: false, error: "Lỗi hệ thống khi xóa yêu cầu." }; }
 }
-
-/**
- * NHÂN VIÊN TỰ SỬA ĐƠN (Chỉ áp dụng cho đơn Pending)
- * Đã bổ sung Notification cho Quản lý
- */
 
 export async function updateMyRequest(id: string, payload: any) {
     try {
@@ -698,215 +606,83 @@ export async function updateMyRequest(id: string, payload: any) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Hết phiên đăng nhập." };
 
-        // 🚀 1. LẤY ID GỐC CỦA NHÂN VIÊN (Để đối chiếu quyền sở hữu)
-        const { data: employee } = await supabase
-            .from('employees')
-            .select('id, name, manager_id')
-            .eq('auth_id', user.id)
-            .single();
+        const { data: employee } = await supabase.from('employees').select('id, name, manager_id').eq('auth_id', user.id).single();
+        if (!employee) return { success: false, error: "Hồ sơ không hợp lệ." };
 
-        if (!employee) {
-            return { success: false, error: "Không tìm thấy hồ sơ nhân viên hợp lệ." };
-        }
+        const { data: request } = await supabase.from('attendance_requests').select('status, employee_id, request_type').eq('id', id).single();
+        if (!request || request.employee_id !== employee.id) return { success: false, error: "Bạn không có quyền thao tác trên đơn này." };
+        if (request.status !== 'pending') return { success: false, error: "Chỉ có thể sửa đơn đang Chờ duyệt." };
 
-        // 🚀 2. KIỂM TRA QUYỀN SỞ HỮU VÀ TRẠNG THÁI ĐƠN
-        const { data: request, error: reqError } = await supabase
-            .from('attendance_requests')
-            .select('status, employee_id, request_type')
-            .eq('id', id) // ✅ FIX 1: Truy vấn đúng theo ID của đơn cần sửa
-            .single();
+        await supabase.from('attendance_requests').update({
+            sub_type: payload.sub_type, start_date: payload.start_date, end_date: payload.end_date || null,
+            actual_in_time: payload.actual_in_time || null, actual_out_time: payload.actual_out_time || null,
+            reason: payload.reason, updated_at: new Date().toISOString()
+        }).eq('id', id);
 
-        // ✅ FIX 2: So sánh employee_id của đơn với ID gốc của nhân viên
-        if (reqError || !request || request.employee_id !== employee.id) {
-            return { success: false, error: "Bạn không có quyền thao tác trên đơn này." };
-        }
-
-        if (request.status !== 'pending') {
-            return { success: false, error: "Chỉ có thể sửa đơn đang ở trạng thái Chờ duyệt." };
-        }
-
-        // 3. THỰC HIỆN CẬP NHẬT
-        const { error: updateError } = await supabase
-            .from('attendance_requests')
-            .update({
-                sub_type: payload.sub_type,
-                start_date: payload.start_date,
-                end_date: payload.end_date || null,
-                actual_in_time: payload.actual_in_time || null,
-                actual_out_time: payload.actual_out_time || null,
-                reason: payload.reason,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', id);
-
-        if (updateError) {
-            console.error("[DB_UPDATE_REQUEST_ERROR]", updateError.message);
-            return { success: false, error: "Lỗi cơ sở dữ liệu khi lưu thay đổi." };
-        }
-
-        // 4. 🚀 BẮN THÔNG BÁO CHO QUẢN LÝ (Người duyệt)
-        // (Đã tối ưu: Tận dụng luôn biến `employee` đã query ở Bước 1)
         if (employee.manager_id) {
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
-
             if (manager && manager.auth_id) {
-                const reqTypeName = request.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
-                const notifTitle = `📝 Đơn ${reqTypeName} vừa được cập nhật`;
-                const notifMessage = `Nhân viên ${employee.name} vừa chỉnh sửa và gửi lại nội dung đơn ${reqTypeName} (áp dụng ngày ${formatDate(payload.start_date)}). Vui lòng kiểm tra lại.`;
-                const notifLink = '/hrm/approvals';
-
                 try {
-                    await supabase.from('notifications').insert({
-                        user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
-                    });
-                    try {
-                        await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
-                    } catch (pushErr) {
-                        console.error("[NOTIFY_PUSH_ERROR]", pushErr);
-                    }
-                } catch (dbErr) {
-                    console.error("[NOTIFY_DB_ERROR]", dbErr);
-                }
+                    await supabase.from('notifications').insert({ user_id: manager.auth_id, title: `📝 Đơn vừa được cập nhật`, message: `Nhân viên ${employee.name} vừa sửa đơn.`, link: '/hrm/approvals' });
+                } catch (e) { }
             }
         }
-
-        return { success: true, message: "Đã cập nhật thông tin và gửi thông báo cho Quản lý." };
-    } catch (e: any) {
-        console.error("[SERVER_ERROR] Lỗi sửa đơn cá nhân:", e);
-        return { success: false, error: "Hệ thống đang bận, vui lòng thử lại sau." };
-    }
+        return { success: true, message: "Đã cập nhật thông tin." };
+    } catch (e: any) { return { success: false, error: "Hệ thống đang bận." }; }
 }
 
-/**
- * NHÂN VIÊN TỰ XÓA ĐƠN (Chỉ áp dụng cho đơn Pending)
- * Đã bổ sung Notification cho Quản lý
- */
 export async function deleteMyRequest(id: string) {
     try {
         const supabase = await createSupabaseServerClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Hết phiên đăng nhập." };
 
-        // 🚀 1. LẤY ID GỐC CỦA NHÂN VIÊN
-        const { data: employee } = await supabase
-            .from('employees')
-            .select('id, name, manager_id')
-            .eq('auth_id', user.id)
-            .single();
+        const { data: employee } = await supabase.from('employees').select('id, name, manager_id').eq('auth_id', user.id).single();
+        if (!employee) return { success: false, error: "Hồ sơ không hợp lệ." };
 
-        if (!employee) {
-            return { success: false, error: "Không tìm thấy hồ sơ nhân viên hợp lệ." };
-        }
+        const { data: request } = await supabase.from('attendance_requests').select('status, employee_id, request_type, start_date').eq('id', id).single();
+        if (!request || request.employee_id !== employee.id) return { success: false, error: "Bạn không có quyền thao tác trên đơn này." };
+        if (request.status !== 'pending') return { success: false, error: "Chỉ có thể xóa đơn Chờ duyệt." };
 
-        // 🚀 2. KIỂM TRA QUYỀN SỞ HỮU VÀ TRẠNG THÁI ĐƠN
-        const { data: request, error: reqError } = await supabase
-            .from('attendance_requests')
-            .select('status, employee_id, request_type, start_date')
-            .eq('id', id)
-            .single();
+        await supabase.from('attendance_requests').delete().eq('id', id);
 
-        // ✅ FIX: So sánh chuẩn ID gốc của database
-        if (reqError || !request || request.employee_id !== employee.id) {
-            return { success: false, error: "Bạn không có quyền thao tác trên đơn này." };
-        }
-
-        if (request.status !== 'pending') {
-            return { success: false, error: "Chỉ có thể xóa đơn đang ở trạng thái Chờ duyệt." };
-        }
-
-        // 3. THỰC HIỆN XÓA
-        const { error } = await supabase.from('attendance_requests').delete().eq('id', id);
-
-        if (error) {
-            console.error("[DB_DELETE_REQUEST_ERROR]", error.message);
-            return { success: false, error: "Lỗi cơ sở dữ liệu khi xóa đơn." };
-        }
-
-        // 4. 🚀 BẮN THÔNG BÁO CHO QUẢN LÝ
-        // Tận dụng biến employee ở trên để không cần query lại
         if (employee.manager_id) {
             const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
-
             if (manager && manager.auth_id) {
-                const reqTypeName = request.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
-                const notifTitle = `🗑️ Nhân viên đã rút đơn`;
-                const notifMessage = `Nhân viên ${employee.name} đã tự hủy đơn ${reqTypeName} (áp dụng ngày ${formatDate(request.start_date)}). Bạn không cần duyệt đơn này nữa.`;
-                const notifLink = '/hrm/approvals';
-
-                try {
-                    await supabase.from('notifications').insert({
-                        user_id: manager.auth_id, title: notifTitle, message: notifMessage, link: notifLink
-                    });
-                    try {
-                        await sendPushToUser(manager.auth_id, notifTitle, notifMessage, notifLink);
-                    } catch (pushErr) {
-                        console.error("[NOTIFY_PUSH_ERROR]", pushErr);
-                    }
-                } catch (dbErr) {
-                    console.error("[NOTIFY_DB_ERROR]", dbErr);
-                }
+                try { await supabase.from('notifications').insert({ user_id: manager.auth_id, title: `🗑️ Đơn đã hủy`, message: `Nhân viên ${employee.name} đã hủy đơn.`, link: '/hrm/approvals' }); } catch (e) { }
             }
         }
-
-        return { success: true, message: "Đã hủy đơn từ thành công." };
-    } catch (e: any) {
-        console.error("[SERVER_ERROR] Lỗi xóa đơn cá nhân:", e);
-        return { success: false, error: "Hệ thống đang bận, vui lòng thử lại sau." };
-    }
+        return { success: true, message: "Đã hủy đơn." };
+    } catch (e: any) { return { success: false, error: "Hệ thống đang bận." }; }
 }
 
-// ============================================================================
-// HÀM HELPER: ROLLBACK BẢNG CÔNG VỀ TRẠNG THÁI GỐC (KHI HỦY/SỬA ĐƠN ĐÃ DUYỆT)
-// ============================================================================
 async function rollbackAttendanceRecords(supabase: any, employeeId: string, startDate: string, endDate: string | null) {
     let currDate = new Date(startDate);
     const lastDate = new Date(endDate || startDate);
 
     while (currDate <= lastDate) {
         const dateStr = currDate.toISOString().split('T')[0];
-
-        // Lấy record của ngày đó
-        const { data: record } = await supabase
-            .from('attendance_records')
-            .select('*')
-            .eq('employee_id', employeeId)
-            .eq('date', dateStr)
-            .maybeSingle();
+        const { data: record } = await supabase.from('attendance_records').select('*').eq('employee_id', employeeId).eq('date', dateStr).maybeSingle();
 
         if (record) {
             const checkIn = record.check_in_time ? new Date(record.check_in_time) : null;
             const checkOut = record.check_out_time ? new Date(record.check_out_time) : null;
 
             if (!checkIn && !checkOut) {
-                // Nếu ngày đó hoàn toàn không có giờ máy thực tế (Đơn xin nghỉ nguyên ngày)
-                // -> Hủy đơn thì phải xóa luôn dòng chấm công này
                 await supabase.from('attendance_records').delete().eq('id', record.id);
             } else {
-                // Nếu có giờ máy -> Tính lại giờ làm việc theo máy (Bỏ qua giờ đã xin sửa)
-                let wHoursToSave = 0;
-                let calcStatus = 'Thiếu giờ';
-
+                let wHoursToSave = 0, calcStatus = 'Thiếu giờ';
                 if (checkIn && checkOut) {
-                    let diffMs = checkOut.getTime() - checkIn.getTime();
-                    let wHours = diffMs / (1000 * 60 * 60);
-                    if (wHours > 5) wHours -= 1.5; // Trừ giờ nghỉ trưa
-
-                    wHours = Math.max(0, wHours);
-                    wHoursToSave = parseFloat(wHours.toFixed(2));
-
+                    let wHours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
+                    if (wHours > 5) wHours -= 1.5;
+                    wHoursToSave = parseFloat(Math.max(0, wHours).toFixed(2));
                     if (wHoursToSave >= 8.5) calcStatus = 'Tăng ca (OT)';
                     else if (wHoursToSave >= 7.5) calcStatus = 'Đủ công';
                     else if (wHoursToSave >= 3.5) calcStatus = 'Nửa công';
                     else calcStatus = 'Thiếu giờ/Về sớm';
-                } else if (checkIn) {
-                    calcStatus = 'Đang làm việc'; // Hoặc Quên chấm ra
-                }
+                } else if (checkIn) calcStatus = 'Đang làm việc';
 
-                // Cập nhật lại record gốc
-                await supabase.from('attendance_records').update({
-                    status: calcStatus,
-                    working_hours: wHoursToSave
-                }).eq('id', record.id);
+                await supabase.from('attendance_records').update({ status: calcStatus, working_hours: wHoursToSave }).eq('id', record.id);
             }
         }
         currDate.setDate(currDate.getDate() + 1);
@@ -916,311 +692,40 @@ async function rollbackAttendanceRecords(supabase: any, employeeId: string, star
 export async function createManualAttendance(formData: FormData) {
     try {
         const supabase = await createSupabaseServerClient();
-
-        // Lấy UUID thực sự của nhân viên từ hidden input của Combobox
         const employee_id = formData.get("employee_id") as string;
-        const date = formData.get("date") as string; // Format: YYYY-MM-DD
-        const record_type = formData.get("record_type") as string; // WORKING or LEAVE
-        const notes = formData.get("note") as string; // Form gửi lên là 'note', DB là 'notes'
+        const date = formData.get("date") as string;
+        const record_type = formData.get("record_type") as string;
+        const notes = formData.get("note") as string;
 
-        if (!employee_id || !date) {
-            return { success: false, error: "Vui lòng chọn nhân viên và ngày hợp lệ." };
-        }
+        if (!employee_id || !date) return { success: false, error: "Vui lòng chọn nhân viên và ngày hợp lệ." };
 
-        // Cấu trúc dữ liệu chuẩn bị lưu (Khớp 100% với Schema)
-        let upsertData: any = {
-            employee_id,
-            date,
-            notes, // Tên cột chuẩn của DB
-            updated_at: new Date().toISOString()
-        };
+        let upsertData: any = { employee_id, date, notes, updated_at: new Date().toISOString() };
 
         if (record_type === "WORKING") {
             const check_in_time = formData.get("check_in_time") as string;
             const check_out_time = formData.get("check_out_time") as string;
+            if (!check_in_time || !check_out_time) return { success: false, error: "Vui lòng nhập đủ giờ vào và giờ ra." };
 
-            if (!check_in_time || !check_out_time) {
-                return { success: false, error: "Vui lòng nhập đủ giờ vào và giờ ra." };
-            }
-
-            // Ghép ngày và giờ thành chuẩn Timestamp with time zone (ISO 8601)
             const checkInISO = new Date(`${date}T${check_in_time}:00`).toISOString();
             const checkOutISO = new Date(`${date}T${check_out_time}:00`).toISOString();
+            upsertData.check_in_time = checkInISO; upsertData.check_out_time = checkOutISO; upsertData.status = "Đủ công";
 
-            upsertData.check_in_time = checkInISO;
-            upsertData.check_out_time = checkOutISO;
-            upsertData.status = "Đủ công";
-
-            // Tính số giờ làm việc (working_hours)
             let hours = (new Date(checkOutISO).getTime() - new Date(checkInISO).getTime()) / (1000 * 60 * 60);
-            if (hours > 4) hours -= 1; // Tự động trừ 1 tiếng nghỉ trưa nếu làm trên 4 tiếng
+            if (hours > 4) hours -= 1;
             upsertData.working_hours = parseFloat(Math.max(0, hours).toFixed(2));
-
         } else {
             const leave_status = formData.get("leave_status") as string;
-            if (!leave_status) {
-                return { success: false, error: "Vui lòng chọn trạng thái nghỉ." };
-            }
-
-            // Map mã trạng thái sang Text chuẩn của hệ thống
-            const statusMap: Record<string, string> = {
-                "NGHI_CA": "Nghỉ ca",
-                "NGHI_PHEP": "Nghỉ phép",
-                "KHONG_PHEP": "Không phép",
-                "OM_DAU": "Ốm đau"
-            };
-
-            upsertData.check_in_time = null;
-            upsertData.check_out_time = null;
-            upsertData.working_hours = 0;
+            if (!leave_status) return { success: false, error: "Vui lòng chọn trạng thái nghỉ." };
+            const statusMap: Record<string, string> = { "NGHI_CA": "Nghỉ ca", "NGHI_PHEP": "Nghỉ phép", "KHONG_PHEP": "Không phép", "OM_DAU": "Ốm đau" };
+            upsertData.check_in_time = null; upsertData.check_out_time = null; upsertData.working_hours = 0;
             upsertData.status = statusMap[leave_status] || leave_status;
         }
 
-        // 🔥 LỆNH UPSERT THẦN THÁNH
-        // onConflict: 'employee_id, date' khớp với constraint 'unique_attendance_per_day'
-        const { error } = await supabase
-            .from('attendance_records')
-            .upsert(upsertData, {
-                onConflict: 'employee_id, date'
-            });
-
-        if (error) {
-            console.error("[DB_UPSERT_ERROR]", error.message);
-            return { success: false, error: "Lỗi lưu dữ liệu: " + error.message };
-        }
+        const { error } = await supabase.from('attendance_records').upsert(upsertData, { onConflict: 'employee_id, date' });
+        if (error) return { success: false, error: "Lỗi lưu dữ liệu: " + error.message };
 
         revalidatePath('/hrm/attendance');
-        revalidatePath('/hrm/payroll'); // Xóa cache bảng lương để số liệu công được cập nhật ngay
-
+        revalidatePath('/hrm/payroll');
         return { success: true, message: "Ghi nhận công thành công!" };
-
-    } catch (error) {
-        console.error("[SERVER_ERROR] createManualAttendance:", error);
-        return { success: false, error: "Hệ thống đang bận, vui lòng thử lại." };
-    }
-}
-
-// 1. Lấy danh sách khuôn mặt của TẤT CẢ nhân viên thuộc dự án
-export async function getProjectMembersFaceData(projectId: string) {
-    const supabase = await createSupabaseServerClient();
-
-    // Join bảng project_members và employees
-    const { data, error } = await supabase
-        .from('project_members')
-        .select(`
-            employee_id,
-            employees!inner(name, code, face_descriptor)
-        `)
-        .eq('project_id', projectId)
-        .not('employees.face_descriptor', 'is', null);
-
-    if (error) {
-        console.error("Lỗi lấy data khuôn mặt:", error);
-        return [];
-    }
-
-    return data.map((item: any) => ({
-        id: item.employee_id,
-        name: item.employees.name,
-        code: item.employees.code,
-        // Parse jsonb trả về mảng số thực
-        descriptor: item.employees.face_descriptor
-    }));
-}
-
-// 2. Ghi nhận chấm công
-export async function recordFaceAttendance(employeeId: string, projectId: string, location: { lat: number, lng: number }, supervisorId?: string) {
-    const supabase = await createSupabaseServerClient();
-
-    try {
-        const { error } = await supabase.from('attendance_logs').insert({
-            employee_id: employeeId,
-            project_id: projectId,
-            check_in_time: new Date().toISOString(),
-            latitude: location.lat,
-            longitude: location.lng,
-            method: 'face_id',
-            recorded_by: supervisorId, // ID của giám sát cầm máy
-            status: 'present'
-        });
-
-        if (error) throw error;
-
-        revalidatePath(`/projects/${projectId}/attendance`);
-        return { success: true, message: "Chấm công thành công!" };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
-
-// ============================================================================
-// 8. TÍNH NĂNG NHẬN DIỆN KHUÔN MẶT (Geo-fencing & Face ID)
-// ============================================================================
-
-export async function getNearbyProjectAndFaceData(currentLat: number, currentLng: number) {
-    const supabase = await createSupabaseServerClient();
-
-    // 1. Xác thực người dùng (Lấy Auth ID của Giám sát)
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return { success: false, error: "Phiên đăng nhập hết hạn." };
-
-    // 🚀 2. BƯỚC FIX LỖI: Lấy ID gốc của nhân viên từ bảng employees thông qua Auth ID
-    const { data: currentEmp } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('auth_id', user.id)
-        .single();
-
-    if (!currentEmp) {
-        return { success: false, error: "Không tìm thấy hồ sơ nhân viên được liên kết với tài khoản này." };
-    }
-    const employeeId = currentEmp.id;
-
-    // 3. Lấy danh sách dự án dựa trên employee_id
-    const { data: memberProjects } = await supabase
-        .from('project_members')
-        .select(`project_id, projects ( id, name, geocode )`)
-        .eq('employee_id', employeeId); // ✅ Đã sửa thành employee_id
-
-    if (!memberProjects || memberProjects.length === 0) {
-        return { success: false, error: "Tài khoản của bạn chưa được phân công vào dự án nào." };
-    }
-
-    let matchedProject = null;
-
-    // 4. Tìm dự án gần vị trí hiện tại nhất (Bán kính 300m)
-    for (const mp of memberProjects) {
-        const proj = mp.projects as any;
-
-        if (proj && proj.geocode) {
-            const parts = proj.geocode.split(',');
-            if (parts.length >= 2) {
-                const projLat = parseFloat(parts[0].trim());
-                const projLng = parseFloat(parts[1].trim());
-
-                if (!isNaN(projLat) && !isNaN(projLng)) {
-                    const distance = getDistanceFromLatLonInMeters(currentLat, currentLng, projLat, projLng);
-
-                    if (distance <= 50) {
-                        matchedProject = {
-                            id: proj.id,
-                            name: proj.name,
-                            distance: Math.round(distance)
-                        };
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    if (!matchedProject) {
-        return {
-            success: false,
-            error: "Vị trí của bạn không nằm trong bán kính 300m của bất kỳ công trình nào bạn quản lý."
-        };
-    }
-
-    // 5. Đã xác định được Dự án -> Lấy danh sách khuôn mặt của nhân công
-    const { data: members, error: memError } = await supabase
-        .from('project_members')
-        .select(`
-            employee_id,
-            employees!inner(name, code, face_descriptor)
-        `)
-        .eq('project_id', matchedProject.id)
-        .not('employees.face_descriptor', 'is', null);
-
-    if (memError) return { success: false, error: "Lỗi khi tải dữ liệu khuôn mặt của dự án." };
-
-    const formattedMembers = members.map((item: any) => ({
-        id: item.employee_id,
-        name: item.employees.name,
-        code: item.employees.code,
-        descriptor: item.employees.face_descriptor
-    }));
-
-    return {
-        success: true,
-        project: matchedProject,
-        members: formattedMembers
-    };
-}
-
-// ============================================================================
-// 9. XỬ LÝ CHẤM CÔNG BẰNG FACE ID (Auto Check-In / Check-Out)
-// ============================================================================
-export async function processFaceAttendance(employeeId: string, projectId: string, location: { lat: number, lng: number }, supervisorId?: string) {
-    const supabase = await createSupabaseServerClient();
-
-    try {
-        const serverNow = new Date();
-        const exactTimeZone = "Asia/Ho_Chi_Minh";
-        const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: exactTimeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        const parts = formatter.formatToParts(serverNow);
-        const tp = parts.reduce((acc: any, part) => { acc[part.type] = part.value; return acc; }, {});
-
-        const todayStr = `${tp.year}-${tp.month}-${tp.day}`;
-        const dbTimeStr = serverNow.toISOString();
-
-        // 1. Ghi log dữ liệu thô (Để kiểm toán: Ai quét, Giám sát nào cầm máy, Tọa độ nào)
-        await supabase.from('attendance_logs').insert({
-            employee_id: employeeId, project_id: projectId, check_in_time: dbTimeStr,
-            latitude: location.lat, longitude: location.lng, method: 'face_id',
-            recorded_by: supervisorId, status: 'scanned'
-        });
-
-        // 2. Xử lý Logic Bảng công chính thức (Giống hệt Mobile Check-in)
-        const { data: existingRecord } = await supabase
-            .from('attendance_records')
-            .select('*')
-            .eq('employee_id', employeeId)
-            .eq('date', todayStr)
-            .maybeSingle();
-
-        if (existingRecord) {
-            // NẾU ĐÃ CÓ GIỜ VÀO -> THỰC HIỆN CHỐT CA (CHECK OUT)
-            if (!existingRecord.check_out_time) {
-                const checkInTime = new Date(existingRecord.check_in_time);
-                const diffMs = serverNow.getTime() - checkInTime.getTime();
-                let workingHours = diffMs / (1000 * 60 * 60);
-                if (workingHours > 5) workingHours -= 1.5; // Trừ giờ nghỉ trưa
-                workingHours = parseFloat(Math.max(0, workingHours).toFixed(2));
-
-                let status = 'Đủ công';
-                if (workingHours >= 8.5) status = 'Tăng ca (OT)';
-                else if (workingHours >= 7.5) status = 'Đủ công';
-                else if (workingHours >= 3.5) status = 'Nửa công';
-                else status = 'Về sớm';
-
-                await supabase.from('attendance_records').update({
-                    check_out_time: dbTimeStr, check_out_lat: location.lat, check_out_lng: location.lng,
-                    status: status, working_hours: workingHours, updated_at: new Date().toISOString()
-                }).eq('id', existingRecord.id);
-
-                revalidatePath(`/hrm/attendance`);
-                return { success: true, type: 'CHECK_OUT', message: `CHỐT CA THÀNH CÔNG! Giờ làm: ${workingHours}h` };
-            } else {
-                // NẾU ĐÃ CHỐT CA RỒI -> Chặn quét lại để tránh spam
-                return { success: false, error: "Nhân viên này đã hoàn thành chấm công hôm nay." };
-            }
-        } else {
-            // NẾU CHƯA CÓ DỮ LIỆU -> THỰC HIỆN VÀO CA (CHECK IN)
-            const checkInHour = parseInt(tp.hour);
-            const checkInMinute = parseInt(tp.minute);
-            const isLate = checkInHour > 8 || (checkInHour === 8 && checkInMinute > 0);
-            const status = isLate ? 'Đi muộn' : 'Đang làm việc';
-
-            await supabase.from('attendance_records').insert({
-                employee_id: employeeId, date: todayStr, check_in_time: dbTimeStr,
-                check_in_lat: location.lat, check_in_lng: location.lng, status: status
-            });
-
-            revalidatePath(`/hrm/attendance`);
-            return { success: true, type: 'CHECK_IN', message: `VÀO CA THÀNH CÔNG lúc ${tp.hour}:${tp.minute}` };
-        }
-    } catch (error: any) {
-        console.error("Lỗi processFaceAttendance:", error);
-        return { success: false, error: "Lỗi hệ thống ghi nhận." };
-    }
+    } catch (error) { return { success: false, error: "Hệ thống đang bận, vui lòng thử lại." }; }
 }

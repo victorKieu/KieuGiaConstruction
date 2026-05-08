@@ -36,16 +36,13 @@ export async function saveQuotation(payload: QuotationInput) {
     // A. Chuẩn bị dữ liệu Header
     const quotationData = {
         project_id: payload.project_id,
-
-        // Map dữ liệu khách hàng vào cột customer_id trong DB
         customer_id: payload.customer_id,
-
         quotation_number: payload.quotation_number,
         title: payload.title,
         issue_date: payload.issue_date,
         status: payload.status,
         notes: payload.notes,
-        total_amount: payload.total_amount,
+        total_amount: Math.round(payload.total_amount || 0), // ✅ Làm tròn tổng tiền
         updated_at: new Date().toISOString()
     };
 
@@ -91,11 +88,11 @@ export async function saveQuotation(payload: QuotationInput) {
                 work_item_name: item.work_item_name,
                 details: item.details,
                 unit: item.unit,
-                quantity: item.quantity || 0,
-                unit_price: item.unit_price || 0,
+                quantity: Number(Number(item.quantity || 0).toFixed(3)), // ✅ Khối lượng
+                unit_price: Math.round(item.unit_price || 0),            // ✅ Đơn giá
                 vat_rate: item.vat_rate || 0,
                 notes: item.notes,
-                order_index: item.order_index ?? index // Lấy từ payload hoặc dùng vị trí trong mảng
+                order_index: item.order_index ?? index
             }));
 
             const { error: insertError } = await supabase

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/lib/auth/auth-context";
+import { loginWithPassword } from "@/lib/action/authActions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,19 +10,16 @@ import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { BiometricAuth } from "./biometric-auth";
 import { toast } from "sonner";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 export function LoginForm({ isMobile }: { isMobile: boolean }) {
-    const searchParams = useSearchParams(); // Đọc URL để lấy tham số ?next=
+    const searchParams = useSearchParams();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
-
-    const { signIn } = useAuth();
-    // const router = useRouter(); // Bỏ comment nếu muốn dùng router.push, nhưng dùng window.location.href sẽ sạch cache hơn với Supabase SSR
 
     useEffect(() => {
         const savedEmail = localStorage.getItem("biometric_auth_email");
@@ -40,7 +37,6 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
         e.preventDefault();
         setErrorMessage(null);
 
-        // Kiển tra nhanh lỗi
         if (!validateEmail(email)) {
             setErrorMessage("Email không đúng định dạng.");
             return;
@@ -54,7 +50,12 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
         setIsLoading(true);
 
         try {
-            await signIn(email, password);
+            // Gọi trực tiếp Server Action để xác thực và set Cookie an toàn
+            const result = await loginWithPassword(email, password);
+
+            if (!result.success) {
+                throw new Error(result.error);
+            }
 
             if (rememberMe) {
                 localStorage.setItem("biometric_auth_email", email);
@@ -64,14 +65,9 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
             toast.success("Đăng nhập thành công!");
 
-            // ✅ NÂNG CẤP CHUYỂN HƯỚNG TỪ THÔNG BÁO:
-            // Đọc xem trên link có đuôi ?next=... không (do middleware đá ra)
             const nextUrl = searchParams.get('next');
-
-            // Nếu có link đích -> Về link đích. Nếu không có -> Về dashboard.
             const targetUrl = nextUrl ? decodeURIComponent(nextUrl) : "/dashboard";
 
-            // Dùng window.location.href để force reload, giúp Middleware nhận diện Cookie mới
             window.location.href = targetUrl;
 
         } catch (error: any) {
@@ -96,11 +92,8 @@ export function LoginForm({ isMobile }: { isMobile: boolean }) {
 
     const handleBiometricSuccess = () => {
         toast.success("Xác thực sinh trắc học thành công!");
-
-        // ✅ Áp dụng logic tương tự cho đăng nhập bằng Sinh trắc học (Vân tay/FaceID)
         const nextUrl = searchParams.get('next');
         const targetUrl = nextUrl ? decodeURIComponent(nextUrl) : "/dashboard";
-
         window.location.href = targetUrl;
     };
 

@@ -1,20 +1,21 @@
-﻿// src/app/layout.tsx (ROOT LAYOUT)
-import "./globals.css";
-import { Inter } from "next/font/google";
-import { ThemeProvider } from "@/components/providers/theme-provider";
-import { Toaster } from "sonner";
-
-const inter = Inter({ subsets: ["latin"] });
+﻿import { ThemeProvider } from "@/components/providers/theme-provider"
+import "@/app/globals.css"
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
+        // suppressHydrationWarning BẮT BUỘC phải có ở thẻ html khi dùng next-themes
         <html lang="vi" suppressHydrationWarning>
-            <body className={inter.className}>
-                <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-                    {children} {/* AppLayout sẽ được render vào đây */}
-                    <Toaster position="top-right" richColors />
+            <head />
+            <body>
+                <ThemeProvider
+                    attribute="class" // Sử dụng class 'dark' của Tailwind
+                    defaultTheme="system" // Tương ứng với chế độ Auto
+                    enableSystem={true} // Bật tính năng lắng nghe cài đặt hệ điều hành
+                    disableTransitionOnChange // Ngăn hiệu ứng CSS transition chạy khi mới load trang gây giật
+                >
+                    {children}
                 </ThemeProvider>
             </body>
         </html>
-    );
+    )
 }

@@ -2,6 +2,7 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { User } from "@supabase/supabase-js";
+import { revalidatePath } from 'next/cache'
 
 /**
  * Hàm lấy thông tin User hiện tại từ session
@@ -62,4 +63,38 @@ export async function changePassword(formData: FormData) {
     }
 
     return { success: true, message: "Đổi mật khẩu thành công!" };
+}
+
+export async function loginWithPassword(email: string, pass: string) {
+    try {
+        const supabase = await createSupabaseServerClient()
+
+        // Gọi hàm signInWithPassword từ Supabase SSR
+        // Việc gọi hàm này trên Server sẽ tự động thiết lập Cookie Session an toàn
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password: pass,
+        })
+
+        if (error) {
+            // Bắt các lỗi phổ biến từ Supabase để trả về cho Client
+            return {
+                success: false,
+                error: error.message
+            }
+        }
+
+        // Refresh lại toàn bộ layout để nhận diện Auth State mới
+        revalidatePath('/', 'layout')
+
+        return { success: true, data }
+    } catch (error: any) {
+        return { success: false, error: error.message || "Lỗi hệ thống nội bộ" }
+    }
+}
+
+export async function logoutUser() {
+    const supabase = await createSupabaseServerClient()
+    await supabase.auth.signOut()
+    revalidatePath('/', 'layout')
 }

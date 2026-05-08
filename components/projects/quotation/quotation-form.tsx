@@ -108,7 +108,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             customer_name: defaultCustomerName,
             project_name: defaultProjectName,
             address: defaultAddress,
-            //title: defaultDescription,
             issue_date: new Date().toISOString().split('T')[0],
             status: 'draft',
             notes: '',
@@ -132,16 +131,19 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
     watchedItems?.forEach((item: any) => {
         if (item.item_type === 'item') {
-            const qty = Number(item.quantity) || 0;
-            const price = Number(item.unit_price) || 0;
-            const amount = qty * price;
-            const vat = amount * ((item.vat_rate || 0) / 100);
+            // ✅ Tính toán làm tròn: Khối lượng 3 số thập phân, Giá tiền nguyên số
+            const qty = Number(Number(item.quantity || 0).toFixed(3));
+            const price = Math.round(Number(item.unit_price) || 0);
+
+            const amount = Math.round(qty * price);
+            const vat = Math.round(amount * ((item.vat_rate || 0) / 100));
+
             preTaxTotal += amount;
             vatTotal += vat;
         }
     });
 
-    const totalAmount = preTaxTotal + vatTotal;
+    const totalAmount = Math.round(preTaxTotal + vatTotal);
 
     const handleImportFromEstimation = async () => {
         if (!confirm("Hành động này sẽ xóa toàn bộ nội dung báo giá hiện tại bên dưới và thay thế bằng dữ liệu Bóc tách & Dự toán. Bạn có chắc chắn?")) return;
@@ -178,18 +180,13 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
             const newItems: any[] = [];
 
             // ✅ BỘ LỌC 2: Khóa cấu trúc CÂY (Phân tách Mục Lớn và Việc Nhỏ)
-            // Lấy ra các Mục lớn (Section)
             const sections = qtoData.filter(i => i.item_type === 'section' || !i.parent_id);
-            // Sắp xếp Mục lớn theo vị trí
             sections.sort((a, b) => (a.order_index ?? 99999) - (b.order_index ?? 99999) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 
             sections.forEach(sec => {
-                // Đẩy mục lớn vào bảng
                 newItems.push({ item_type: 'section', work_item_name: (sec.item_name || "HẠNG MỤC").toUpperCase(), vat_rate: 0 });
 
-                // Tìm các việc nhỏ (Tasks) nằm trong mục lớn này
                 const tasks = qtoData.filter(i => i.parent_id === sec.id && i.item_type !== 'section');
-                // Sắp xếp các việc nhỏ
                 tasks.sort((a, b) => (a.order_index ?? 99999) - (b.order_index ?? 99999) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 
                 tasks.forEach(task => {
@@ -200,7 +197,6 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                         let volSum = 0;
                         const detailsArr: string[] = [];
 
-                        // ✅ BỘ LỌC 3: Ép Sắp xếp các dòng diễn giải
                         task.details.sort((a: any, b: any) => (a.order_index ?? 99999) - (b.order_index ?? 99999) || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 
                         task.details.forEach((d: any) => {
@@ -226,14 +222,13 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                         detailsText = detailsArr.join('\n');
                     }
 
-                    taskVol = Number(taskVol.toFixed(2));
+                    taskVol = Number(taskVol.toFixed(3));
 
                     const taskResources = normalItems.filter(i => i.qto_item_id === task.id);
                     const baseCost = taskResources.reduce((sum, item) => sum + (Number(item.total_cost) || 0), 0);
                     const quotationCostPreTax = baseCost * markupPreTax;
                     const unitPrice = taskVol > 0 ? (quotationCostPreTax / taskVol) : quotationCostPreTax;
 
-                    // Đẩy công việc vào bảng
                     newItems.push({
                         item_type: 'item', work_item_name: task.item_name, unit: task.unit || "Lần", quantity: taskVol,
                         unit_price: Math.round(unitPrice), vat_rate: vatRate, details: detailsText, notes: ""
@@ -252,7 +247,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                     const quotationCostPreTax = baseCost * markupPreTax;
 
                     let qty = Number(item.quantity) || 1;
-                    qty = Number(qty.toFixed(2));
+                    qty = Number(qty.toFixed(3));
 
                     const unitPrice = qty > 0 ? (quotationCostPreTax / qty) : quotationCostPreTax;
                     newItems.push({
@@ -275,9 +270,9 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
         }
         setPreviewData({
             ...data,
-            preTaxTotal,
-            vatTotal,
-            totalAmount
+            preTaxTotal: Math.round(preTaxTotal),
+            vatTotal: Math.round(vatTotal),
+            totalAmount: Math.round(totalAmount)
         });
         setPreviewOpen(true);
     };
@@ -325,19 +320,20 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
 
             const payload: QuotationInput = {
                 id: data.id || '', project_id: data.project_id, customer_id: customerId, quotation_number: data.quotation_number,
-                title: data.title, issue_date: data.issue_date, status: data.status, notes: data.notes, total_amount: totalAmount,
-                // ✅ CHỐT CHẶN: Ép backend phải lưu lại đúng order_index của mảng UI
+                title: data.title, issue_date: data.issue_date, status: data.status, notes: data.notes,
+                total_amount: Math.round(totalAmount), // ✅ Làm tròn tổng tiền gửi lên
+                // ✅ CHỐT CHẶN: Ép backend phải lưu lại đúng order_index của mảng UI và làm tròn số liệu
                 items: data.items.map((item, index) => ({
                     id: item.id?.startsWith('new-') ? undefined : item.id,
                     item_type: item.item_type,
                     work_item_name: item.work_item_name,
                     details: item.details,
                     unit: item.unit,
-                    quantity: item.quantity || 0,
-                    unit_price: item.unit_price || 0,
+                    quantity: Number(Number(item.quantity || 0).toFixed(3)), // Làm tròn khối lượng 3 số
+                    unit_price: Math.round(Number(item.unit_price) || 0),    // Làm tròn đơn giá
                     vat_rate: item.vat_rate || 0,
                     notes: item.notes,
-                    order_index: index // Đây là xương sống để không bao giờ bị lệch khi reload
+                    order_index: index
                 } as any))
             };
 
@@ -461,10 +457,14 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                         );
                                     }
 
-                                    const qty = form.watch(`items.${index}.quantity`) || 0;
-                                    const price = form.watch(`items.${index}.unit_price`) || 0;
-                                    const vat = form.watch(`items.${index}.vat_rate`) || 0;
-                                    const total = qty * price * (1 + vat / 100);
+                                    // ✅ Xử lý làm tròn để hiện lên dòng Form ngay lúc người dùng đang gõ
+                                    const qty = Number(Number(form.watch(`items.${index}.quantity`) || 0).toFixed(3));
+                                    const price = Math.round(Number(form.watch(`items.${index}.unit_price`) || 0));
+                                    const vat = Number(form.watch(`items.${index}.vat_rate`)) || 0;
+
+                                    const amount = Math.round(qty * price);
+                                    const vatAmount = Math.round(amount * (vat / 100));
+                                    const total = amount + vatAmount;
 
                                     return (
                                         <tr key={field.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 group align-top transition-colors">
@@ -501,10 +501,10 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                     </div>
 
                     <div className="bg-slate-50 dark:bg-slate-900 p-4 border-t dark:border-slate-800 flex flex-col items-end gap-1 transition-colors">
-                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600 dark:text-slate-400 transition-colors"><span>Cộng trước thuế:</span><span className="font-medium">{formatCurrency(preTaxTotal)}</span></div>
-                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600 dark:text-slate-400 transition-colors"><span>Tổng tiền thuế VAT:</span><span className="font-medium">{formatCurrency(vatTotal)}</span></div>
-                        <div className="flex justify-between w-full md:w-1/3 text-lg font-bold text-blue-700 dark:text-blue-400 border-t border-slate-300 dark:border-slate-700 pt-2 mt-1 transition-colors"><span>TỔNG CỘNG:</span><span>{formatCurrency(totalAmount)}</span></div>
-                        <div className="text-xs text-slate-500 dark:text-slate-500 italic mt-1 transition-colors">{readMoneyToText(totalAmount)}</div>
+                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600 dark:text-slate-400 transition-colors"><span>Cộng trước thuế:</span><span className="font-medium">{formatCurrency(Math.round(preTaxTotal))}</span></div>
+                        <div className="flex justify-between w-full md:w-1/3 text-sm text-slate-600 dark:text-slate-400 transition-colors"><span>Tổng tiền thuế VAT:</span><span className="font-medium">{formatCurrency(Math.round(vatTotal))}</span></div>
+                        <div className="flex justify-between w-full md:w-1/3 text-lg font-bold text-blue-700 dark:text-blue-400 border-t border-slate-300 dark:border-slate-700 pt-2 mt-1 transition-colors"><span>TỔNG CỘNG:</span><span>{formatCurrency(Math.round(totalAmount))}</span></div>
+                        <div className="text-xs text-slate-500 dark:text-slate-500 italic mt-1 transition-colors">{readMoneyToText(Math.round(totalAmount))}</div>
                     </div>
                 </Card>
             </form>
@@ -528,7 +528,7 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                         {previewData && (
                             <div
                                 ref={printRef}
-                                className="print-container bg-white text-black" // PHẦN NÀY BẮT BUỘC GIỮ LẠI ĐỂ IN TRÊN GIẤY TRẮNG
+                                className="print-container bg-white text-black"
                                 style={{
                                     width: '297mm',
                                     minHeight: '210mm',
@@ -629,9 +629,11 @@ export function QuotationForm({ projectId, project, initialData, onSuccess, onCa
                                                     );
                                                 } else {
                                                     itemIndex++;
-                                                    const qty = Number(item.quantity) || 0;
-                                                    const price = Number(item.unit_price) || 0;
-                                                    const amount = qty * price;
+                                                    // ✅ Cập nhật làm tròn tại giao diện in PDF
+                                                    const qty = Number(Number(item.quantity || 0).toFixed(3));
+                                                    const price = Math.round(Number(item.unit_price) || 0);
+                                                    const amount = Math.round(qty * price);
+
                                                     return (
                                                         <tr key={index}>
                                                             <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '8px' }}>{itemIndex}</td>
