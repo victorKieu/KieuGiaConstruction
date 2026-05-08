@@ -2,16 +2,15 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/utils";
-import tzlookup from "tz-lookup";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
 import { sendPushToUser } from "@/lib/action/pushNotification";
 import { revalidatePath } from "next/cache";
 
 // ============================================================================
-// 1. HÀM TÍNH KHOẢNG CÁCH (HAVERSINE) TRÊN SERVER
+// 1. HÀM TÍNH KHOẢNG CÁCH (HAVERSINE)
 // ============================================================================
 function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371e3; // Bán kính Trái Đất (mét)
+    const R = 6371e3;
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
     const a =
@@ -23,7 +22,7 @@ function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number,
 }
 
 // ============================================================================
-// 2. LÕI CHẤM CÔNG CHÍNH: KẾT HỢP FACE ID + GPS SERVER
+// 2. LÕI CHẤM CÔNG CHÍNH: LẤY ĐIỂM GẦN NHẤT
 // ============================================================================
 export async function processFaceAttendance(
     scannedEmployeeId: string,
@@ -33,96 +32,81 @@ export async function processFaceAttendance(
     try {
         const supabase = await createSupabaseServerClient();
 
-        // BƯỚC 1: XÁC THỰC NGƯỜI CẦM MÁY
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Phiên đăng nhập không hợp lệ.");
 
         const { data: employee } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
         const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
-
         if (!employee || !profile) throw new Error("Không tìm thấy hồ sơ người dùng.");
 
         const currentEmpId = employee.id;
         const isAdmin = profile.role_id === 'admin';
+        const userRole = (profile.role_id || '').toLowerCase();
 
         if (!isProxyCheckIn && currentEmpId !== scannedEmployeeId) {
             throw new Error("TỪ CHỐI: Khuôn mặt không khớp với tài khoản đang đăng nhập.");
         }
 
-        // BƯỚC 2: CHỐT THỜI GIAN
         const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
         const todayStr = vnTime.toISOString().split('T')[0];
         const dbTimeStr = vnTime.toISOString();
         const checkInHour = vnTime.getHours();
         const checkInMinute = vnTime.getMinutes();
 
-        // BƯỚC 3: AUTO GEOFENCING (TỰ ĐỘNG ĐỊNH VỊ)
-        let currentLocationId: string | null = null;
-        let currentLocationName = "";
-        let isAtOffice = false;
-        let minDistance = Infinity;
-
+        // 3.1 THU THẬP TẤT CẢ ĐIỂM TRONG BÁN KÍNH
         const { data: companySetting } = await supabase.from('company_settings').select('geocode, attendance_radius').single();
         const ALLOWED_RADIUS = companySetting?.attendance_radius || 50;
+        let possibleLocations: any[] = [];
 
         if (companySetting?.geocode) {
             const [lat, lng] = companySetting.geocode.split(',').map(Number);
             const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, lat, lng);
-            minDistance = Math.min(minDistance, dist);
-            if (dist <= ALLOWED_RADIUS) {
-                isAtOffice = true;
-                currentLocationName = "Văn phòng Công ty";
+            if (dist <= ALLOWED_RADIUS) possibleLocations.push({ type: 'office', id: null, name: "Văn phòng", dist });
+        }
+
+        const { data: activeProjects } = await supabase.from('projects').select('id, name, geocode').not('geocode', 'is', null);
+        if (activeProjects) {
+            for (const proj of activeProjects) {
+                const [pLat, pLng] = proj.geocode.split(',').map(Number);
+                const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, pLat, pLng);
+                if (dist <= ALLOWED_RADIUS) possibleLocations.push({ type: 'project', id: proj.id, name: proj.name, dist });
             }
         }
 
-        if (!isAtOffice) {
-            const { data: activeProjects } = await supabase.from('projects').select('id, name, geocode').not('geocode', 'is', null);
-            if (activeProjects) {
-                for (const proj of activeProjects) {
-                    const [pLat, pLng] = proj.geocode.split(',').map(Number);
-                    const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, pLat, pLng);
-                    minDistance = Math.min(minDistance, dist);
-
-                    if (dist <= ALLOWED_RADIUS) {
-                        currentLocationId = proj.id;
-                        currentLocationName = proj.name;
-                        break;
-                    }
-                }
-            }
+        if (possibleLocations.length === 0) {
+            throw new Error(`Ngoài vùng chấm công! Khoảng cách tới điểm gần nhất lớn hơn ${ALLOWED_RADIUS}m.`);
         }
 
-        if (!isAtOffice && !currentLocationId) {
-            throw new Error(`Ngoài vùng chấm công! Điểm dự án gần nhất cách ${Math.round(minDistance)}m (Yêu cầu < ${ALLOWED_RADIUS}m).`);
-        }
+        // 3.2 LẤY ĐIỂM GẦN NHẤT ĐỂ CHECK QUYỀN
+        possibleLocations.sort((a, b) => a.dist - b.dist);
+        const finalLocation = possibleLocations[0];
 
-        // BƯỚC 4: KIỂM TRA QUYỀN
+        // 4. KIỂM TRA QUYỀN HẠN TẠI ĐIỂM GẦN NHẤT NÀY
         if (isProxyCheckIn) {
-            if (isAtOffice) {
-                const hrRoles = ['hr_manager', 'hr_staff'];
-                if (!isAdmin && !hrRoles.includes(profile.role_id)) {
-                    throw new Error("Chấm công hộ tại văn phòng chỉ dành cho phòng Hành chính Nhân sự.");
+            if (finalLocation.type === 'office') {
+                if (!isAdmin && userRole !== 'hr_manager' && userRole !== 'hr_staff') {
+                    throw new Error("TỪ CHỐI: Chấm công hộ tại Văn phòng chỉ dành cho HR/Admin.");
                 }
             } else {
-                const { data: supLink } = await supabase.from('project_members').select('role_id').eq('project_id', currentLocationId).eq('employee_id', currentEmpId).single();
-                const validRoles = ['project_manager', 'manager', 'team_leader', 'DIRECTOR', 'MANAGER', 'TEAM_LEADER'];
-                if (!isAdmin && (!supLink || !validRoles.includes(supLink.role_id))) {
-                    throw new Error("TỪ CHỐI: Bạn không có quyền Tổ trưởng/Quản lý tại dự án này để chấm công hộ.");
-                }
-            }
+                const { data: supLink } = await supabase.from('project_members').select('role_id').eq('project_id', finalLocation.id).eq('employee_id', currentEmpId).single();
+                const validRoles = ['project_manager', 'manager', 'team_leader'];
+                const supRole = (supLink?.role_id || '').toLowerCase();
 
-            if (currentLocationId) {
-                const { data: workerLink } = await supabase.from('project_members').select('id').eq('project_id', currentLocationId).eq('employee_id', scannedEmployeeId).single();
-                if (!workerLink) throw new Error("TỪ CHỐI: Nhân sự này chưa được thêm vào danh sách thi công của dự án.");
+                if (!isAdmin && (!supLink || !validRoles.includes(supRole))) {
+                    throw new Error(`TỪ CHỐI: Bạn không phải Quản lý/Tổ trưởng của dự án ${finalLocation.name}.`);
+                }
+
+                const { data: workerLink } = await supabase.from('project_members').select('id').eq('project_id', finalLocation.id).eq('employee_id', scannedEmployeeId).single();
+                if (!workerLink) throw new Error(`Nhân sự này không có trong danh sách của dự án ${finalLocation.name}.`);
             }
         } else {
-            if (!isAtOffice && currentLocationId && !isAdmin) {
-                const { data: myLink } = await supabase.from('project_members').select('id').eq('project_id', currentLocationId).eq('employee_id', currentEmpId).single();
-                if (!myLink) throw new Error("TỪ CHỐI: Bạn không có tên trong danh sách nhân sự thi công của dự án này.");
+            if (finalLocation.type === 'project' && !isAdmin) {
+                const { data: myLink } = await supabase.from('project_members').select('id').eq('project_id', finalLocation.id).eq('employee_id', currentEmpId).single();
+                if (!myLink) throw new Error(`Bạn không có tên trong danh sách thi công của ${finalLocation.name}.`);
             }
         }
 
-        // BƯỚC 5: GHI NHẬN DB
+        // 5. GHI NHẬN DB
         const { data: existingRecord } = await supabase.from('attendance_records').select('*').eq('employee_id', scannedEmployeeId).eq('date', todayStr).single();
         const messageParams = isProxyCheckIn ? `(Quản lý xác nhận)` : '';
 
@@ -130,7 +114,7 @@ export async function processFaceAttendance(
             if (!existingRecord.check_out_time) {
                 const checkInTime = new Date(existingRecord.check_in_time);
                 let workingHours = (vnTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
-                if (workingHours > 5) workingHours -= 1.5; // Trừ nghỉ trưa nếu làm > 5 tiếng
+                if (workingHours > 5) workingHours -= 1.5;
 
                 await supabase.from('attendance_records').update({
                     check_out_time: dbTimeStr, check_out_lat: location.lat, check_out_lng: location.lng,
@@ -139,7 +123,7 @@ export async function processFaceAttendance(
                 }).eq('id', existingRecord.id);
 
                 revalidatePath(`/hrm/attendance`);
-                return { success: true, type: 'CHECK_OUT', message: `Chốt ca thành công tại ${currentLocationName}! ${messageParams}` };
+                return { success: true, type: 'CHECK_OUT', message: `Chốt ca thành công tại ${finalLocation.name}! ${messageParams}` };
             } else {
                 return { success: false, error: "Nhân sự này đã hoàn thành chấm công hôm nay." };
             }
@@ -151,7 +135,7 @@ export async function processFaceAttendance(
             });
 
             revalidatePath(`/hrm/attendance`);
-            return { success: true, type: 'CHECK_IN', message: `Vào ca thành công tại ${currentLocationName}! ${messageParams}` };
+            return { success: true, type: 'CHECK_IN', message: `Vào ca thành công tại ${finalLocation.name}! ${messageParams}` };
         }
     } catch (error: any) {
         return { success: false, error: error.message || 'Lỗi hệ thống khi xử lý chấm công.' };
@@ -159,7 +143,7 @@ export async function processFaceAttendance(
 }
 
 // ============================================================================
-// 3. TẢI DỮ LIỆU KHUÔN MẶT ĐỂ ĐỐI CHIẾU (DÙNG CHUNG AUTO-GEOFENCING)
+// 3. TẢI DỮ LIỆU KHUÔN MẶT ĐỂ ĐỐI CHIẾU
 // ============================================================================
 export async function getNearbyProjectAndFaceData(location: { lat: number; lng: number }, isProxyCheckIn: boolean = false) {
     const supabase = await createSupabaseServerClient();
@@ -168,78 +152,93 @@ export async function getNearbyProjectAndFaceData(location: { lat: number; lng: 
 
     const { data: employee } = await supabase.from('employees').select('id, name, code, face_descriptor').eq('auth_id', user.id).single();
     const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
-
     if (!employee || !profile) return { success: false, error: "Hồ sơ không hợp lệ." };
 
+    const currentEmpId = employee.id;
     const isAdmin = profile.role_id === 'admin';
-
-    // ĐỊNH VỊ (Giống hệt processFaceAttendance)
-    let currentLocationId: string | null = null;
-    let currentLocationName = "";
-    let isAtOffice = false;
-    let minDistance = Infinity;
+    const userRole = (profile.role_id || '').toLowerCase();
 
     const { data: companySetting } = await supabase.from('company_settings').select('geocode, attendance_radius').single();
     const ALLOWED_RADIUS = companySetting?.attendance_radius || 50;
+    let possibleLocations: any[] = [];
 
     if (companySetting?.geocode) {
         const [lat, lng] = companySetting.geocode.split(',').map(Number);
         const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, lat, lng);
-        if (dist <= ALLOWED_RADIUS) {
-            isAtOffice = true; currentLocationName = "Văn phòng Công ty"; minDistance = dist;
+        if (dist <= ALLOWED_RADIUS) possibleLocations.push({ type: 'office', id: null, name: "Văn phòng Công ty", dist });
+    }
+
+    const { data: activeProjects } = await supabase.from('projects').select('id, name, geocode').not('geocode', 'is', null);
+    if (activeProjects) {
+        for (const proj of activeProjects) {
+            const [pLat, pLng] = proj.geocode.split(',').map(Number);
+            const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, pLat, pLng);
+            if (dist <= ALLOWED_RADIUS) possibleLocations.push({ type: 'project', id: proj.id, name: proj.name, dist });
         }
     }
 
-    if (!isAtOffice) {
-        const { data: activeProjects } = await supabase.from('projects').select('id, name, geocode').not('geocode', 'is', null);
-        if (activeProjects) {
-            for (const proj of activeProjects) {
-                const [pLat, pLng] = proj.geocode.split(',').map(Number);
-                const dist = getDistanceFromLatLonInMeters(location.lat, location.lng, pLat, pLng);
-                if (dist <= ALLOWED_RADIUS && dist < minDistance) {
-                    currentLocationId = proj.id; currentLocationName = proj.name; minDistance = dist;
-                }
-            }
-        }
-    }
+    if (possibleLocations.length === 0) return { success: false, error: `Ngoài vùng chấm công! Bán kính cho phép: ${ALLOWED_RADIUS}m.` };
 
-    if (!isAtOffice && !currentLocationId) {
-        return { success: false, error: `Ngoài vùng chấm công! Khoảng cách hiện tại: ${Math.round(minDistance)}m.` };
-    }
+    // Lấy điểm GẦN NHẤT
+    possibleLocations.sort((a, b) => a.dist - b.dist);
+    const closestLocation = possibleLocations[0];
+    const projectData = { id: closestLocation.id, name: closestLocation.name, distance: Math.round(closestLocation.dist) };
 
-    // TẢI KHUÔN MẶT THEO CHẾ ĐỘ
+    let finalLocation = null;
     let members: any[] = [];
+    let lastAuthError = "";
 
-    if (isProxyCheckIn) {
-        if (isAtOffice) return { success: false, error: "Chấm công hộ chỉ khả dụng tại công trường." };
+    for (const loc of possibleLocations) {
+        try {
+            if (isProxyCheckIn) {
+                if (loc.type === 'office') {
+                    if (!isAdmin && userRole !== 'hr_manager' && userRole !== 'hr_staff') throw new Error("Chấm công hộ tại VP chỉ dành cho HR.");
+                    const { data: mems } = await supabase.from('employees').select('id, name, code, face_descriptor').not('face_descriptor', 'is', null);
+                    members = mems ? mems.map(m => ({ employees: m })) : [];
+                } else {
+                    const { data: supLink } = await supabase.from('project_members').select('role_id').eq('project_id', loc.id).eq('employee_id', currentEmpId).single();
+                    const validRoles = ['project_manager', 'manager', 'team_leader', 'DIRECTOR', 'MANAGER', 'TEAM_LEADER'];
+                    const supRole = (supLink?.role_id || '').toLowerCase();
 
-        // Load toàn bộ nhân viên dự án
-        const { data: mems } = await supabase.from('project_members')
-            .select(`employee_id, employees!inner(id, name, code, face_descriptor)`)
-            .eq('project_id', currentLocationId)
-            .not('employees.face_descriptor', 'is', null);
+                    if (!isAdmin && (!supLink || !validRoles.includes(supRole))) {
+                        throw new Error(`Bạn không phải Quản lý/Tổ trưởng của dự án: ${loc.name}.`);
+                    }
+                    const { data: mems } = await supabase.from('project_members').select(`employee_id, employees!inner(id, name, code, face_descriptor)`).eq('project_id', loc.id).not('employees.face_descriptor', 'is', null);
+                    members = mems || [];
+                }
+            } else {
+                if (loc.type === 'project' && !isAdmin) {
+                    const { data: myLink } = await supabase.from('project_members').select('id').eq('project_id', loc.id).eq('employee_id', currentEmpId).single();
+                    if (!myLink) throw new Error(`Bạn không thuộc dự án: ${loc.name}.`);
+                }
+                if (employee.face_descriptor) members = [{ employees: employee }];
+            }
 
-        members = mems || [];
-    } else {
-        // Tự chấm công -> Chỉ lấy bản thân mình
-        if (employee.face_descriptor) {
-            members = [{ employee_id: employee.id, employees: employee }];
+            finalLocation = loc;
+            break;
+        } catch (err: any) {
+            lastAuthError = err.message;
         }
     }
 
-    if (members.length === 0) return { success: false, error: "Không tìm thấy dữ liệu khuôn mặt hợp lệ (Chưa đăng ký Face ID)." };
+    // LUÔN TRẢ VỀ projectData ĐỂ GIAO DIỆN HIỂN THỊ TÊN ĐỊA ĐIỂM
+    if (!finalLocation) {
+        return { success: false, project: projectData, error: lastAuthError || "Bạn không có quyền chấm công tại đây." };
+    }
 
-    const formattedMembers = members.map((item: any) => ({
-        id: item.employees.id,
-        name: item.employees.name,
-        code: item.employees.code,
-        descriptor: item.employees.face_descriptor
-    }));
+    if (members.length === 0 && isProxyCheckIn && finalLocation.type !== 'office') {
+        return { success: false, project: projectData, error: `Dự án ${finalLocation.name} chưa có nhân sự đăng ký Face ID.` };
+    }
+    if (members.length === 0 && !isProxyCheckIn) {
+        return { success: false, project: projectData, error: "Bạn chưa đăng ký Face ID trên hệ thống." };
+    }
 
     return {
         success: true,
-        project: { id: currentLocationId, name: currentLocationName, distance: Math.round(minDistance) },
-        members: formattedMembers
+        project: projectData,
+        members: members.map((item: any) => ({
+            id: item.employees.id, name: item.employees.name, code: item.employees.code, descriptor: item.employees.face_descriptor
+        }))
     };
 }
 

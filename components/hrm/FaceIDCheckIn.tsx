@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as faceapi from 'face-api.js';
-import { CheckCircle2, XCircle, Loader2, Play, Users, UserSquare } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Play, Users, UserSquare, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
@@ -20,17 +20,20 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const isProcessingRef = useRef(false);
 
     const [mode, setMode] = useState<ScanMode>("self");
     const [isModelLoaded, setIsModelLoaded] = useState(false);
     const [faceMatcher, setFaceMatcher] = useState<faceapi.FaceMatcher | null>(null);
     const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
     const [cameraError, setCameraError] = useState<boolean>(false);
+    const [isScanningStatus, setIsScanningStatus] = useState(false);
 
-    // Giao diện điều hướng AI
+    // Giao diện
+    const [detectedLocationName, setDetectedLocationName] = useState<string>("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [instruction, setInstruction] = useState("Đang tìm khuôn mặt...");
-    const [scanProgress, setScanProgress] = useState(0); // 0 -> 100
+    const [scanProgress, setScanProgress] = useState(0);
     const [scanResult, setScanResult] = useState<{ success: boolean, type?: string, message: string, name?: string } | null>(null);
 
     // =======================================================================
@@ -51,13 +54,14 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
         if (videoRef.current) {
             videoRef.current.srcObject = null;
         }
+        setIsScanningStatus(false);
     };
 
     const startCamera = async (currentMode: ScanMode) => {
         try {
             setCameraError(false);
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                toast.error("Trình duyệt chặn Camera. Bạn cần dùng HTTPS hoặc Localhost.");
+                toast.error("Trình duyệt chặn Camera.");
                 setCameraError(true);
                 return;
             }
@@ -72,16 +76,13 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
 
             streamRef.current = stream;
 
-            if (!videoRef.current) {
-                await new Promise(resolve => setTimeout(resolve, 300));
-            }
-
+            if (!videoRef.current) await new Promise(resolve => setTimeout(resolve, 300));
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
-            } else {
-                toast.error("Lỗi giao diện: Không thể gắn luồng Video.");
+                setIsScanningStatus(true); // Bật cờ cho phép AI quét
             }
-        } catch (err: any) {
+
+        } catch (err) {
             console.error("Camera Error:", err);
             setCameraError(true);
             toast.error("Không thể mở Camera.");
@@ -101,17 +102,15 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                 ]);
                 setIsModelLoaded(true);
             } catch (error) {
-                console.error("Lỗi tải model FaceAPI:", error);
                 toast.error("Không thể tải AI model.");
             }
         };
         loadModels();
-
         return () => stopCamera();
     }, []);
 
     // =======================================================================
-    // 2. LẤY ĐỊA ĐIỂM VÀ TẢI DỮ LIỆU NHÂN VIÊN
+    // 2. LẤY ĐỊA ĐIỂM & TẢI DATA KHUÔN MẶT
     // =======================================================================
     useEffect(() => {
         if (!isModelLoaded) return;
@@ -121,13 +120,15 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
             setFaceMatcher(null);
             setScanResult(null);
             setIsProcessing(false);
+            isProcessingRef.current = false;
             setScanProgress(0);
+            setDetectedLocationName("");
 
             startCamera(mode);
-            toast.info("Đang lấy định vị...", { id: 'locating' });
+            setInstruction("Đang kiểm tra vị trí...");
 
             if (!navigator.geolocation) {
-                toast.error("Thiết bị không hỗ trợ GPS", { id: 'locating' });
+                setInstruction("Thiết bị không hỗ trợ GPS");
                 return;
             }
 
@@ -137,9 +138,16 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                     setLocation(coords);
 
                     try {
-                        const { success, members, error } = await getNearbyProjectAndFaceData(coords, mode === "proxy");
+                        const { success, project, members, error } = await getNearbyProjectAndFaceData(coords, mode === "proxy");
+
+                        // ✅ Luôn hiển thị tên Dự án/Văn phòng dù có thành công hay lỗi
+                        if (project) {
+                            setDetectedLocationName(`${project.name} (${project.distance}m)`);
+                        }
+
                         if (!success || !members || members.length === 0) {
-                            toast.error(error || "Không tìm thấy dữ liệu khuôn mặt.", { id: 'locating' });
+                            setInstruction(error || "Không tìm thấy dữ liệu khuôn mặt.");
+                            toast.error(error || "Lỗi tải dữ liệu");
                             return;
                         }
 
@@ -149,14 +157,13 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                         });
 
                         setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.45));
-                        toast.success("Hệ thống đã sẵn sàng!", { id: 'locating' });
+                        setInstruction("Đang tìm khuôn mặt...");
+
                     } catch (err) {
-                        toast.error("Lỗi kết nối máy chủ.", { id: 'locating' });
+                        setInstruction("Lỗi kết nối máy chủ.");
                     }
                 },
-                (error) => {
-                    toast.error("Vui lòng cấp quyền truy cập vị trí.", { id: 'locating' });
-                },
+                (error) => setInstruction("Vui lòng bật định vị (GPS)."),
                 { enableHighAccuracy: true, timeout: 10000 }
             );
         };
@@ -166,18 +173,25 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
     }, [mode, isModelLoaded]);
 
     // =======================================================================
-    // 3. LOGIC CĂN CHỈNH VÀ NHẬN DIỆN (Tốc độ cao 300ms)
+    // 3. LOGIC CĂN CHỈNH VÀ NHẬN DIỆN (CHỐNG STALE CLOSURE)
     // =======================================================================
-    const handleVideoPlay = () => {
-        let stableCount = 0;
-        const STABLE_THRESHOLD = 4; // Tương đương khoảng 1.2 giây ổn định
+    // Dùng Ref để theo dõi scanResult bên trong setInterval
+    const scanResultRef = useRef(scanResult);
+    useEffect(() => { scanResultRef.current = scanResult; }, [scanResult]);
 
-        intervalRef.current = setInterval(async () => {
-            if (!videoRef.current || !faceMatcher || !location || isProcessing || scanResult) return;
+    useEffect(() => {
+        if (!isScanningStatus || !faceMatcher || !location || !videoRef.current) return;
+
+        let stableCount = 0;
+        const STABLE_THRESHOLD = 4;
+        isProcessingRef.current = false;
+
+        const scanInterval = setInterval(async () => {
+            // Ngăn chặn API spam khi đang tải hoặc đã có kết quả
+            if (isProcessingRef.current || scanResultRef.current) return;
 
             try {
-                // Nhận diện nhanh
-                const detection = await faceapi.detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.6 }))
+                const detection = await faceapi.detectSingleFace(videoRef.current!, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
                     .withFaceLandmarks()
                     .withFaceDescriptor();
 
@@ -188,17 +202,14 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                     return;
                 }
 
-                // Căn chỉnh giao diện
                 const box = detection.detection.box;
-                const videoW = videoRef.current.videoWidth;
-                const videoH = videoRef.current.videoHeight;
+                const videoW = videoRef.current!.videoWidth;
+                const videoH = videoRef.current!.videoHeight;
 
-                const isLargeEnough = box.width > (videoW * 0.3);
+                const isLargeEnough = box.width > (videoW * 0.25);
                 const faceCenterX = box.x + box.width / 2;
                 const faceCenterY = box.y + box.height / 2;
-                const isCentered =
-                    Math.abs(faceCenterX - (videoW / 2)) < (videoW * 0.15) &&
-                    Math.abs(faceCenterY - (videoH / 2)) < (videoH * 0.15);
+                const isCentered = Math.abs(faceCenterX - (videoW / 2)) < (videoW * 0.2) && Math.abs(faceCenterY - (videoH / 2)) < (videoH * 0.2);
 
                 if (!isLargeEnough) {
                     setInstruction("Hãy đưa mặt lại gần hơn");
@@ -213,19 +224,15 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                     stableCount += 1;
                     setScanProgress((stableCount / STABLE_THRESHOLD) * 100);
 
-                    // ==========================================
-                    // 4. KHI ĐẠT NGƯỠNG ỔN ĐỊNH -> XỬ LÝ API NHANH
-                    // ==========================================
+                    // --- KHUÔN MẶT ĐÃ CHUẨN -> GỌI API CHẤM CÔNG ---
                     if (stableCount >= STABLE_THRESHOLD) {
-                        clearInterval(intervalRef.current!);
-                        setIsProcessing(true); // Overlay loading
+                        isProcessingRef.current = true;
+                        setIsProcessing(true);
 
-                        // Đối chiếu descriptor đã trích xuất
                         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
                         if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.45) {
-                            stopCamera(); // Dừng ngay camera để tối ưu tốc độ và UI
-
+                            stopCamera(); // Tắt camera ngay lập tức
                             const [empId, empName] = bestMatch.label.split('::');
                             setInstruction(`Đang ghi nhận: ${empName}...`);
 
@@ -242,17 +249,39 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                         } else {
                             toast.error("Khuôn mặt không có trong hệ thống.");
                             setIsProcessing(false);
+                            isProcessingRef.current = false;
                             setInstruction("Thử lại...");
                             setScanProgress(0);
                             stableCount = 0;
-                            // Reset interval (sẽ tự chạy lại vì hàm handleVideoPlay vẫn gắn onPlay)
                         }
                     }
                 }
             } catch (error) {
                 console.error("Scan error:", error);
             }
-        }, 300); // Quét mỗi 300ms thay vì 1500ms
+        }, 300);
+
+        intervalRef.current = scanInterval;
+
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isScanningStatus, faceMatcher, location]);
+
+    // =======================================================================
+    // 4. CÁC HÀM ĐIỀU KHIỂN UI
+    // =======================================================================
+    const handleContinue = () => {
+        setScanResult(null);
+        setIsProcessing(false);
+        isProcessingRef.current = false;
+        setScanProgress(0);
+        setInstruction("Đang khởi động lại...");
+        startCamera(mode);
     };
 
     const handleClose = () => {
@@ -263,7 +292,7 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
     const canProxyCheckIn = ['admin', 'manager', 'project_manager', 'team_leader'].includes(userRole.toLowerCase());
 
     return (
-        <div className="flex flex-col h-full w-full bg-slate-900 text-white overflow-hidden relative">
+        <div className="flex flex-col h-full w-full bg-slate-900 text-white overflow-hidden relative rounded-xl border border-slate-800">
             <div className="p-3 bg-slate-950 border-b border-slate-800 z-10 shadow-md">
                 <Tabs value={mode} onValueChange={(v) => setMode(v as ScanMode)} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 bg-slate-800">
@@ -281,13 +310,22 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
 
             <div className="relative flex-1 flex flex-col items-center justify-center p-4">
 
-                {/* Vòng tròn Camera */}
-                <div className="relative w-full max-w-[320px] aspect-square bg-slate-950 rounded-full overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] flex items-center justify-center">
+                {/* HIỂN THỊ TÊN ĐỊA ĐIỂM (OVERLAY) */}
+                {detectedLocationName && !scanResult && (
+                    <div className="absolute top-4 left-0 right-0 z-20 flex justify-center">
+                        <div className="bg-black/60 text-white text-xs px-3 py-1.5 rounded-full flex items-center backdrop-blur-sm border border-white/10 animate-in slide-in-from-top-2">
+                            <MapPin className="w-3 h-3 mr-1.5 text-emerald-400" />
+                            {detectedLocationName}
+                        </div>
+                    </div>
+                )}
+
+                <div className="relative w-full max-w-[320px] aspect-square bg-slate-950 rounded-full overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] flex items-center justify-center mt-2">
 
                     {!isModelLoaded ? (
                         <div className="flex flex-col items-center text-slate-400">
                             <Loader2 className="w-8 h-8 animate-spin mb-3 text-emerald-500" />
-                            <span className="text-sm">Đang tải Engine...</span>
+                            <span className="text-sm">Đang tải AI...</span>
                         </div>
                     ) : cameraError ? (
                         <div className="flex flex-col items-center text-red-400 text-center p-4">
@@ -296,7 +334,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                             <Button onClick={() => startCamera(mode)} variant="outline" className="mt-4 border-red-500 text-red-400">Thử lại</Button>
                         </div>
                     ) : scanResult ? (
-                        // Màn hình kết quả thành công/thất bại
                         <div className={`flex flex-col items-center justify-center w-full h-full p-4 animate-in zoom-in duration-300 ${scanResult.success ? 'bg-emerald-900/30' : 'bg-red-900/30'}`}>
                             {scanResult.success ? (
                                 <CheckCircle2 className="w-20 h-20 text-emerald-400 mb-2" />
@@ -304,29 +341,23 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                                 <XCircle className="w-20 h-20 text-red-400 mb-2" />
                             )}
                             <h3 className="font-bold text-lg text-center truncate w-full px-4">{scanResult.name}</h3>
-                            <p className={`text-sm text-center line-clamp-2 px-2 ${scanResult.success ? 'text-emerald-300' : 'text-red-300'}`}>
+                            <p className={`text-sm text-center line-clamp-2 px-2 mt-1 ${scanResult.success ? 'text-emerald-300' : 'text-red-300'}`}>
                                 {scanResult.message}
                             </p>
                         </div>
                     ) : (
                         <>
-                            {/* Stream Camera */}
                             <video
                                 ref={videoRef}
-                                onPlay={handleVideoPlay}
                                 autoPlay
                                 playsInline
                                 muted
                                 className={`object-cover w-full h-full transform ${mode === 'self' ? 'scale-x-[-1]' : ''} transition-opacity duration-300 ${isProcessing ? 'opacity-30' : 'opacity-100'}`}
                             />
-
-                            {/* Vòng định hướng UI */}
                             {!isProcessing && (
                                 <div className={`absolute inset-0 border-[6px] m-6 rounded-full pointer-events-none transition-colors duration-300 ${scanProgress > 0 ? 'border-emerald-500/80 shadow-[0_0_20px_rgba(16,185,129,0.4)_inset]' : 'border-dashed border-white/20'}`}>
                                 </div>
                             )}
-
-                            {/* Vòng đếm quá trình nhận diện */}
                             {scanProgress > 0 && scanProgress < 100 && !isProcessing && (
                                 <div className="absolute inset-0 m-6 rounded-full pointer-events-none" style={{
                                     background: `conic-gradient(#10b981 ${scanProgress}%, transparent 0)`,
@@ -334,8 +365,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                                     mask: "radial-gradient(transparent 68%, black 68%)"
                                 }}></div>
                             )}
-
-                            {/* Lớp phủ khi đang gửi API lên máy chủ */}
                             {isProcessing && (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
                                     <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-3" />
@@ -345,7 +374,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                     )}
                 </div>
 
-                {/* Khung hướng dẫn hành động */}
                 <div className={`mt-8 h-12 flex items-center justify-center w-full max-w-[320px] px-4 rounded-lg font-medium transition-colors duration-300 ${scanResult?.success ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/40' :
                         scanResult && !scanResult.success ? 'bg-red-900/50 text-red-400 border border-red-500/40' :
                             isProcessing ? 'bg-blue-900/50 text-blue-400 border border-blue-500/40' :
@@ -355,13 +383,9 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                     {scanResult ? (scanResult.success ? "Chấm công hoàn tất!" : "Không hợp lệ") : instruction}
                 </div>
 
-                {/* Các phím điều khiển nhanh */}
                 {scanResult && (
                     <div className="flex gap-4 mt-6 w-full max-w-[320px]">
-                        <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => {
-                            setScanResult(null);
-                            startCamera(mode);
-                        }}>
+                        <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleContinue}>
                             <Play className="w-4 h-4 mr-2" /> Tiếp tục
                         </Button>
                         {onClose && (
@@ -371,13 +395,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                         )}
                     </div>
                 )}
-
-                {!scanResult && onClose && (
-                    <Button variant="ghost" className="mt-4 text-slate-500 hover:text-slate-300" onClick={handleClose}>
-                        Hủy bỏ
-                    </Button>
-                )}
-
             </div>
         </div>
     );
