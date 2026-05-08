@@ -1,4 +1,6 @@
 ﻿// lib/supabase/functions.ts
+"use server";
+
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cache } from "react";
 
