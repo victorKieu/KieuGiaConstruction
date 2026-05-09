@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { CalendarDays, AlertCircle, Send, History, FileEdit, Plus, Loader2, Trash2, Edit, Save } from "lucide-react";
+import { CalendarDays, AlertCircle, Send, History, FileEdit, Plus, Loader2, Trash2, Edit, Save, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
 import { formatDate } from "@/lib/utils/utils";
@@ -30,6 +30,9 @@ export default function AttendancePage() {
     // ✅ Thêm State lưu Role người dùng (để phân quyền FaceID)
     const [userRole, setUserRole] = useState<string>("staff");
 
+    // ✅ STATE KIỂM SOÁT BẬT/TẮT CAMERA
+    const [cameraOpen, setCameraOpen] = useState(false);
+
     // State cho Form Giải trình
     const [explOpen, setExplOpen] = useState(false);
     const [explForm, setExplForm] = useState({ date: "", type: "", inTime: "", outTime: "", reason: "" });
@@ -47,29 +50,31 @@ export default function AttendancePage() {
     useEffect(() => {
         const fetchInitialData = async () => {
             setLoadingRecords(true);
-
-            // 1. Lấy thông tin Role của user hiện tại
             try {
                 const supabase = createClient();
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
                     const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
-                    if (profile) setUserRole(profile.role_id);
+                    if (profile && profile.role_id) {
+                        const { data: roleDict } = await supabase.from('sys_dictionaries').select('code').eq('id', profile.role_id).maybeSingle();
+                        if (roleDict && roleDict.code) {
+                            setUserRole(roleDict.code);
+                        } else {
+                            setUserRole("staff");
+                        }
+                    }
                 }
             } catch (error) {
                 console.error("Lỗi lấy thông tin role", error);
             }
 
-            // 2. Lấy dữ liệu chấm công
             const data = await getMyAttendanceRecords();
             setRealRecords(data);
             setLoadingRecords(false);
         };
-
         fetchInitialData();
     }, []);
 
-    // Load lại bảng công (Dùng làm callback khi quét mặt xong)
     const loadRecords = async () => {
         setLoadingRecords(true);
         const data = await getMyAttendanceRecords();
@@ -153,13 +158,43 @@ export default function AttendancePage() {
                 {/* TAB 1: CHẤM CÔNG */}
                 <TabsContent value="checkin" className="space-y-4 mt-4">
 
-                    {/* ✅ KHOANG CAMERA FACE ID MỚI */}
-                    <div className="w-full max-w-md mx-auto h-[600px] bg-slate-900 rounded-xl overflow-hidden shadow-lg border border-border">
-                        <FaceIDCheckIn
-                            userRole={userRole}
-                            onScanSuccess={loadRecords}
-                        />
-                    </div>
+                    {/* ✅ NÚT BẤM GỌI CAMERA THAY VÌ HIỂN THỊ TRỰC TIẾP */}
+                    <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-sm transition-colors">
+                        <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                            <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-800/50 rounded-full flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400">
+                                <Camera className="w-8 h-8" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">Chấm công bằng Face ID</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-md">
+                                Hệ thống tự động nhận diện khuôn mặt và vị trí GPS để ghi nhận ca làm việc của bạn.
+                            </p>
+                            <Button
+                                onClick={() => setCameraOpen(true)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 h-12 rounded-full text-base font-semibold shadow-lg shadow-emerald-500/30"
+                            >
+                                <Camera className="w-5 h-5 mr-2" /> Mở Camera Chấm Công
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    {/* ✅ MODAL CHỨA CAMERA (Chỉ mở khi bấm nút) */}
+                    <Dialog open={cameraOpen} onOpenChange={setCameraOpen}>
+                        {/* Ẩn nút X mặc định của Dialog vì FaceIDCheckIn đã có nút Đóng */}
+                        <DialogContent className="sm:max-w-[420px] p-0 border-0 bg-transparent shadow-none [&>button]:hidden">
+                            <div className="h-[600px] w-full bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
+                                {cameraOpen && ( // Đảm bảo component chỉ render khi Dialog mở (giúp reset camera)
+                                    <FaceIDCheckIn
+                                        userRole={userRole}
+                                        onScanSuccess={() => {
+                                            loadRecords(); // Load lại bảng
+                                            setCameraOpen(false); // Tự động đóng modal
+                                        }}
+                                        onClose={() => setCameraOpen(false)} // Cho phép user tự bấm nút Đóng/Hủy bỏ
+                                    />
+                                )}
+                            </div>
+                        </DialogContent>
+                    </Dialog>
 
                     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors mt-6">
                         <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3 transition-colors">
@@ -239,8 +274,9 @@ export default function AttendancePage() {
                     </Card>
                 </TabsContent>
 
-                {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP */}
+                {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP (Giữ nguyên) */}
                 <TabsContent value="requests" className="mt-4">
+                    {/* ... (Đoạn Code Tab 2 giữ nguyên như cũ) ... */}
                     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">
                         <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3 transition-colors">
                             <div>

@@ -29,7 +29,8 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
     const [cameraError, setCameraError] = useState<boolean>(false);
     const [isScanningStatus, setIsScanningStatus] = useState(false);
 
-    // Giao diện
+    // Giao diện và Phân quyền động
+    const [isProxyAuthorized, setIsProxyAuthorized] = useState(false); // ✅ Đã thêm State mở khóa Tab
     const [detectedLocationName, setDetectedLocationName] = useState<string>("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [instruction, setInstruction] = useState("Đang tìm khuôn mặt...");
@@ -138,11 +139,17 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                     setLocation(coords);
 
                     try {
-                        const { success, project, members, error } = await getNearbyProjectAndFaceData(coords, mode === "proxy");
+                        // ✅ Đã thêm thuộc tính canProxy hứng từ Backend
+                        const { success, project, members, error, canProxy } = await getNearbyProjectAndFaceData(coords, mode === "proxy");
 
-                        // ✅ Luôn hiển thị tên Dự án/Văn phòng dù có thành công hay lỗi
+                        // Luôn hiển thị tên Dự án/Văn phòng dù có thành công hay lỗi
                         if (project) {
                             setDetectedLocationName(`${project.name} (${project.distance}m)`);
+                        }
+
+                        // ✅ Mở khóa Tab Chấm Đội nếu có quyền tại địa điểm này (Lấy 100% từ backend)
+                        if (canProxy) {
+                            setIsProxyAuthorized(true);
                         }
 
                         if (!success || !members || members.length === 0) {
@@ -175,7 +182,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
     // =======================================================================
     // 3. LOGIC CĂN CHỈNH VÀ NHẬN DIỆN (CHỐNG STALE CLOSURE)
     // =======================================================================
-    // Dùng Ref để theo dõi scanResult bên trong setInterval
     const scanResultRef = useRef(scanResult);
     useEffect(() => { scanResultRef.current = scanResult; }, [scanResult]);
 
@@ -187,7 +193,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
         isProcessingRef.current = false;
 
         const scanInterval = setInterval(async () => {
-            // Ngăn chặn API spam khi đang tải hoặc đã có kết quả
             if (isProcessingRef.current || scanResultRef.current) return;
 
             try {
@@ -232,13 +237,16 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                         const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
                         if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.45) {
-                            stopCamera(); // Tắt camera ngay lập tức
+                            stopCamera();
                             const [empId, empName] = bestMatch.label.split('::');
                             setInstruction(`Đang ghi nhận: ${empName}...`);
 
                             const result = await processFaceAttendance(empId, location, mode === "proxy");
 
-                            if (result.success) {
+                            if (!result) {
+                                toast.error("Lỗi mất kết nối với máy chủ.");
+                                setScanResult({ success: false, message: "Server không phản hồi", name: empName });
+                            } else if (result.success) {
                                 toast.success(result.message);
                                 setScanResult({ success: true, type: result.type, message: result.message!, name: empName });
                                 if (onScanSuccess) onScanSuccess();
@@ -289,7 +297,10 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
         if (onClose) onClose();
     };
 
-    const canProxyCheckIn = ['admin', 'manager', 'project_manager', 'team_leader'].includes(userRole.toLowerCase());
+    // ✅ Logic phân quyền: Nếu userRole là UUID (f105...) thì includes() sẽ tự động bỏ qua. 
+    // Khi đó, UI phụ thuộc 100% vào biến isProxyAuthorized được API Backend trả về!
+    const globalCanProxy = ['admin', 'manager', 'project_manager', 'team_leader', 'hr_manager', 'hr_staff'].includes((userRole || '').toLowerCase());
+    const showProxyTab = globalCanProxy || isProxyAuthorized;
 
     return (
         <div className="flex flex-col h-full w-full bg-slate-900 text-white overflow-hidden relative rounded-xl border border-slate-800">
@@ -299,8 +310,8 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                         <TabsTrigger value="self" className="font-medium data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
                             <UserSquare className="w-4 h-4 mr-2" /> Cá nhân
                         </TabsTrigger>
-                        {canProxyCheckIn && (
-                            <TabsTrigger value="proxy" className="font-medium data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+                        {showProxyTab && (
+                            <TabsTrigger value="proxy" className="font-medium data-[state=active]:bg-blue-600 data-[state=active]:text-white animate-in zoom-in duration-300">
                                 <Users className="w-4 h-4 mr-2" /> Chấm Đội
                             </TabsTrigger>
                         )}
@@ -309,7 +320,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
             </div>
 
             <div className="relative flex-1 flex flex-col items-center justify-center p-4">
-
                 {/* HIỂN THỊ TÊN ĐỊA ĐIỂM (OVERLAY) */}
                 {detectedLocationName && !scanResult && (
                     <div className="absolute top-4 left-0 right-0 z-20 flex justify-center">
@@ -321,7 +331,6 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                 )}
 
                 <div className="relative w-full max-w-[320px] aspect-square bg-slate-950 rounded-full overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] flex items-center justify-center mt-2">
-
                     {!isModelLoaded ? (
                         <div className="flex flex-col items-center text-slate-400">
                             <Loader2 className="w-8 h-8 animate-spin mb-3 text-emerald-500" />
@@ -375,10 +384,10 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                 </div>
 
                 <div className={`mt-8 h-12 flex items-center justify-center w-full max-w-[320px] px-4 rounded-lg font-medium transition-colors duration-300 ${scanResult?.success ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-500/40' :
-                        scanResult && !scanResult.success ? 'bg-red-900/50 text-red-400 border border-red-500/40' :
-                            isProcessing ? 'bg-blue-900/50 text-blue-400 border border-blue-500/40' :
-                                scanProgress > 0 ? 'bg-amber-900/50 text-amber-400 border border-amber-500/40' :
-                                    'bg-slate-800 text-slate-300'
+                    scanResult && !scanResult.success ? 'bg-red-900/50 text-red-400 border border-red-500/40' :
+                        isProcessing ? 'bg-blue-900/50 text-blue-400 border border-blue-500/40' :
+                            scanProgress > 0 ? 'bg-amber-900/50 text-amber-400 border border-amber-500/40' :
+                                'bg-slate-800 text-slate-300'
                     }`}>
                     {scanResult ? (scanResult.success ? "Chấm công hoàn tất!" : "Không hợp lệ") : instruction}
                 </div>
@@ -394,6 +403,11 @@ export default function FaceIDCheckIn({ userRole = 'staff', onScanSuccess, onClo
                             </Button>
                         )}
                     </div>
+                )}
+                {!scanResult && onClose && (
+                    <Button variant="ghost" className="mt-4 text-slate-500 hover:text-slate-300" onClick={handleClose}>
+                        Hủy bỏ
+                    </Button>
                 )}
             </div>
         </div>

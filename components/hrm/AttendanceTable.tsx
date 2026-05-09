@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
     Table,
     TableBody,
@@ -8,65 +8,60 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Clock, LogIn, LogOut } from "lucide-react";
-import { format, parseISO, isValid } from "date-fns";
+import { MapPin, Clock, LogIn, LogOut, Info } from "lucide-react";
+import { format, isValid } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { getAttendanceCheckpoints } from "@/lib/action/attendanceActions";
+import { CheckpointTimeline } from "./CheckpointTimeline";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 export interface AttendanceRecord {
     id: string;
     date: string;
     employeeCode: string;
     name: string;
-    checkIn: string;           // Giờ máy gốc
-    checkOut: string;          // Giờ máy gốc
-    adjustedCheckIn?: string;  // Giờ đã duyệt điều chỉnh (Nếu có)
-    adjustedCheckOut?: string; // Giờ đã duyệt điều chỉnh (Nếu có)
+    checkIn: string;
+    checkOut: string;
+    adjustedCheckIn?: string;
+    adjustedCheckOut?: string;
     status: string;
     location?: string;
 }
 
 interface AttendanceTableProps {
     records: AttendanceRecord[];
-    // Prop quyết định việc ẩn hiện thông tin nhân viên
     hideEmployeeInfo?: boolean;
 }
 
 export function AttendanceTable({ records, hideEmployeeInfo = false }: AttendanceTableProps) {
+    const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+    const [checkpoints, setCheckpoints] = useState<any[]>([]);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [loadingCheckpoints, setLoadingCheckpoints] = useState(false);
+
+    const handleViewCheckpoints = async (recordId: string) => {
+        setSelectedRecordId(recordId);
+        setIsDrawerOpen(true);
+        setLoadingCheckpoints(true);
+        const data = await getAttendanceCheckpoints(recordId);
+        setCheckpoints(data);
+        setLoadingCheckpoints(false);
+    };
 
     // ✅ KIỂM TRA & RENDER MÀU BADGE TRẠNG THÁI
     const getStatusBadge = (status: string) => {
         if (!status) return <Badge variant="outline">-</Badge>;
-
-        if (status.includes('Đủ công (Có GT)'))
-            return <Badge className="bg-lime-500 hover:bg-lime-600 dark:bg-lime-500/20 dark:text-lime-400 dark:border-lime-500/30 dark:hover:bg-lime-500/30 transition-colors">Đủ công (Có GT)</Badge>;
-
-        if (status === 'Đủ công' || status === 'Đủ công ')
-            return <Badge className="bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 dark:hover:bg-emerald-500/30 transition-colors">Đủ công</Badge>;
-
-        if (status.includes('Đi muộn') || status.includes('Về sớm') || status.includes('Đi trễ'))
-            return <Badge className="bg-amber-500 hover:bg-amber-600 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30 dark:hover:bg-amber-500/30 transition-colors">{status}</Badge>;
-
-        if (status.includes('Nửa công'))
-            return <Badge className="bg-blue-500 hover:bg-blue-600 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30 dark:hover:bg-blue-500/30 transition-colors">Nửa công</Badge>;
-
-        if (status.includes('Tăng ca (OT)'))
-            return <Badge className="bg-teal-500 hover:bg-teal-600 dark:bg-teal-500/20 dark:text-teal-400 dark:border-teal-500/30 dark:hover:bg-teal-500/30 transition-colors">Tăng ca (OT)</Badge>;
-
-        if (status.includes('Nghỉ (P)') || status.includes('Nghỉ lễ/Tết (L)'))
-            return <Badge className="bg-violet-500 hover:bg-violet-600 dark:bg-violet-500/20 dark:text-violet-400 dark:border-violet-500/30 dark:hover:bg-violet-500/30 transition-colors">{status}</Badge>;
-
-        if (status.includes('Nghỉ không lương (UL)') || status.includes('Vắng mặt'))
-            return <Badge className="bg-rose-500 hover:bg-rose-600 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30 dark:hover:bg-rose-500/30 transition-colors">{status}</Badge>;
-
-        if (status.includes('Công tác (CT)'))
-            return <Badge className="bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30 dark:hover:bg-indigo-500/30 transition-colors">Công tác (CT)</Badge>;
-
-        if (status.includes('Quên chấm công (QC)'))
-            return <Badge className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500/20 dark:text-slate-400 dark:border-slate-500/30 dark:hover:bg-slate-500/30 transition-colors">Quên CC (QC)</Badge>;
-
-        if (status.includes('Đang làm việc'))
-            return <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 animate-pulse dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30 transition-colors">Đang làm việc</Badge>;
-
-        return <Badge variant="outline" className="text-slate-500 dark:text-slate-400 dark:border-slate-700 transition-colors">{status}</Badge>;
+        if (status.includes('Đủ công (Có GT)')) return <Badge className="bg-lime-500 hover:bg-lime-600 dark:bg-lime-500/20 dark:text-lime-400 dark:border-lime-500/30">Đủ công (Có GT)</Badge>;
+        if (status === 'Đủ công' || status === 'Đủ công ') return <Badge className="bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30">Đủ công</Badge>;
+        if (status.includes('Đi muộn') || status.includes('Về sớm') || status.includes('Đi trễ')) return <Badge className="bg-amber-500 hover:bg-amber-600 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30">{status}</Badge>;
+        if (status.includes('Nửa công')) return <Badge className="bg-blue-500 hover:bg-blue-600 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30">Nửa công</Badge>;
+        if (status.includes('Tăng ca (OT)')) return <Badge className="bg-teal-500 hover:bg-teal-600 dark:bg-teal-500/20 dark:text-teal-400 dark:border-teal-500/30">Tăng ca (OT)</Badge>;
+        if (status.includes('Nghỉ (P)') || status.includes('Nghỉ lễ/Tết (L)')) return <Badge className="bg-violet-500 hover:bg-violet-600 dark:bg-violet-500/20 dark:text-violet-400 dark:border-violet-500/30">{status}</Badge>;
+        if (status.includes('Nghỉ không lương (UL)') || status.includes('Vắng mặt')) return <Badge className="bg-rose-500 hover:bg-rose-600 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30">{status}</Badge>;
+        if (status.includes('Công tác (CT)')) return <Badge className="bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30">Công tác (CT)</Badge>;
+        if (status.includes('Quên chấm công (QC)')) return <Badge className="bg-slate-600 hover:bg-slate-700 dark:bg-slate-500/20 dark:text-slate-400 dark:border-slate-500/30">Quên CC (QC)</Badge>;
+        if (status.includes('Đang làm việc')) return <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 animate-pulse dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30">Đang làm việc</Badge>;
+        return <Badge variant="outline" className="text-slate-500 dark:text-slate-400 dark:border-slate-700">{status}</Badge>;
     };
 
     // ✅ HÀM TÍNH SỐ PHÚT CHÊNH LỆCH
@@ -75,9 +70,7 @@ export function AttendanceTable({ records, hideEmployeeInfo = false }: Attendanc
             const [oH, oM] = original.split(':').map(Number);
             const [aH, aM] = adjusted.split(':').map(Number);
             return (aH * 60 + aM) - (oH * 60 + oM);
-        } catch {
-            return 0;
-        }
+        } catch { return 0; }
     };
 
     // ✅ HÀM FORMAT SỐ PHÚT HIỂN THỊ (VD: -45p, +30p)
@@ -91,18 +84,14 @@ export function AttendanceTable({ records, hideEmployeeInfo = false }: Attendanc
         if (!dateString) return "-";
         try {
             const parsedDate = new Date(dateString);
-            if (isValid(parsedDate)) {
-                return format(parsedDate, 'dd/MM/yyyy');
-            }
+            if (isValid(parsedDate)) return format(parsedDate, 'dd/MM/yyyy');
             return dateString;
-        } catch (e) {
-            return dateString;
-        }
+        } catch (e) { return dateString; }
     };
 
     if (!records || records.length === 0) {
         return (
-            <div className="p-12 text-center text-slate-500 dark:text-slate-400 flex flex-col items-center justify-center bg-white dark:bg-slate-900 rounded-b-lg transition-colors">
+            <div className="p-12 text-center text-slate-500 dark:text-slate-400 flex flex-col items-center justify-center bg-white dark:bg-slate-900 rounded-b-lg">
                 <Clock className="w-12 h-12 mb-3 text-slate-300 dark:text-slate-600" />
                 <p>Chưa có dữ liệu chấm công.</p>
             </div>
@@ -110,45 +99,34 @@ export function AttendanceTable({ records, hideEmployeeInfo = false }: Attendanc
     }
 
     return (
-        <div className="w-full overflow-x-auto bg-white dark:bg-slate-900 rounded-b-lg shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
+        <div className="w-full overflow-x-auto bg-white dark:bg-slate-900 rounded-b-lg shadow-sm border border-slate-200 dark:border-slate-800">
             <Table>
                 <TableHeader>
-                    <TableRow className="bg-slate-100 dark:bg-slate-800/50 border-b-2 border-slate-200 dark:border-slate-800 transition-colors">
+                    <TableRow className="bg-slate-100 dark:bg-slate-800/50 border-b-2 border-slate-200 dark:border-slate-800">
                         <TableHead className="w-[120px] font-bold text-slate-700 dark:text-slate-200">Ngày</TableHead>
-
-                        {/* Chỉ hiển thị 2 cột này nếu hideEmployeeInfo = false */}
                         {!hideEmployeeInfo && (
                             <>
                                 <TableHead className="w-[100px] font-bold text-slate-700 dark:text-slate-200">Mã NV</TableHead>
                                 <TableHead className="min-w-[180px] font-bold text-slate-700 dark:text-slate-200">Họ tên</TableHead>
                             </>
                         )}
-
                         <TableHead className="w-[130px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ vào</TableHead>
                         <TableHead className="w-[130px] text-center font-bold text-slate-700 dark:text-slate-200">Giờ ra</TableHead>
                         <TableHead className="min-w-[200px] font-bold text-slate-700 dark:text-slate-200">Vị trí (GPS)</TableHead>
                         <TableHead className="w-[120px] text-right font-bold text-slate-700 dark:text-slate-200">Trạng thái</TableHead>
+                        <TableHead className="w-[60px] text-center font-bold text-slate-700 dark:text-slate-200">Thao tác</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {records.map((r) => (
-                        <TableRow key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-slate-200 dark:border-slate-800 transition-colors">
-                            <TableCell className="font-medium text-slate-700 dark:text-slate-300">
-                                {formatDisplayDate(r.date)}
-                            </TableCell>
-
-                            {/* Chỉ hiển thị dữ liệu 2 cột này nếu hideEmployeeInfo = false */}
+                        <TableRow key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-slate-200 dark:border-slate-800">
+                            <TableCell className="font-medium text-slate-700 dark:text-slate-300">{formatDisplayDate(r.date)}</TableCell>
                             {!hideEmployeeInfo && (
                                 <>
-                                    <TableCell className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">
-                                        {r.employeeCode}
-                                    </TableCell>
-                                    <TableCell className="font-bold text-slate-800 dark:text-slate-200">
-                                        {r.name}
-                                    </TableCell>
+                                    <TableCell className="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">{r.employeeCode}</TableCell>
+                                    <TableCell className="font-bold text-slate-800 dark:text-slate-200">{r.name}</TableCell>
                                 </>
                             )}
-
                             {/* CỘT GIỜ VÀO */}
                             <TableCell className="text-center">
                                 {r.checkIn ? (
@@ -209,16 +187,32 @@ export function AttendanceTable({ records, hideEmployeeInfo = false }: Attendanc
                                     <span className="text-xs text-slate-400 dark:text-slate-500 italic">Không ghi nhận GPS</span>
                                 )}
                             </TableCell>
-
-                            <TableCell className="text-right">
-                                {getStatusBadge(r.status)}
+                            <TableCell className="text-right">{getStatusBadge(r.status)}</TableCell>
+                            <TableCell className="text-center">
+                                <Button variant="ghost" size="icon" onClick={() => handleViewCheckpoints(r.id)} className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50">
+                                    <Info className="h-4 w-4" />
+                                </Button>
                             </TableCell>
                         </TableRow>
                     ))}
                 </TableBody>
             </Table>
+
+            <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
+                <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+                    <SheetHeader className="mb-6">
+                        <SheetTitle>Chi tiết Lịch trình Di chuyển</SheetTitle>
+                        <SheetDescription>Hành trình của nhân viên trong ngày.</SheetDescription>
+                    </SheetHeader>
+                    {loadingCheckpoints ? (
+                        <div className="flex justify-center p-8"><span className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></span></div>
+                    ) : (
+                        <CheckpointTimeline checkpoints={checkpoints} />
+                    )}
+                </SheetContent>
+            </Sheet>
         </div>
     );
-};
+}
 
 export default AttendanceTable;
