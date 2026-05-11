@@ -1,6 +1,6 @@
 // components/hrm/CheckpointTimeline.tsx
 import React from "react";
-import { MapPin, Clock, ArrowRight, Building2, HardHat } from "lucide-react";
+import { MapPin, Clock, ArrowRight, Building2, HardHat, Route } from "lucide-react";
 import { formatDate } from "@/lib/utils/utils";
 
 export function CheckpointTimeline({ checkpoints }: { checkpoints: any[] }) {
@@ -46,7 +46,15 @@ export function CheckpointTimeline({ checkpoints }: { checkpoints: any[] }) {
                                 </div>
                             </div>
                         </div>
-
+                        {/* ✅ HIỂN THỊ SỐ KM DI CHUYỂN RÕ RÀNG */}
+                        {cp.travel_distance_km > 0 && (
+                            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-sm">
+                                <span className="flex items-center text-slate-500">
+                                    <Route className="w-4 h-4 mr-1.5 text-emerald-500" /> Quãng đường di chuyển tới điểm sau:
+                                </span>
+                                <span className="font-bold text-emerald-600">+{cp.travel_distance_km} km</span>
+                            </div>
+                        )}
                         {/* Tọa độ (Dùng để sau này tích hợp bản đồ) */}
                         <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center text-[11px] text-slate-400">
                             <MapPin className="w-3 h-3 mr-1" />

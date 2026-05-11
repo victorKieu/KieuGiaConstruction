@@ -130,7 +130,7 @@ export async function getPayrollByMonth(month: number, year: number) {
                 id: emp.id, // ✅ Trả về ID gốc cho UI key
                 employeeCode: emp.code || 'N/A',
                 name: emp.name || 'N/A',
-                department: emp.department?.name || 'Chưa phân bổ',
+                department: (Array.isArray(emp.department) ? emp.department[0]?.name : (emp.department as any)?.name) || 'Chưa phân bổ',
                 baseSalary: contractSalary, // Trả về giao diện mức lương thực tế để HR dễ đối chiếu
                 standardDays: STANDARD_WORKING_DAYS,
                 actualDays: actualDays,
@@ -231,7 +231,7 @@ export async function getMonthlyAttendanceBoard(month: number, year: number) {
                 id: emp.id, // ✅ Trả về ID gốc cho UI key
                 employeeCode: emp.code || 'N/A',
                 name: emp.name || 'N/A',
-                department: emp.department?.name || 'Chưa phân bổ',
+                department: (Array.isArray(emp.department) ? emp.department[0]?.name : (emp.department as any)?.name) || 'Chưa phân bổ',
                 dailyData,
                 totalPaidDays,
                 totalUnpaidDays
@@ -245,5 +245,116 @@ export async function getMonthlyAttendanceBoard(month: number, year: number) {
     } catch (error: any) {
         console.error("[BOARD_ERROR]", error);
         return { success: false, error: "Lỗi lấy dữ liệu bảng công", data: [], daysInMonth: 30 };
+    }
+}
+
+export async function getAllowanceRecords(month: string, year: string) {
+    const supabase = await createSupabaseServerClient();
+
+    // 1. Lấy danh sách nhân viên và định mức
+    const { data: employees } = await supabase
+        .from('employees')
+        .select('id, name, code, allowance_type, allowance_rate')
+        .order('name');
+
+    if (!employees) return [];
+
+    // 2. Xác định khoảng thời gian trong tháng
+    const startDate = new Date(parseInt(year), parseInt(month) - 1, 1).toISOString();
+    const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59).toISOString();
+
+    // 3. Lấy tổng Km từ bảng checkpoints
+    const { data: checkpoints } = await supabase
+        .from('employee_checkpoints')
+        .select('employee_id, travel_distance_km')
+        .gte('check_in_time', startDate)
+        .lte('check_in_time', endDate);
+
+    // Gom nhóm tính tổng Km theo nhân viên
+    const kmMap: Record<string, number> = {};
+    checkpoints?.forEach(cp => {
+        kmMap[cp.employee_id] = (kmMap[cp.employee_id] || 0) + (cp.travel_distance_km || 0);
+    });
+
+    // 4. Tổng hợp kết quả
+    return employees.map(emp => {
+        const totalKm = kmMap[emp.id] || 0;
+        const type = emp.allowance_type || 'per_km';
+        const rate = emp.allowance_rate || 0;
+
+        let totalAmount = 0;
+        if (type === 'flat_rate') {
+            totalAmount = rate; // Khoán cố định
+        } else {
+            totalAmount = totalKm * rate; // Tính theo Km thực tế
+        }
+
+        return {
+            id: emp.id,
+            employeeCode: emp.code,
+            name: emp.name,
+            allowanceType: type,
+            rate: rate,
+            totalKm: parseFloat(totalKm.toFixed(2)),
+            totalAmount: totalAmount
+        };
+    });
+}
+
+export async function syncTravelDistances(month: string, year: string) {
+    try {
+        const supabase = await createSupabaseServerClient();
+
+        // 1. Lấy toàn bộ từ điển tuyến đường mới nhất
+        const { data: routes } = await supabase.from('route_distances').select('*');
+        if (!routes || routes.length === 0) return { success: false, error: "Từ điển tuyến đường đang trống." };
+
+        // 2. Lấy toàn bộ Checkpoint trong tháng cần tính
+        const startDate = new Date(parseInt(year), parseInt(month) - 1, 1).toISOString();
+        const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59).toISOString();
+
+        const { data: checkpoints } = await supabase
+            .from('employee_checkpoints')
+            .select('*')
+            .gte('check_in_time', startDate)
+            .lte('check_in_time', endDate)
+            .order('employee_id', { ascending: true })
+            .order('check_in_time', { ascending: true });
+
+        if (!checkpoints) return { success: true, message: "Không có dữ liệu di chuyển trong tháng." };
+
+        let updatedCount = 0;
+
+        // 3. Quét qua từng cặp Checkpoint liên tiếp của cùng 1 nhân viên trong cùng 1 ngày
+        for (let i = 0; i < checkpoints.length - 1; i++) {
+            const current = checkpoints[i];
+            const next = checkpoints[i + 1];
+
+            // Nếu cùng 1 người và cùng thuộc 1 ca làm (attendance_id)
+            if (current.employee_id === next.employee_id && current.attendance_id === next.attendance_id) {
+                const fromId = current.project_id;
+                const toId = next.project_id;
+
+                // Hàm tìm số Km trong từ điển
+                const route = routes.find(r =>
+                    (r.from_project_id === fromId && r.to_project_id === toId) ||
+                    (r.from_project_id === toId && r.to_project_id === fromId)
+                );
+
+                const trueDistance = route ? route.distance_km : 0;
+
+                // Nếu số Km bị sai lệch so với DB -> Cập nhật lại
+                if (current.travel_distance_km !== trueDistance) {
+                    await supabase.from('employee_checkpoints')
+                        .update({ travel_distance_km: trueDistance })
+                        .eq('id', current.id);
+                    updatedCount++;
+                }
+            }
+        }
+
+        return { success: true, message: `Đã đồng bộ thành công! Cập nhật ${updatedCount} lượt di chuyển bị thiếu.` };
+    } catch (error: any) {
+        return { success: false, error: error.message || "Lỗi đồng bộ dữ liệu." };
     }
 }

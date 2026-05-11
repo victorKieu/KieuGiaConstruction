@@ -9,67 +9,84 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { CalendarDays, AlertCircle, Send, History, FileEdit, Plus, Loader2, Trash2, Edit, Save, Camera } from "lucide-react";
+import {
+    CalendarDays, AlertCircle, Send, History, FileEdit, Plus,
+    Loader2, Trash2, Edit, Save, Camera, MapPin
+} from "lucide-react";
 import { toast } from "sonner";
 import { AttendanceTable, AttendanceRecord } from "@/components/hrm/AttendanceTable";
 import { formatDate } from "@/lib/utils/utils";
-import { createClient } from "@/lib/supabase/client"; // Dùng Supabase client để check role
+import { createClient } from "@/lib/supabase/client";
 
-// Import các hàm API Backend thật
-import { getMyAttendanceRecords, submitAttendanceRequest, getMyRequests, deleteMyRequest, updateMyRequest } from "@/lib/action/attendanceActions";
+// Import các hàm API Backend
+import {
+    getMyAttendanceRecords,
+    submitAttendanceRequest,
+    getMyRequests,
+    deleteMyRequest,
+    updateMyRequest
+} from "@/lib/action/attendanceActions";
 
-// ✅ Thay thế MobileCheckIn bằng FaceIDCheckIn
 import FaceIDCheckIn from "@/components/hrm/FaceIDCheckIn";
 
 export default function AttendancePage() {
-    // State chứa dữ liệu chấm công
+    const supabase = createClient();
+
+    // -- DATA STATE --
     const [realRecords, setRealRecords] = useState<AttendanceRecord[]>([]);
+    const [projects, setProjects] = useState<any[]>([]);
     const [loadingRecords, setLoadingRecords] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // ✅ Thêm State lưu Role người dùng (để phân quyền FaceID)
     const [userRole, setUserRole] = useState<string>("staff");
 
-    // ✅ STATE KIỂM SOÁT BẬT/TẮT CAMERA
+    // -- UI STATE --
     const [cameraOpen, setCameraOpen] = useState(false);
-
-    // State cho Form Giải trình
     const [explOpen, setExplOpen] = useState(false);
-    const [explForm, setExplForm] = useState({ date: "", type: "", inTime: "", outTime: "", reason: "" });
-
-    // State cho Form Nghỉ phép
     const [leaveOpen, setLeaveOpen] = useState(false);
+
+    // -- FORM STATE --
+    const [explForm, setExplForm] = useState({
+        scope: "SHIFT", // SHIFT | CHECKPOINT
+        projectId: "office",
+        date: new Date().toLocaleDateString('en-CA'),
+        type: "forgot_in",
+        inTime: "",
+        outTime: "",
+        reason: ""
+    });
+
     const [leaveForm, setLeaveForm] = useState({
-        type: "",
+        type: "annual",
         startDate: new Date().toLocaleDateString('en-CA'),
         endDate: new Date().toLocaleDateString('en-CA'),
         reason: ""
     });
 
-    // Tải dữ liệu khi vào trang
+    // 1. Tải dữ liệu ban đầu
     useEffect(() => {
         const fetchInitialData = async () => {
             setLoadingRecords(true);
             try {
-                const supabase = createClient();
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
+                    // Lấy Role và dịch UUID sang Code
                     const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
-                    if (profile && profile.role_id) {
+                    if (profile?.role_id) {
                         const { data: roleDict } = await supabase.from('sys_dictionaries').select('code').eq('id', profile.role_id).maybeSingle();
-                        if (roleDict && roleDict.code) {
-                            setUserRole(roleDict.code);
-                        } else {
-                            setUserRole("staff");
-                        }
+                        if (roleDict?.code) setUserRole(roleDict.code);
                     }
                 }
-            } catch (error) {
-                console.error("Lỗi lấy thông tin role", error);
-            }
 
-            const data = await getMyAttendanceRecords();
-            setRealRecords(data);
+                // Lấy danh sách dự án cho form giải trình
+                const { data: projData } = await supabase.from('projects').select('id, name').order('name');
+                if (projData) setProjects(projData);
+
+                // Lấy lịch sử chấm công
+                const data = await getMyAttendanceRecords();
+                setRealRecords(data);
+            } catch (error) {
+                console.error("Lỗi khởi tạo:", error);
+            }
             setLoadingRecords(false);
         };
         fetchInitialData();
@@ -82,14 +99,11 @@ export default function AttendancePage() {
         setLoadingRecords(false);
     };
 
-    // Xử lý gửi Đơn Giải trình
+    // 2. Xử lý gửi Đơn Giải trình (Nâng cấp Scope)
     const handleSubmitExplanation = async () => {
-        if (!explForm.date || !explForm.type || !explForm.reason) {
-            return toast.error("Vui lòng điền đủ Ngày, Loại giải trình và Lý do!");
+        if (!explForm.date || !explForm.reason) {
+            return toast.error("Vui lòng điền đủ Ngày và Lý do!");
         }
-
-        if (explForm.type === 'forgot_in' && !explForm.inTime) return toast.error("Vui lòng nhập Giờ VÀO thực tế!");
-        if (explForm.type === 'forgot_out' && !explForm.outTime) return toast.error("Vui lòng nhập Giờ RA thực tế!");
 
         setIsSubmitting(true);
         const res = await submitAttendanceRequest({
@@ -98,27 +112,25 @@ export default function AttendancePage() {
             start_date: explForm.date,
             actual_in_time: explForm.inTime || null,
             actual_out_time: explForm.outTime || null,
-            reason: explForm.reason
+            reason: explForm.reason,
+            request_scope: explForm.scope,
+            project_id: explForm.scope === 'CHECKPOINT' ? (explForm.projectId === 'office' ? null : explForm.projectId) : undefined
         });
         setIsSubmitting(false);
 
         if (res.success) {
             toast.success(res.message);
             setExplOpen(false);
-            setExplForm({ date: "", type: "", inTime: "", outTime: "", reason: "" });
+            setExplForm({ ...explForm, inTime: "", outTime: "", reason: "" });
         } else {
             toast.error(res.error);
         }
     };
 
-    // Xử lý gửi Đơn Xin nghỉ
+    // 3. Xử lý gửi Đơn Nghỉ phép
     const handleSubmitLeave = async () => {
-        if (!leaveForm.type || !leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason) {
-            return toast.error("Vui lòng điền đầy đủ các thông tin bắt buộc!");
-        }
-
-        if (new Date(leaveForm.startDate) > new Date(leaveForm.endDate)) {
-            return toast.error("Ngày kết thúc không được nhỏ hơn ngày bắt đầu!");
+        if (!leaveForm.reason || new Date(leaveForm.startDate) > new Date(leaveForm.endDate)) {
+            return toast.error("Vui lòng kiểm tra lại thông tin đơn nghỉ!");
         }
 
         setIsSubmitting(true);
@@ -134,7 +146,7 @@ export default function AttendancePage() {
         if (res.success) {
             toast.success(res.message);
             setLeaveOpen(false);
-            setLeaveForm({ type: "", startDate: new Date().toLocaleDateString('en-CA'), endDate: new Date().toLocaleDateString('en-CA'), reason: "" });
+            setLeaveForm({ ...leaveForm, reason: "" });
         } else {
             toast.error(res.error);
         }
@@ -142,192 +154,211 @@ export default function AttendancePage() {
 
     return (
         <div className="space-y-4 animate-in fade-in duration-500 max-w-6xl mx-auto transition-colors">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center px-1">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 transition-colors">Quản lý Chấm công & Đơn từ</h1>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 transition-colors">Hệ thống ghi nhận thời gian làm việc và xử lý phép</p>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Cá nhân Chấm công</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Ghi nhận thời gian và lộ trình làm việc</p>
                 </div>
             </div>
 
             <Tabs defaultValue="checkin" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+                <TabsList className="grid w-full grid-cols-2 md:w-[400px] bg-slate-100 dark:bg-slate-800">
                     <TabsTrigger value="checkin">Bảng Chấm Công</TabsTrigger>
                     <TabsTrigger value="requests">Đơn từ & Phép</TabsTrigger>
                 </TabsList>
 
-                {/* TAB 1: CHẤM CÔNG */}
+                {/* TAB 1: CHẤM CÔNG & CAMERA */}
                 <TabsContent value="checkin" className="space-y-4 mt-4">
 
-                    {/* ✅ NÚT BẤM GỌI CAMERA THAY VÌ HIỂN THỊ TRỰC TIẾP */}
-                    <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-900/10 shadow-sm transition-colors">
+                    {/* KHU VỰC NÚT MỞ CAMERA */}
+                    <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-900/5 shadow-sm">
                         <CardContent className="flex flex-col items-center justify-center p-8 text-center">
                             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-800/50 rounded-full flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400">
                                 <Camera className="w-8 h-8" />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">Chấm công bằng Face ID</h3>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-md">
-                                Hệ thống tự động nhận diện khuôn mặt và vị trí GPS để ghi nhận ca làm việc của bạn.
-                            </p>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">Chấm công Face ID</h3>
+                            <p className="text-sm text-slate-500 mb-6 max-w-sm">Nhấn để quét khuôn mặt và ghi nhận vị trí làm việc hiện tại của bạn.</p>
                             <Button
                                 onClick={() => setCameraOpen(true)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 h-12 rounded-full text-base font-semibold shadow-lg shadow-emerald-500/30"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-10 h-12 rounded-full text-base font-bold shadow-lg shadow-emerald-500/20"
                             >
-                                <Camera className="w-5 h-5 mr-2" /> Mở Camera Chấm Công
+                                <Camera className="w-5 h-5 mr-2" /> Bắt đầu Quét mặt
                             </Button>
                         </CardContent>
                     </Card>
 
-                    {/* ✅ MODAL CHỨA CAMERA (Chỉ mở khi bấm nút) */}
+                    {/* DIALOG CHỨA CAMERA AI */}
                     <Dialog open={cameraOpen} onOpenChange={setCameraOpen}>
-                        {/* Ẩn nút X mặc định của Dialog vì FaceIDCheckIn đã có nút Đóng */}
                         <DialogContent className="sm:max-w-[420px] p-0 border-0 bg-transparent shadow-none [&>button]:hidden">
-                            <div className="h-[600px] w-full bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
-                                {cameraOpen && ( // Đảm bảo component chỉ render khi Dialog mở (giúp reset camera)
+                            <div className="h-[600px] w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
+                                {cameraOpen && (
                                     <FaceIDCheckIn
                                         userRole={userRole}
                                         onScanSuccess={() => {
-                                            loadRecords(); // Load lại bảng
-                                            setCameraOpen(false); // Tự động đóng modal
+                                            loadRecords();
+                                            setCameraOpen(false);
                                         }}
-                                        onClose={() => setCameraOpen(false)} // Cho phép user tự bấm nút Đóng/Hủy bỏ
+                                        onClose={() => setCameraOpen(false)}
                                     />
                                 )}
                             </div>
                         </DialogContent>
                     </Dialog>
 
-                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors mt-6">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3 transition-colors">
-                            <div>
-                                <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center transition-colors">
-                                    <History className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-500" /> Lịch sử chấm công của bạn
-                                </CardTitle>
-                            </div>
+                    {/* BẢNG LỊCH SỬ CHẤM CÔNG */}
+                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+                        <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3">
+                            <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center">
+                                <History className="w-4 h-4 mr-2 text-blue-600" /> Lịch sử làm việc
+                            </CardTitle>
                             <div className="flex gap-2">
                                 <Dialog open={explOpen} onOpenChange={setExplOpen}>
                                     <DialogTrigger asChild>
-                                        <Button variant="outline" className="border-orange-200 dark:border-orange-500/30 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 dark:bg-slate-950 h-8 text-xs transition-colors">
-                                            <AlertCircle className="w-3 h-3 mr-1.5" /> Báo quên / Giải trình
+                                        <Button variant="outline" className="h-8 text-xs border-orange-200 text-orange-700 dark:border-orange-500/30 dark:text-orange-400">
+                                            <AlertCircle className="w-3.5 h-3.5 mr-1.5" /> Giải trình / Báo quên
                                         </Button>
                                     </DialogTrigger>
-                                    <DialogContent className="sm:max-w-[450px] dark:bg-slate-900 dark:border-slate-800">
+                                    <DialogContent className="sm:max-w-[480px] dark:bg-slate-900">
                                         <DialogHeader>
-                                            <DialogTitle className="text-orange-600 dark:text-orange-500 flex items-center">
+                                            <DialogTitle className="text-orange-600 flex items-center">
                                                 <FileEdit className="w-5 h-5 mr-2" /> Tạo Đơn Giải Trình
                                             </DialogTitle>
                                         </DialogHeader>
                                         <div className="space-y-4 py-2">
-                                            <div className="space-y-2">
-                                                <Label className="dark:text-slate-300">Ngày cần giải trình <span className="text-red-500">*</span></Label>
-                                                <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>Ngày giải trình <span className="text-red-500">*</span></Label>
+                                                    <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Lý do chính</Label>
+                                                    <Select value={explForm.type} onValueChange={v => setExplForm({ ...explForm, type: v })}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="forgot_in">Quên chấm VÀO</SelectItem>
+                                                            <SelectItem value="forgot_out">Quên chấm RA</SelectItem>
+                                                            <SelectItem value="wrong_time">Sai giờ/Lỗi máy</SelectItem>
+                                                            <SelectItem value="field_work">Công tác thực địa</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             </div>
+
                                             <div className="space-y-2">
-                                                <Label className="dark:text-slate-300">Loại giải trình <span className="text-red-500">*</span></Label>
-                                                <Select value={explForm.type} onValueChange={v => setExplForm({ ...explForm, type: v, inTime: "", outTime: "" })}>
-                                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"><SelectValue placeholder="Chọn lý do..." /></SelectTrigger>
-                                                    <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                                        <SelectItem value="forgot_in">Quên chấm công VÀO</SelectItem>
-                                                        <SelectItem value="forgot_out">Quên chấm công RA</SelectItem>
-                                                        <SelectItem value="wrong_time">Chấm công sai giờ / Lỗi máy</SelectItem>
-                                                        <SelectItem value="field_work">Đi công tác thực địa</SelectItem>
+                                                <Label>Phạm vi ảnh hưởng <span className="text-red-500">*</span></Label>
+                                                <Select value={explForm.scope} onValueChange={v => setExplForm({ ...explForm, scope: v })}>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="SHIFT">Toàn bộ Ca (Giờ đầu/cuối ngày)</SelectItem>
+                                                        <SelectItem value="CHECKPOINT">Từng điểm di chuyển (Sửa 1 chặng)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
+
+                                            {explForm.scope === 'CHECKPOINT' && (
+                                                <div className="space-y-2 animate-in slide-in-from-top-1">
+                                                    <Label>Địa điểm cần điều chỉnh</Label>
+                                                    <Select value={explForm.projectId} onValueChange={v => setExplForm({ ...explForm, projectId: v })}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="office" className="font-bold text-blue-600">🏢 Văn phòng Công ty</SelectItem>
+                                                            {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            )}
+
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <Label className={explForm.type === 'forgot_out' ? 'text-slate-400 dark:text-slate-600' : 'dark:text-slate-300'}>Giờ VÀO thực tế</Label>
-                                                    <Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} disabled={explForm.type === 'forgot_out' || explForm.type === 'field_work'} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
+                                                    <Label>Giờ VÀO mới</Label>
+                                                    <Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label className={explForm.type === 'forgot_in' ? 'text-slate-400 dark:text-slate-600' : 'dark:text-slate-300'}>Giờ RA thực tế</Label>
-                                                    <Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} disabled={explForm.type === 'forgot_in' || explForm.type === 'field_work'} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
+                                                    <Label>Giờ RA mới</Label>
+                                                    <Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} />
                                                 </div>
                                             </div>
+
                                             <div className="space-y-2">
-                                                <Label className="dark:text-slate-300">Lý do chi tiết <span className="text-red-500">*</span></Label>
-                                                <Textarea placeholder="Trình bày rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
+                                                <Label>Trình bày chi tiết <span className="text-red-500">*</span></Label>
+                                                <Textarea placeholder="Nêu rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} />
                                             </div>
                                         </div>
                                         <DialogFooter>
-                                            <Button variant="outline" onClick={() => setExplOpen(false)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
-                                            <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 hover:bg-orange-700 text-white">
-                                                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi duyệt
+                                            <Button variant="outline" onClick={() => setExplOpen(false)}>Hủy</Button>
+                                            <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 hover:bg-orange-700">
+                                                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi duyệt
                                             </Button>
                                         </DialogFooter>
                                     </DialogContent>
                                 </Dialog>
 
-                                <Button variant="outline" className="h-8 text-xs dark:bg-slate-950 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors" onClick={loadRecords} disabled={loadingRecords}>
+                                <Button variant="outline" className="h-8 text-xs" onClick={loadRecords} disabled={loadingRecords}>
                                     {loadingRecords ? <Loader2 className="w-3 h-3 animate-spin" /> : "Làm mới"}
                                 </Button>
                             </div>
                         </CardHeader>
                         <CardContent className="p-0 overflow-x-auto">
                             {loadingRecords ? (
-                                <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" /></div>
+                                <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
                             ) : (
-                                <div className="min-w-[600px]">
-                                    <AttendanceTable records={realRecords} hideEmployeeInfo={true} />
-                                </div>
+                                <AttendanceTable records={realRecords} hideEmployeeInfo={true} />
                             )}
                         </CardContent>
                     </Card>
                 </TabsContent>
 
-                {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP (Giữ nguyên) */}
+                {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP */}
                 <TabsContent value="requests" className="mt-4">
-                    {/* ... (Đoạn Code Tab 2 giữ nguyên như cũ) ... */}
-                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3 transition-colors">
-                            <div>
-                                <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center transition-colors">
-                                    <CalendarDays className="w-4 h-4 mr-2 text-emerald-600 dark:text-emerald-500" /> Danh sách Đơn xin nghỉ
-                                </CardTitle>
-                            </div>
+                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+                        <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3">
+                            <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center">
+                                <CalendarDays className="w-4 h-4 mr-2 text-emerald-600" /> Danh sách Đơn xin nghỉ
+                            </CardTitle>
                             <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
                                 <DialogTrigger asChild>
-                                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs shadow-sm">
-                                        <Plus className="w-3 h-3 mr-1.5" /> Tạo Đơn Mới
+                                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs">
+                                        <Plus className="w-3.5 h-3.5 mr-1.5" /> Tạo Đơn Nghỉ
                                     </Button>
                                 </DialogTrigger>
-                                <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
+                                <DialogContent className="sm:max-w-[450px] dark:bg-slate-900">
                                     <DialogHeader>
-                                        <DialogTitle className="text-emerald-700 dark:text-emerald-500 flex items-center">
+                                        <DialogTitle className="text-emerald-700 flex items-center">
                                             <CalendarDays className="w-5 h-5 mr-2" /> Tạo Đơn Xin Nghỉ
                                         </DialogTitle>
                                     </DialogHeader>
                                     <div className="space-y-4 py-2">
                                         <div className="space-y-2">
-                                            <Label className="dark:text-slate-300">Loại nghỉ phép <span className="text-red-500">*</span></Label>
+                                            <Label>Loại nghỉ phép</Label>
                                             <Select value={leaveForm.type} onValueChange={v => setLeaveForm({ ...leaveForm, type: v })}>
-                                                <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"><SelectValue placeholder="Chọn loại phép..." /></SelectTrigger>
-                                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                                    <SelectItem value="annual">Nghỉ phép năm (Có lương)</SelectItem>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="annual">Phép năm (Có lương)</SelectItem>
                                                     <SelectItem value="unpaid">Nghỉ không lương</SelectItem>
-                                                    <SelectItem value="sick">Nghỉ ốm / Thai sản</SelectItem>
-                                                    <SelectItem value="urgent">Nghỉ đột xuất / Việc gia đình</SelectItem>
+                                                    <SelectItem value="sick">Nghỉ ốm/Chế độ</SelectItem>
+                                                    <SelectItem value="urgent">Nghỉ đột xuất/Gia đình</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label className="dark:text-slate-300">Từ ngày <span className="text-red-500">*</span></Label>
-                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
+                                                <Label>Từ ngày</Label>
+                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label className="dark:text-slate-300">Đến ngày <span className="text-red-500">*</span></Label>
-                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" />
+                                                <Label>Đến ngày</Label>
+                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label className="dark:text-slate-300">Lý do chi tiết <span className="text-red-500">*</span></Label>
-                                            <Textarea placeholder="Nêu rõ lý do xin nghỉ..." className="h-24 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
+                                            <Label>Lý do nghỉ</Label>
+                                            <Textarea placeholder="Ghi chú chi tiết..." value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
                                         </div>
                                     </div>
                                     <DialogFooter>
-                                        <Button variant="outline" onClick={() => setLeaveOpen(false)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
-                                        <Button disabled={isSubmitting} onClick={handleSubmitLeave} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                                            {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi Đơn
+                                        <Button variant="outline" onClick={() => setLeaveOpen(false)}>Hủy</Button>
+                                        <Button disabled={isSubmitting} onClick={handleSubmitLeave} className="bg-emerald-600">
+                                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi Đơn
                                         </Button>
                                     </DialogFooter>
                                 </DialogContent>
@@ -343,225 +374,53 @@ export default function AttendancePage() {
     );
 }
 
-// ====================================================================================
-// Component hiển thị danh sách đơn cá nhân (GIỮ NGUYÊN HOÀN TOÀN)
-// ====================================================================================
+// COMPONENT HIỂN THỊ DANH SÁCH ĐƠN (Cần Fetch dữ liệu thật)
 function PersonalRequestsList() {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-
-    // State cho Modal Sửa đơn
-    const [editOpen, setEditOpen] = useState(false);
-    const [editingReq, setEditingReq] = useState<any>(null);
-    const [editForm, setEditForm] = useState<any>({});
-
-    const fetchReqs = async () => {
-        setLoading(true);
-        const data = await getMyRequests();
-        setRequests(data);
-        setLoading(false);
-    };
 
     useEffect(() => {
+        const fetchReqs = async () => {
+            const data = await getMyRequests();
+            setRequests(data);
+            setLoading(false);
+        };
         fetchReqs();
     }, []);
 
-    // Xử lý Xóa đơn
-    const handleDelete = async (id: string) => {
-        if (!window.confirm("Bạn có chắc chắn muốn hủy đơn này không?")) return;
-        setActionLoadingId(id);
-        const res = await deleteMyRequest(id);
-        if (res.success) {
-            toast.success(res.message);
-            setRequests(prev => prev.filter(r => r.id !== id));
-        } else {
-            toast.error(res.error);
-        }
-        setActionLoadingId(null);
-    };
+    if (loading) return <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
+    if (requests.length === 0) return <div className="p-12 text-center text-slate-400">Bạn chưa có đơn từ nào.</div>;
 
-    // Mở form Sửa đơn
-    const openEditModal = (req: any) => {
-        setEditingReq(req);
-        setEditForm({
-            sub_type: req.sub_type,
-            start_date: req.start_date,
-            end_date: req.end_date || req.start_date,
-            actual_in_time: req.actual_in_time || "",
-            actual_out_time: req.actual_out_time || "",
-            reason: req.reason
-        });
-        setEditOpen(true);
-    };
-
-    // Xử lý Submit Sửa đơn
-    const handleUpdateSubmit = async () => {
-        if (!editForm.start_date || !editForm.reason || !editForm.sub_type) {
-            return toast.error("Vui lòng điền đủ thông tin bắt buộc!");
-        }
-        setActionLoadingId('updating');
-        const res = await updateMyRequest(editingReq.id, editForm);
-        setActionLoadingId(null);
-
-        if (res.success) {
-            toast.success(res.message);
-            setEditOpen(false);
-            fetchReqs(); // Tải lại danh sách
-        } else {
-            toast.error(res.error);
-        }
-    };
-
-    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>;
-
-    if (requests.length === 0) return (
-        <div className="p-12 text-center text-slate-500 dark:text-slate-400">
-            <CalendarDays className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-            <p>Bạn chưa có đơn từ nào trong hệ thống.</p>
-        </div>
-    );
-
-    const getStatusStyle = (status: string) => {
-        if (status === 'approved') return <span className="text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-bold border border-emerald-200">Đã duyệt</span>;
-        if (status === 'rejected') return <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-bold border border-red-200">Từ chối</span>;
-        return <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 font-bold border border-amber-200 animate-pulse">Chờ duyệt</span>;
+    const getStatusStyle = (s: string) => {
+        if (s === 'approved') return "bg-emerald-100 text-emerald-700 border-emerald-200";
+        if (s === 'rejected') return "bg-red-100 text-red-700 border-red-200";
+        return "bg-amber-100 text-amber-700 border-amber-200 animate-pulse";
     };
 
     return (
         <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {requests.map(req => (
-                <div key={req.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <div key={req.id} className="p-4 hover:bg-slate-50 transition-colors">
                     <div className="flex justify-between items-start mb-2">
-                        <div>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                                {req.request_type === 'leave' ? 'Đơn Xin Nghỉ Phép' : 'Đơn Giải Trình'}
+                        <div className="flex flex-col">
+                            <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                                {req.request_type === 'leave' ? 'Đơn Nghỉ Phép' : 'Đơn Giải Trình'}
                             </span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">
-                                (Ngày gửi: {formatDate(req.created_at)})
-                            </span>
+                            <span className="text-[11px] text-slate-500">{formatDate(req.created_at)}</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {/* Nút Sửa/Xóa chỉ hiện khi đơn đang Pending */}
-                            {req.status === 'pending' && (
-                                <div className="flex gap-1.5 mr-2 border-r border-slate-200 dark:border-slate-700 pr-3">
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:bg-blue-100" onClick={() => openEditModal(req)} disabled={actionLoadingId !== null}>
-                                        <Edit className="w-3.5 h-3.5" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-600 hover:bg-red-100" onClick={() => handleDelete(req.id)} disabled={actionLoadingId !== null}>
-                                        {actionLoadingId === req.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                    </Button>
-                                </div>
-                            )}
-                            {getStatusStyle(req.status)}
-                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${getStatusStyle(req.status)}`}>
+                            {req.status === 'approved' ? 'Đã duyệt' : req.status === 'rejected' ? 'Từ chối' : 'Chờ duyệt'}
+                        </span>
                     </div>
-                    <div className="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-950 p-3 rounded border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                            <div>
-                                <span className="text-slate-400 dark:text-slate-500">Ngày áp dụng: </span>
-                                <span className="font-medium text-slate-700 dark:text-slate-300">
-                                    {formatDate(req.start_date)}
-                                    {req.end_date && req.end_date !== req.start_date && ` - ${formatDate(req.end_date)}`}
-                                </span>
-                            </div>
-                            {req.request_type === 'explanation' && (req.actual_in_time || req.actual_out_time) && (
-                                <div><span className="text-slate-400 dark:text-slate-500">Giờ khai báo: </span><span className="font-bold text-blue-600 dark:text-blue-400">{req.actual_in_time?.substring(0, 5) || '--:--'} đến {req.actual_out_time?.substring(0, 5) || '--:--'}</span></div>
-                            )}
+                    <div className="text-xs text-slate-600 bg-white dark:bg-slate-950 p-2 rounded border border-slate-100">
+                        <div className="flex justify-between mb-1">
+                            <span>Ngày áp dụng: <strong>{formatDate(req.start_date)}</strong></span>
+                            {req.actual_in_time && <span>Giờ mới: <strong>{req.actual_in_time} - {req.actual_out_time}</strong></span>}
                         </div>
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                            <span className="text-slate-400 dark:text-slate-500">Lý do: </span> <span className="italic">"{req.reason}"</span>
-                        </div>
-                        {req.approver_note && (
-                            <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 text-xs rounded border border-amber-200 dark:border-amber-500/20">
-                                <strong>Ghi chú từ Quản lý / HR:</strong> {req.approver_note}
-                            </div>
-                        )}
+                        <p className="italic text-slate-500 line-clamp-1">"{req.reason}"</p>
                     </div>
                 </div>
             ))}
-
-            {/* DIALOG SỬA ĐƠN TỪ (CHỈ DÀNH CHO NHÂN VIÊN) */}
-            <Dialog open={editOpen} onOpenChange={setEditOpen}>
-                <DialogContent className="sm:max-w-[450px] dark:bg-slate-900">
-                    <DialogHeader>
-                        <DialogTitle className="text-blue-600 flex items-center">
-                            <Edit className="w-5 h-5 mr-2" /> Điều chỉnh nội dung đơn
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    {editingReq && (
-                        <div className="space-y-4 py-2">
-                            <div className="space-y-2">
-                                <Label>Loại lý do <span className="text-red-500">*</span></Label>
-                                {editingReq.request_type === 'leave' ? (
-                                    <Select value={editForm.sub_type} onValueChange={v => setEditForm({ ...editForm, sub_type: v })}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="annual">Nghỉ phép năm</SelectItem>
-                                            <SelectItem value="unpaid">Nghỉ không lương</SelectItem>
-                                            <SelectItem value="sick">Nghỉ ốm / Thai sản</SelectItem>
-                                            <SelectItem value="urgent">Nghỉ đột xuất</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                ) : (
-                                    <Select value={editForm.sub_type} onValueChange={v => setEditForm({ ...editForm, sub_type: v })}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="forgot_in">Quên chấm VÀO</SelectItem>
-                                            <SelectItem value="forgot_out">Quên chấm RA</SelectItem>
-                                            <SelectItem value="wrong_time">Lỗi chấm công</SelectItem>
-                                            <SelectItem value="field_work">Công tác thực địa</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </div>
-
-                            {editingReq.request_type === 'leave' ? (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Từ ngày <span className="text-red-500">*</span></Label>
-                                        <Input type="date" value={editForm.start_date} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Đến ngày <span className="text-red-500">*</span></Label>
-                                        <Input type="date" value={editForm.end_date} onChange={e => setEditForm({ ...editForm, end_date: e.target.value })} />
-                                    </div>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="space-y-2">
-                                        <Label>Ngày áp dụng <span className="text-red-500">*</span></Label>
-                                        <Input type="date" value={editForm.start_date} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Giờ VÀO</Label>
-                                            <Input type="time" value={editForm.actual_in_time} disabled={editForm.sub_type === 'forgot_out' || editForm.sub_type === 'field_work'} onChange={e => setEditForm({ ...editForm, actual_in_time: e.target.value })} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Giờ RA</Label>
-                                            <Input type="time" value={editForm.actual_out_time} disabled={editForm.sub_type === 'forgot_in' || editForm.sub_type === 'field_work'} onChange={e => setEditForm({ ...editForm, actual_out_time: e.target.value })} />
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-
-                            <div className="space-y-2">
-                                <Label>Giải trình lý do <span className="text-red-500">*</span></Label>
-                                <Textarea className="h-24" value={editForm.reason} onChange={e => setEditForm({ ...editForm, reason: e.target.value })} />
-                            </div>
-                        </div>
-                    )}
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditOpen(false)}>Hủy</Button>
-                        <Button disabled={actionLoadingId === 'updating'} onClick={handleUpdateSubmit} className="bg-blue-600 hover:bg-blue-700">
-                            {actionLoadingId === 'updating' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Cập nhật
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }

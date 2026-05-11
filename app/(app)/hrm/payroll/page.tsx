@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Download, CalendarDays, Calculator, FileSpreadsheet, Search, Loader2, Filter, DollarSign, Users, Clock, ShieldAlert, PiggyBank, Landmark } from "lucide-react";
+import { Download, CalendarDays, Calculator, FileSpreadsheet, Search, Loader2, Filter, DollarSign, Users, Clock, ShieldAlert, PiggyBank, Landmark, MapPin, Route, Edit, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils/utils";
 
@@ -15,9 +15,23 @@ import { PayrollTable, PayrollRecord } from "@/components/hrm/PayrollTable";
 import { AttendanceBoardTable } from "@/components/hrm/AttendanceBoardTable";
 
 // Import API Backend
-import { getPayrollByMonth, getMonthlyAttendanceBoard } from "@/lib/action/payrollActions";
+import { getPayrollByMonth, getMonthlyAttendanceBoard, getAllowanceRecords, syncTravelDistances } from "@/lib/action/payrollActions";
 
 export default function PayrollPage() {
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleSyncDistances = async () => {
+        setIsSyncing(true);
+        const res = await syncTravelDistances(month, year); // Gọi hàm vừa tạo ở bước 1
+        if (res.success) {
+            toast.success(res.message);
+            fetchData(); // Tải lại toàn bộ bảng sau khi tính xong
+        } else {
+            toast.error(res.error);
+        }
+        setIsSyncing(false);
+    };
+
     // 1. QUẢN LÝ TRẠNG THÁI (STATE)
     const currentMonth = (new Date().getMonth() + 1).toString();
     const currentYear = new Date().getFullYear().toString();
@@ -32,6 +46,8 @@ export default function PayrollPage() {
     const [payrollData, setPayrollData] = useState<PayrollRecord[]>([]);
     const [boardData, setBoardData] = useState<any[]>([]);
     const [daysInMonth, setDaysInMonth] = useState(30);
+    // State mới cho Công tác phí
+    const [allowanceRecords, setAllowanceRecords] = useState<any[]>([]);
 
     // 2. GỌI API (FETCH DATA)
     const fetchData = async () => {
@@ -39,7 +55,8 @@ export default function PayrollPage() {
         try {
             const [payrollRes, boardRes] = await Promise.all([
                 getPayrollByMonth(parseInt(month), parseInt(year)),
-                getMonthlyAttendanceBoard(parseInt(month), parseInt(year))
+                getMonthlyAttendanceBoard(parseInt(month), parseInt(year)),
+                getAllowanceRecords(month, year)
             ]);
 
             if (payrollRes.success) setPayrollData(payrollRes.data);
@@ -177,9 +194,12 @@ export default function PayrollPage() {
 
             {/* Vùng Tabs chính */}
             <Tabs defaultValue="payroll" className="w-full">
-                <TabsList className="mb-4">
-                    <TabsTrigger value="payroll" className="font-semibold px-6"><Calculator className="w-4 h-4 mr-2" /> Bảng Lương</TabsTrigger>
-                    <TabsTrigger value="attendance" className="font-semibold px-6"><FileSpreadsheet className="w-4 h-4 mr-2" /> Bảng Công</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3 lg:w-[600px] bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                    <TabsTrigger value="payroll" className="rounded-lg ..."><Calculator className="w-4 h-4 mr-2" /> Bảng Lương</TabsTrigger>
+                    <TabsTrigger value="attendance" className="rounded-lg ..."><CalendarDays className="w-4 h-4 mr-2" /> Bảng Công</TabsTrigger>
+                    <TabsTrigger value="allowance" className="rounded-lg data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-emerald-600 dark:data-[state=active]:text-emerald-400 data-[state=active]:shadow-sm">
+                        <MapPin className="w-4 h-4 mr-2" /> Công tác phí
+                    </TabsTrigger>
                 </TabsList>
 
                 {/* ========================================================================================= */}
@@ -282,6 +302,79 @@ export default function PayrollPage() {
                                 </div>
                             ) : (
                                 <AttendanceBoardTable records={filteredBoard} daysInMonth={daysInMonth} />
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                {/* ========================================= */}
+                {/* TAB 3: BẢNG KÊ CÔNG TÁC PHÍ (XĂNG XE)       */}
+                {/* ========================================= */}
+                <TabsContent value="allowance" className="space-y-4 mt-4">
+                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+                        <CardHeader className="bg-emerald-50 dark:bg-emerald-900/10 border-b dark:border-slate-800 flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="text-emerald-700 dark:text-emerald-500 flex items-center">
+                                    <Route className="w-5 h-5 mr-2" /> Bảng kê Công tác phí (Xăng xe)
+                                </CardTitle>
+                                <p className="text-sm text-slate-500 mt-1">Dữ liệu tự động tính từ lịch sử quét mặt GPS tại các công trình.</p>
+                            </div>
+                            <div className="flex gap-2">
+                                {/* NÚT ĐỒNG BỘ MỚI */}
+                                <Button
+                                    variant="outline"
+                                    onClick={handleSyncDistances}
+                                    disabled={isSyncing}
+                                    className="h-8 text-xs bg-white text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border-emerald-200"
+                                >
+                                    {isSyncing ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <RefreshCcw className="w-3 h-3 mr-1.5" />}
+                                    Tính lại số Km
+                                </Button>
+                                <Button variant="outline" className="h-8 text-xs border-emerald-200 text-emerald-700">
+                                    <Download className="w-3 h-3 mr-1.5" /> Xuất báo cáo
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            {isLoading ? (
+                                <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-emerald-500" /></div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs text-slate-600 uppercase bg-slate-100 dark:bg-slate-800">
+                                            <tr>
+                                                <th className="px-4 py-3">Mã NV</th>
+                                                <th className="px-4 py-3">Họ và Tên</th>
+                                                <th className="px-4 py-3 text-center">Hình thức</th>
+                                                <th className="px-4 py-3 text-right">Tổng Km (Thực tế)</th>
+                                                <th className="px-4 py-3 text-right">Định mức</th>
+                                                <th className="px-4 py-3 text-right">Thành Tiền</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                                            {allowanceRecords.map(rec => (
+                                                <tr key={rec.id} className="bg-white dark:bg-slate-900 hover:bg-slate-50">
+                                                    <td className="px-4 py-3 font-mono text-slate-500">{rec.employeeCode}</td>
+                                                    <td className="px-4 py-3 font-bold">{rec.name}</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        {rec.allowanceType === 'flat_rate' ?
+                                                            <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-[10px] font-bold">KHOÁN</span> :
+                                                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-bold">THEO KM</span>
+                                                        }
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-medium">
+                                                        {rec.allowanceType === 'per_km' ? `${rec.totalKm} km` : '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right text-slate-500">
+                                                        {formatCurrency(rec.rate)}{rec.allowanceType === 'per_km' ? '/km' : '/tháng'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-emerald-600">
+                                                        {formatCurrency(rec.totalAmount)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </CardContent>
                     </Card>
