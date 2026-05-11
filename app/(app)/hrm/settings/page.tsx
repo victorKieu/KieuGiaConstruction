@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
-import { Settings, Map, Building2, Plus, Edit, Trash2, Save, MapPin, Route, Loader2 } from "lucide-react";
+import { Settings, Map, Building2, Plus, Edit, Trash2, Save, MapPin, Route, Loader2, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
@@ -30,6 +30,10 @@ export default function HRMSettingPage() {
     // Form State (Dùng "office" đại diện cho giá trị null trong DB)
     const [routeForm, setRouteForm] = useState({ id: "", fromId: "office", toId: "", distance: "" });
 
+    // Thêm State mới để lưu danh sách định mức
+    const [quotas, setQuotas] = useState<any[]>([]);
+    const [isSavingQuotas, setIsSavingQuotas] = useState(false);
+
     // Lấy dữ liệu khởi tạo
     const fetchData = async () => {
         setLoading(true);
@@ -49,6 +53,10 @@ export default function HRMSettingPage() {
                 to_project:projects!to_project_id(name)
             `).order('created_at', { ascending: false });
             if (routeData) setRoutes(routeData);
+
+            // Lấy Bảng Định mức
+            const { data: quotaData } = await supabase.from('sys_quotas').select('*').order('code');
+            if (quotaData) setQuotas(quotaData);
 
         } catch (error) {
             console.error(error);
@@ -89,6 +97,20 @@ export default function HRMSettingPage() {
     const handleOpenAddRoute = () => {
         setRouteForm({ id: "", fromId: "office", toId: projects.length > 0 ? projects[0].id : "", distance: "" });
         setIsRouteModalOpen(true);
+    };
+
+    const handleSaveQuotas = async () => {
+        setIsSavingQuotas(true);
+        try {
+            // Chạy cập nhật từng dòng thay đổi vào database
+            for (const q of quotas) {
+                await supabase.from('sys_quotas').update({ value: q.value }).eq('id', q.id);
+            }
+            toast.success("Đã cập nhật Bảng định mức chung.");
+        } catch (error) {
+            toast.error("Có lỗi khi lưu định mức.");
+        }
+        setIsSavingQuotas(false);
     };
 
     const handleSaveRoute = async () => {
@@ -147,13 +169,10 @@ export default function HRMSettingPage() {
             </div>
 
             <Tabs defaultValue="routes" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
-                    <TabsTrigger value="routes" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-                        <Route className="w-4 h-4 mr-2" /> Từ điển Tuyến đường
-                    </TabsTrigger>
-                    <TabsTrigger value="general">
-                        <Map className="w-4 h-4 mr-2" /> Cấu hình Chấm công
-                    </TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3 md:w-[600px]">
+                    <TabsTrigger value="routes"><Route className="w-4 h-4 mr-2" /> Tuyến đường</TabsTrigger>
+                    <TabsTrigger value="quotas"><DollarSign className="w-4 h-4 mr-2" /> Bảng Định Mức</TabsTrigger>
+                    <TabsTrigger value="general"><Map className="w-4 h-4 mr-2" /> Cấu hình Chấm công</TabsTrigger>
                 </TabsList>
 
                 {/* TAB 1: TỪ ĐIỂN TUYẾN ĐƯỜNG (DI CHUYỂN) */}
@@ -241,6 +260,51 @@ export default function HRMSettingPage() {
                             <Button onClick={handleSaveGeneralSettings} disabled={isSavingGeneral} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto">
                                 {isSavingGeneral ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Lưu Cấu hình
                             </Button>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                {/* TAB: BẢNG ĐỊNH MỨC CHUNG */}
+                <TabsContent value="quotas" className="mt-4">
+                    <Card className="border-slate-200 dark:border-slate-800 dark:bg-slate-900 shadow-sm max-w-4xl">
+                        <CardHeader className="bg-amber-50/50 dark:bg-amber-900/10 border-b dark:border-slate-800">
+                            <CardTitle className="text-lg font-bold text-amber-700 dark:text-amber-500">Hệ số & Định mức Công ty</CardTitle>
+                            <CardDescription>Các thông số tài chính được áp dụng chung cho toàn hệ thống khi tính lương và phụ cấp.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6 pt-6">
+                            {quotas.length === 0 ? (
+                                <div className="text-center text-slate-500 py-10">Chưa có dữ liệu định mức.</div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {quotas.map((q, index) => (
+                                        <div key={q.id} className="space-y-2 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-100 dark:border-slate-800 relative">
+                                            <span className="absolute top-4 right-4 text-[10px] font-mono font-bold text-slate-400 bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                                {q.code}
+                                            </span>
+                                            <Label className="font-bold text-slate-700 dark:text-slate-300">{q.name}</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    type="number"
+                                                    value={q.value}
+                                                    onChange={(e) => {
+                                                        const newQuotas = [...quotas];
+                                                        newQuotas[index].value = Number(e.target.value);
+                                                        setQuotas(newQuotas);
+                                                    }}
+                                                    className="font-mono font-bold text-lg text-emerald-600 bg-white dark:bg-slate-900"
+                                                />
+                                                <span className="text-sm font-medium text-slate-500 whitespace-nowrap min-w-[80px]">{q.unit}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 leading-relaxed">{q.description}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                                <Button onClick={handleSaveQuotas} disabled={isSavingQuotas} className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto">
+                                    {isSavingQuotas ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Lưu Bảng Định Mức
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </TabsContent>

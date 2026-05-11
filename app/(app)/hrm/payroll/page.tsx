@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Download, CalendarDays, Calculator, FileSpreadsheet, Search, Loader2, Filter, DollarSign, Users, Clock, ShieldAlert, PiggyBank, Landmark, MapPin, Route, Edit, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils/utils";
+import { exportToExcel } from "@/lib/utils/exportExcel";
 
 // Import Component giao diện (Đảm bảo đường dẫn đúng với dự án của bạn)
 import { PayrollTable, PayrollRecord } from "@/components/hrm/PayrollTable";
@@ -19,7 +20,7 @@ import { getPayrollByMonth, getMonthlyAttendanceBoard, getAllowanceRecords, sync
 
 export default function PayrollPage() {
     const [isSyncing, setIsSyncing] = useState(false);
-
+    
     const handleSyncDistances = async () => {
         setIsSyncing(true);
         const res = await syncTravelDistances(month, year); // Gọi hàm vừa tạo ở bước 1
@@ -48,12 +49,53 @@ export default function PayrollPage() {
     const [daysInMonth, setDaysInMonth] = useState(30);
     // State mới cho Công tác phí
     const [allowanceRecords, setAllowanceRecords] = useState<any[]>([]);
+    // Export Excel
+    const handleExportAllowance = () => {
+        if (allowanceRecords.length === 0) return toast.error("Không có dữ liệu để xuất!");
 
+        // Định dạng lại dữ liệu để lên Excel đẹp và dễ đọc
+        const dataToExport = allowanceRecords.map(rec => ({
+            "Mã Nhân Viên": rec.employeeCode,
+            "Họ và Tên": rec.name,
+            "Hình thức": rec.allowanceType === 'flat_rate' ? 'Khoán cố định' : 'Tính theo Km',
+            "Tổng Km thực tế": rec.allowanceType === 'per_km' ? rec.totalKm : '-',
+            "Định mức (VNĐ)": rec.rate,
+            "Thành tiền (VNĐ)": rec.totalAmount,
+        }));
+
+        exportToExcel(
+            dataToExport,
+            `Bang_Ke_Cong_Tac_Phi_T${month}_${year}`,
+            "CongTacPhi"
+        );
+        toast.success("Đã xuất file Excel Công tác phí!");
+    };
+    const handleExportPayroll = () => {
+        if (payrollData.length === 0) return toast.error("Bảng lương đang trống!");
+
+        const dataToExport = payrollData.map(p => ({
+            "Mã NV": p.employeeCode,
+            "Họ Tên": p.name,
+            "Lương Cơ Bản": p.baseSalary,
+            "Phụ cấp": p.allowances,
+            "Tăng ca (VNĐ)": p.otAmount,
+            "Thưởng": p.bonus,
+            "Bảo hiểm": p.insuranceDeduction,
+            "Thuế TNCN": p.taxDeduction,
+            "Thực nhận": p.netSalary,
+        }));
+
+        exportToExcel(
+            dataToExport,
+            `Bang_Luong_Thang_${month}_${year}`,
+            "BangLuong"
+        );
+    };
     // 2. GỌI API (FETCH DATA)
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const [payrollRes, boardRes] = await Promise.all([
+            const [payrollRes, boardRes, allowanceData] = await Promise.all([
                 getPayrollByMonth(parseInt(month), parseInt(year)),
                 getMonthlyAttendanceBoard(parseInt(month), parseInt(year)),
                 getAllowanceRecords(month, year)
@@ -66,6 +108,9 @@ export default function PayrollPage() {
                 setBoardData(boardRes.data);
                 setDaysInMonth(boardRes.daysInMonth);
             } else toast.error(boardRes.error);
+            if (allowanceData) {
+                setAllowanceRecords(allowanceData);
+            }
         } catch (error) {
             toast.error("Có lỗi xảy ra khi tải dữ liệu.");
         } finally {
@@ -130,7 +175,6 @@ export default function PayrollPage() {
             }
         };
     }, [payrollData, boardData, searchTerm, selectedDepartment]);
-
 
     // 4. GIAO DIỆN (RENDER)
     return (
@@ -247,6 +291,20 @@ export default function PayrollPage() {
                     </div>
 
                     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
+                        {/* ✅ THÊM HEADER VÀ NÚT XUẤT EXCEL CHO BẢNG LƯƠNG */}
+                        <CardHeader className="flex flex-row items-center justify-between bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 py-3">
+                            <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center">
+                                <FileSpreadsheet className="w-4 h-4 mr-2 text-blue-600" /> Chi tiết Bảng Lương
+                            </CardTitle>
+                            <Button
+                                variant="outline"
+                                onClick={handleExportPayroll}
+                                className="h-8 text-xs border-blue-200 text-blue-700 hover:bg-blue-100"
+                            >
+                                <Download className="w-3 h-3 mr-1.5" /> Xuất Excel
+                            </Button>
+                        </CardHeader>
+
                         <CardContent className="p-0">
                             {isLoading ? (
                                 <div className="p-20 flex flex-col justify-center items-center text-slate-500">
@@ -329,8 +387,12 @@ export default function PayrollPage() {
                                     {isSyncing ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <RefreshCcw className="w-3 h-3 mr-1.5" />}
                                     Tính lại số Km
                                 </Button>
-                                <Button variant="outline" className="h-8 text-xs border-emerald-200 text-emerald-700">
-                                    <Download className="w-3 h-3 mr-1.5" /> Xuất báo cáo
+                                <Button
+                                    variant="outline"
+                                    onClick={handleExportAllowance} // ✅ Gắn hàm vào đây
+                                    className="h-8 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                                >
+                                    <Download className="w-3 h-3 mr-1.5" /> Xuất Excel
                                 </Button>
                             </div>
                         </CardHeader>

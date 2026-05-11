@@ -31,125 +31,125 @@ function calculateTNCN(taxableIncome: number): number {
  * Lấy Bảng Lương Tổng Hợp theo Tháng / Năm
  */
 export async function getPayrollByMonth(month: number, year: number) {
-    const supabase = await createSupabaseServerClient();
-
     try {
-        const userProfile = await getUserProfile();
-        if (!userProfile || !userProfile.isAuthenticated) return { success: false, error: "Hết phiên đăng nhập", data: [] };
+        const supabase = await createSupabaseServerClient();
 
-        const userRole = (userProfile.role || '').toLowerCase();
-        const isHR = userRole === 'admin' || userRole === 'hr' || userRole === 'giám đốc';
-        if (!isHR) return { success: false, error: "Bạn không có quyền truy cập bảng lương", data: [] };
+        // 1. LẤY ĐỊNH MỨC CHUNG (TỪ SYS_QUOTAS)
+        const { data: quotas } = await supabase.from('sys_quotas')
+            .select('code, value')
+            .in('code', ['MEAL_RATE', 'PHONE_RATE']);
 
-        const startDate = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
-        const endDate = new Date(year, month, 0).toLocaleDateString('en-CA');
+        let defaultMealRate = 35000;
+        let defaultPhoneRate = 200000;
 
-        // 1. KÉO DỮ LIỆU NHÂN SỰ: Đã đổi auth_id thành id
-        const { data: employees, error: empError } = await supabase
+        quotas?.forEach(q => {
+            if (q.code === 'MEAL_RATE') defaultMealRate = q.value;
+            if (q.code === 'PHONE_RATE') defaultPhoneRate = q.value;
+        });
+
+        // 2. LẤY DỮ LIỆU NHÂN VIÊN (Bao gồm các trường Phụ cấp mới)
+        const { data: employees } = await supabase
             .from('employees')
             .select(`
-                id, code, name, department_id, 
-                basic_salary, base_salary, allowance_amount, dependents_count, is_insurance_active,
-                department:sys_dictionaries!employees_department_id_fkey(name)
+                id, code, name, basic_salary, allowance_amount,
+                is_insurance_active, dependents_count,
+                is_meal_allowance_active, meal_allowance_rate,
+                is_phone_allowance_active, phone_allowance_rate,
+                department:department_id(name)
             `);
 
-        if (empError) {
-            console.error("[DB_EMP_ERROR]", empError.message);
-            throw new Error(`Lỗi CSDL Nhân sự: ${empError.message}`);
-        }
-        if (!employees) throw new Error("Không có dữ liệu nhân sự");
+        if (!employees) return { success: false, error: "Không thể tải danh sách nhân viên." };
 
-        // 2. Kéo toàn bộ dữ liệu chấm công trong tháng
-        const { data: attendanceRecords, error: attError } = await supabase
+        // 3. LẤY DỮ LIỆU CHẤM CÔNG TRONG THÁNG
+        const startDate = new Date(year, month - 1, 1).toISOString();
+        const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+
+        const { data: attendanceRecords } = await supabase
             .from('attendance_records')
-            .select('employee_id, working_hours, status')
+            .select('*')
             .gte('date', startDate)
             .lte('date', endDate);
 
-        if (attError) throw new Error("Lỗi lấy dữ liệu chấm công");
-
-        const attendanceMap = new Map();
-        for (const record of (attendanceRecords || [])) {
-            if (!attendanceMap.has(record.employee_id)) {
-                attendanceMap.set(record.employee_id, { actualDays: 0, otHours: 0 });
-            }
-            const empData = attendanceMap.get(record.employee_id);
-
-            if (record.working_hours > 0) {
-                const regularHours = Math.min(record.working_hours, 8);
-                empData.actualDays += (regularHours / 8);
-
-                if (record.working_hours > 8) {
-                    empData.otHours += (record.working_hours - 8);
-                }
-            }
-        }
-
-        // 3. THUẬT TOÁN TÍNH LƯƠNG CHÍNH
+        // 4. TIẾN HÀNH TÍNH LƯƠNG CHO TỪNG NGƯỜI
         const payrollData = employees.map(emp => {
-            // ✅ Đã đổi từ emp.auth_id thành emp.id
-            const att = attendanceMap.get(emp.id) || { actualDays: 0, otHours: 0 };
+            const empRecords = attendanceRecords?.filter(r => r.employee_id === emp.id) || [];
 
-            // PHÂN TÁCH RÕ RÀNG 2 LOẠI LƯƠNG
-            const contractSalary = Number(emp.basic_salary) || 0; // Lương thực tế (Dùng chia ngày công)
-            const insuranceSalary = Number(emp.base_salary) || 0; // Mức lương đóng BHXH (Dùng nhân 10.5%)
+            // A. TÍNH NGÀY CÔNG & TĂNG CA
+            let actualDays = 0;
+            let otHours = 0;
+            let workedDaysOnly = 0; // Chỉ đếm số ngày có đi làm thực tế (để nhân tiền cơm)
 
-            const allowances = Number(emp.allowance_amount) || 0;
-            const actualDays = parseFloat(att.actualDays.toFixed(2));
-            const otHours = parseFloat(att.otHours.toFixed(2));
+            empRecords.forEach(r => {
+                if (r.working_hours > 0) {
+                    // Nếu làm >= 4 tiếng thì được tính là 1 ngày đi làm để nhận tiền cơm
+                    if (r.working_hours >= 4) workedDaysOnly += 1;
 
-            // a. Lương thời gian (Tính trên LƯƠNG THỰC TẾ - basic_salary)
-            const hourlyRate = contractSalary / STANDARD_WORKING_DAYS / 8;
-            const dailyRate = contractSalary / STANDARD_WORKING_DAYS;
+                    if (r.working_hours >= 8) actualDays += 1;
+                    else if (r.working_hours >= 4) actualDays += 0.5;
 
-            const standardIncome = dailyRate * actualDays;
-            const otIncome = otHours * hourlyRate * OT_RATE;
+                    if (r.working_hours > 8) {
+                        otHours += (r.working_hours - 8);
+                    }
+                }
+                // Ngày nghỉ có lương (Không tính tiền cơm nhưng vẫn tính lương)
+                if (r.status === 'Nghỉ (P)' || r.status.includes('Nghỉ lễ')) {
+                    actualDays += 1;
+                }
+            });
 
-            // b. Tổng thu nhập (Gross)
-            const grossSalary = Math.round(standardIncome + otIncome + allowances);
+            // B. TÍNH TOÁN CÁC KHOẢN PHỤ CẤP
+            const baseAllowance = emp.allowance_amount || 0; // Phụ cấp cố định (tiền trách nhiệm...)
 
-            // c. Tính Bảo Hiểm (Tính trên MỨC ĐÓNG BHXH - base_salary)
-            let insuranceDeduction = 0;
-            if (emp.is_insurance_active && insuranceSalary > 0) {
-                insuranceDeduction = Math.round(insuranceSalary * INSURANCE_RATE);
-            }
+            // Tiền cơm: Số ngày đi làm thực tế * Đơn giá (Riêng hoặc Mặc định)
+            const mealRate = emp.meal_allowance_rate || defaultMealRate;
+            const mealAllowance = emp.is_meal_allowance_active ? (workedDaysOnly * mealRate) : 0;
 
-            // d. Tính Thuế TNCN
-            const dependents = Number(emp.dependents_count) || 0;
-            const totalDeductions = PERSONAL_DEDUCTION + (dependents * DEPENDENT_DEDUCTION) + insuranceDeduction;
+            // Tiền điện thoại: Cố định theo tháng (Riêng hoặc Mặc định)
+            const phoneRate = emp.phone_allowance_rate || defaultPhoneRate;
+            const phoneAllowance = emp.is_phone_allowance_active ? phoneRate : 0;
 
-            const taxableIncome = grossSalary - allowances - totalDeductions;
-            const taxDeduction = Math.round(calculateTNCN(taxableIncome));
+            // -> TỔNG PHỤ CẤP
+            const totalAllowances = baseAllowance + mealAllowance + phoneAllowance;
 
-            const advancePayment = 0;
+            // C. TÍNH LƯƠNG CƠ BẢN & OT
+            const basicSalary = emp.basic_salary || 0;
+            const salaryPerDay = basicSalary / STANDARD_WORKING_DAYS;
+            const baseEarned = salaryPerDay * actualDays;
+            const otAmount = (salaryPerDay / 8) * OT_RATE * otHours;
 
-            // e. Thực lãnh (Net Pay)
-            const netSalary = grossSalary - insuranceDeduction - taxDeduction - advancePayment;
+            // D. TỔNG THU NHẬP (GROSS)
+            const grossSalary = baseEarned + otAmount + totalAllowances;
+
+            // E. CÁC KHOẢN TRỪ (BẢO HIỂM & THUẾ)
+            const insuranceDeduction = emp.is_insurance_active ? (basicSalary * INSURANCE_RATE) : 0;
+            const taxDeduction = calculateTNCN(
+                grossSalary - insuranceDeduction - PERSONAL_DEDUCTION - ((emp.dependents_count || 0) * DEPENDENT_DEDUCTION)
+            );
+
+            // F. THỰC LÃNH (NET)
+            const netSalary = grossSalary - insuranceDeduction - taxDeduction;
 
             return {
-                id: emp.id, // ✅ Trả về ID gốc cho UI key
-                employeeCode: emp.code || 'N/A',
-                name: emp.name || 'N/A',
+                id: emp.id,
+                employeeCode: emp.code,
+                name: emp.name,
                 department: (Array.isArray(emp.department) ? emp.department[0]?.name : (emp.department as any)?.name) || 'Chưa phân bổ',
-                baseSalary: contractSalary, // Trả về giao diện mức lương thực tế để HR dễ đối chiếu
-                standardDays: STANDARD_WORKING_DAYS,
-                actualDays: actualDays,
-                otHours: otHours,
-                allowances: allowances,
-                grossSalary: grossSalary,
-                insuranceDeduction: insuranceDeduction,
-                taxDeduction: taxDeduction,
-                advancePayment: advancePayment,
-                netSalary: netSalary
+                basicSalary: basicSalary,
+                actualDays: parseFloat(actualDays.toFixed(2)),
+                otHours: parseFloat(otHours.toFixed(2)),
+                otAmount: Math.round(otAmount),
+                allowances: Math.round(totalAllowances),
+                bonus: 0,
+                grossSalary: Math.round(grossSalary),
+                insuranceDeduction: Math.round(insuranceDeduction),
+                taxDeduction: Math.round(taxDeduction),
+                netSalary: Math.round(netSalary)
             };
         });
 
-        payrollData.sort((a, b) => a.employeeCode.localeCompare(b.employeeCode));
-
         return { success: true, data: payrollData };
     } catch (error: any) {
-        console.error("[PAYROLL_ERROR]", error);
-        return { success: false, error: "Lỗi hệ thống khi tính lương.", data: [] };
+        return { success: false, error: "Lỗi hệ thống tính lương: " + error.message };
     }
 }
 
@@ -249,56 +249,78 @@ export async function getMonthlyAttendanceBoard(month: number, year: number) {
 }
 
 export async function getAllowanceRecords(month: string, year: string) {
-    const supabase = await createSupabaseServerClient();
+    try {
+        const supabase = await createSupabaseServerClient();
 
-    // 1. Lấy danh sách nhân viên và định mức
-    const { data: employees } = await supabase
-        .from('employees')
-        .select('id, name, code, allowance_type, allowance_rate')
-        .order('name');
+        // 1. Lấy cấu hình định mức chung (Dùng in() để chỉ lấy đúng 2 mã cần thiết)
+        const { data: quotas } = await supabase.from('sys_quotas')
+            .select('code, value')
+            .in('code', ['ALLOWANCE_KM', 'ALLOWANCE_FLAT']);
 
-    if (!employees) return [];
+        let defaultKmRate = 2000;
+        let defaultFlatRate = 1500000;
 
-    // 2. Xác định khoảng thời gian trong tháng
-    const startDate = new Date(parseInt(year), parseInt(month) - 1, 1).toISOString();
-    const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59).toISOString();
+        quotas?.forEach(q => {
+            if (q.code === 'ALLOWANCE_KM') defaultKmRate = q.value;
+            if (q.code === 'ALLOWANCE_FLAT') defaultFlatRate = q.value;
+        });
 
-    // 3. Lấy tổng Km từ bảng checkpoints
-    const { data: checkpoints } = await supabase
-        .from('employee_checkpoints')
-        .select('employee_id, travel_distance_km')
-        .gte('check_in_time', startDate)
-        .lte('check_in_time', endDate);
+        // 2. Lấy danh sách nhân viên
+        const { data: employees } = await supabase
+            .from('employees')
+            .select('id, name, code, allowance_type, allowance_rate')
+            .order('name');
 
-    // Gom nhóm tính tổng Km theo nhân viên
-    const kmMap: Record<string, number> = {};
-    checkpoints?.forEach(cp => {
-        kmMap[cp.employee_id] = (kmMap[cp.employee_id] || 0) + (cp.travel_distance_km || 0);
-    });
+        if (!employees) return [];
 
-    // 4. Tổng hợp kết quả
-    return employees.map(emp => {
-        const totalKm = kmMap[emp.id] || 0;
-        const type = emp.allowance_type || 'per_km';
-        const rate = emp.allowance_rate || 0;
+        // 3. Tính Tổng Km trong tháng
+        const startDate = new Date(parseInt(year), parseInt(month) - 1, 1).toISOString();
+        const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59).toISOString();
 
-        let totalAmount = 0;
-        if (type === 'flat_rate') {
-            totalAmount = rate; // Khoán cố định
-        } else {
-            totalAmount = totalKm * rate; // Tính theo Km thực tế
-        }
+        const { data: checkpoints } = await supabase
+            .from('employee_checkpoints')
+            .select('employee_id, travel_distance_km')
+            .gte('check_in_time', startDate)
+            .lte('check_in_time', endDate);
 
-        return {
-            id: emp.id,
-            employeeCode: emp.code,
-            name: emp.name,
-            allowanceType: type,
-            rate: rate,
-            totalKm: parseFloat(totalKm.toFixed(2)),
-            totalAmount: totalAmount
-        };
-    });
+        const kmMap: Record<string, number> = {};
+        checkpoints?.forEach(cp => {
+            kmMap[cp.employee_id] = (kmMap[cp.employee_id] || 0) + (cp.travel_distance_km || 0);
+        });
+
+        // 4. Tổng hợp & Tính tiền
+        return employees.map(emp => {
+            const totalKm = kmMap[emp.id] || 0;
+            const type = emp.allowance_type || 'per_km';
+
+            // Ưu tiên: Lương riêng (nếu có) -> Định mức chung công ty
+            let appliedRate = 0;
+            if (emp.allowance_rate && emp.allowance_rate > 0) {
+                appliedRate = emp.allowance_rate;
+            } else {
+                appliedRate = type === 'flat_rate' ? defaultFlatRate : defaultKmRate;
+            }
+
+            let totalAmount = 0;
+            if (type === 'flat_rate') {
+                totalAmount = appliedRate;
+            } else {
+                totalAmount = totalKm * appliedRate;
+            }
+
+            return {
+                id: emp.id,
+                employeeCode: emp.code,
+                name: emp.name,
+                allowanceType: type,
+                rate: appliedRate,
+                totalKm: parseFloat(totalKm.toFixed(2)),
+                totalAmount: totalAmount
+            };
+        });
+    } catch (e) {
+        return [];
+    }
 }
 
 export async function syncTravelDistances(month: string, year: string) {

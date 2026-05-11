@@ -7,7 +7,7 @@ import { formatCurrency } from "@/lib/utils/utils";
 import { DictionaryOption } from "@/types/employee";
 import { createEmployee, updateEmployee } from "@/lib/action/employeeActions";
 import AvatarUpload from "./AvatarUpload";
-import { Loader2, Save, Briefcase, Banknote, ShieldCheck, UserCircle, MapPin, Landmark, FileText, ScanFace, CheckCircle2, XCircle, Trash2 } from "lucide-react";
+import { Loader2, Save, Briefcase, Banknote, ShieldCheck, UserCircle, MapPin, Landmark, FileText, ScanFace, CheckCircle2, XCircle, Trash2, Route, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger, DialogTitle } from "@/components/ui/dialog";
@@ -54,6 +54,7 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
         initialData?.user_profiles?.avatar_url || initialData?.avatar_url || ""
     );
     const [hasFaceId, setHasFaceId] = useState<boolean>(!!initialData?.face_descriptor);
+
     // ✅ STATE QUẢN LÝ MODAL FACE ID
     const [isFaceIdModalOpen, setIsFaceIdModalOpen] = useState(false);
 
@@ -63,6 +64,16 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
     );
     const [allowanceDisplay, setAllowanceDisplay] = useState<string>(
         initialData?.allowance_amount ? formatCurrency(initialData.allowance_amount) : ""
+    );
+    // ✅ State mới quản lý hiển thị tiền cho Định mức riêng
+    const [allowanceRateDisplay, setAllowanceRateDisplay] = useState<string>(
+        initialData?.allowance_rate ? formatCurrency(initialData.allowance_rate) : ""
+    );
+    const [mealAllowanceRateDisplay, setMealAllowanceRateDisplay] = useState<string>(
+        initialData?.meal_allowance_rate ? formatCurrency(initialData.meal_allowance_rate) : ""
+    );
+    const [phoneAllowanceRateDisplay, setPhoneAllowanceRateDisplay] = useState<string>(
+        initialData?.phone_allowance_rate ? formatCurrency(initialData.phone_allowance_rate) : ""
     );
 
     const handleCurrencyChange = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<string>>) => {
@@ -92,14 +103,11 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                 : await createEmployee(formData);
 
             if (result.success) {
-                // ✅ 1. Báo thành công
                 toast.success(result.message);
-
-                // ✅ 2. Tự động điều hướng về List ngay lập tức
                 if (onSuccess) {
-                    onSuccess(); // Đóng popup nếu đang ở form Thêm mới
+                    onSuccess();
                 } else {
-                    router.push("/hrm/employees"); // Chuyển trang nếu đang ở form Cập nhật
+                    router.push("/hrm/employees");
                 }
             } else {
                 toast.error(result.error);
@@ -117,6 +125,7 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
             setIsSubmitting(false);
         }
     };
+
     const [isDeleting, setIsDeleting] = useState(false);
 
     const handleDeleteFaceId = async () => {
@@ -127,7 +136,7 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
             const res = await deleteFaceDescriptor(initialData.id);
             if (res.success) {
                 toast.success(res.message);
-                setHasFaceId(false); // Cập nhật trạng thái giao diện ngay lập tức
+                setHasFaceId(false);
             } else {
                 toast.error(res.error);
             }
@@ -150,7 +159,6 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                 </div>
             )}
 
-            {/* PHẦN NỘI DUNG CHÍNH */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-8">
                 {/* CỘT TRÁI: AVATAR & FACE ID NẰM CỐ ĐỊNH */}
                 <div className="lg:col-span-1">
@@ -162,18 +170,16 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                             <p className="text-sm text-slate-500">{getFieldValue("code") || "Mã NV"}</p>
                         </div>
 
-                        {/* ✅ TRẠNG THÁI & NÚT FACE REGISTRATION */}
+                        {/* TRẠNG THÁI & NÚT FACE REGISTRATION */}
                         <div className="mt-6 w-full pt-6 border-t border-slate-100 dark:border-slate-800">
                             {initialData?.id ? (
                                 <div className="space-y-4">
-                                    {/* Hiển thị Trạng thái kèm nút Xóa */}
                                     <div className="flex flex-col gap-2 items-center">
                                         {hasFaceId ? (
                                             <div className="flex items-center gap-2">
                                                 <span className="flex items-center text-[13px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full">
                                                     <CheckCircle2 className="w-4 h-4 mr-1.5" /> Đã đăng ký Face ID
                                                 </span>
-                                                {/* Nút Xóa dữ liệu */}
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
@@ -193,7 +199,6 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                                         )}
                                     </div>
 
-                                    {/* Nút đăng ký (hoặc cập nhật lại) */}
                                     <Dialog open={isFaceIdModalOpen} onOpenChange={setIsFaceIdModalOpen}>
                                         <DialogTrigger asChild>
                                             <Button type="button" variant="outline" className="w-full flex items-center justify-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/50 dark:hover:bg-indigo-900/20">
@@ -203,7 +208,6 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                                         </DialogTrigger>
                                         <DialogContent className="sm:max-w-[400px] p-0 border-none bg-transparent shadow-none">
                                             <DialogTitle className="sr-only">Đăng ký hoặc Cập nhật Face ID</DialogTitle>
-                                            {/* ✅ BỌC isFaceIdModalOpen VÀO ĐÂY ĐỂ ÉP HỦY COMPONENT KHI ĐÓNG POPUP */}
                                             {isFaceIdModalOpen && (
                                                 <FaceRegistration
                                                     employeeId={initialData.id}
@@ -226,7 +230,6 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                                 </div>
                             )}
                         </div>
-
                     </div>
                 </div>
 
@@ -244,7 +247,7 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                                 }`}
                         >
                             <FileText className="w-4 h-4" />
-                            Thông tin chung
+                            Thông định danh
                         </button>
                         <button
                             type="button"
@@ -453,11 +456,113 @@ export default function EmployeeForm({ initialData, options, onSuccess }: Employ
                             </div>
                         </div>
 
-                        {/* 3. NGÂN HÀNG */}
+                        {/* ✅ 3. ĐỊNH MỨC CÔNG TÁC PHÍ (RIÊNG CHO NHÂN VIÊN NÀY) */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div className="flex items-center gap-2 mb-4 text-blue-600 border-b pb-2">
+                                <Route className="w-5 h-5" />
+                                <h3 className="text-lg font-semibold">3. Định mức Công tác phí (Tùy chỉnh)</h3>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Hình thức chi trả</label>
+                                    <select name="allowance_type" defaultValue={getFieldValue("allowance_type") || "per_km"} className={inputStyle}>
+                                        <option value="per_km">Tính theo Km di chuyển thực tế</option>
+                                        <option value="flat_rate">Khoán cố định (Trọn gói theo tháng)</option>
+                                    </select>
+                                    <p className="text-[11px] text-slate-500">Mặc định tính tiền tự động dựa trên bảng cài đặt hệ số chung của toàn bộ công ty.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Định mức riêng (Tùy chọn)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={allowanceRateDisplay}
+                                            onChange={(e) => handleCurrencyChange(e, setAllowanceRateDisplay)}
+                                            className={`${inputStyle} pr-12 font-mono text-right`}
+                                            placeholder="Để trống = Mặc định"
+                                        />
+                                        <span className="absolute right-3 top-2.5 text-slate-400 text-sm">VNĐ</span>
+                                        {/* Nếu user xoá trống => Gửi chuỗi rỗng lên backend để set null */}
+                                        <input type="hidden" name="allowance_rate" value={allowanceRateDisplay.replace(/[^0-9]/g, "")} />
+                                    </div>
+                                    <p className="text-[11px] text-slate-500">Điền số tiền nếu muốn ghi đè mức mặc định của công ty (VNĐ/km hoặc VNĐ/tháng).</p>
+                                </div>
+                            </div>
+                        </div>
+                        {/* 4. CÁC KHOẢN PHỤ CẤP KHÁC */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div className="flex items-center gap-2 mb-4 text-indigo-600 border-b pb-2">
+                                <DollarSign className="w-5 h-5" />
+                                <h3 className="text-lg font-semibold">4. Các khoản Phụ cấp khác</h3>
+                            </div>
+
+                            <div className="space-y-6">
+                                {/* PHỤ CẤP ĂN TRƯA */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            name="is_meal_allowance_active"
+                                            id="is_meal_allowance_active"
+                                            defaultChecked={initialData?.is_meal_allowance_active ?? true}
+                                            className="w-5 h-5 rounded text-indigo-600 cursor-pointer"
+                                        />
+                                        <label htmlFor="is_meal_allowance_active" className="font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
+                                            Phụ cấp ăn trưa
+                                        </label>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500">Định mức riêng (Để trống = Mặc định)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={mealAllowanceRateDisplay}
+                                                onChange={(e) => handleCurrencyChange(e, setMealAllowanceRateDisplay)}
+                                                className={`${inputStyle} pr-12 text-right text-xs`}
+                                                placeholder="VD: 40.000"
+                                            />
+                                            <span className="absolute right-3 top-2 text-slate-400 text-[10px]">VNĐ/ngày</span>
+                                            <input type="hidden" name="meal_allowance_rate" value={mealAllowanceRateDisplay.replace(/[^0-9]/g, "")} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* PHỤ CẤP ĐIỆN THOẠI */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            name="is_phone_allowance_active"
+                                            id="is_phone_allowance_active"
+                                            defaultChecked={initialData?.is_phone_allowance_active ?? false}
+                                            className="w-5 h-5 rounded text-indigo-600 cursor-pointer"
+                                        />
+                                        <label htmlFor="is_phone_allowance_active" className="font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
+                                            Phụ cấp điện thoại
+                                        </label>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-slate-500">Định mức riêng (Để trống = Mặc định)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={phoneAllowanceRateDisplay}
+                                                onChange={(e) => handleCurrencyChange(e, setPhoneAllowanceRateDisplay)}
+                                                className={`${inputStyle} pr-12 text-right text-xs`}
+                                                placeholder="VD: 500.000"
+                                            />
+                                            <span className="absolute right-3 top-2 text-slate-400 text-[10px]">VNĐ/tháng</span>
+                                            <input type="hidden" name="phone_allowance_rate" value={phoneAllowanceRateDisplay.replace(/[^0-9]/g, "")} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {/* 4. NGÂN HÀNG */}
                         <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                             <div className="flex items-center gap-2 mb-4 text-amber-600 border-b pb-2">
                                 <Landmark className="w-5 h-5" />
-                                <h3 className="text-lg font-semibold">3. Tài khoản Ngân hàng</h3>
+                                <h3 className="text-lg font-semibold">4. Tài khoản Ngân hàng</h3>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-1">
