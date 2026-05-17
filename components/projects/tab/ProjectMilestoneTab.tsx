@@ -54,11 +54,11 @@ export default function ProjectMilestoneTab({
                             <button
                                 onClick={() => setViewMode("list")}
                                 className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${viewMode === "list"
-                                        ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm"
-                                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 shadow-sm"
+                                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
                                     }`}
                             >
-                                <LayoutList className="w-4 h-4" /> Danh sách
+                                <LayoutList className="w-4 h-4" /> Bảng Kanban
                             </button>
                         </div>
 

@@ -272,16 +272,77 @@ export async function addManualQTOItem(
 }
 
 // ✅ HÀM MỚI: Sửa trực tiếp thông tin QTO Item (Tên, Đơn vị tính...)
-export async function updateQTOItem(itemId: string, projectId: string, field: string, value: string) {
-    const { createClient } = await import("@/lib/supabase/server");
+export async function updateQTOItem(itemId: string, field: string, value: any) {
     const supabase = await createClient();
 
+    // Nếu field là duration thì parse sang số
+    const finalValue = field === 'duration' ? Number(value) : value;
+
     const { error } = await supabase
-        .from('qto_items')
-        .update({ [field]: value })
-        .eq('id', itemId);
+        .from("qto_items")
+        .update({ [field]: finalValue })
+        .eq("id", itemId);
 
-    if (error) return { success: false, error: error.message };
-
+    if (error) {
+        console.error("Lỗi updateQTOItem:", error);
+        return { success: false, error: error.message };
+    }
+    revalidatePath("/projects/[id]");
     return { success: true };
+}
+
+export async function syncQTOToWBS(projectId: string) {
+    try {
+        const supabase = await createClient();
+        const { data: qtoItems } = await supabase.from('qto_items').select('*').eq('project_id', projectId);
+        if (!qtoItems || qtoItems.length === 0) throw new Error("Chưa có khối lượng bóc tách");
+
+        const { data: existingTasks } = await supabase.from('project_tasks').select('id, name, parent_id').eq('project_id', projectId);
+
+        const sections = qtoItems.filter(i => i.item_type === 'section' || !i.parent_id);
+        const tasks = qtoItems.filter(i => i.parent_id && i.item_type !== 'section');
+        let taskCounter = 1;
+
+        for (const sec of sections) {
+            // 1. Tạo Task Cha
+            let parentTask = existingTasks?.find(t => t.name === sec.item_name && !t.parent_id);
+            let parentId = parentTask?.id;
+            const secWbsCode = `${taskCounter}`;
+
+            if (!parentId) {
+                const { data: newParent } = await supabase.from('project_tasks').insert({
+                    project_id: projectId, name: sec.item_name, wbs_code: secWbsCode
+                }).select().single();
+                parentId = newParent?.id;
+            } else {
+                await supabase.from('project_tasks').update({ wbs_code: secWbsCode }).eq('id', parentId);
+            }
+
+            // 2. Tạo Task Con + Gắn Khối Lượng (Không gắn tiền)
+            const secTasks = tasks.filter(t => t.parent_id === sec.id);
+            let childCounter = 1;
+
+            for (const t of secTasks) {
+                const childWbsCode = `${secWbsCode}.${childCounter}`;
+                const childQty = Number(t.quantity) || 0;
+                let childTask = existingTasks?.find(ex => ex.name === t.item_name && ex.parent_id === parentId);
+
+                if (!childTask) {
+                    await supabase.from('project_tasks').insert({
+                        project_id: projectId, parent_id: parentId, name: t.item_name,
+                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit
+                    });
+                } else {
+                    await supabase.from('project_tasks').update({
+                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit
+                    }).eq('id', childTask.id);
+                }
+                childCounter++;
+            }
+            taskCounter++;
+        }
+        return { success: true, message: "Đã đồng bộ Khối lượng sang Bảng Tiến độ WBS!" };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
 }

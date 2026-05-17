@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isValidUUID } from "@/lib/utils/uuid";
 import type { ActionResponse } from "@/lib/action/projectActions";
 import { getUserProfile } from "@/lib/supabase/getUserProfile"; // ✅ Import hàm xịn của sếp
+import { rollupTaskProgressAndCost, updateProjectOverallProgress } from "@/lib/action/taskActions";
 
 // --- 1. ACTIONS (READ) ---
 
@@ -89,6 +90,9 @@ export async function createSurvey(
         const name_detail = (formData.get("name_detail") as string)?.trim();
         const survey_date = formData.get("survey_date") as string | null;
 
+        // ✅ BỔ SUNG 1: Lấy wbs_task_id từ form giao diện gửi lên
+        const wbsTaskId = formData.get("wbs_task_id") as string | null;
+
         if (!projectId) return { success: false, error: "ID Dự án không hợp lệ." };
         if (!template_name) return { success: false, error: "Vui lòng chọn Loại khảo sát." };
         if (!survey_date) return { success: false, error: "Vui lòng chọn ngày khảo sát." };
@@ -102,7 +106,10 @@ export async function createSurvey(
                 name: finalName,
                 survey_date: survey_date,
                 created_by: userProfile.entityId, // ✅ CHÌA KHÓA: Dùng entityId thay vì auth_id
-                status: 'pending'
+                status: 'pending',
+                // ✅ BỔ SUNG 2: Lưu wbs_task_id vào DB. 
+                // Nếu người dùng chọn "Không liên kết" (gửi giá trị "none"), ta chuyển thành null.
+                wbs_task_id: (wbsTaskId === "none" || !wbsTaskId) ? null : wbsTaskId,
             });
 
         if (insertError) throw insertError;
@@ -389,12 +396,36 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
                 const surveyStatus = progressPercent === 100 ? 'completed' : 'pending';
 
-                const { error: surveyError } = await supabase
+                // Lấy wbs_task_id đồng thời lúc update trạng thái
+                const { data: surveyData, error: surveyError } = await supabase
                     .from("project_surveys")
                     .update({ status: surveyStatus })
-                    .eq("id", surveyId);
+                    .eq("id", surveyId)
+                    .select("wbs_task_id")
+                    .single();
 
-                if (surveyError) console.error("Lỗi update bảng project_surveys:", surveyError.message);
+                if (surveyError) {
+                    console.error("Lỗi update bảng project_surveys:", surveyError.message);
+                }
+
+                // 🔥 KÍCH HOẠT HIỆU ỨNG DOMINO LÊN WBS VÀ KANBAN 🔥
+                if (surveyData && surveyData.wbs_task_id) {
+                    const taskId = surveyData.wbs_task_id;
+
+                    // 1. Ghi phần trăm khảo sát vào thẻ Kanban
+                    await supabase
+                        .from("project_tasks")
+                        .update({ progress: progressPercent })
+                        .eq("id", taskId);
+
+                    // 2. Kích hoạt cuộn tiến độ EVM lên Cha và lên Tổng dự án
+                    // Nếu anh không truyền projectId vào hàm này được thì mình lấy từ task ra
+                    const { data: taskData } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
+                    if (taskData && taskData.project_id) {
+                        await rollupTaskProgressAndCost(taskId, taskData.project_id);
+                        await updateProjectOverallProgress(taskData.project_id);
+                    }
+                }
             }
         }
 

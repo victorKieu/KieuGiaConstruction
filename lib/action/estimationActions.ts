@@ -359,3 +359,47 @@ export async function updateEstimationMaterialByGroup(projectId: string, oldMate
     if (error) return { success: false, error: error.message };
     return { success: true };
 }
+
+// =========================================================================
+// ĐẨY DỮ LIỆU TỪ DỰ TOÁN SANG KẾ HOẠCH WBS (TẠO PV VÀ THỨ TỰ)
+// =========================================================================
+export async function syncCostToWBS(projectId: string) {
+    try {
+        const supabase = await createClient();
+
+        // Lấy dữ liệu Dự toán
+        const { data: estItems } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
+        const { data: qtoItems } = await supabase.from('qto_items').select('id, item_name, parent_id').eq('project_id', projectId);
+        const { data: tasks } = await supabase.from('project_tasks').select('*').eq('project_id', projectId);
+
+        if (!estItems || !tasks) throw new Error("Thiếu dữ liệu để đồng bộ");
+
+        // Quét từng Task để nạp tiền
+        for (const task of tasks) {
+            if (task.parent_id) { // Chỉ tính tiền cho Task con
+                // Tìm dòng QTO tương ứng với Task này
+                const qtoItem = qtoItems?.find(q => q.item_name === task.name);
+                if (qtoItem) {
+                    // Lấy tất cả vật tư, nhân công thuộc QTO item này
+                    const relatedEst = estItems.filter(e => e.qto_item_id === qtoItem.id);
+
+                    // Tính Tổng Chi Phí (Cost)
+                    const totalCost = relatedEst.reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
+                    // Tiền Doanh thu (Revenue) = Chi phí x Hệ số lợi nhuận (nếu có, ví dụ anh setup trong bảng dự toán)
+
+                    await supabase.from('project_tasks').update({
+                        planned_cost: totalCost,
+                        // contract_revenue: revenue // Nếu anh có cột doanh thu riêng
+                    }).eq('id', task.id);
+                }
+            }
+        }
+
+        // Sau đó chạy hàm tính tổng tiền từ Task Con cuộn ngược lên Task Cha (Rollup Cost)
+        // ...
+
+        return { success: true, message: "Đã chốt giá và nạp Ngân sách (Chi phí/Doanh thu) vào WBS!" };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}

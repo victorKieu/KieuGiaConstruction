@@ -26,6 +26,7 @@ export interface CommentData {
     content: string;
     created_at: string;
     updated_at?: string;
+    commentsCount?: number;
     parent_comment_id?: string;
     likes_count?: number;
     created_by: {
@@ -52,6 +53,7 @@ interface TaskCommentSectionProps {
     projectId: string;
     members: MemberDisplayData[];
     currentUserId: string;
+    commentsCount?: number;
 }
 
 interface ActionFormState {
@@ -80,7 +82,7 @@ const formatRelativeTime = (isoString: string) => {
     return `${Math.floor(seconds)} giây trước`;
 };
 
-export default function TaskCommentSection({ taskId, projectId, members, currentUserId }: TaskCommentSectionProps) {
+export default function TaskCommentSection({ taskId, projectId, members, currentUserId, commentsCount }: TaskCommentSectionProps) {
     const [comments, setComments] = useState<CommentData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -418,12 +420,18 @@ export default function TaskCommentSection({ taskId, projectId, members, current
                     // ✅ FIX: Hover color & Text color
                     className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors w-full cursor-pointer"
                 >
+                    {/* ✅ ĐÃ ĐƯA CON SỐ VÀO CHUNG DÒNG TEXT NÀY VÀ BÔI MÀU XANH CHO NỔI BẬT */}
                     <h3 className="text-base font-semibold text-foreground flex items-center">
                         <MessageSquare className="h-5 w-5 mr-2 text-muted-foreground" />
                         Bình luận & Tương tác
+                        <span className="ml-1.5 text-blue-600 dark:text-blue-400 font-bold">
+                            {/* ✅ THAY totalCommentCount BẰNG commentsCount */}
+                            ({commentsCount ?? totalCommentCount ?? 0})
+                        </span>
                     </h3>
+
                     <div className="flex items-center">
-                        <span className="text-sm font-medium text-blue-600 dark:text-blue-400 mr-4">{`(${totalCommentCount})`}</span>
+                        {/* Đã xóa thẻ span chứa số đếm thừa ở đây */}
                         <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
                             {/* ✅ FIX: Button ghost hover */}
                             <Button onClick={handleTaskLike} variant="ghost" size="sm" disabled={isTaskLikePending} className={`h-8 ${taskLikeState.isLiked ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}>

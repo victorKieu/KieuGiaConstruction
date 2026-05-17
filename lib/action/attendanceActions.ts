@@ -970,3 +970,24 @@ export async function getAttendanceCheckpoints(attendanceId: string) {
     if (error) return [];
     return data;
 }
+
+export async function getActiveWorkersOnSite(projectId: string) {
+    try {
+        const supabase = await createSupabaseServerClient();
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        // Quét tất cả ai đang check-in trong hôm nay tại dự án này mà CHƯA check-out
+        const { data } = await supabase
+            .from('employee_checkpoints')
+            .select(`
+                id, check_in_time,
+                employee:employees(id, name, avatar_url, position:sys_dictionaries!employees_position_id_fkey(name))
+            `)
+            .eq('project_id', projectId)
+            .gte('check_in_time', `${todayStr}T00:00:00+07:00`)
+            .is('check_out_time', null)
+            .order('check_in_time', { ascending: false });
+
+        return { success: true, data: data || [] };
+    } catch (error) { return { success: false, data: [] }; }
+}

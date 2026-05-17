@@ -68,8 +68,9 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
 
         try {
             const res1 = await updateQTONormCode(taskId, projectId, norm.code);
-            const res2 = await updateQTOItem(taskId, projectId, 'item_name', norm.name);
-            const res3 = await updateQTOItem(taskId, projectId, 'unit', norm.unit);
+            // ✅ ĐÃ SỬA TS ERROR: Bỏ tham số projectId
+            const res2 = await updateQTOItem(taskId, 'item_name', norm.name);
+            const res3 = await updateQTOItem(taskId, 'unit', norm.unit);
 
             if (res1.success && res2.success && res3.success) {
                 toast.success("Đã áp mã và đồng bộ tên, đơn vị!", { id: toastId });
@@ -229,7 +230,8 @@ export default function QTOClient({ projectId, items, norms }: Props) {
     const handleUpdateItemField = async (itemId: string, field: string, value: string) => {
         if (!value.trim()) return;
         setLocalItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
-        const res = await updateQTOItem(itemId, projectId, field, value);
+        // ✅ ĐÃ SỬA TS ERROR: Bỏ tham số projectId
+        const res = await updateQTOItem(itemId, field, value);
         if (!res.success) { toast.error("Lỗi khi cập nhật!"); fetchLatestData(); }
     };
 
@@ -399,13 +401,15 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                             <TableHead className="font-bold dark:text-slate-200">Danh mục công việc / Công tác</TableHead>
                             <TableHead className="w-[80px] text-center font-bold dark:text-slate-200">ĐVT</TableHead>
                             <TableHead className="w-[120px] text-right font-bold dark:text-slate-200">Khối lượng</TableHead>
+                            {/* ✅ BỔ SUNG CỘT SỐ NGÀY */}
+                            <TableHead className="w-[80px] text-center font-bold text-blue-600 dark:text-blue-400">Số Ngày</TableHead>
                             <TableHead className="w-[200px] text-center font-bold dark:text-slate-200">Mã Định Mức</TableHead>
                             <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {sections.length === 0 ? (
-                            <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500 dark:text-slate-400 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={7} className="text-center py-8 text-slate-500 dark:text-slate-400 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
                         ) : sections.map((section, secIdx) => {
                             const tasks = localItems.filter(i => i.parent_id === section.id && i.item_type !== 'section');
                             const isSectionExpanded = expandedSections[section.id] !== false;
@@ -427,7 +431,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                 />
                                             </div>
                                         </TableCell>
-                                        <TableCell></TableCell><TableCell></TableCell>
+                                        <TableCell></TableCell><TableCell></TableCell><TableCell></TableCell>
                                         <TableCell className="text-center"><span className="text-slate-500 dark:text-slate-400 text-xs font-mono">###{section.item_name.substring(0, 4)}</span></TableCell>
                                         <TableCell className="text-right"><Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors" onClick={() => handleDeleteItem(section.id)}><Trash2 className="w-4 h-4" /></Button></TableCell>
                                     </TableRow>
@@ -465,6 +469,22 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                     <TableCell className="text-right font-bold text-blue-700 dark:text-blue-400 text-base pr-4">
                                                         {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
+                                                    {/* ✅ Ô NHẬP SỐ NGÀY */}
+                                                    <TableCell className="p-1 text-center">
+                                                        <Input
+                                                            type="number"
+                                                            min="1"
+                                                            defaultValue={task.duration || 1}
+                                                            onBlur={(e) => {
+                                                                const newDuration = parseInt(e.target.value) || 1;
+                                                                if (newDuration !== task.duration) {
+                                                                    handleUpdateItemField(task.id, 'duration', newDuration.toString());
+                                                                    toast.success(`Đã cập nhật số ngày: ${newDuration}`);
+                                                                }
+                                                            }}
+                                                            className="h-8 w-14 mx-auto text-center font-bold text-blue-700 bg-blue-50 border-blue-200 focus:ring-blue-500 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800 transition-colors shadow-none"
+                                                        />
+                                                    </TableCell>
                                                     <TableCell>
                                                         <AsyncNormSelector
                                                             taskId={task.id}
@@ -488,7 +508,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                 {/* CHI TIẾT BÊN TRONG CỦA CÔNG TÁC (Kích thước) */}
                                                 {isTaskExpanded && (
                                                     <TableRow className="bg-white dark:bg-transparent border-b-0">
-                                                        <TableCell colSpan={6} className="p-0 border-b-0">
+                                                        <TableCell colSpan={7} className="p-0 border-b-0">
                                                             <div className="pl-[5.5rem] pr-4 py-3 border-b dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/50 shadow-inner transition-colors">
                                                                 <table className="w-full text-sm">
                                                                     <thead className="text-xs text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700">
@@ -522,7 +542,7 @@ export default function QTOClient({ projectId, items, norms }: Props) {
                                                                             );
                                                                         })}
                                                                         <tr>
-                                                                            <td colSpan={7} className="pt-2">
+                                                                            <td colSpan={8} className="pt-2">
                                                                                 <Button variant="outline" size="sm" className="h-7 text-xs border-dashed text-blue-600 dark:text-blue-400 dark:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 dark:bg-transparent transition-colors" onClick={() => handleAddDetail(task.id)}>
                                                                                     <Plus className="w-3 h-3 mr-1" /> Thêm diễn giải
                                                                                 </Button>

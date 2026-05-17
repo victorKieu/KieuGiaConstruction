@@ -2,14 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createSurvey } from "@/lib/action/surveyActions";
 import { useActionState } from 'react';
 import { useFormStatus } from "react-dom";
-import { AlertCircle, Loader2, Plus, Settings2 } from "lucide-react";
+import { AlertCircle, Loader2, Plus, Settings2, Link as LinkIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { ActionResponse } from "@/lib/action/projectActions";
 
@@ -21,7 +21,8 @@ interface SysDictionary {
 
 interface SurveyCreateModalProps {
     projectId: string;
-    surveyTypes: SysDictionary[]; // Dữ liệu này truyền từ ProjectPage xuống
+    surveyTypes: SysDictionary[];
+    tasks?: any[]; // ✅ BỔ SUNG: Nhận danh sách Task từ WBS để hiển thị Dropdown
 }
 
 function SubmitButton() {
@@ -42,7 +43,7 @@ function SubmitButton() {
 
 const initialState: ActionResponse = { success: false, error: undefined, message: undefined };
 
-export default function SurveyCreateModal({ projectId, surveyTypes = [] }: SurveyCreateModalProps) {
+export default function SurveyCreateModal({ projectId, surveyTypes = [], tasks = [] }: SurveyCreateModalProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [state, formAction] = useActionState(createSurvey, initialState);
     const formRef = useRef<HTMLFormElement>(null);
@@ -64,7 +65,7 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
             </DialogTrigger>
 
             <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl bg-white dark:bg-slate-900 transition-colors">
-                {/* Header màu Indigo cực đẹp của sếp */}
+                {/* Header màu Indigo cực đẹp */}
                 <div className="bg-indigo-700 dark:bg-indigo-900 p-6 text-white transition-colors">
                     <DialogTitle className="flex items-center gap-2 text-xl font-bold">
                         <Settings2 className="w-6 h-6 text-indigo-200" /> Thiết lập Khảo sát
@@ -74,34 +75,28 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                     </p>
                 </div>
 
-                <form ref={formRef} action={formAction} className="p-6 space-y-5">
+                <form ref={formRef} action={formAction} className="p-6 space-y-4">
                     <input type="hidden" name="projectId" value={projectId} />
 
                     {/* Mục đích khảo sát - Lấy từ Dictionary */}
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mục đích khảo sát</Label>
-                        <Select name="template_name" required> {/* ✅ Đổi name thành template_name để khớp với Server Action */}
-                            <SelectTrigger className="h-11 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 bg-slate-50/50 dark:bg-slate-950 dark:text-slate-100 transition-colors">
+                        <Select name="template_name" required>
+                            <SelectTrigger className="h-10 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 bg-slate-50/50 dark:bg-slate-950 dark:text-slate-100 transition-colors">
                                 <SelectValue placeholder="Chọn loại hình khảo sát..." />
                             </SelectTrigger>
                             <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-colors">
                                 {surveyTypes && surveyTypes.length > 0 ? (
-                                    surveyTypes.map((item: any, index: number) => {
-                                        // Log thử để sếp kiểm tra ở F12 xem dữ liệu thực tế là gì
-                                        console.log("Item data:", item);
-
-                                        return (
-                                            <SelectItem
-                                                key={item.code || `survey-type-${index}`}
-                                                value={item.value || item.code || `val-${index}`}
-                                            >
-                                                {/* BẮT BUỘC dùng span và toString() để tránh lỗi truyền Object */}
-                                                <span className="text-slate-900 dark:text-slate-100 font-medium">
-                                                    {String(item.value || item.name || item.code || "Không có tiêu đề")}
-                                                </span>
-                                            </SelectItem>
-                                        );
-                                    })
+                                    surveyTypes.map((item: any, index: number) => (
+                                        <SelectItem
+                                            key={item.code || `survey-type-${index}`}
+                                            value={item.value || item.code || `val-${index}`}
+                                        >
+                                            <span className="text-slate-900 dark:text-slate-100 font-medium">
+                                                {String(item.value || item.name || item.code || "Không có tiêu đề")}
+                                            </span>
+                                        </SelectItem>
+                                    ))
                                 ) : (
                                     <SelectItem value="none" disabled className="text-xs italic text-slate-400">
                                         Không có dữ liệu từ điển...
@@ -111,25 +106,46 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                         </Select>
                     </div>
 
+                    {/* ✅ BỔ SUNG: Dropdown liên kết với WBS Task */}
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 flex items-center gap-1.5">
+                            <LinkIcon className="w-3 h-3" /> Liên kết Công việc WBS
+                        </Label>
+                        <Select name="wbs_task_id">
+                            <SelectTrigger className="h-10 border-indigo-100 dark:border-indigo-900 focus:ring-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/30 dark:text-slate-100 transition-colors">
+                                <SelectValue placeholder="-- Tùy chọn: Chọn hạng mục --" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-colors max-h-[200px]">
+                                <SelectItem value="none" className="italic text-slate-500">-- Không liên kết --</SelectItem>
+                                {tasks && tasks.length > 0 && tasks.map((task: any) => (
+                                    <SelectItem key={task.id} value={task.id}>
+                                        <span className="font-mono text-xs text-slate-500 mr-2">{task.wbs_code || "-"}</span>
+                                        <span className="font-medium truncate max-w-[200px] inline-block align-bottom">{task.name}</span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
                     {/* Chi tiết đợt khảo sát */}
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Giai đoạn / Chi tiết</Label>
                         <Input
                             name="name_detail"
                             placeholder="Ví dụ: Lần 1, Trước khi ép cọc..."
-                            className="h-11 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 dark:bg-slate-950 dark:text-slate-100 transition-colors"
+                            className="h-10 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 dark:bg-slate-950 dark:text-slate-100 transition-colors"
                         />
                     </div>
 
                     {/* Ngày thực địa */}
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Ngày thực địa</Label>
                         <Input
                             name="survey_date"
                             type="date"
                             required
                             defaultValue={new Date().toISOString().split('T')[0]}
-                            className="h-11 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 dark:bg-slate-950 dark:text-slate-100 transition-colors"
+                            className="h-10 border-slate-200 dark:border-slate-800 focus:ring-indigo-500 dark:bg-slate-950 dark:text-slate-100 transition-colors"
                         />
                     </div>
 
@@ -141,7 +157,7 @@ export default function SurveyCreateModal({ projectId, surveyTypes = [] }: Surve
                         </Alert>
                     )}
 
-                    <div className="flex gap-3 pt-4">
+                    <div className="flex gap-3 pt-2">
                         <DialogClose asChild>
                             <Button type="button" variant="ghost" className="flex-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Hủy</Button>
                         </DialogClose>

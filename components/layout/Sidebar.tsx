@@ -17,11 +17,11 @@ import {
     Truck,
     Handshake,
     Menu as MenuIcon,
-    Database
+    Calculator
 } from "lucide-react";
 import Image from "next/image";
 
-// ==== Menu List (Giữ nguyên không đổi) ====
+// ==== Menu List (Giữ nguyên gốc, chỉ thêm Dự Toán) ====
 const navItems = [
     {
         title: "Tổng quan",
@@ -29,6 +29,8 @@ const navItems = [
         icon: LayoutDashboard,
         permission: null,
     },
+    // ✅ THÊM PHÂN HỆ DỰ TOÁN & BÁO GIÁ VÀO ĐÂY
+    
     {
         title: "Dự Án",
         href: "/projects",
@@ -38,6 +40,15 @@ const navItems = [
             { title: "Danh sách dự án", href: "/projects" },
             { title: "Nhật ký công trình", href: "/projects/logs" },
             { title: "Bảo hành", href: "/projects/warranty" },
+        ],
+    },
+    {
+        title: "Dự toán & Báo giá",
+        href: "/estimations",
+        icon: Calculator,
+        permission: "estimation:view",
+        children: [
+            { title: "Hồ sơ dự toán", href: "/estimations" },
         ],
     },
     {
@@ -71,7 +82,6 @@ const navItems = [
         children: [
             { title: "Quản lý hàng hóa", href: "/inventory/catalog" },
             { title: "Quản lý kho", href: "/inventory" },
-
         ],
     },
     {
@@ -131,7 +141,6 @@ const navItems = [
         href: "/settings",
         icon: Settings,
         permission: null,
-
     },
 ];
 
@@ -161,13 +170,12 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
     );
 }
 
-// ✅ FIX: Thêm prop 'user' vào interface để khớp với layout.tsx (tránh lỗi TS2322)
 interface SidebarProps {
-    user?: any; // Thêm prop user (có thể optional hoặc required tùy logic)
+    user?: any;
     className?: string;
 }
 
-export function Sidebar({ user, className }: SidebarProps) {
+export default function Sidebar({ user, className }: SidebarProps) {
     const pathname = usePathname();
     const [expanded, setExpanded] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -218,13 +226,11 @@ export function Sidebar({ user, className }: SidebarProps) {
 
     const sidebarContent = (
         <aside
-            // ✅ FIX: bg-white -> bg-card, border -> border-border
             className={`
         h-screen bg-card border-r border-border shadow-2xl
         flex flex-col transition-all duration-300
         ${collapsed ? "w-16 min-w-16 max-w-16" : "w-[252px] min-w-[252px] max-w-[252px]"}
         
-        {/* ✅ FIX: Nâng Z-Index lên 100 để đè lên Header (z-50) */}
         ${!className && isMobile ? "fixed z-[100] left-0 top-0" : ""}
         
         ${!className && isMobile && mobileOpen ? "translate-x-0" : !className && isMobile ? "-translate-x-full" : "translate-x-0"}
@@ -238,7 +244,6 @@ export function Sidebar({ user, className }: SidebarProps) {
             onMouseEnter={() => !isMobile && !className && setExpanded(true)}
             onMouseLeave={() => !isMobile && !className && setExpanded(false)}
         >
-            {/* ✅ FIX: Header sidebar background gradient -> bg-muted/50 */}
             <div className="flex items-center gap-3 h-20 px-4 border-b border-border relative bg-muted/30">
                 <div className="relative w-10 h-10 flex-shrink-0 drop-shadow-md">
                     {logoError ? (
@@ -257,7 +262,6 @@ export function Sidebar({ user, className }: SidebarProps) {
                 </div>
                 {!collapsed && (
                     <div>
-                        {/* ✅ FIX: Text colors */}
                         <div className="font-bold text-xl text-primary tracking-wide">Kieu Gia</div>
                         <div className="text-xs text-muted-foreground font-medium">Construction</div>
                     </div>
@@ -266,7 +270,6 @@ export function Sidebar({ user, className }: SidebarProps) {
                 {/* Nút đóng Sidebar trên Mobile */}
                 {!className && isMobile && !mobileOpen && (
                     <button
-                        // ✅ FIX: Z-Index 110, bg -> bg-background
                         className="fixed top-3 left-3 z-[110] bg-background/90 shadow-xl p-2 rounded-full md:hidden border border-border backdrop-blur-md transition-all hover:bg-accent"
                         onClick={() => setMobileOpen(true)}
                         aria-label="Mở menu"
@@ -276,7 +279,7 @@ export function Sidebar({ user, className }: SidebarProps) {
                 )}
             </div>
 
-            <nav className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto">
+            <nav className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto custom-scrollbar">
                 {navItems.map((item) =>
                     item.children ? (
                         <div key={item.href} className="mb-1">
@@ -284,7 +287,6 @@ export function Sidebar({ user, className }: SidebarProps) {
                                 <Tooltip text={item.title}>
                                     <button
                                         onClick={() => toggleExpand(item.href)}
-                                        // ✅ FIX: Active/Inactive colors
                                         className={`
                       group flex items-center w-full px-4 py-2 rounded-r-full transition-all
                       ${isActive(item.href)
@@ -321,7 +323,6 @@ export function Sidebar({ user, className }: SidebarProps) {
                 `}
                                 style={{ pointerEvents: expandedItems[item.href] && !collapsed ? "auto" : "none" }}
                             >
-                                {/* ✅ FIX: Border line color */}
                                 <div className="ml-6 pl-2 border-l border-border">
                                     {item.children.map((child) => (
                                         <Link
@@ -370,10 +371,8 @@ export function Sidebar({ user, className }: SidebarProps) {
 
     return (
         <>
-            {/* Nút Menu Mobile Trôi Nổi */}
             {!className && isMobile && !mobileOpen && (
                 <button
-                    // ✅ FIX: Z-Index 110, Colors
                     className="fixed top-3 left-3 z-[110] bg-background/90 shadow-xl p-2 rounded-full md:hidden border border-border backdrop-blur-md transition-all hover:bg-accent"
                     onClick={() => setMobileOpen(true)}
                     aria-label="Mở menu"
@@ -384,10 +383,8 @@ export function Sidebar({ user, className }: SidebarProps) {
 
             {sidebarContent}
 
-            {/* Overlay Mobile */}
             {!className && isMobile && mobileOpen && (
                 <div
-                    // ✅ FIX: Z-Index 90, bg-black/40 (giữ nguyên vì overlay tối là chuẩn)
                     className="fixed inset-0 bg-black/60 z-[90] backdrop-blur-[2px] transition-opacity"
                     onClick={() => setMobileOpen(false)}
                 />

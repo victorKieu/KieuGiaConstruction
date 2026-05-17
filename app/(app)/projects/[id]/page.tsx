@@ -24,7 +24,7 @@ import { getEstimationItems, getCostTemplates } from "@/lib/action/estimationAct
 import { getProjectRequests } from "@/lib/action/requestActions";
 import { getProjectLegalDocs } from "@/lib/action/legal-actions";
 import { getConstructionLogs } from "@/lib/action/log-actions";
-
+import { getActiveWorkersOnSite } from "@/lib/action/attendanceActions"; 
 import { formatDate, formatCurrency } from "@/lib/utils/utils";
 import { getCurrentSession } from "@/lib/supabase/session";
 
@@ -161,8 +161,17 @@ export default async function ProjectPage({ params }: PageProps) {
     const contracts = (contractsRes as any)?.success ? (contractsRes as any).data : [];
     const surveys = (surveysRes as any)?.data || [];
 
+    const activeWorkersRes = await getActiveWorkersOnSite(id);
+    const activeWorkers = activeWorkersRes.data || [];
+
     // 🔴 Xử lý dữ liệu Dictionary Survey Types
-    const surveyTypes = await getDictionaryOptions("SURVEY_TYPE");
+    const rawSurveyTypes = await getDictionaryOptions("SURVEY_TYPE");
+    const surveyTypes = Array.isArray(rawSurveyTypes)
+        ? rawSurveyTypes.map((item: any) => ({
+            ...item,
+            value: item.code || item.id // ✅ Bơm thêm 'value' để TypeScript và Dropdown Select không báo lỗi
+        }))
+        : [];
     console.log("CHECK DICTIONARY:", surveyTypes);
 
     const roles = Array.isArray(rolesRes) ? rolesRes : ((rolesRes as any)?.data || []);
@@ -269,6 +278,33 @@ export default async function ProjectPage({ params }: PageProps) {
                         project={project}
                         financeStats={{ totalRevenue, totalCost, actualReceived, profit }}
                     />
+                    {/* Chèn Widget này vào cột bên phải của Tab Tổng quan (Chỗ hiển thị Tài chính) */}
+                    <Card className="shadow-sm border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/10 mb-6">
+                        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                            <CardTitle className="text-base text-emerald-800 dark:text-emerald-400 flex items-center">
+                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2"></span>
+                                Nhân lực đang thi công (Live)
+                            </CardTitle>
+                            <Badge className="bg-emerald-100 text-emerald-700">{activeWorkers.length} người</Badge>
+                        </CardHeader>
+                        <CardContent>
+                            {activeWorkers.length === 0 ? (
+                                <p className="text-sm text-slate-500 italic">Hiện không có ai check-in tại công trường.</p>
+                            ) : (
+                                <div className="flex flex-wrap gap-2">
+                                    {activeWorkers.map((worker: any) => (
+                                        <div key={worker.id} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
+                                            <img src={worker.employee?.avatar_url || '/placeholder-user.jpg'} className="w-8 h-8 rounded-full border border-emerald-200" alt="" />
+                                            <div>
+                                                <p className="text-xs font-bold leading-none">{worker.employee?.name}</p>
+                                                <p className="text-[10px] text-slate-500">Đến: {new Date(worker.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-6">
                             <Card className="shadow-sm border-none bg-card">
@@ -370,6 +406,7 @@ export default async function ProjectPage({ params }: PageProps) {
                             allEmployees={allEmployees} roles={roles} isManager={permissions.canAddMember}
                             currentUserId={session.entityId || ""} taskFeed={taskFeedOutput}
                             membersCount={members.length} documentsCount={documents.length} logs={constructionLogs}
+                            surveyTaskTemplates={[]}
                         />
                     </div>
                 </TabsContent>

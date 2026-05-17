@@ -1,4 +1,4 @@
-﻿import { Sidebar } from "@/components/layout/Sidebar";
+﻿import Sidebar from "@/components/layout/Sidebar";
 import AppHeader from "@/components/layout/AppHeader";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
 import { redirect } from "next/navigation";
@@ -11,14 +11,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         redirect("/login");
     }
 
-    // ✅ Ép kiểu session về 'any' hoặc interface mà Sidebar/AppHeader mong đợi
+    // ✅ Ép kiểu session về 'any' hoặc interface mà AppHeader mong đợi
     const userData = session as any;
 
     return (
         <AutoLogoutProvider>
             {/* ✅ FIX: bg-gray-50 -> bg-background (Để ăn theo màu nền Dark/Light của hệ thống) */}
             <div className="flex h-screen bg-background">
-                <Sidebar user={userData} />
+                {/* 🔴 Đã xóa user={userData} ở đây vì Sidebar mới không cần nữa */}
+                <Sidebar />
 
                 <div className="flex flex-col flex-1 overflow-hidden">
                     <AppHeader user={userData} />

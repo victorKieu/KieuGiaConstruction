@@ -4,7 +4,7 @@ import { useState, useMemo, Fragment } from "react";
 import { format } from "date-fns";
 import {
     Plus, ChevronRight, ChevronDown, MoreHorizontal,
-    Edit, Trash2, Calendar
+    Edit, Trash2, Calendar, ShieldAlert, AlertTriangle, CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,38 +22,15 @@ import { deleteTask } from "@/lib/action/taskActions";
 import TaskCreateModal from "@/components/tasks/TaskCreateModal";
 import { formatCurrency } from "@/lib/utils/utils";
 
+// ... (Giữ nguyên các Interface Task, WBSTaskTableProps) ...
 interface Task {
-    id: string;
-    name: string;
-    parent_id: string | null;
-    start_date: string | null;
-    due_date: string | null;
-    progress: number;
-    weight: number;
-    cost_estimate: number;
-    status?: { name: string; color: string; code: string } | any;
-    priority?: { name: string; color: string; code: string } | any;
-    assignee?: { id: string; name: string; avatar_url: string } | any;
-    children?: Task[];
-    assigned_to?: string;
-    status_id?: string;
-    priority_id?: string;
-    description?: string;
+    id: string; name: string; parent_id: string | null; start_date: string | null; due_date: string | null;
+    progress: number; weight: number; wbs_code?: string; unit?: string; planned_quantity?: number;
+    planned_price?: number; planned_cost?: number | null; actual_cost?: number | null; earned_value?: number | null;
+    status?: any; priority?: any; assignee?: any; children?: Task[]; assigned_to?: string; status_id?: string; priority_id?: string; description?: string;
 }
 
-interface WBSTaskTableProps {
-    projectId: string;
-    initialTasks?: any[];
-    members: any[];
-    dictionaries: any;
-}
-
-export default function WBSTaskTable({
-    projectId,
-    initialTasks = [],
-    members = [],
-    dictionaries = {}
-}: WBSTaskTableProps) {
+export default function WBSTaskTable({ projectId, initialTasks = [], members = [], dictionaries = {} }: any) {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
@@ -61,134 +38,116 @@ export default function WBSTaskTable({
 
     const toggleExpand = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
 
-    const handleEdit = (task: Task) => {
-        setEditingTask(task);
-        setTargetParentId(null);
-        setDialogOpen(true);
-    };
-
-    const handleAddSubTask = (parentId: string) => {
-        setEditingTask(undefined);
-        setTargetParentId(parentId);
-        setDialogOpen(true);
-    };
+    const handleEdit = (task: Task) => { setEditingTask(task); setTargetParentId(null); setDialogOpen(true); };
+    const handleAddSubTask = (parentId: string) => { setEditingTask(undefined); setTargetParentId(parentId); setDialogOpen(true); };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Bạn có chắc muốn xóa?")) return;
+        if (!confirm("Hành động này sẽ xóa cả các công việc con bên trong (nếu có). Bạn có chắc chắn?")) return;
         const res = await deleteTask(id, projectId);
-        if (res.success) toast.success("Đã xóa!"); else toast.error(res.error);
+        if (res.success) toast.success("Đã xóa hạng mục!"); else toast.error(res.error);
     }
 
     const taskTree = useMemo(() => {
         if (!initialTasks || !Array.isArray(initialTasks)) return [];
-
         const map = new Map<string, Task>();
         const roots: Task[] = [];
 
         initialTasks.forEach(t => {
             const normalize = (f: any) => Array.isArray(f) ? f[0] : f;
-
-            map.set(t.id, {
-                ...t,
-                cost_estimate: Number(t.cost_estimate) || 0,
-                progress: Number(t.progress) || 0,
-                status: normalize(t.status),
-                priority: normalize(t.priority),
-                assignee: normalize(t.assignee),
-                children: []
-            });
-
+            map.set(t.id, { ...t, progress: Number(t.progress) || 0, status: normalize(t.status), priority: normalize(t.priority), assignee: normalize(t.assignee), children: [] });
             if (!t.parent_id) setExpanded(prev => ({ ...prev, [t.id]: true }));
         });
 
         initialTasks.forEach(t => {
-            if (t.parent_id && map.has(t.parent_id)) {
-                map.get(t.parent_id)!.children!.push(map.get(t.id)!);
-            } else {
-                roots.push(map.get(t.id)!);
-            }
+            if (t.parent_id && map.has(t.parent_id)) map.get(t.parent_id)!.children!.push(map.get(t.id)!);
+            else roots.push(map.get(t.id)!);
         });
+
+        const sortByWBS = (a: Task, b: Task) => (a.wbs_code || "").localeCompare(b.wbs_code || "");
+        roots.sort(sortByWBS);
+        map.forEach(task => task.children?.sort(sortByWBS));
+
         return roots;
     }, [initialTasks]);
+
+    // 🔥 THUẬT TOÁN ĐÁNH GIÁ TIẾN ĐỘ (CẢNH BÁO TRỄ HẠN) 🔥
+    const evaluateProgress = (task: Task) => {
+        if (task.progress >= 100) return { label: "Hoàn thành", color: "text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200" };
+        if (!task.start_date || !task.due_date) return null;
+
+        const today = new Date().getTime();
+        const start = new Date(task.start_date).getTime();
+        const end = new Date(task.due_date).getTime();
+
+        if (today > end && task.progress < 100) {
+            return { label: "Trễ hạn", color: "text-red-700 bg-red-100 dark:bg-red-900/40 border-red-300 animate-pulse font-bold" };
+        }
+        if (today < start) return { label: "Chưa bắt đầu", color: "text-slate-600 bg-slate-100 dark:bg-slate-800 border-slate-200" };
+
+        const totalDuration = end - start;
+        const elapsed = today - start;
+        let plannedProgress = totalDuration > 0 ? Math.round((elapsed / totalDuration) * 100) : 0;
+        plannedProgress = Math.max(0, Math.min(100, plannedProgress));
+
+        if (task.progress < plannedProgress) {
+            return { label: `Chậm (K.Hoạch: ${plannedProgress}%)`, color: "text-orange-700 bg-orange-100 dark:bg-orange-900/40 border-orange-300" };
+        }
+        return { label: "Đúng/Vượt KH", color: "text-blue-700 bg-blue-100 dark:bg-blue-900/40 border-blue-200" };
+    }
 
     const renderRow = (task: Task, level: number = 0): React.ReactNode => {
         const hasChildren = task.children && task.children.length > 0;
         const isExpanded = expanded[task.id];
         const paddingLeft = level * 24 + 12;
+        const isMasked = task.planned_cost === null;
+
+        // Gọi hàm đánh giá
+        const kpi = evaluateProgress(task);
 
         return (
             <Fragment key={task.id}>
-                {/* ✅ FIX: Hover color, Border color */}
-                <TableRow className="hover:bg-muted/50 group border-b border-border">
-                    <TableCell className="py-3">
+                <TableRow className={`hover:bg-muted/50 group border-b border-border ${level === 0 ? 'bg-slate-50/50 dark:bg-slate-900/50' : ''}`}>
+                    <TableCell className="py-2 text-xs font-mono font-bold text-slate-500 w-[80px]">{task.wbs_code || "-"}</TableCell>
+                    <TableCell className="py-2">
                         <div className="flex items-center" style={{ paddingLeft: `${paddingLeft}px` }}>
                             {hasChildren ? (
-                                // ✅ FIX: Button expand hover colors
-                                <button onClick={() => toggleExpand(task.id)} className="mr-1 p-1 hover:bg-muted rounded text-muted-foreground">
+                                <button onClick={() => toggleExpand(task.id)} className="mr-1 p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 transition-colors">
                                     {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                 </button>
                             ) : <div className="w-6 mr-1" />}
-                            {/* ✅ FIX: Text color */}
-                            <span className="font-medium truncate max-w-[300px] text-foreground" title={task.name}>{task.name}</span>
+                            <span className={`truncate max-w-[250px] ${level === 0 ? 'font-bold text-blue-700 dark:text-blue-400' : 'font-medium text-foreground'}`} title={task.name}>{task.name}</span>
                         </div>
                     </TableCell>
-
-                    {/* ✅ FIX: Text muted */}
-                    <TableCell className="text-xs text-muted-foreground">
-                        <div className="flex flex-col gap-0.5">
-                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {task.start_date ? format(new Date(task.start_date), "dd/MM") : "--"}</span>
-                        </div>
+                    <TableCell className="text-right text-xs"><span className="font-semibold text-slate-700 dark:text-slate-300">{task.planned_quantity || "-"}</span> <span className="text-slate-400 ml-1">{task.unit || ""}</span></TableCell>
+                    <TableCell className="text-right w-[140px]">
+                        {isMasked ? (<div className="flex items-center justify-end text-slate-400" title="Bảo mật"><ShieldAlert className="w-3 h-3 mr-1" /> ***</div>) : (<span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">{task.planned_cost ? formatCurrency(task.planned_cost) : "-"}</span>)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground w-[120px]">
+                        <div className="flex items-center gap-1.5"><Calendar className="w-3 h-3 text-slate-400" /> {task.start_date ? format(new Date(task.start_date), "dd/MM") : "--"} <span className="text-slate-300">→</span> {task.due_date ? format(new Date(task.due_date), "dd/MM") : "--"}</div>
                     </TableCell>
 
-                    <TableCell className="w-[180px]">
-                        <div className="flex flex-col gap-2">
+                    {/* ✅ CỘT TIẾN ĐỘ ĐÃ GẮN CẢNH BÁO */}
+                    <TableCell className="w-[160px]">
+                        <div className="flex flex-col gap-1.5">
                             <div className="flex justify-between items-center text-[10px]">
-                                {/* ✅ FIX: Text muted */}
-                                <span className="font-semibold text-muted-foreground">{task.progress}%</span>
-                                {task.status?.name ? (
-                                    <Badge variant="outline" className="h-5 px-1.5 border-0" style={{ backgroundColor: `${task.status.color}20`, color: task.status.color }}>
-                                        {task.status.name}
-                                    </Badge>
-                                ) : <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Mới</Badge>}
+                                <span className="font-bold text-slate-600 dark:text-slate-300">{task.progress}%</span>
+                                {kpi && (
+                                    <span className={`px-1.5 py-0.5 rounded border text-[9px] ${kpi.color}`}>
+                                        {kpi.label}
+                                    </span>
+                                )}
                             </div>
-                            {/* ✅ FIX: Progress bar background */}
-                            <Progress value={task.progress || 0} className="h-1.5 w-full bg-secondary" />
+                            <Progress value={task.progress || 0} className={`h-1.5 w-full bg-slate-200 dark:bg-slate-800 ${(kpi?.label.includes("Chậm") || kpi?.label === "Trễ hạn") ? "opacity-80" : ""}`} />
                         </div>
                     </TableCell>
 
-                    <TableCell className="text-right w-[120px]">
-                        {/* ✅ FIX: Text foreground */}
-                        <span className="text-sm font-mono font-medium text-foreground">
-                            {task.cost_estimate > 0 ? formatCurrency(task.cost_estimate) : "-"}
-                        </span>
-                    </TableCell>
-
-                    <TableCell>
-                        {task.assignee ? (
-                            <div className="flex items-center gap-2">
-                                {task.assignee.avatar_url ? (
-                                    <img src={task.assignee.avatar_url} className="w-6 h-6 rounded-full object-cover border border-border" alt="Avatar" />
-                                ) : (
-                                    // ✅ FIX: Avatar fallback colors
-                                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-[10px] text-blue-700 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800 uppercase">
-                                        {task.assignee.name ? task.assignee.name.charAt(0) : "?"}
-                                    </div>
-                                )}
-                                {/* ✅ FIX: Text foreground */}
-                                <span className="text-xs truncate max-w-[100px] text-foreground">{task.assignee.name}</span>
-                            </div>
-                        ) : <span className="text-xs text-muted-foreground italic">--</span>}
-                    </TableCell>
-
-                    <TableCell className="text-right">
+                    <TableCell className="w-[100px] text-right">
                         <DropdownMenu>
-                            {/* ✅ FIX: Icon color */}
-                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleAddSubTask(task.id)}><Plus className="w-4 h-4 mr-2" /> Thêm việc con</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEdit(task)}><Edit className="w-4 h-4 mr-2" /> Sửa</DropdownMenuItem>
-                                {/* ✅ FIX: Danger text color */}
-                                <DropdownMenuItem className="text-red-600 dark:text-red-400" onClick={() => handleDelete(task.id)}><Trash2 className="w-4 h-4 mr-2" /> Xóa</DropdownMenuItem>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-600"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem onClick={() => handleAddSubTask(task.id)}><Plus className="w-4 h-4 mr-2 text-emerald-600" /> Thêm việc con</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleEdit(task)}><Edit className="w-4 h-4 mr-2 text-blue-600" /> Chỉnh sửa</DropdownMenuItem>
+                                <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(task.id)}><Trash2 className="w-4 h-4 mr-2" /> Xóa hạng mục</DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -199,38 +158,26 @@ export default function WBSTaskTable({
     };
 
     return (
-        // ✅ FIX: bg-card, border-border
-        <div className="border border-border rounded-lg bg-card shadow-sm overflow-hidden">
+        <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-950 shadow-sm overflow-hidden animate-in fade-in duration-300">
             <Table>
-                {/* ✅ FIX: Header background */}
-                <TableHeader className="bg-muted/50">
-                    <TableRow className="border-border">
-                        <TableHead className="w-[300px]">Hạng mục / Công việc</TableHead>
-                        <TableHead className="w-[100px]">Thời gian</TableHead>
-                        <TableHead className="w-[180px]">Tiến độ</TableHead>
-                        <TableHead className="text-right">Chi phí</TableHead>
-                        <TableHead>Phụ trách</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
+                <TableHeader className="bg-slate-50 dark:bg-slate-900">
+                    <TableRow className="border-slate-200 dark:border-slate-800 hover:bg-transparent">
+                        <TableHead className="w-[80px] font-bold text-slate-600">Mã WBS</TableHead>
+                        <TableHead className="font-bold text-slate-600">Hạng mục / Công việc</TableHead>
+                        <TableHead className="text-right font-bold text-slate-600">KL KH</TableHead>
+                        <TableHead className="text-right font-bold text-slate-600">Ngân sách (PV)</TableHead>
+                        <TableHead className="font-bold text-slate-600">Thời gian</TableHead>
+                        <TableHead className="font-bold text-slate-600">Tiến độ & Cảnh báo</TableHead>
+                        <TableHead className="text-right font-bold text-slate-600">Tác vụ</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {taskTree.length === 0 ? (
-                        // ✅ FIX: Text muted
-                        <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">Chưa có dữ liệu.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={7} className="text-center py-16 text-slate-500">Chưa có kế hoạch thi công nào.</TableCell></TableRow>
                     ) : taskTree.map(task => renderRow(task))}
                 </TableBody>
             </Table>
-
-            <TaskCreateModal
-                projectId={projectId}
-                members={members}
-                dictionaries={dictionaries}
-                open={dialogOpen}
-                onOpenChange={setDialogOpen}
-                task={editingTask}
-                parentId={targetParentId}
-                tasks={initialTasks || []}
-            />
+            <TaskCreateModal projectId={projectId} members={members} dictionaries={dictionaries} open={dialogOpen} onOpenChange={setDialogOpen} task={editingTask} parentId={targetParentId} tasks={initialTasks || []} />
         </div>
     );
 }

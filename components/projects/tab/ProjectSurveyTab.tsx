@@ -24,6 +24,7 @@ interface ProjectSurveyTabProps {
     members: MemberData[];
     surveyTypes: LocalSysDictionary[];
     surveyTaskTemplates?: any[];
+    tasks?: any[];
 }
 
 export default function ProjectSurveyTab({
@@ -32,7 +33,8 @@ export default function ProjectSurveyTab({
     surveys: initialSurveys = [],
     members = [],
     surveyTypes = [],
-    surveyTaskTemplates = []
+    surveyTaskTemplates = [],
+    tasks = []
 }: ProjectSurveyTabProps) {
     // ✅ 1. Dùng State nội bộ để giao diện đổi màu lập tức
     const [surveys, setSurveys] = useState(initialSurveys);
@@ -81,6 +83,7 @@ export default function ProjectSurveyTab({
                                             <Camera className="w-5 h-5" />
                                         </div>
                                         <SurveyWorkspaceModal
+                                            tasks={tasks}
                                             survey={survey}
                                             project={project}
                                             members={members}

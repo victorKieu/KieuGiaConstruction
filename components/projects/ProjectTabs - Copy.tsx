@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { LayoutList, GanttChartSquare, Clock } from "lucide-react";
+import { LayoutList, GanttChartSquare, Clock } from "lucide-react"; // ✅ Đã import thêm Clock cho tab Gantt
 
 // --- IMPORT CÁC TAB COMPONENTS ---
 import ProjectMembersTab from "./tab/ProjectMembersTab";
 import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
-import ProjectBOQTab from "./tab/ProjectBOQTab"; // ✅ ĐÃ THAY THẾ PHÂN HỆ ĐỘC LẬP THÀNH BOQ TỔNG HỢP
-import ProjectGanttTab from "./tab/ProjectGanttTab";
+import ProjectQTOTab from "./tab/ProjectQTOTab";
+import ProjectGanttTab from "./tab/ProjectGanttTab"; // ✅ IMPORT TAB GANTT MỚI TẠO
 import ConstructionLogManager from "@/components/projects/execution/ConstructionLogManager";
 import WBSTaskTable from "@/components/tasks/WBSTaskTable";
 import { ProjectTaskList } from "@/components/tasks/project-task-list";
@@ -48,12 +48,12 @@ interface ProjectTabsProps {
     currentUserId?: string;
 }
 
-// ✅ CẬP NHẬT DANH SÁCH CÁC CƠ CẤU TABS: ĐƯA BOQ VÀO TRUNG TÂM
+// ✅ BỔ SUNG GANTT VÀO DANH SÁCH TABS
 const TABS = {
     TASKS: "Công việc & Mốc",
-    GANTT: "Tiến độ (Gantt)",
+    GANTT: "Tiến độ (Gantt)", // <-- THÊM MỚI Ở ĐÂY
     SURVEY: "Khảo sát",
-    BOQ: "Dự Toán & Khối Lượng (BOQ)",
+    QTO: "Tiên lượng (QTO)",
     MEMBERS: "Nhân sự",
     LOGS: "Nhật ký thi công",
     DOCUMENTS: "Tài liệu",
@@ -66,10 +66,9 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
     if (!searchParams) return TABS.TASKS;
     const tabParam = searchParams.get("tab");
     switch (tabParam) {
-        case "gantt": return TABS.GANTT;
+        case "gantt": return TABS.GANTT; // <-- THÊM URL ROUTING
         case "survey": return TABS.SURVEY;
-        case "boq":
-        case "qto": return TABS.BOQ; // Hỗ trợ fallback nếu URL cũ đang lưu tham số qto
+        case "qto": return TABS.QTO;
         case "tasks": return TABS.TASKS;
         case "members": return TABS.MEMBERS;
         case "logs": return TABS.LOGS;
@@ -81,9 +80,9 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
 
 function getUrlParamFromTabName(tabName: string): string {
     switch (tabName) {
-        case TABS.GANTT: return "gantt";
+        case TABS.GANTT: return "gantt"; // <-- THÊM URL ROUTING
         case TABS.SURVEY: return "survey";
-        case TABS.BOQ: return "boq";
+        case TABS.QTO: return "qto";
         case TABS.TASKS: return "tasks";
         case TABS.MEMBERS: return "members";
         case TABS.LOGS: return "logs";
@@ -131,6 +130,7 @@ export default function ProjectTabs({
                             : "border-transparent text-muted-foreground hover:text-foreground"
                             }`}
                     >
+                        {/* Hiện icon đồng hồ riêng cho tab Gantt để nổi bật */}
                         {tab === TABS.GANTT && <Clock className="w-3.5 h-3.5" />}
                         {tab}
 
@@ -141,10 +141,10 @@ export default function ProjectTabs({
                 ))}
             </div>
 
-            {/* Nội dung hiển thị từng Tab */}
+            {/* Nội dung Tab */}
             <div className="mt-4 min-h-[400px]">
 
-                {/* ================= PHẦN CÔNG VIỆC & WBS ================= */}
+                {/* ================= PHẦN CÔNG VIỆC ================= */}
                 {activeTab === TABS.TASKS && (
                     <div className="animate-in fade-in duration-300 space-y-4">
                         <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
@@ -189,14 +189,14 @@ export default function ProjectTabs({
                     </div>
                 )}
 
-                {/* ================= BIỂU ĐỒ TIẾN ĐỘ GANTT ================= */}
+                {/* ================= PHẦN GANTT CHART (MỚI) ================= */}
                 {activeTab === TABS.GANTT && (
                     <div className="animate-in fade-in duration-300">
                         <ProjectGanttTab tasks={tasks} />
                     </div>
                 )}
 
-                {/* ================= KHẢO SÁT ================= */}
+                {/* ================= CÁC TAB KHÁC ================= */}
                 {activeTab === TABS.SURVEY && (
                     <ProjectSurveyTab
                         projectId={projectId}
@@ -209,12 +209,10 @@ export default function ProjectTabs({
                     />
                 )}
 
-                {/* ================= SIÊU PHÂN HỆ DỰ TOÁN & KHỐI LƯỢNG (BOQ) ================= */}
-                {activeTab === TABS.BOQ && (
-                    <ProjectBOQTab projectId={projectId} />
+                {activeTab === TABS.QTO && (
+                    <ProjectQTOTab projectId={projectId} />
                 )}
 
-                {/* ================= NHÂN SỰ ================= */}
                 {activeTab === TABS.MEMBERS && (
                     <ProjectMembersTab
                         projectId={projectId} members={members} allEmployees={allEmployees}
@@ -222,17 +220,14 @@ export default function ProjectTabs({
                     />
                 )}
 
-                {/* ================= NHẬT KÝ THI CÔNG ================= */}
                 {activeTab === TABS.LOGS && (
                     <div className="animate-in fade-in duration-300">
                         <ConstructionLogManager projectId={projectId} logs={logs} />
                     </div>
                 )}
 
-                {/* ================= TÀI LIỆU ================= */}
                 {activeTab === TABS.DOCUMENTS && <ProjectDocumentsTab projectId={projectId} documents={documents} />}
 
-                {/* ================= TÀI CHÍNH ================= */}
                 {activeTab === TABS.FINANCE && <ProjectFinanceTab stats={financeStats} />}
             </div>
         </div>

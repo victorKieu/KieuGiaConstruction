@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical, X } from "lucide-react";
+import { Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical, X, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -22,6 +22,9 @@ import {
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
 
+// ✅ IMPORT HÀM ROLLUP ĐỂ ĐỒNG BỘ 5D (KHỐI LƯỢNG + THỜI GIAN + CHI PHÍ)
+import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
+
 interface Props { projectId: string; }
 
 export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any) {
@@ -29,6 +32,25 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
+
+    // ✅ STATE CHO NÚT ĐỒNG BỘ 5D SANG GANTT
+    const [isSyncing5D, setIsSyncing5D] = useState(false);
+
+    // ✅ HÀM GỌI ACTION ĐỒNG BỘ 5D
+    const handleSyncToGantt = async () => {
+        if (!confirm("Hệ thống sẽ tổng hợp Khối lượng, Tiến độ (từ Tiên lượng) và Chi phí (từ Dự toán) để thiết lập thông số chuẩn cho Bảng Tiến độ WBS. Bạn có chắc chắn?")) return;
+
+        setIsSyncing5D(true);
+        const res = await sync5DToGanttTasks(projectId);
+
+        if (res.success) {
+            toast.success(res.message);
+            router.refresh();
+        } else {
+            toast.error(res.error || "Lỗi đồng bộ");
+        }
+        setIsSyncing5D(false);
+    };
 
     const [qtoTasks, setQtoTasks] = useState<any[]>([]);
     const [estItems, setEstItems] = useState<any[]>([]);
@@ -229,7 +251,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" disabled={isImporting} className="h-9 border-slate-200 dark:border-slate-800 dark:text-slate-300">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
                     </div>
+
                     <Button onClick={handleSync} disabled={loading} className="h-9 bg-blue-600 hover:bg-blue-700 text-white">{loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />} Đồng bộ QTO</Button>
+
+                    {/* ✅ NÚT MỚI: CHỐT THÔNG SỐ & ĐẨY SANG WBS/GANTT */}
+                    <Button onClick={handleSyncToGantt} disabled={isSyncing5D || loading} className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-colors">
+                        {isSyncing5D ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />} Chốt Thông Số & Đẩy sang Gantt
+                    </Button>
                 </div>
             </div>
 
