@@ -2,6 +2,7 @@
 import { getNorms, getStandardResources } from "@/lib/action/normActions";
 import NormClient from "@/components/dictionaries/norms/NormClient";
 import { checkIsAdmin } from "@/lib/supabase/getUserProfile";
+import { toast } from "sonner";
 
 export default async function AdminNormsPage({
     searchParams
@@ -10,7 +11,10 @@ export default async function AdminNormsPage({
 }) {
     // 1. Bảo mật
     const isAdmin = await checkIsAdmin();
-    if (!isAdmin) redirect("/dashboard");
+    if (!isAdmin) {
+        toast.error("Bạn không có quyền truy cập trang này!");
+        redirect("/dashboard");
+    }
 
     // 2. Xử lý Params
     const resolvedParams = await searchParams;

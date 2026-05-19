@@ -43,8 +43,6 @@ import { MaterialSelector } from "@/components/common/MaterialSelector";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 
 interface Props { projectId: string; }
-
-// ... CÁC HÀM TIỆN ÍCH BÊN TRÊN GIỮ NGUYÊN (toRoman, renderItemTypeBadge, AsyncNormSelector, SectionRowGroup) ...
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
     return roman[num] || num.toString();
@@ -423,15 +421,28 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
     const handleDeleteQTO = async (id: string, isDetail: boolean = false) => {
         if (!confirm("⚠️ Bạn có chắc chắn muốn xóa dữ liệu này?")) return;
-        if (isDetail) await supabase.from('qto_item_details').delete().eq('id', id);
-        else await supabase.from('qto_items').delete().eq('id', id);
-        await loadData();
+        const toastId = toast.loading("Đang xóa...");
+        try {
+            if (isDetail) await supabase.from('qto_item_details').delete().eq('id', id);
+            else await supabase.from('qto_items').delete().eq('id', id);
+            await loadData();
+            toast.success("Đã xóa thành công!", { id: toastId });
+        } catch (err: any) {
+            toast.error("Lỗi khi xóa: " + err.message, { id: toastId });
+        }
     };
 
     const handleUpdateDetailField = async (detailId: string, field: string, value: string) => {
         const val = field === 'explanation' ? value : (parseFloat(value) || 0);
-        await supabase.from('qto_item_details').update({ [field]: val }).eq('id', detailId);
+
+        // Optimistic UI: Cập nhật giao diện ngay lập tức cho mượt
         setQtoTasks(prev => prev.map(t => ({ ...t, details: t.details ? t.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d) : [] })));
+
+        // Background Save: Lưu ngầm xuống Database
+        const { error } = await supabase.from('qto_item_details').update({ [field]: val }).eq('id', detailId);
+        if (error) {
+            toast.error("Lỗi khi lưu dữ liệu!");
+        }
     };
 
     const handleUpdateQTOField = async (itemId: string, field: string, value: string) => {
@@ -758,7 +769,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                 </div>
             </div>
 
-            <Tabs defaultValue="schedule_sheet" className="w-full">
+            <Tabs defaultValue="cover_sheet" className="w-full">
                 <TabsList className="bg-slate-100 p-1 rounded-md border w-full justify-start gap-1 flex-wrap h-auto dark:bg-slate-900 dark:border-slate-800">
                     <TabsTrigger value="cover_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><FileText className="w-3.5 h-3.5 mr-1.5" /> 1. Bìa</TabsTrigger>
                     <TabsTrigger value="qto_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ListOrdered className="w-3.5 h-3.5 mr-1.5" /> 2. Tiên lượng (QTO)</TabsTrigger>
@@ -809,19 +820,23 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 </Button>
                             </div>
                         </div>
-                        <div className="overflow-x-auto custom-scrollbar pb-6">
-                            <Table className="bg-white min-w-[1200px] dark:bg-slate-950">
-                                <TableHeader>
-                                    <TableRow className="bg-slate-100 border-b dark:bg-slate-900 dark:border-slate-800">
-                                        <TableHead className="w-[60px] text-center font-bold">STT</TableHead>
-                                        <TableHead className="font-bold min-w-[300px]">Danh mục công tác bóc tách</TableHead>
-                                        <TableHead className="w-[70px] text-center font-bold">ĐVT</TableHead>
-                                        <TableHead className="w-[100px] text-right font-bold">Khối lượng</TableHead>
-                                        <TableHead className="w-[200px] text-center font-bold">Mã Định Mức</TableHead>
+                        {/* ✅ Đổi overflow-auto và thêm chiều cao để kích hoạt cuộn dọc */}
+                        <div className="overflow-auto custom-scrollbar max-h-[650px] relative pb-6">
+                            {/* ✅ THAY <Table> THÀNH <table> CHUẨN */}
+                            <table className="w-full text-sm bg-white min-w-[1200px] dark:bg-slate-950">
+                                {/* ✅ GẮN TRỰC TIẾP STICKY VÀ MÀU NỀN VÀO HEADER */}
+                                <TableHeader className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
+                                    <TableRow className="border-none">
+                                        <TableHead className="w-[60px] text-center font-bold text-slate-700 dark:text-slate-300">STT</TableHead>
+                                        <TableHead className="font-bold min-w-[300px] text-slate-700 dark:text-slate-300">Danh mục công tác bóc tách</TableHead>
+                                        <TableHead className="w-[70px] text-center font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
+                                        <TableHead className="w-[100px] text-right font-bold text-slate-700 dark:text-slate-300">Khối lượng</TableHead>
+                                        <TableHead className="w-[200px] text-center font-bold text-slate-700 dark:text-slate-300">Mã Định Mức</TableHead>
                                         <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
+                                    {/* (Giữ nguyên logic bên trong TableBody) */}
                                     {sections.length === 0 ? (
                                         <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
                                     ) : (
@@ -837,7 +852,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                         ))
                                     )}
                                 </TableBody>
-                            </Table>
+                            </table> {/* ✅ ĐÓNG BẰNG </table> */}
                         </div>
                     </Card>
                 </TabsContent>
@@ -990,13 +1005,16 @@ export default function ProjectBOQTab({ projectId }: Props) {
                             <FileBarChart className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                             <h4 className="font-bold text-blue-800 uppercase tracking-wide text-xs dark:text-blue-300">Bảng phân tích Đơn giá chi tiết công tác</h4>
                         </div>
-                        <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
-                            <Table className="min-w-[1200px]">
-                                <TableHeader className="bg-slate-100 sticky top-0 z-10 shadow-sm dark:bg-slate-900">
-                                    <TableRow className="border-b dark:border-slate-800">
-                                        <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
-                                        <TableHead className="font-bold">Mã / Thành phần công tác</TableHead>
-                                        <TableHead className="w-[80px] text-center font-bold">ĐVT</TableHead>
+                        {/* ✅ Đổi overflow-auto và thêm chiều cao để kích hoạt cuộn dọc */}
+                        <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
+                            {/* ✅ THAY <Table> THÀNH <table> CHUẨN */}
+                            <table className="w-full text-sm bg-white min-w-[1000px] dark:bg-slate-950">
+                                {/* ✅ GẮN STICKY VÀ MÀU NỀN */}
+                                <TableHeader className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
+                                    <TableRow className="border-none">
+                                        <TableHead className="w-[50px] text-center font-bold text-slate-700 dark:text-slate-300">STT</TableHead>
+                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300">Mã / Thành phần công tác</TableHead>
+                                        <TableHead className="w-[80px] text-center font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
                                         <TableHead className="w-[120px] text-right font-bold text-indigo-600 dark:text-indigo-400">Khối lượng</TableHead>
                                         <TableHead className="w-[120px] text-right font-bold text-orange-600 dark:text-orange-400">Định mức</TableHead>
                                         <TableHead className="w-[150px] text-right font-bold text-blue-600 dark:text-blue-400">Đơn giá</TableHead>
@@ -1004,20 +1022,17 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
+                                    {/* (Giữ nguyên logic map tasks bên trong) */}
                                     {tasks.map((task, tIdx) => {
                                         const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
                                         if (taskHaoPhi.length === 0) return null;
 
-                                        // Tính khối lượng công tác
                                         const taskVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
-                                        // Tổng thành tiền của công tác
                                         const taskTotalCost = taskHaoPhi.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
-                                        // Đơn giá 1 ĐVT
                                         const taskUnitPrice = taskVol > 0 ? taskTotalCost / taskVol : 0;
 
                                         return (
                                             <Fragment key={`up_${task.id}`}>
-                                                {/* DÒNG CÔNG TÁC */}
                                                 <TableRow className="bg-slate-200 border-b font-bold dark:bg-slate-800 dark:border-slate-700">
                                                     <TableCell className="text-center">{tIdx + 1}</TableCell>
                                                     <TableCell><span className="text-blue-700 mr-2 dark:text-blue-400">[{task.norm_code}]</span> {task.item_name}</TableCell>
@@ -1027,8 +1042,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                     <TableCell className="text-right text-blue-700 font-black dark:text-blue-400">{formatCurrency(taskUnitPrice)}</TableCell>
                                                     <TableCell className="text-right text-emerald-700 font-black dark:text-emerald-400">{formatCurrency(taskTotalCost)}</TableCell>
                                                 </TableRow>
-
-                                                {/* DÒNG HAO PHÍ */}
                                                 {['VL', 'NC', 'M'].map(cat => {
                                                     const items = taskHaoPhi.filter(e => e.category === cat);
                                                     if (items.length === 0) return null;
@@ -1036,20 +1049,16 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                     return (
                                                         <Fragment key={`${task.id}_${cat}`}>
                                                             <TableRow className="bg-slate-50/50 border-b dark:bg-slate-900/30 dark:border-slate-800">
-                                                                <TableCell></TableCell>
-                                                                <TableCell colSpan={6} className="font-bold text-slate-700 text-xs py-1 pl-4 dark:text-slate-400">{catName}</TableCell>
+                                                                <TableCell></TableCell><TableCell colSpan={6} className="font-bold text-slate-700 text-xs py-1 pl-4 dark:text-slate-400">{catName}</TableCell>
                                                             </TableRow>
                                                             {items.map(hp => {
-                                                                // Định mức = Tổng khối lượng hao phí / Khối lượng công tác
                                                                 const normVal = taskVol > 0 ? hp.quantity / taskVol : 0;
                                                                 return (
                                                                     <TableRow key={hp.id} className="text-xs hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                                         <TableCell></TableCell>
                                                                         <TableCell className="pl-8 text-slate-600 dark:text-slate-400">- {hp.material_name}</TableCell>
                                                                         <TableCell className="text-center dark:text-slate-400">{hp.unit}</TableCell>
-                                                                        {/* Hao phí: Cột khối lượng */}
                                                                         <TableCell className="text-right dark:text-slate-300 font-medium">{hp.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
-                                                                        {/* Hao phí: Cột Định mức */}
                                                                         <TableCell className="text-right dark:text-slate-300">{normVal.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
                                                                         <TableCell className="text-right dark:text-slate-300">{formatCurrency(hp.unit_price)}</TableCell>
                                                                         <TableCell className="text-right font-medium dark:text-slate-200">{formatCurrency(hp.quantity * hp.unit_price)}</TableCell>
@@ -1064,7 +1073,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                         )
                                     })}
                                 </TableBody>
-                            </Table>
+                            </table> {/* ✅ ĐÓNG BẰNG </table> */}
                         </div>
                     </Card>
                 </TabsContent>
@@ -1185,10 +1194,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto custom-scrollbar max-h-[600px]">
-                            <Table className="min-w-[1400px]">
-                                <TableHeader className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-10 shadow-sm border-b dark:border-slate-800">
-                                    <TableRow>
+                        {/* ✅ Đổi overflow-auto và thêm chiều cao để kích hoạt cuộn dọc */}
+                        <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
+                            <table className="w-full text-sm bg-white min-w-[1400px] dark:bg-slate-950">
+                                {/* ✅ Cố định Header (Sticky) */}
+                                <TableHeader className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
+                                    <TableRow className="bg-slate-50 border-none dark:bg-slate-900">
                                         <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
                                         <TableHead className="font-bold min-w-[250px]">Danh mục Công việc</TableHead>
                                         <TableHead className="w-[90px] text-right font-bold">Tỷ trọng (%)</TableHead>
@@ -1212,7 +1223,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                         const schedData = tasks.map(task => {
                                             const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
 
-                                            // ✅ Lấy tổng hao phí Nhân công từ Tab 5 thay vì tính lại bằng định mức
                                             const taskHaoPhiNC = estItems.filter(e => e.qto_item_id === task.id && e.category === 'NC');
                                             const manDays = taskHaoPhiNC.reduce((sum, e) => sum + e.quantity, 0);
 
@@ -1285,7 +1295,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                     </TableCell>
                                                     <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400">{task.duration}</TableCell>
                                                     <TableCell className="p-1">
-                                                        {/* ✅ GIAO DIỆN CHỌN CÔNG VIỆC TRƯỚC (DIALOG) */}
                                                         <PredecessorDialog
                                                             task={task}
                                                             schedData={schedData}
@@ -1303,7 +1312,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                         });
                                     })()}
                                 </TableBody>
-                            </Table>
+                            </table>
                         </div>
                     </Card>
                 </TabsContent>

@@ -15,6 +15,8 @@ import { crawlNormFromUrl } from "@/lib/action/crawlerActions";
 import NormForm from "@/components/dictionaries/norms/NormForm";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils/utils";
+import { MaterialCatalogManager } from "@/components/dictionaries/norms/MaterialCatalogManager";
+import { ClientOnly } from "@/components/ui/client-only";
 
 interface NormClientProps { norms: any[]; totalItems: number; currentPage: number; pageSize: number; resources: any[]; initialSearch?: string; }
 
@@ -42,13 +44,30 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
+    // ✅ ĐÃ FIX LỖI VÒNG LẶP GÂY LAG TẠI ĐÂY
     useEffect(() => {
         const params = new URLSearchParams(searchParams.toString());
-        if (appliedSearch) params.set("q", appliedSearch); else params.delete("q");
-        if (page > 1) params.set("page", page.toString()); else params.delete("page");
-        params.delete("group");
-        router.push(`?${params.toString()}`, { scroll: false });
-    }, [appliedSearch, page, router, searchParams]);
+        let shouldUpdate = false;
+
+        const currentQ = params.get("q") || "";
+        if (currentQ !== appliedSearch) {
+            if (appliedSearch) params.set("q", appliedSearch);
+            else params.delete("q");
+            shouldUpdate = true;
+        }
+
+        const currentPageParam = Number(params.get("page")) || 1;
+        if (currentPageParam !== page) {
+            if (page > 1) params.set("page", page.toString());
+            else params.delete("page");
+            shouldUpdate = true;
+        }
+
+        if (shouldUpdate) {
+            params.delete("group");
+            router.push(`?${params.toString()}`, { scroll: false });
+        }
+    }, [appliedSearch, page, searchParams, router]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
@@ -134,6 +153,7 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
     return (
         <div className="flex flex-col h-full space-y-4 overflow-hidden transition-colors duration-500">
             {/* Toolbar */}
+
             <div className="flex flex-col lg:flex-row justify-between items-center bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm shrink-0 gap-4 transition-colors">
                 <div className="relative w-full lg:w-[400px]">
                     <Search
@@ -148,9 +168,13 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
                         onKeyDown={handleKeyDown}
                     />
                 </div>
+
                 <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+                    <ClientOnly>
+                        <MaterialCatalogManager />
+                    </ClientOnly>
                     <Select value={importType} onValueChange={setImportType} disabled={isImporting}>
-                        <SelectTrigger className="w-[180px] h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors">
+                        <SelectTrigger className="w-[180px] h-9 bg-slate- 50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors">
                             <SelectValue placeholder="Loại định mức" />
                         </SelectTrigger>
                         <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
