@@ -1,6 +1,6 @@
 ﻿import { ThemeProvider } from "@/components/providers/theme-provider"
 import "@/app/globals.css"
-import { Toaster } from "sonner";
+import { ToasterProvider } from "@/components/ui/toaster-provider";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 >
                     {children}
                     {/* ✅ BƯỚC 2: Đặt Toaster ở đây để nó có thể hiển thị đè lên trên mọi trang */}
-                    <Toaster position="top-right" richColors closeButton />
+                    <ToasterProvider />
                 </ThemeProvider>
             </body>
         </html>

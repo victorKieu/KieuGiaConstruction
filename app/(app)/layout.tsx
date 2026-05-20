@@ -4,7 +4,7 @@ import { getUserProfile } from "@/lib/supabase/getUserProfile";
 import { redirect } from "next/navigation";
 import AutoLogoutProvider from "@/components/auth/AutoLogoutProvider";
 // ✅ BƯỚC 1: Import Toaster từ thư viện sonner
-import { Toaster } from "sonner";
+import { ToasterProvider } from "@/components/ui/toaster-provider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
     const session = await getUserProfile();
@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
 
             {/* ✅ BƯỚC 2: Đặt Toaster ở đây để nó có thể hiển thị đè lên trên mọi trang */}
-            <Toaster position="top-right" richColors closeButton />
+            <ToasterProvider />
         </AutoLogoutProvider>
     );
 }

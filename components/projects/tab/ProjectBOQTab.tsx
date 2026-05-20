@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import {
     Loader2, Trash2, Calculator, Layers, HardHat, Tractor,
     ChevronDown, ChevronRight, FoldVertical,
@@ -20,13 +20,10 @@ import {
     FolderKanban, Hammer, SlidersHorizontal, Settings2, Percent,
     Send, Upload, Plus, ClipboardList, Download, Printer, CalendarClock, ArrowRight
 } from "lucide-react";
-
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
-import { format } from "date-fns";
 import { exportToExcel } from "@/lib/utils/exportExcel";
-
-// HÀM QTO & ESTIMATION
+import { formatDate } from "@/lib/utils/utils";
 import {
     deleteQTOItem, updateQTONormCode, updateQTOItem,
     deleteQTODetail, addManualQTOItem, addQTODetail, createQTOItem
@@ -40,17 +37,13 @@ import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
 import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
 import { getNorms } from "@/lib/action/normActions";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
-
-// ENGINE TIẾN ĐỘ
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
-
+//import ProjectGanttTab from "./ProjectGanttTab";
 interface Props { projectId: string; }
-
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
     return roman[num] || num.toString();
 }
-
 function renderItemTypeBadge(type: string) {
     switch (type) {
         case 'task': return <span className="bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Công tác</span>;
@@ -60,7 +53,6 @@ function renderItemTypeBadge(type: string) {
         default: return null;
     }
 }
-
 function AutoResizeTextarea({ defaultValue, onBlur, className }: { defaultValue: string, onBlur: (e: any) => void, className: string }) {
     return (
         <textarea
@@ -83,7 +75,6 @@ function AutoResizeTextarea({ defaultValue, onBlur, className }: { defaultValue:
         />
     );
 }
-
 function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: (norm: any) => void; }) {
     const [query, setQuery] = useState(defaultCode || "");
     const [results, setResults] = useState<any[]>([]);
@@ -385,7 +376,7 @@ function SectionRowGroup({
 export default function ProjectBOQTab({ projectId }: Props) {
     const supabase = createClient();
     const router = useRouter();
-
+    const [ganttTasks, setGanttTasks] = useState<any[]>([]);
     const [calcLoading, setCalcLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [isSyncing5D, setIsSyncing5D] = useState(false);
@@ -426,20 +417,63 @@ export default function ProjectBOQTab({ projectId }: Props) {
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
-        const { data: projData } = await supabase.from('projects').select('*').eq('id', projectId).single();
-        const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
+        // 1. Fetch gộp tất cả trong 1 lần để đảm bảo tính nhất quán
+        const { data: projData } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', projectId)
+            .single();
 
+        const { data: qtoData } = await supabase
+            .from('qto_items')
+            .select('*, details:qto_item_details(*)')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: true });
+
+        const { data: estData } = await supabase
+            .from('estimation_items')
+            .select('*')
+            .eq('project_id', projectId);
+
+        // 2. Gán dữ liệu
+        if (projData) {
+            setProjectInfo(projData);
+            // ✅ Đảm bảo tên cột trùng khớp với database (start_date và allow_weekend)
+            if (projData.start_date) setProjectStartDate(projData.start_date);
+            if (projData.allow_weekend !== null) setAllowWeekendWork(projData.allow_weekend);
+        }
+        // ✅ BƯỚC THÊM: Fetch dữ liệu tiến độ Gantt từ bảng project_tasks
+        const { data: pTasksData } = await supabase
+            .from('project_tasks')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: true }); // Hoặc order theo wbs_code
+
+        if (pTasksData) {
+            setGanttTasks(pTasksData);
+        }
         if (qtoData) {
             qtoData.forEach((item: any) => {
                 if (item.details) item.details.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
             });
+            setQtoTasks(qtoData);
         }
 
-        const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
-
-        setProjectInfo(projData);
-        setQtoTasks(qtoData || []);
         setEstItems(estData || []);
+    };
+
+    const updateProjectSettings = async (field: string, value: any) => {
+        const toastId = toast.loading("Đang lưu cài đặt...");
+        const { error } = await supabase.from('projects')
+            .update({ [field]: value })
+            .eq('id', projectId);
+
+        if (error) {
+            toast.error("Lỗi lưu cài đặt!", { id: toastId });
+        } else {
+            toast.success("Đã lưu!", { id: toastId });
+            await loadData();
+        }
     };
 
     // ✅ HÀM CẬP NHẬT STATE CỤC BỘ ĐỂ GIAO DIỆN NHẢY NGAY LẬP TỨC
@@ -494,9 +528,20 @@ export default function ProjectBOQTab({ projectId }: Props) {
     };
 
     const handleUpdateQTOField = async (itemId: string, field: string, value: string) => {
-        if (!value.trim() && field !== 'labor_norm' && field !== 'assigned_workers' && field !== 'predecessors') return;
+        // 1. Cập nhật local state UI ngay lập tức
         setQtoTasks(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
-        await updateQTOItem(itemId, field, value);
+
+        // 2. Gọi API update
+        const res = await updateQTOItem(itemId, field, value);
+
+        if (!res?.success) {
+            toast.error("Lỗi lưu dữ liệu!");
+            loadData(); // Hoàn tác nếu lỗi
+        } else {
+            toast.success("Đã cập nhật!", { duration: 1000 });
+
+            await loadData();
+        }
     };
 
     const handleAddDetail = async (itemId: string) => {
@@ -558,8 +603,33 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const handlePushToGantt = async () => {
         if (!confirm("Hệ thống sẽ đồng bộ Khối lượng, Trình tự và Chi phí sang sơ đồ Gantt. Xác nhận?")) return;
         setIsSyncing5D(true);
-        const res = await sync5DToGanttTasks(projectId);
-        if (res.success) toast.success(res.message); else toast.error(res.error);
+        const toastId = toast.loading("Đang đồng bộ...");
+        try {
+            // ✅ QUAN TRỌNG NHẤT LÀ ĐOẠN NÀY:
+            // Lấy ngày tháng chính xác từ thuật toán CPM đắp vào Data
+            const syncData = schedulingData.map(t => ({
+                ...t,
+                start_date: taskSchedules[t.id]?.startDate,
+                end_date: taskSchedules[t.id]?.endDate
+            }));
+
+            // Gửi dữ liệu đã có NGÀY THÁNG chuẩn xác sang Backend
+            const res = await sync5DToGanttTasks(
+                projectId,
+                { startDate: projectStartDate, allowWeekendWork: allowWeekendWork },
+                syncData // <--- Đổi thành syncData
+            );
+
+            if (res.success) {
+                toast.success(res.message, { id: toastId });
+                await loadData(); // Load lại DB mới
+                router.refresh();
+            } else {
+                toast.error(res.error, { id: toastId });
+            }
+        } catch (error: any) {
+            toast.error("Lỗi: " + error.message, { id: toastId });
+        }
         setIsSyncing5D(false);
     };
 
@@ -690,10 +760,10 @@ export default function ProjectBOQTab({ projectId }: Props) {
             const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
             const norm = Number(task.labor_norm) || 0;
             const workers = Number(task.assigned_workers) || 1;
-            const manDays = totalVol * norm;
+            const ncItems = estItems.filter(e => e.qto_item_id === task.id && e.category === 'NC');
+            const manDays = ncItems.reduce((sum, e) => sum + Number(e.quantity), 0);
             totalManDays += manDays;
-
-            const duration = Math.ceil(manDays / workers) || 1;
+            const duration = Math.ceil((manDays > 0 ? manDays : (totalVol * (Number(task.labor_norm) || 0))) / workers) || 1;
             const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
             const taskUnitPrice = taskHaoPhi.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
             const taskTotalCost = taskUnitPrice * totalVol;
@@ -824,21 +894,18 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto text-white shadow-sm font-bold" onClick={handleSyncQTOToEstimation} disabled={calcLoading}>
                         {calcLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />} Phân tích Vật tư
                     </Button>
-                    <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto text-white shadow-sm font-bold">
-                        {isSyncing5D ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />} Đẩy sang Gantt
-                    </Button>
                 </div>
             </div>
 
             <Tabs defaultValue="cover_sheet" className="w-full">
                 <TabsList className="bg-slate-100 p-1 rounded-md border w-full justify-start gap-1 flex-wrap h-auto dark:bg-slate-900 dark:border-slate-800">
-                    <TabsTrigger value="cover_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><FileText className="w-3.5 h-3.5 mr-1.5" /> 1. Bìa</TabsTrigger>
-                    <TabsTrigger value="qto_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ListOrdered className="w-3.5 h-3.5 mr-1.5" /> 2. Tiên lượng (QTO)</TabsTrigger>
+                    <TabsTrigger value="cover_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><FileText className="w-3.5 h-3.5 mr-1.5" /> 1. Tổng Hợp</TabsTrigger>
+                    <TabsTrigger value="qto_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ListOrdered className="w-3.5 h-3.5 mr-1.5" /> 2. Tiên lượng </TabsTrigger>
                     <TabsTrigger value="consumption_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ClipboardList className="w-3.5 h-3.5 mr-1.5 text-indigo-500" /> 3. Tổng hợp Hao phí</TabsTrigger>
                     <TabsTrigger value="pricing_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><SlidersHorizontal className="w-3.5 h-3.5 mr-1.5 text-orange-500" /> 4. TH Vật tư & Áp giá</TabsTrigger>
                     <TabsTrigger value="unit_price_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Settings2 className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> 5. Đơn giá chi tiết</TabsTrigger>
                     <TabsTrigger value="summary_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Percent className="w-3.5 h-3.5 mr-1.5 text-emerald-500" /> 6. TH Kinh phí</TabsTrigger>
-                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-900/30 dark:text-teal-400 dark:data-[state=active]:bg-teal-100"><CalendarClock className="w-3.5 h-3.5 mr-1.5" /> 7. Lập Tiến độ (5D)</TabsTrigger>
+                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><CalendarClock className="w-3.5 h-3.5 mr-1.5" /> 7. Lập Tiến độ </TabsTrigger>
                 </TabsList>
 
                 {/* TAB 1: BÌA */}
@@ -1215,12 +1282,25 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-lg border border-teal-100 dark:border-teal-900/30 shadow-sm">
                                     <div className="flex items-center gap-2">
                                         <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Ngày khởi công:</Label>
-                                        <Input type="date" value={projectStartDate} onChange={(e) => setProjectStartDate(e.target.value)} className="h-8 text-xs font-bold w-[130px] border-slate-200 dark:border-slate-700 dark:bg-slate-950" />
-                                    </div>
+                                        <Input
+                                            type="date"
+                                            value={projectStartDate}
+                                            onChange={(e) => {
+                                                setProjectStartDate(e.target.value);
+                                                updateProjectSettings('start_date', e.target.value); // Lưu DB
+                                            }}
+                                            className="h-8 text-xs font-bold w-[130px]..."
+                                        />                                    </div>
                                     <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
                                     <div className="flex items-center gap-2">
-                                        <Switch checked={allowWeekendWork} onCheckedChange={setAllowWeekendWork} className="data-[state=checked]:bg-teal-600" />
-                                        <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
+                                        <Switch
+                                            checked={allowWeekendWork}
+                                            onCheckedChange={(val) => {
+                                                setAllowWeekendWork(val);
+                                                updateProjectSettings('allow_weekend', val); // Lưu DB
+                                            }}
+                                            className="data-[state=checked]:bg-teal-600"
+                                        />                                        <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
                                     </div>
                                 </div>
                             </div>
@@ -1239,7 +1319,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30">
                                     <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Ngày kết thúc dự kiến</p>
                                     <p className="text-xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-2">
-                                        {format(projectEndDate, 'dd/MM/yyyy')}
+                                        {formatDate(projectEndDate)}
                                     </p>
                                 </div>
                                 <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center">
@@ -1251,7 +1331,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         </div>
 
                         <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
-                            <table className="w-full text-sm bg-white min-w-[1400px] dark:bg-slate-950">
+                            <table className="w-full text-sm bg-white min-w-[1000px] table-fixed dark:bg-slate-950">
                                 <TableHeader className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
                                     <TableRow className="bg-slate-50 border-none dark:bg-slate-900">
                                         <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
@@ -1273,27 +1353,39 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             if (!sDates) return null;
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                                    <TableCell className="text-center font-bold text-slate-500 align-top pt-3">{task.stt}</TableCell>
+                                                    <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
                                                     <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words">{task.item_name}</TableCell>
-                                                    <TableCell className="text-right font-bold text-slate-600 dark:text-slate-400 align-top pt-3">{task.weight.toFixed(2)}%</TableCell>
-                                                    <TableCell className="text-right font-semibold align-top pt-3">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
-                                                    <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-3">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
+                                                    <TableCell className="text-right font-bold text-slate-600 dark:text-slate-400 align-top pt-2">{task.weight.toFixed(2)}%</TableCell>
+                                                    <TableCell className="text-right font-semibold align-top pt-2">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
+                                                    <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-2">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
                                                     <TableCell className="p-1 align-top pt-2">
-                                                        <Input type="number" min="1" defaultValue={task.assigned_workers || 1} onBlur={(e) => handleUpdateQTOField(task.id, 'assigned_workers', e.target.value)} className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold" />
+                                                        <Input
+                                                            type="number"
+                                                            min="1"
+                                                            defaultValue={task.assigned_workers || 1}
+                                                            onBlur={(e) => {
+                                                                updateLocalQTO(task.id, { assigned_workers: e.target.value });
+                                                                handleUpdateQTOField(task.id, 'assigned_workers', e.target.value);
+                                                            }}
+                                                            className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold"
+                                                        />
                                                     </TableCell>
                                                     <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">{task.duration}</TableCell>
                                                     <TableCell className="p-1 align-top pt-2">
                                                         <PredecessorDialog
                                                             task={task}
-                                                            schedData={schedulingData}
-                                                            onUpdate={(val) => handleUpdateQTOField(task.id, 'predecessors', val)}
+                                                            schedData={schedulingData} // ✅ Đã fix tên biến
+                                                            onUpdate={(val) => {
+                                                                updateLocalQTO(task.id, { predecessors: val });
+                                                                handleUpdateQTOField(task.id, 'predecessors', val);
+                                                            }}
                                                         />
                                                     </TableCell>
                                                     <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 border-l dark:border-slate-800 align-top pt-3">
-                                                        {format(sDates.startDate, 'dd/MM/yyyy')}
+                                                        {formatDate(sDates.startDate)}
                                                     </TableCell>
                                                     <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 align-top pt-3">
-                                                        {format(sDates.endDate, 'dd/MM/yyyy')}
+                                                        {formatDate(sDates.endDate)}
                                                     </TableCell>
                                                 </TableRow>
                                             );
