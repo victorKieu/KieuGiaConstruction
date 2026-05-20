@@ -12,19 +12,21 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Toaster, toast } from "sonner";
 import {
     Loader2, Trash2, Calculator, Layers, HardHat, Tractor,
-    PieChart, ChevronDown, ChevronRight, FoldVertical,
-    ListOrdered, FileText, FileBarChart, Receipt, FilePlus2, PlusCircle,
+    ChevronDown, ChevronRight, FoldVertical,
+    ListOrdered, FileText, FileBarChart, FilePlus2, PlusCircle,
     FolderKanban, Hammer, SlidersHorizontal, Settings2, Percent,
     Send, Upload, Plus, ClipboardList, Download, Printer, CalendarClock, ArrowRight
 } from "lucide-react";
-import { toast } from "sonner";
+
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
 import { format } from "date-fns";
+import { exportToExcel } from "@/lib/utils/exportExcel";
 
-// HÀM QTO & ESTIMATION CHUẨN TỪ FILE ACTIONS CỦA ANH
+// HÀM QTO & ESTIMATION
 import {
     deleteQTOItem, updateQTONormCode, updateQTOItem,
     deleteQTODetail, addManualQTOItem, addQTODetail, createQTOItem
@@ -39,10 +41,11 @@ import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
 import { getNorms } from "@/lib/action/normActions";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
 
-// ✅ IMPORT ENGINE TIẾN ĐỘ CỦA ANH
+// ENGINE TIẾN ĐỘ
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 
 interface Props { projectId: string; }
+
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
     return roman[num] || num.toString();
@@ -50,12 +53,35 @@ function toRoman(num: number): string {
 
 function renderItemTypeBadge(type: string) {
     switch (type) {
-        case 'task': return <span className="bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Công tác</span>;
-        case 'material': return <span className="bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Vật tư</span>;
-        case 'labor': return <span className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Nhân công</span>;
-        case 'equipment': return <span className="bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0">Máy TC</span>;
+        case 'task': return <span className="bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Công tác</span>;
+        case 'material': return <span className="bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Vật tư</span>;
+        case 'labor': return <span className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Nhân công</span>;
+        case 'equipment': return <span className="bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Máy TC</span>;
         default: return null;
     }
+}
+
+function AutoResizeTextarea({ defaultValue, onBlur, className }: { defaultValue: string, onBlur: (e: any) => void, className: string }) {
+    return (
+        <textarea
+            defaultValue={defaultValue}
+            onBlur={onBlur}
+            className={className}
+            rows={1}
+            ref={(t) => {
+                if (t) {
+                    setTimeout(() => {
+                        t.style.height = 'auto';
+                        t.style.height = t.scrollHeight + 'px';
+                    }, 0);
+                }
+            }}
+            onInput={(e) => {
+                e.currentTarget.style.height = 'auto';
+                e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px';
+            }}
+        />
+    );
 }
 
 function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: (norm: any) => void; }) {
@@ -81,7 +107,7 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
             await updateQTONormCode(taskId, projectId, norm.code);
             await updateQTOItem(taskId, 'item_name', norm.name);
             await updateQTOItem(taskId, 'unit', norm.unit);
-            toast.success("Đã áp mã định mức và thay đổi tên công tác!", { id: toastId });
+            toast.success("Đã cập nhật mã và tên công tác!", { id: toastId });
             onUpdate(norm);
         } catch (error) { toast.error("Lỗi khi áp dụng định mức!", { id: toastId }); }
     };
@@ -98,11 +124,11 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
                 {isSearching && <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2.5 text-orange-500" />}
             </div>
             {isOpen && results.length > 0 && (
-                <div className="absolute z-50 w-[350px] right-0 mt-1 max-h-[250px] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
+                <div className="absolute z-50 w-[450px] right-0 mt-1 max-h-[350px] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
                     {results.map((r) => (
-                        <div key={r.id} onMouseDown={() => handleSelect(r)} className="px-3 py-2 text-xs hover:bg-orange-50 dark:hover:bg-orange-900/30 cursor-pointer border-b dark:border-slate-800 flex flex-col gap-0.5">
-                            <span className="font-bold text-blue-700 dark:text-blue-400">{r.code}</span>
-                            <span className="text-slate-600 dark:text-slate-300 line-clamp-1">{r.name}</span>
+                        <div key={r.id} onMouseDown={() => handleSelect(r)} className="px-3 py-3 text-xs hover:bg-orange-50 dark:hover:bg-orange-900/30 cursor-pointer border-b dark:border-slate-800 flex flex-col gap-1">
+                            <span className="font-bold text-blue-700 dark:text-blue-400 text-sm">{r.code}</span>
+                            <span className="text-slate-600 dark:text-slate-300 whitespace-normal break-words leading-snug">{r.name}</span>
                         </div>
                     ))}
                 </div>
@@ -111,7 +137,6 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
     );
 }
 
-// BỘ CHỌN CÔNG VIỆC TRƯỚC (GANTT DEPENDENCY)
 function PredecessorDialog({ task, schedData, onUpdate }: { task: any, schedData: any[], onUpdate: (val: string) => void }) {
     const [preds, setPreds] = useState(task.predecessors || "");
     const [selTask, setSelTask] = useState("");
@@ -200,13 +225,14 @@ interface SectionRowGroupProps {
     handleDeleteQTO: (id: string, isDetail?: boolean) => void;
     handleUpdateDetailField: (id: string, field: string, value: string) => void;
     handleAddDetail: (id: string) => void; loadData: () => void;
+    updateLocalQTO: (id: string, updates: any) => void;
 }
 
 function SectionRowGroup({
     section, secIdx, qtoTasks, expandedSections, expandedRows, projectId,
     toggleSection, toggleRow, handleUpdateQTOField, setExpandedRows,
     setIsManualAddModalOpen, setManualSectionId, handleDeleteQTO,
-    handleUpdateDetailField, handleAddDetail, loadData
+    handleUpdateDetailField, handleAddDetail, loadData, updateLocalQTO
 }: SectionRowGroupProps) {
     const secTasks = qtoTasks.filter(i => i.parent_id === section.id && i.item_type !== 'section');
     const isSectionExpanded = expandedSections[section.id] !== false;
@@ -220,14 +246,20 @@ function SectionRowGroup({
     return (
         <Fragment>
             <TableRow className="bg-slate-200 border-b-2 border-slate-300 font-bold group dark:bg-slate-800/80 dark:border-slate-700">
-                <TableCell className="text-center text-slate-800 dark:text-slate-200">{toRoman(secIdx + 1)}</TableCell>
+                <TableCell className="text-center align-top pt-3 text-slate-800 dark:text-slate-200">{toRoman(secIdx + 1)}</TableCell>
                 <TableCell className="p-1 uppercase" colSpan={4}>
-                    <div className="flex items-center gap-1 w-full">
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => toggleSection(section.id)}>
+                    <div className="flex items-start gap-1 w-full pt-1">
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0 mt-1" onClick={() => toggleSection(section.id)}>
                             {isSectionExpanded ? <ChevronDown className="w-4 h-4 text-slate-600 dark:text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />}
                         </Button>
-                        <FolderKanban className="w-4 h-4 mr-1 text-blue-600 dark:text-blue-400 shrink-0" />
-                        <Input defaultValue={section.item_name} onBlur={(e) => handleUpdateQTOField(section.id, 'item_name', e.target.value)} className="font-bold text-slate-800 uppercase tracking-wide h-8 border-transparent hover:border-slate-400 bg-transparent shadow-none flex-1 dark:text-slate-200" />
+                        <FolderKanban className="w-4 h-4 mr-1 text-blue-600 dark:text-blue-400 shrink-0 mt-1.5" />
+
+                        <AutoResizeTextarea
+                            key={`sec_name_${section.id}_${section.item_name}`}
+                            defaultValue={section.item_name}
+                            onBlur={(e) => handleUpdateQTOField(section.id, 'item_name', e.target.value)}
+                            className="font-bold text-slate-800 uppercase tracking-wide h-auto min-h-[32px] py-1 border-transparent hover:border-slate-400 bg-transparent shadow-none flex-1 dark:text-slate-200 resize-none overflow-hidden outline-none focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 rounded-md transition-colors leading-tight whitespace-normal break-words"
+                        />
 
                         <Button
                             variant="outline" size="sm"
@@ -235,16 +267,16 @@ function SectionRowGroup({
                                 const firstTask = secTasks[0]; const willExpand = firstTask ? expandedRows[firstTask.id] === false : true;
                                 setExpandedRows(prev => { const newRows = { ...prev }; secTasks.forEach(t => { newRows[t.id] = willExpand; }); return newRows; });
                             }}
-                            className="h-6 text-[10px] ml-2 px-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white border-slate-300 dark:bg-slate-900 dark:border-slate-600"
+                            className="h-6 text-[10px] ml-2 px-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white border-slate-300 dark:bg-slate-900 dark:border-slate-600 mt-1"
                         >
                             <FoldVertical className="w-3 h-3 mr-1" /> Thu/Mở diễn giải
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => { setManualSectionId(section.id); setIsManualAddModalOpen(true); }} className="h-6 text-[10px] ml-2 px-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="outline" size="sm" onClick={() => { setManualSectionId(section.id); setIsManualAddModalOpen(true); }} className="h-6 text-[10px] ml-2 px-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-1">
                             <PlusCircle className="w-3 h-3 mr-1 text-teal-600 dark:text-teal-400" /> Công tác
                         </Button>
                     </div>
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-center align-top pt-3">
                     <Button variant="ghost" size="sm" onClick={() => handleDeleteQTO(section.id)} className="h-6 w-6 p-0 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -258,25 +290,42 @@ function SectionRowGroup({
                 return (
                     <Fragment key={task.id}>
                         <TableRow className="hover:bg-slate-50 border-b border-slate-100 group dark:hover:bg-slate-900/50 dark:border-slate-800">
-                            <TableCell className="text-center text-slate-500">{taskIdx + 1}</TableCell>
+                            <TableCell className="text-center align-top pt-3 text-slate-500">{taskIdx + 1}</TableCell>
                             <TableCell className="p-1">
-                                <div className="flex items-center gap-1 w-full pl-4">
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 shrink-0" onClick={() => toggleRow(task.id)}>
+                                <div className="flex items-start gap-1 w-full pl-4 pt-1">
+                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 shrink-0 mt-1" onClick={() => toggleRow(task.id)}>
                                         {isTaskExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                     </Button>
-                                    <Hammer className="w-3.5 h-3.5 mr-1 text-slate-500 dark:text-slate-400 shrink-0" />
-                                    <Input key={`name_${task.item_name}`} defaultValue={task.item_name} onBlur={(e) => handleUpdateQTOField(task.id, 'item_name', e.target.value)} className="flex-1 font-medium text-slate-800 h-8 border-transparent hover:border-slate-300 bg-transparent shadow-none px-2 dark:text-slate-200" />
+                                    <Hammer className="w-3.5 h-3.5 mr-1 text-slate-500 dark:text-slate-400 shrink-0 mt-2" />
+
+                                    <AutoResizeTextarea
+                                        key={`name_${task.id}_${task.item_name}`}
+                                        defaultValue={task.item_name}
+                                        onBlur={(e) => handleUpdateQTOField(task.id, 'item_name', e.target.value)}
+                                        className="flex-1 font-medium text-slate-800 h-auto min-h-[32px] py-1 border-transparent hover:border-slate-300 bg-transparent shadow-none px-2 dark:text-slate-200 resize-none overflow-hidden outline-none focus:border-slate-300 focus:bg-white dark:focus:bg-slate-900 rounded-md transition-colors leading-tight whitespace-normal break-words"
+                                    />
+
                                     {renderItemTypeBadge(task.item_type)}
                                 </div>
                             </TableCell>
-                            <TableCell className="p-1 text-center">
-                                <Input key={`unit_${task.unit}`} defaultValue={task.unit} onBlur={(e) => handleUpdateQTOField(task.id, 'unit', e.target.value)} className="h-8 w-16 mx-auto text-center border-transparent hover:border-slate-300 bg-transparent shadow-none px-1" />
+                            <TableCell className="p-1 text-center align-top pt-2">
+                                <Input key={`unit_${task.id}_${task.unit}`} defaultValue={task.unit} onBlur={(e) => handleUpdateQTOField(task.id, 'unit', e.target.value)} className="h-8 w-16 mx-auto text-center border-transparent hover:border-slate-300 bg-transparent shadow-none px-1" />
                             </TableCell>
-                            <TableCell className="text-right font-bold text-blue-700 text-base pr-4 dark:text-blue-400">
+                            <TableCell className="text-right font-bold text-blue-700 text-base pr-4 dark:text-blue-400 align-top pt-3">
                                 {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell><AsyncNormSelector taskId={task.id} projectId={projectId} defaultCode={task.norm_code} onUpdate={loadData} /></TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="align-top pt-2">
+                                <AsyncNormSelector
+                                    taskId={task.id}
+                                    projectId={projectId}
+                                    defaultCode={task.norm_code}
+                                    onUpdate={(norm) => {
+                                        updateLocalQTO(task.id, { norm_code: norm.code, item_name: norm.name, unit: norm.unit });
+                                        loadData();
+                                    }}
+                                />
+                            </TableCell>
+                            <TableCell className="text-center align-top pt-3">
                                 <Button variant="ghost" size="sm" onClick={() => handleDeleteQTO(task.id)} className="h-6 w-6 p-0 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
@@ -393,6 +442,11 @@ export default function ProjectBOQTab({ projectId }: Props) {
         setEstItems(estData || []);
     };
 
+    // ✅ HÀM CẬP NHẬT STATE CỤC BỘ ĐỂ GIAO DIỆN NHẢY NGAY LẬP TỨC
+    const updateLocalQTO = (id: string, updates: any) => {
+        setQtoTasks(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+    };
+
     const toggleRow = (id: string) => { setExpandedRows(prev => ({ ...prev, [id]: prev[id] === undefined ? false : !prev[id] })); };
     const toggleSection = (id: string) => { setExpandedSections(prev => ({ ...prev, [id]: prev[id] === undefined ? false : !prev[id] })); };
 
@@ -434,15 +488,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
     const handleUpdateDetailField = async (detailId: string, field: string, value: string) => {
         const val = field === 'explanation' ? value : (parseFloat(value) || 0);
-
-        // Optimistic UI: Cập nhật giao diện ngay lập tức cho mượt
         setQtoTasks(prev => prev.map(t => ({ ...t, details: t.details ? t.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d) : [] })));
-
-        // Background Save: Lưu ngầm xuống Database
         const { error } = await supabase.from('qto_item_details').update({ [field]: val }).eq('id', detailId);
-        if (error) {
-            toast.error("Lỗi khi lưu dữ liệu!");
-        }
+        if (error) toast.error("Lỗi khi lưu dữ liệu!");
     };
 
     const handleUpdateQTOField = async (itemId: string, field: string, value: string) => {
@@ -510,7 +558,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const handlePushToGantt = async () => {
         if (!confirm("Hệ thống sẽ đồng bộ Khối lượng, Trình tự và Chi phí sang sơ đồ Gantt. Xác nhận?")) return;
         setIsSyncing5D(true);
-        // Lưu ngày bắt đầu dự án vào DB nếu cần trước khi sync, hiện tại demo
         const res = await sync5DToGanttTasks(projectId);
         if (res.success) toast.success(res.message); else toast.error(res.error);
         setIsSyncing5D(false);
@@ -540,8 +587,8 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const lnParam = globalParams.find(i => i.category === 'LN') || { quantity: 0, id: 'temp-ln' };
     const vatParam = globalParams.find(i => i.category === 'VAT') || { quantity: 8, id: 'temp-vat' };
 
-    const sections = qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
-    const tasks = qtoTasks.filter(i => i.item_type === 'task');
+    const sections = useMemo(() => qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type)), [qtoTasks]);
+    const tasks = useMemo(() => qtoTasks.filter(i => i.item_type === 'task'), [qtoTasks]);
 
     const T = normalItems.reduce((sum, item) => sum + (item.total_cost || 0), 0);
     const GT = T * (gtParam.quantity / 100);
@@ -550,32 +597,45 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const VAT = Gxd * (vatParam.quantity / 100);
     const TotalProject = Gxd + VAT;
 
-    const getSummaryByCategory = (category: string) => {
+    const getSummaryByCategory = useMemo(() => (category: string) => {
         const map = new Map();
-        normalItems.filter(i => i.category === category).forEach(item => {
+        estItems.filter(i => i.category === category).forEach(item => {
             const key = item.material_name;
             if (!map.has(key)) map.set(key, { ...item, total_quantity: 0, total_cost_sum: 0 });
-            const exist = map.get(key); exist.total_quantity += Number(item.quantity); exist.total_cost_sum += Number(item.total_cost || 0);
+            const exist = map.get(key);
+            exist.total_quantity += Number(item.quantity);
+            exist.total_cost_sum += Number(item.total_cost || 0);
         });
-        return Array.from(map.values()).sort((a, b) => a.material_name.localeCompare(b.material_name));
-    };
+        return Array.from(map.values()).sort((a: any, b: any) => a.material_name.localeCompare(b.material_name));
+    }, [estItems]);
 
+    // ✅ ĐÃ SỬ DỤNG HÀM exportToExcel TỪ FILE exportExcel.ts CỦA ANH
     const handleExportExcel = () => {
-        const wb = XLSX.utils.book_new();
+        const allData: any[] = [];
+        let stt = 1;
+
         ['VL', 'NC', 'M'].forEach(cat => {
             const data = getSummaryByCategory(cat);
-            if (data.length > 0) {
-                const sheetData = data.map((item, idx) => ({
-                    "STT": idx + 1, "Tên nguồn lực / Vật tư": item.material_name, "Đơn vị tính": item.unit,
-                    "Tổng Khối lượng": item.total_quantity, "Đơn giá chào (VNĐ)": "", "Thành tiền (VNĐ)": "", "Ghi chú": ""
-                }));
-                const ws = XLSX.utils.json_to_sheet(sheetData);
-                const sheetName = cat === 'VL' ? 'Vat Lieu' : cat === 'NC' ? 'Nhan Cong' : 'May Thi Cong';
-                XLSX.utils.book_append_sheet(wb, ws, sheetName);
-            }
+            data.forEach(item => {
+                allData.push({
+                    "STT": stt++,
+                    "Loại": cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công',
+                    "Tên nguồn lực / Vật tư": item.material_name,
+                    "Đơn vị tính": item.unit,
+                    "Tổng Khối lượng": item.total_quantity,
+                    "Đơn giá chào (VNĐ)": "",
+                    "Thành tiền (VNĐ)": "",
+                    "Ghi chú": ""
+                });
+            });
         });
-        XLSX.writeFile(wb, `YeuCauBaoGia_${projectInfo?.code || 'KGC'}.xlsx`);
-        toast.success("Đã xuất file Excel chào giá thành công!");
+
+        if (allData.length > 0) {
+            exportToExcel(allData, `YeuCauBaoGia_${projectInfo?.code || 'KGC'}`, 'BaoGia');
+            toast.success("Đã xuất file Excel chào giá thành công!");
+        } else {
+            toast.error("Không có dữ liệu để xuất!");
+        }
     };
 
     const handleExportPDF = () => {
@@ -619,15 +679,13 @@ export default function ProjectBOQTab({ projectId }: Props) {
         return (len !== 0 ? len : 1) * (wid !== 0 ? wid : 1) * (hei !== 0 ? hei : 1) * (fac !== 0 ? fac : 1);
     };
 
-    // 1. Phân tích Dữ liệu cơ sở
-    let totalManDays = 0;
-    let currentStt = 1;
-    const taskSttMap: Record<string, number> = {};
-    const sttToTaskMap: Record<number, any> = {};
-
-    tasks.forEach(t => { taskSttMap[t.id] = currentStt; sttToTaskMap[currentStt] = t; currentStt++; });
-
     const schedulingData = useMemo(() => {
+        let totalManDays = 0;
+        let currentStt = 1;
+        const taskSttMap: Record<string, number> = {};
+
+        tasks.forEach(t => { taskSttMap[t.id] = currentStt; currentStt++; });
+
         return tasks.map(task => {
             const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
             const norm = Number(task.labor_norm) || 0;
@@ -651,6 +709,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
         let changed = true;
         let iters = 0;
         const defaultStart = new Date(projectStartDate);
+
+        const sttToTaskMap: Record<number, any> = {};
+        schedulingData.forEach(t => { sttToTaskMap[t.stt] = t; });
 
         // Khởi tạo tất cả bắt đầu cùng ngày
         schedulingData.forEach(t => {
@@ -715,7 +776,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     <Select value={manualSectionId} onValueChange={setManualSectionId}>
                                         <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"><SelectValue placeholder="Chọn hạng mục..." /></SelectTrigger>
                                         <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                            <SelectGroup><SelectItem value="NEW" className="font-bold text-teal-600 dark:text-teal-400">+ Tạo Hạng Mục Mới</SelectItem>{sections.map(sec => <SelectItem key={sec.id} value={sec.id} className="dark:text-slate-200">{sec.item_name}</SelectItem>)}</SelectGroup>
+                                            <SelectGroup><SelectItem value="NEW" className="font-bold text-teal-600 dark:text-teal-400">+ Tạo Hạng Mục Mới</SelectItem>{sections.map((sec: any) => <SelectItem key={sec.id} value={sec.id} className="dark:text-slate-200">{sec.item_name}</SelectItem>)}</SelectGroup>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -777,7 +838,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     <TabsTrigger value="pricing_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><SlidersHorizontal className="w-3.5 h-3.5 mr-1.5 text-orange-500" /> 4. TH Vật tư & Áp giá</TabsTrigger>
                     <TabsTrigger value="unit_price_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Settings2 className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> 5. Đơn giá chi tiết</TabsTrigger>
                     <TabsTrigger value="summary_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Percent className="w-3.5 h-3.5 mr-1.5 text-emerald-500" /> 6. TH Kinh phí</TabsTrigger>
-                    {/* ✅ TAB TIẾN ĐỘ */}
                     <TabsTrigger value="schedule_sheet" className="font-bold text-xs border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-900/30 dark:text-teal-400 dark:data-[state=active]:bg-teal-100"><CalendarClock className="w-3.5 h-3.5 mr-1.5" /> 7. Lập Tiến độ (5D)</TabsTrigger>
                 </TabsList>
 
@@ -820,15 +880,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 </Button>
                             </div>
                         </div>
-                        {/* ✅ Đổi overflow-auto và thêm chiều cao để kích hoạt cuộn dọc */}
                         <div className="overflow-auto custom-scrollbar max-h-[650px] relative pb-6">
-                            {/* ✅ THAY <Table> THÀNH <table> CHUẨN */}
                             <table className="w-full text-sm bg-white min-w-[1200px] dark:bg-slate-950">
-                                {/* ✅ GẮN TRỰC TIẾP STICKY VÀ MÀU NỀN VÀO HEADER */}
                                 <TableHeader className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
                                     <TableRow className="border-none">
                                         <TableHead className="w-[60px] text-center font-bold text-slate-700 dark:text-slate-300">STT</TableHead>
-                                        <TableHead className="font-bold min-w-[300px] text-slate-700 dark:text-slate-300">Danh mục công tác bóc tách</TableHead>
+                                        <TableHead className="font-bold min-w-[500px] text-slate-700 dark:text-slate-300">Danh mục công tác bóc tách</TableHead>
                                         <TableHead className="w-[70px] text-center font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
                                         <TableHead className="w-[100px] text-right font-bold text-slate-700 dark:text-slate-300">Khối lượng</TableHead>
                                         <TableHead className="w-[200px] text-center font-bold text-slate-700 dark:text-slate-300">Mã Định Mức</TableHead>
@@ -836,11 +893,10 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {/* (Giữ nguyên logic bên trong TableBody) */}
                                     {sections.length === 0 ? (
                                         <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
                                     ) : (
-                                        sections.map((section, secIdx) => (
+                                        sections.map((section: any, secIdx: number) => (
                                             <SectionRowGroup
                                                 key={section.id} section={section} secIdx={secIdx} qtoTasks={qtoTasks}
                                                 expandedSections={expandedSections} expandedRows={expandedRows} projectId={projectId}
@@ -848,11 +904,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                 setExpandedRows={setExpandedRows} setIsManualAddModalOpen={setIsManualAddModalOpen}
                                                 setManualSectionId={setManualSectionId} handleDeleteQTO={handleDeleteQTO}
                                                 handleUpdateDetailField={handleUpdateDetailField} handleAddDetail={handleAddDetail} loadData={loadData}
+                                                updateLocalQTO={updateLocalQTO}
                                             />
                                         ))
                                     )}
                                 </TableBody>
-                            </table> {/* ✅ ĐÓNG BẰNG </table> */}
+                            </table>
                         </div>
                     </Card>
                 </TabsContent>
@@ -919,7 +976,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             <TableBody>
                                                 {listSummary.length === 0 ? (
                                                     <TableRow><TableCell colSpan={3} className="text-center py-6 text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
-                                                ) : listSummary.map((mat: any, idx) => (
+                                                ) : listSummary.map((mat: any, idx: number) => (
                                                     <TableRow key={idx} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/40">
                                                         <TableCell className="p-2 text-xs font-medium text-slate-800 dark:text-slate-200">{mat.material_name}</TableCell>
                                                         <TableCell className="text-center text-xs text-slate-500 dark:text-slate-400">{mat.unit}</TableCell>
@@ -963,7 +1020,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             <TableBody>
                                                 {listSummary.length === 0 ? (
                                                     <TableRow><TableCell colSpan={5} className="text-center py-6 text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
-                                                ) : listSummary.map((mat: any, idx) => (
+                                                ) : listSummary.map((mat: any, idx: number) => (
                                                     <TableRow key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40 border-b dark:border-slate-800">
                                                         <TableCell className="p-2 text-xs">
                                                             <div className="flex flex-col gap-0.5 group">
@@ -1005,15 +1062,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                             <FileBarChart className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                             <h4 className="font-bold text-blue-800 uppercase tracking-wide text-xs dark:text-blue-300">Bảng phân tích Đơn giá chi tiết công tác</h4>
                         </div>
-                        {/* ✅ Đổi overflow-auto và thêm chiều cao để kích hoạt cuộn dọc */}
                         <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
-                            {/* ✅ THAY <Table> THÀNH <table> CHUẨN */}
                             <table className="w-full text-sm bg-white min-w-[1000px] dark:bg-slate-950">
-                                {/* ✅ GẮN STICKY VÀ MÀU NỀN */}
                                 <TableHeader className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
                                     <TableRow className="border-none">
                                         <TableHead className="w-[50px] text-center font-bold text-slate-700 dark:text-slate-300">STT</TableHead>
-                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300">Mã / Thành phần công tác</TableHead>
+                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300 min-w-[500px]">Mã / Thành phần công tác</TableHead>
                                         <TableHead className="w-[80px] text-center font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
                                         <TableHead className="w-[120px] text-right font-bold text-indigo-600 dark:text-indigo-400">Khối lượng</TableHead>
                                         <TableHead className="w-[120px] text-right font-bold text-orange-600 dark:text-orange-400">Định mức</TableHead>
@@ -1022,8 +1076,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {/* (Giữ nguyên logic map tasks bên trong) */}
-                                    {tasks.map((task, tIdx) => {
+                                    {tasks.map((task: any, tIdx: number) => {
                                         const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
                                         if (taskHaoPhi.length === 0) return null;
 
@@ -1034,13 +1087,16 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                         return (
                                             <Fragment key={`up_${task.id}`}>
                                                 <TableRow className="bg-slate-200 border-b font-bold dark:bg-slate-800 dark:border-slate-700">
-                                                    <TableCell className="text-center">{tIdx + 1}</TableCell>
-                                                    <TableCell><span className="text-blue-700 mr-2 dark:text-blue-400">[{task.norm_code}]</span> {task.item_name}</TableCell>
-                                                    <TableCell className="text-center">{task.unit}</TableCell>
-                                                    <TableCell className="text-right text-indigo-700 font-black dark:text-indigo-400">{taskVol.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
+                                                    <TableCell className="text-center align-top pt-3">{tIdx + 1}</TableCell>
+                                                    <TableCell className="whitespace-normal break-words">
+                                                        <span className="text-blue-700 mr-2 dark:text-blue-400 font-bold">[{task.norm_code}]</span>
+                                                        <span className="text-slate-800 dark:text-slate-200">{task.item_name}</span>
+                                                    </TableCell>
+                                                    <TableCell className="text-center align-top pt-3">{task.unit}</TableCell>
+                                                    <TableCell className="text-right text-indigo-700 font-black dark:text-indigo-400 align-top pt-3">{taskVol.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
                                                     <TableCell className="text-right"></TableCell>
-                                                    <TableCell className="text-right text-blue-700 font-black dark:text-blue-400">{formatCurrency(taskUnitPrice)}</TableCell>
-                                                    <TableCell className="text-right text-emerald-700 font-black dark:text-emerald-400">{formatCurrency(taskTotalCost)}</TableCell>
+                                                    <TableCell className="text-right text-blue-700 font-black dark:text-blue-400 align-top pt-3">{formatCurrency(taskUnitPrice)}</TableCell>
+                                                    <TableCell className="text-right text-emerald-700 font-black dark:text-emerald-400 align-top pt-3">{formatCurrency(taskTotalCost)}</TableCell>
                                                 </TableRow>
                                                 {['VL', 'NC', 'M'].map(cat => {
                                                     const items = taskHaoPhi.filter(e => e.category === cat);
@@ -1056,7 +1112,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                                 return (
                                                                     <TableRow key={hp.id} className="text-xs hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                                         <TableCell></TableCell>
-                                                                        <TableCell className="pl-8 text-slate-600 dark:text-slate-400">- {hp.material_name}</TableCell>
+                                                                        <TableCell className="pl-8 text-slate-600 dark:text-slate-400 whitespace-normal break-words">- {hp.material_name}</TableCell>
                                                                         <TableCell className="text-center dark:text-slate-400">{hp.unit}</TableCell>
                                                                         <TableCell className="text-right dark:text-slate-300 font-medium">{hp.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
                                                                         <TableCell className="text-right dark:text-slate-300">{normVal.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
@@ -1073,7 +1129,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                         )
                                     })}
                                 </TableBody>
-                            </table> {/* ✅ ĐÓNG BẰNG </table> */}
+                            </table>
                         </div>
                     </Card>
                 </TabsContent>
@@ -1183,7 +1239,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30">
                                     <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Ngày kết thúc dự kiến</p>
                                     <p className="text-xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-2">
-                                        Auto Calculate
+                                        {format(projectEndDate, 'dd/MM/yyyy')}
                                     </p>
                                 </div>
                                 <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center">
@@ -1194,14 +1250,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                             </div>
                         </div>
 
-                        {/* ✅ Đổi overflow-auto và thêm chiều cao để kích hoạt cuộn dọc */}
                         <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
                             <table className="w-full text-sm bg-white min-w-[1400px] dark:bg-slate-950">
-                                {/* ✅ Cố định Header (Sticky) */}
                                 <TableHeader className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
                                     <TableRow className="bg-slate-50 border-none dark:bg-slate-900">
                                         <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
-                                        <TableHead className="font-bold min-w-[250px]">Danh mục Công việc</TableHead>
+                                        <TableHead className="font-bold min-w-[400px]">Danh mục Công việc</TableHead>
                                         <TableHead className="w-[90px] text-right font-bold">Tỷ trọng (%)</TableHead>
                                         <TableHead className="w-[100px] text-right font-bold">Khối lượng</TableHead>
                                         <TableHead className="w-[100px] text-center font-bold text-rose-600 dark:text-rose-400">Hao phí (Ca)</TableHead>
@@ -1214,97 +1268,31 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 </TableHeader>
                                 <TableBody>
                                     {(() => {
-                                        let currentStt = 1;
-                                        const taskSttMap: Record<string, number> = {};
-                                        const sttToTaskMap: Record<number, any> = {};
-
-                                        tasks.forEach(t => { taskSttMap[t.id] = currentStt; sttToTaskMap[currentStt] = t; currentStt++; });
-
-                                        const schedData = tasks.map(task => {
-                                            const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
-
-                                            const taskHaoPhiNC = estItems.filter(e => e.qto_item_id === task.id && e.category === 'NC');
-                                            const manDays = taskHaoPhiNC.reduce((sum, e) => sum + e.quantity, 0);
-
-                                            const workers = Number(task.assigned_workers) || 1;
-                                            const duration = Math.ceil(manDays / workers) || 1;
-
-                                            const taskHaoPhiAll = estItems.filter(e => e.qto_item_id === task.id);
-                                            const taskUnitPrice = taskHaoPhiAll.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
-                                            const weight = TotalProject > 0 ? ((taskUnitPrice * totalVol) / TotalProject) * 100 : 0;
-
-                                            return { ...task, totalVol, manDays, duration, weight, stt: taskSttMap[task.id] };
-                                        });
-
-                                        const scheds: Record<string, { startDate: Date, endDate: Date }> = {};
-                                        const pStart = new Date(projectStartDate);
-                                        let changed = true;
-                                        let iters = 0;
-
-                                        schedData.forEach(t => {
-                                            scheds[t.id] = { startDate: pStart, endDate: shiftWorkingDays(pStart, t.duration - 1, holidays, allowWeekendWork) };
-                                        });
-
-                                        while (changed && iters < 100) {
-                                            changed = false;
-                                            iters++;
-                                            for (const t of schedData) {
-                                                const predsStr = t.predecessors || "";
-                                                if (!predsStr) continue;
-
-                                                const preds = predsStr.split(',').map((s: string) => s.trim());
-                                                let maxStart = scheds[t.id].startDate;
-
-                                                for (const pStr of preds) {
-                                                    const match = pStr.match(/^(\d+)([a-zA-Z]{2})?(?:([+-])(\d+))?$/i);
-                                                    if (!match) continue;
-
-                                                    const pStt = parseInt(match[1]);
-                                                    const depType = (match[2]?.toUpperCase() || 'FS') as 'FS' | 'SS' | 'FF' | 'SF';
-                                                    const sign = match[3] === '-' ? -1 : 1;
-                                                    const lag = parseInt(match[4] || '0') * sign;
-
-                                                    const pTask = sttToTaskMap[pStt];
-                                                    if (!pTask) continue;
-
-                                                    const predDates = scheds[pTask.id];
-                                                    const calcRes = calculateTaskDates(predDates, t.duration, depType, lag, holidays, allowWeekendWork);
-
-                                                    if (calcRes.startDate > maxStart) maxStart = calcRes.startDate;
-                                                }
-
-                                                if (maxStart.getTime() !== scheds[t.id].startDate.getTime()) {
-                                                    scheds[t.id].startDate = maxStart;
-                                                    scheds[t.id].endDate = shiftWorkingDays(maxStart, t.duration - 1, holidays, allowWeekendWork);
-                                                    changed = true;
-                                                }
-                                            }
-                                        }
-
-                                        return schedData.map((task) => {
-                                            const sDates = scheds[task.id];
+                                        return taskSchedules && Object.keys(taskSchedules).length > 0 && schedulingData.map((task: any) => {
+                                            const sDates = taskSchedules[task.id];
+                                            if (!sDates) return null;
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                                    <TableCell className="text-center font-bold text-slate-500">{task.stt}</TableCell>
-                                                    <TableCell className="font-medium text-slate-800 dark:text-slate-200 line-clamp-2" title={task.item_name}>{task.item_name}</TableCell>
-                                                    <TableCell className="text-right font-bold text-slate-600 dark:text-slate-400">{task.weight.toFixed(2)}%</TableCell>
-                                                    <TableCell className="text-right font-semibold">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
-                                                    <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
-                                                    <TableCell className="p-1">
+                                                    <TableCell className="text-center font-bold text-slate-500 align-top pt-3">{task.stt}</TableCell>
+                                                    <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words">{task.item_name}</TableCell>
+                                                    <TableCell className="text-right font-bold text-slate-600 dark:text-slate-400 align-top pt-3">{task.weight.toFixed(2)}%</TableCell>
+                                                    <TableCell className="text-right font-semibold align-top pt-3">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
+                                                    <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-3">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
+                                                    <TableCell className="p-1 align-top pt-2">
                                                         <Input type="number" min="1" defaultValue={task.assigned_workers || 1} onBlur={(e) => handleUpdateQTOField(task.id, 'assigned_workers', e.target.value)} className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold" />
                                                     </TableCell>
-                                                    <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400">{task.duration}</TableCell>
-                                                    <TableCell className="p-1">
+                                                    <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">{task.duration}</TableCell>
+                                                    <TableCell className="p-1 align-top pt-2">
                                                         <PredecessorDialog
                                                             task={task}
-                                                            schedData={schedData}
+                                                            schedData={schedulingData}
                                                             onUpdate={(val) => handleUpdateQTOField(task.id, 'predecessors', val)}
                                                         />
                                                     </TableCell>
-                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 border-l dark:border-slate-800">
+                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 border-l dark:border-slate-800 align-top pt-3">
                                                         {format(sDates.startDate, 'dd/MM/yyyy')}
                                                     </TableCell>
-                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10">
+                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 align-top pt-3">
                                                         {format(sDates.endDate, 'dd/MM/yyyy')}
                                                     </TableCell>
                                                 </TableRow>

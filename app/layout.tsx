@@ -1,5 +1,6 @@
 ﻿import { ThemeProvider } from "@/components/providers/theme-provider"
 import "@/app/globals.css"
+import { Toaster } from "sonner";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
@@ -14,6 +15,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     disableTransitionOnChange // Ngăn hiệu ứng CSS transition chạy khi mới load trang gây giật
                 >
                     {children}
+                    {/* ✅ BƯỚC 2: Đặt Toaster ở đây để nó có thể hiển thị đè lên trên mọi trang */}
+                    <Toaster position="top-right" richColors closeButton />
                 </ThemeProvider>
             </body>
         </html>
