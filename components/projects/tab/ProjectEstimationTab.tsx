@@ -6,10 +6,10 @@ import * as XLSX from "xlsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, RefreshCw, DollarSign, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical, X, Send } from "lucide-react";
+import { Loader2, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -17,56 +17,35 @@ import { formatCurrency } from "@/lib/utils/utils";
 
 import {
     updateEstimationPrice, deleteEstimationItem, createManualEstimationItem,
-    analyzeQTOAndGenerateEstimation, updateEstimationQuantity, updateEstimationPriceByGroup, updateEstimationMaterialByGroup
+    updateEstimationQuantity, updateEstimationPriceByGroup, updateEstimationMaterialByGroup
 } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
 
-// ✅ IMPORT HÀM ROLLUP ĐỂ ĐỒNG BỘ 5D (KHỐI LƯỢNG + THỜI GIAN + CHI PHÍ)
-import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
-
 interface Props { projectId: string; }
 
-export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any) {
+export default function ProjectEstimationTab({ projectId }: Props) {
     const router = useRouter();
     const supabase = createClient();
+
+    // STATES
     const [loading, setLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
-
-    // ✅ STATE CHO NÚT ĐỒNG BỘ 5D SANG GANTT
-    const [isSyncing5D, setIsSyncing5D] = useState(false);
-
-    // ✅ HÀM GỌI ACTION ĐỒNG BỘ 5D
-    const handleSyncToGantt = async () => {
-        if (!confirm("Hệ thống sẽ tổng hợp Khối lượng, Tiến độ (từ Tiên lượng) và Chi phí (từ Dự toán) để thiết lập thông số chuẩn cho Bảng Tiến độ WBS. Bạn có chắc chắn?")) return;
-
-        setIsSyncing5D(true);
-        const res = await sync5DToGanttTasks(projectId);
-
-        if (res.success) {
-            toast.success(res.message);
-            router.refresh();
-        } else {
-            toast.error(res.error || "Lỗi đồng bộ");
-        }
-        setIsSyncing5D(false);
-    };
-
     const [qtoTasks, setQtoTasks] = useState<any[]>([]);
     const [estItems, setEstItems] = useState<any[]>([]);
     const [initLoaded, setInitLoaded] = useState(false);
 
     const [openManualDialog, setOpenManualDialog] = useState(false);
     const [newItemLoading, setNewItemLoading] = useState(false);
-
     const [activeModal, setActiveModal] = useState<'total' | 'VL' | 'NC' | 'M' | null>(null);
 
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
-    useEffect(() => { loadData(); }, []);
+    useEffect(() => { loadData(); }, [projectId]);
 
     const loadData = async () => {
+        if (!projectId) return;
         const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
         const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
         setQtoTasks(qtoData || []);
@@ -89,14 +68,6 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
             newState['standalone'] = false;
             setExpandedSections(newState);
         }
-    };
-
-    const handleSync = async () => {
-        setLoading(true);
-        const res = await analyzeQTOAndGenerateEstimation(projectId);
-        if (res.success) { toast.success(res.message); await loadData(); router.refresh(); }
-        else { toast.error(res.error); }
-        setLoading(false);
     };
 
     const handleDelete = async (id: string, name: string) => {
@@ -139,8 +110,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
     const handleRateChange = async (id: string, newRate: string) => {
         const rate = parseFloat(newRate) || 0;
         setEstItems(prev => prev.map(item => item.id === id ? { ...item, quantity: rate } : item));
-        await updateEstimationQuantity(id, projectId, rate);
-        router.refresh();
+        const res = await updateEstimationQuantity(id, projectId, rate);
+        if (res?.success === false) {
+            toast.error("Lỗi lưu tỷ lệ: " + res.error);
+            loadData(); // Lấy lại dữ liệu cũ nếu lưu lỗi
+        } else {
+            router.refresh();
+        }
     };
 
     const handleMaterialSelect = async (itemId: string, mat: any) => {
@@ -187,6 +163,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
         return roman[num] || num.toString();
     }
 
+    // Hàm tính chính xác khối lượng từ các diễn giải hình học
+    const calculateDisplayVol = (l: any, w: any, h: any, f: any) => {
+        const len = parseFloat(l) || 0, wid = parseFloat(w) || 0, hei = parseFloat(h) || 0, fac = parseFloat(f) || 0;
+        if (len === 0 && wid === 0 && hei === 0) return fac;
+        return (len !== 0 ? len : 1) * (wid !== 0 ? wid : 1) * (hei !== 0 ? hei : 1) * (fac !== 0 ? fac : 1);
+    };
+
     const normalItems = estItems.filter(i => !['GT', 'LN', 'VAT'].includes(i.category));
     const globalParams = estItems.filter(i => ['GT', 'LN', 'VAT'].includes(i.category));
     const gtParam = globalParams.find(i => i.category === 'GT') || { quantity: 10, id: 'temp-gt' };
@@ -219,12 +202,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 transition-colors">
+
             {/* HEADER TOOLBAR */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                 <div>
                     <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                        <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                        Dự Toán & Tổng Hợp Kinh Phí
+                        <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        Thiết Lập Đơn Giá & Kinh Phí
                     </h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400">Thiết lập tỉ lệ % và chuẩn hóa đơn giá vật tư.</p>
                 </div>
@@ -251,13 +235,6 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" disabled={isImporting} className="h-9 border-slate-200 dark:border-slate-800 dark:text-slate-300">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
                     </div>
-
-                    <Button onClick={handleSync} disabled={loading} className="h-9 bg-blue-600 hover:bg-blue-700 text-white">{loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />} Đồng bộ QTO</Button>
-
-                    {/* ✅ NÚT MỚI: CHỐT THÔNG SỐ & ĐẨY SANG WBS/GANTT */}
-                    <Button onClick={handleSyncToGantt} disabled={isSyncing5D || loading} className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-colors">
-                        {isSyncing5D ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />} Chốt Thông Số & Đẩy sang Gantt
-                    </Button>
                 </div>
             </div>
 
@@ -280,17 +257,17 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                     <TableBody>
                         <TableRow className="dark:border-slate-800">
                             <TableCell className="text-center font-medium dark:text-slate-400">1</TableCell>
-                            <TableCell className="font-bold text-slate-700 dark:text-slate-300">Chi phí trực tiếp (VL + NC + M)</TableCell>
+                            <TableCell className="font-bold text-slate-700 dark:text-slate-300">Chi phí xây dựng trực tiếp (VL + NC + M)</TableCell>
                             <TableCell className="text-center font-medium dark:text-slate-400">T</TableCell>
                             <TableCell className="text-center text-slate-400">100%</TableCell>
                             <TableCell className="text-right font-bold text-slate-800 dark:text-slate-100">{formatCurrency(T)}</TableCell>
                         </TableRow>
                         <TableRow className="bg-slate-50/50 dark:bg-slate-900/30 dark:border-slate-800">
                             <TableCell className="text-center font-medium dark:text-slate-400">2</TableCell>
-                            <TableCell className="font-medium text-slate-600 dark:text-slate-400">Chi phí gián tiếp (Quản lý, lán trại...)</TableCell>
+                            <TableCell className="font-medium text-slate-600 dark:text-slate-400">Chi phí chung (Quản lý, lán trại...)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">GT = T x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950" defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, e.target.value)} />
+                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 focus-visible:ring-blue-500" defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(GT)}</TableCell>
                         </TableRow>
@@ -299,13 +276,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Thu nhập chịu thuế tính trước (Lợi nhuận)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">TL = (T+GT) x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950" defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, e.target.value)} />
+                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 focus-visible:ring-blue-500" defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(TL)}</TableCell>
                         </TableRow>
                         <TableRow className="bg-orange-50/30 dark:bg-orange-500/5 dark:border-slate-800">
                             <TableCell className="text-center font-medium dark:text-slate-400">4</TableCell>
-                            <TableCell className="font-bold text-orange-800 dark:text-orange-400">Chi phí xây dựng trước thuế</TableCell>
+                            <TableCell className="font-bold text-orange-800 dark:text-orange-400">Giá trị dự toán xây dựng TRƯỚC THUẾ</TableCell>
                             <TableCell className="text-center font-bold text-orange-800 dark:text-orange-400">G = T+GT+TL</TableCell>
                             <TableCell className="text-center text-slate-400">-</TableCell>
                             <TableCell className="text-right font-bold text-orange-700 dark:text-orange-300">{formatCurrency(Gxd)}</TableCell>
@@ -315,7 +292,7 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Thuế giá trị gia tăng (VAT)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">VAT = G x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950" defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, e.target.value)} />
+                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 focus-visible:ring-blue-500" defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(VAT)}</TableCell>
                         </TableRow>
@@ -388,7 +365,13 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                             {isSectionExpanded && tasks.map((task, taskIdx) => {
                                                 const children = estItems.filter(i => i.qto_item_id === task.id);
                                                 const taskTotal = children.reduce((sum, item) => sum + (item.total_cost || 0), 0);
-                                                let taskVol = Number(task.quantity) || 0;
+
+                                                // ✅ Tính khối lượng chuẩn cho Công tác
+                                                let taskVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || Number(task.quantity) || 0;
+
+                                                // ✅ Tính Đơn giá cho Công tác
+                                                const taskUnitPrice = taskVol > 0 ? taskTotal / taskVol : 0;
+
                                                 const isTaskExpanded = expandedRows[task.id] !== false;
 
                                                 return (
@@ -408,11 +391,21 @@ export default function ProjectEstimationTab({ projectId, qtoItems, norms }: any
                                                             <TableCell className="text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800">{task.unit}</TableCell>
                                                             <TableCell className="border-r border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50"></TableCell>
                                                             <TableCell className="border-r border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50"></TableCell>
+
+                                                            {/* ✅ TỔNG KL */}
                                                             <TableCell className="text-right font-bold text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 bg-blue-50/50 dark:bg-blue-500/10 text-base">
-                                                                {taskVol.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                                                                {taskVol.toLocaleString('en-US', { maximumFractionDigits: 4 })}
                                                             </TableCell>
-                                                            <TableCell className="border-r border-slate-200 dark:border-slate-800"></TableCell>
-                                                            <TableCell className="text-right font-bold text-blue-700 dark:text-blue-400">{formatCurrency(taskTotal)}</TableCell>
+
+                                                            {/* ✅ ĐƠN GIÁ */}
+                                                            <TableCell className="text-right font-bold text-indigo-700 dark:text-indigo-400 border-r border-slate-200 dark:border-slate-800 bg-indigo-50/30 dark:bg-indigo-900/20">
+                                                                {formatCurrency(taskUnitPrice)}
+                                                            </TableCell>
+
+                                                            {/* ✅ THÀNH TIỀN */}
+                                                            <TableCell className="text-right font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/20 text-base">
+                                                                {formatCurrency(taskTotal)}
+                                                            </TableCell>
                                                             <TableCell></TableCell>
                                                         </TableRow>
 

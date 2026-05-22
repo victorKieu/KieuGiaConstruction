@@ -38,6 +38,7 @@ import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
 import { getNorms } from "@/lib/action/normActions";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
+import ProjectEstimationTab from "./ProjectEstimationTab";
 //import ProjectGanttTab from "./ProjectGanttTab";
 interface Props { projectId: string; }
 function toRoman(num: number): string {
@@ -902,10 +903,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     <TabsTrigger value="cover_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><FileText className="w-3.5 h-3.5 mr-1.5" /> 1. Tổng Hợp</TabsTrigger>
                     <TabsTrigger value="qto_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ListOrdered className="w-3.5 h-3.5 mr-1.5" /> 2. Tiên lượng </TabsTrigger>
                     <TabsTrigger value="consumption_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ClipboardList className="w-3.5 h-3.5 mr-1.5 text-indigo-500" /> 3. Tổng hợp Hao phí</TabsTrigger>
-                    <TabsTrigger value="pricing_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><SlidersHorizontal className="w-3.5 h-3.5 mr-1.5 text-orange-500" /> 4. TH Vật tư & Áp giá</TabsTrigger>
+                    <TabsTrigger value="summary_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Percent className="w-3.5 h-3.5 mr-1.5 text-emerald-500" /> 4. TH Kinh phí</TabsTrigger>
                     <TabsTrigger value="unit_price_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Settings2 className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> 5. Đơn giá chi tiết</TabsTrigger>
-                    <TabsTrigger value="summary_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Percent className="w-3.5 h-3.5 mr-1.5 text-emerald-500" /> 6. TH Kinh phí</TabsTrigger>
-                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><CalendarClock className="w-3.5 h-3.5 mr-1.5" /> 7. Lập Tiến độ </TabsTrigger>
+                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><CalendarClock className="w-3.5 h-3.5 mr-1.5" /> 6. Lập Tiến độ </TabsTrigger>
                 </TabsList>
 
                 {/* TAB 1: BÌA */}
@@ -1057,70 +1057,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                             );
                         })}
                     </div>
-                </TabsContent>
-
-                {/* TAB 4: TH VẬT TƯ & ÁP GIÁ */}
-                <TabsContent value="pricing_sheet" className="mt-3">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        {['VL', 'NC', 'M'].map((cat) => {
-                            const catTitle = cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công';
-                            const listSummary = getSummaryByCategory(cat);
-                            return (
-                                <Card key={cat} className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950">
-                                    <div className="bg-slate-50 border-b p-2.5 flex items-center justify-between dark:bg-slate-900 dark:border-slate-800">
-                                        <div className="flex items-center gap-1.5">
-                                            {cat === 'VL' ? <Layers className="w-4 h-4 text-orange-500" /> : cat === 'NC' ? <HardHat className="w-4 h-4 text-green-500" /> : <Tractor className="w-4 h-4 text-purple-500" />}
-                                            <h4 className="font-bold text-slate-700 dark:text-slate-300 text-xs uppercase">Bảng giá {catTitle}</h4>
-                                        </div>
-                                    </div>
-                                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
-                                        <Table>
-                                            <TableHeader className="bg-slate-50/50 dark:bg-slate-900/50 sticky top-0 z-10 shadow-sm border-b dark:border-slate-800">
-                                                <TableRow>
-                                                    <TableHead className="font-bold text-[11px]">Tên nguồn lực / Vật tư</TableHead>
-                                                    <TableHead className="w-[50px] text-center font-bold text-[11px]">ĐVT</TableHead>
-                                                    <TableHead className="w-[60px] text-right font-bold text-[11px]">K.Lượng</TableHead>
-                                                    <TableHead className="w-[110px] text-right font-bold text-blue-600 text-[11px] dark:text-blue-400">Đơn Giá</TableHead>
-                                                    <TableHead className="w-[100px] text-right font-bold text-emerald-600 text-[11px] dark:text-emerald-400">Thành Tiền</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {listSummary.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={5} className="text-center py-6 text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
-                                                ) : listSummary.map((mat: any, idx: number) => (
-                                                    <TableRow key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40 border-b dark:border-slate-800">
-                                                        <TableCell className="p-2 text-xs">
-                                                            <div className="flex flex-col gap-0.5 group">
-                                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                                    <span className="font-medium text-slate-800 dark:text-slate-200">{mat.material_name}</span>
-                                                                    {mat.is_mapped && <Badge className="bg-green-100 text-green-700 border-none px-1 text-[9px] font-bold">Chuẩn: {mat.material_code}</Badge>}
-                                                                </div>
-                                                                <div className="opacity-0 group-hover:opacity-100 transition-all mt-0.5 flex items-center gap-2">
-                                                                    <MaterialSelector
-                                                                        onSelect={(newMat) => handleBulkMaterialSelect(mat.material_name, mat.category, newMat)}
-                                                                        defaultSearch={mat.original_name || mat.material_name}
-                                                                        trigger={<span className="text-[10px] text-blue-600 hover:underline cursor-pointer font-bold flex items-center gap-1">🎯 Liên kết mã chuẩn</span>}
-                                                                    />
-                                                                    <span className="text-red-400 hover:text-red-600 hover:underline cursor-pointer text-[10px]" onClick={() => handleDeleteEstItem(mat.id, mat.material_name)}>Xóa</span>
-                                                                </div>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="text-center text-xs text-slate-500 dark:text-slate-400">{mat.unit}</TableCell>
-                                                        <TableCell className="text-right text-xs font-bold text-slate-700 dark:text-slate-300">{(mat.total_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
-                                                        <TableCell className="p-1 border-l dark:border-slate-800 bg-blue-50/20 dark:bg-blue-900/10">
-                                                            <Input type="number" className="h-7 text-right text-xs font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-950 border-blue-200 dark:border-blue-900 shadow-none" defaultValue={mat.unit_price} onBlur={(e) => handleBulkPriceChange(mat.material_name, mat.category, e.target.value)} />
-                                                        </TableCell>
-                                                        <TableCell className="text-right text-xs font-bold text-emerald-700 dark:text-emerald-400 pr-2">{formatCurrency((mat.total_quantity || 0) * (mat.unit_price || 0))}</TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                </Card>
-                            );
-                        })}
-                    </div>
-                </TabsContent>
+                </TabsContent>             
 
                 {/* TAB 5: ĐƠN GIÁ CHI TIẾT */}
                 <TabsContent value="unit_price_sheet" className="mt-3">
@@ -1203,71 +1140,14 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
                 {/* TAB 6: TH KINH PHÍ */}
                 <TabsContent value="summary_sheet" className="mt-3">
-                    <Card className="border border-blue-200 shadow-md bg-white overflow-hidden dark:border-blue-900/50 dark:bg-slate-950">
-                        <div className="bg-blue-50 border-b border-blue-100 p-2.5 flex items-center gap-2 dark:bg-blue-900/30 dark:border-blue-900/50">
-                            <Calculator className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                            <h4 className="font-bold text-blue-800 uppercase tracking-wide text-xs dark:text-blue-300">Bảng Tổng hợp Kinh phí hạng mục (THKP)</h4>
-                        </div>
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="bg-slate-50 text-xs border-b dark:bg-slate-900 dark:border-slate-800">
-                                    <TableHead className="w-[60px] text-center font-bold">STT</TableHead>
-                                    <TableHead className="font-bold">Nội dung khoản mục cấu thành chi phí</TableHead>
-                                    <TableHead className="w-[150px] text-center font-bold">Cách tính</TableHead>
-                                    <TableHead className="w-[120px] text-center font-bold text-blue-600 dark:text-blue-400">Hệ số (%)</TableHead>
-                                    <TableHead className="w-[200px] text-right font-bold">Thành tiền (VNĐ)</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody className="text-xs">
-                                <TableRow className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                    <TableCell className="text-center font-medium">1</TableCell>
-                                    <TableCell className="font-bold text-slate-700 dark:text-slate-300">Chi phí xây dựng trực tiếp</TableCell>
-                                    <TableCell className="text-center font-medium text-slate-500 dark:text-slate-400">T = VL + NC + M</TableCell>
-                                    <TableCell className="text-center font-medium text-slate-400">---</TableCell>
-                                    <TableCell className="text-right font-bold text-slate-800 text-sm dark:text-slate-200">{formatCurrency(T)}</TableCell>
-                                </TableRow>
-                                <TableRow className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                    <TableCell className="text-center font-medium">2</TableCell>
-                                    <TableCell className="font-bold text-slate-700 dark:text-slate-300">Chi phí chung</TableCell>
-                                    <TableCell className="text-center font-medium text-slate-500 dark:text-slate-400">C = T x % Tỷ lệ</TableCell>
-                                    <TableCell className="p-1">
-                                        <Input type="number" className="h-8 text-center text-blue-700 font-bold border-blue-200 bg-white mx-auto w-20 shadow-none dark:text-blue-400 dark:border-slate-800 dark:bg-slate-950" defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, e.target.value)} />
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(GT)}</TableCell>
-                                </TableRow>
-                                <TableRow className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                    <TableCell className="text-center font-medium">3</TableCell>
-                                    <TableCell className="font-bold text-slate-700 dark:text-slate-300">Thu nhập chịu thuế tính trước</TableCell>
-                                    <TableCell className="text-center font-medium text-slate-500 dark:text-slate-400">TL = (T + C) x % Tỷ lệ</TableCell>
-                                    <TableCell className="p-1">
-                                        <Input type="number" className="h-8 text-center text-blue-700 font-bold border-blue-200 bg-white mx-auto w-20 shadow-none dark:text-blue-400 dark:border-slate-800 dark:bg-slate-950" defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, e.target.value)} />
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(TL)}</TableCell>
-                                </TableRow>
-                                <TableRow className="bg-orange-50/30 font-bold border-t-2 border-slate-200 dark:bg-orange-900/20 dark:border-slate-700">
-                                    <TableCell className="text-center font-medium">4</TableCell>
-                                    <TableCell className="text-orange-800 dark:text-orange-400">Giá trị dự toán xây dựng TRƯỚC THUẾ</TableCell>
-                                    <TableCell className="text-center text-orange-800 dark:text-orange-400">G = T + C + TL</TableCell>
-                                    <TableCell className="text-center font-medium text-slate-400">---</TableCell>
-                                    <TableCell className="text-right text-orange-700 text-sm dark:text-orange-500">{formatCurrency(Gxd)}</TableCell>
-                                </TableRow>
-                                <TableRow className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                    <TableCell className="text-center font-medium">5</TableCell>
-                                    <TableCell className="font-bold text-slate-700 dark:text-slate-300">Thuế giá trị gia tăng (VAT)</TableCell>
-                                    <TableCell className="text-center font-medium text-slate-500 dark:text-slate-400">VAT = G x % Thuế</TableCell>
-                                    <TableCell className="p-1">
-                                        <Input type="number" className="h-8 text-center text-blue-700 font-bold border-blue-200 bg-white mx-auto w-20 shadow-none dark:text-blue-400 dark:border-slate-800 dark:bg-slate-950" defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, e.target.value)} />
-                                    </TableCell>
-                                    <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(VAT)}</TableCell>
-                                </TableRow>
-                                <TableRow className="bg-blue-600 text-white font-bold border-t-4 border-slate-300 dark:bg-blue-700 dark:border-slate-900">
-                                    <TableCell className="text-center">6</TableCell>
-                                    <TableCell colSpan={3} className="uppercase tracking-wider text-sm p-3">Tổng cộng dự toán chi phí xây dựng công trình (SAU THUẾ)</TableCell>
-                                    <TableCell className="text-right text-lg font-extrabold">{formatCurrency(TotalProject)}</TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
-                    </Card>
+                    {/* Truyền các props cần thiết mà ProjectEstimationTab yêu cầu */}
+                    <ProjectEstimationTab
+                        projectId={projectId}
+                    // Nếu ProjectEstimationTab cần dữ liệu đã fetch, hãy truyền vào:
+                    // estItems={estItems} 
+                    // qtoTasks={qtoTasks}
+                    // ...
+                    />
                 </TabsContent>
 
                 {/* ✅ TAB 7: LẬP TIẾN ĐỘ THI CÔNG & NGUỒN LỰC (CPM ALGORITHM - BIM 5D) */}

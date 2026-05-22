@@ -9,7 +9,7 @@ import ProjectMembersTab from "./tab/ProjectMembersTab";
 import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
-import ProjectBOQTab from "./tab/ProjectBOQTab"; // ✅ ĐÃ THAY THẾ PHÂN HỆ ĐỘC LẬP THÀNH BOQ TỔNG HỢP
+//import ProjectBOQTab from "./tab/ProjectBOQTab"; // ✅ ĐÃ THAY THẾ PHÂN HỆ ĐỘC LẬP THÀNH BOQ TỔNG HỢP
 import ProjectGanttTab from "./tab/ProjectGanttTab";
 import ConstructionLogManager from "@/components/projects/execution/ConstructionLogManager";
 import WBSTaskTable from "@/components/tasks/WBSTaskTable";
@@ -53,7 +53,7 @@ const TABS = {
     TASKS: "Công việc & Mốc",
     GANTT: "Tiến độ (Gantt)",
     SURVEY: "Khảo sát",
-    BOQ: "Dự Toán & Khối Lượng (BOQ)",
+    //BOQ: "Dự Toán & Khối Lượng (BOQ)",
     MEMBERS: "Nhân sự",
     LOGS: "Nhật ký thi công",
     DOCUMENTS: "Tài liệu",
@@ -69,7 +69,7 @@ function getDefaultTabFromURL(searchParams: URLSearchParams | null): string {
         case "gantt": return TABS.GANTT;
         case "survey": return TABS.SURVEY;
         case "boq":
-        case "qto": return TABS.BOQ; // Hỗ trợ fallback nếu URL cũ đang lưu tham số qto
+        //case "qto": return TABS.BOQ; // Hỗ trợ fallback nếu URL cũ đang lưu tham số qto
         case "tasks": return TABS.TASKS;
         case "members": return TABS.MEMBERS;
         case "logs": return TABS.LOGS;
@@ -83,7 +83,7 @@ function getUrlParamFromTabName(tabName: string): string {
     switch (tabName) {
         case TABS.GANTT: return "gantt";
         case TABS.SURVEY: return "survey";
-        case TABS.BOQ: return "boq";
+        //case TABS.BOQ: return "boq";
         case TABS.TASKS: return "tasks";
         case TABS.MEMBERS: return "members";
         case TABS.LOGS: return "logs";
@@ -207,12 +207,7 @@ export default function ProjectTabs({
                         surveyTypes={surveyTypes as any}
                         surveyTaskTemplates={surveyTaskTemplates}
                     />
-                )}
-
-                {/* ================= SIÊU PHÂN HỆ DỰ TOÁN & KHỐI LƯỢNG (BOQ) ================= */}
-                {activeTab === TABS.BOQ && (
-                    <ProjectBOQTab projectId={projectId} />
-                )}
+                )}          
 
                 {/* ================= NHÂN SỰ ================= */}
                 {activeTab === TABS.MEMBERS && (

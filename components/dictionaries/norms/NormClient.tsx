@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Plus, Search, Edit, Trash2, Filter, Upload, Loader2, ChevronLeft, ChevronRight, GitCompare, ArrowRight, Link as LinkIcon } from "lucide-react";
+import { CirclePlus, Search, Edit, Trash2, Filter, Upload, Loader2, ChevronLeft, ChevronRight, GitCompare, ArrowRight, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -189,7 +189,7 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
                         </Button>
                     </div>
                     <Button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-9 transition-colors">
-                        <Plus className="mr-2 h-4 w-4" /> Thêm định mức mới
+                        <CirclePlus className="mr-2 h-4 w-4" /> Thêm định mức mới
                     </Button>
                 </div>
             </div>

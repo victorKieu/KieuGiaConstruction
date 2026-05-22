@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
-import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Loader2, Save, Trash2, CirclePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { saveNorm } from "@/lib/action/normActions";
 import { toast } from "sonner";
 import { MaterialCombobox } from "@/components/dictionaries/norms/MaterialCombobox";
+import { createClient } from "@/lib/supabase/client"; // Bổ sung import Supabase Client
 
 export default function NormForm({
     initialData,
-    resources = [],
+    resources = [], // Có thể không dùng nữa nhưng cứ giữ phòng hờ
     onSuccess
 }: {
     initialData?: any,
@@ -23,6 +24,7 @@ export default function NormForm({
     onSuccess?: () => void
 }) {
     const [loading, setLoading] = useState(false);
+    const supabase = createClient();
 
     const defaultDetails = initialData?.details?.map((d: any) => ({
         resource_id: d.resource?.id || d.resource_id || "",
@@ -66,6 +68,24 @@ export default function NormForm({
         }
     };
 
+    // ✅ HÀM TÌM KIẾM TRỰC TIẾP DƯỚI DATABASE
+    const searchMaterials = async (query: string) => {
+        if (!query.trim()) return [];
+
+        // Thay 'sys_materials' bằng 'resources' cho đúng với tên bảng anh vừa tạo
+        const { data, error } = await supabase
+            .from('resources')
+            .select('id, code, name, unit')
+            .or(`name.ilike.%${query}%,code.ilike.%${query}%`)
+            .limit(50);
+
+        if (error) {
+            console.error("Lỗi fetch vật tư từ bảng resources:", error.message);
+            return [];
+        }
+        return data || [];
+    };
+
     const inputClass = "dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors";
     const readOnlyClass = "h-9 bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 transition-colors";
 
@@ -102,8 +122,8 @@ export default function NormForm({
                                     <SelectTrigger className={inputClass}><SelectValue placeholder="Chọn loại..." /></SelectTrigger>
                                 </FormControl>
                                 <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                    <SelectItem value="company" className="dark:text-slate-200">Định mức Nội bộ</SelectItem>
-                                    <SelectItem value="state" className="dark:text-slate-200">Định mức Nhà nước</SelectItem>
+                                    <SelectItem value="company" className="dark:text-slate-200">🏢 Định mức Nội bộ</SelectItem>
+                                    <SelectItem value="state" className="dark:text-slate-200">🏛️ Định mức Nhà nước</SelectItem>
                                 </SelectContent>
                             </Select>
                         </FormItem>
@@ -129,7 +149,7 @@ export default function NormForm({
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-white dark:bg-slate-900 border-b dark:border-slate-800 hover:bg-white dark:hover:bg-slate-900">
-                                        <TableHead className="w-[300px] pl-4 dark:text-slate-400 font-bold">Vật tư (Tìm kiếm)</TableHead>
+                                        <TableHead className="w-[300px] pl-4 dark:text-slate-400 font-bold">Vật tư</TableHead>
                                         <TableHead className="w-[100px] dark:text-slate-400 font-bold">Mã VT</TableHead>
                                         <TableHead className="dark:text-slate-400 font-bold">Tên hiển thị</TableHead>
                                         <TableHead className="w-[80px] text-center dark:text-slate-400 font-bold">ĐVT</TableHead>
@@ -141,9 +161,11 @@ export default function NormForm({
                                     {fields.map((item, index) => (
                                         <TableRow key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 border-none transition-colors">
                                             <TableCell className="p-2 pl-4 align-top">
+                                                {/* ✅ Truyền hàm searchMaterials và defaultLabel vào Combobox */}
                                                 <MaterialCombobox
-                                                    materials={resources}
                                                     value={form.watch(`details.${index}.resource_code`)}
+                                                    defaultLabel={form.watch(`details.${index}.resource_name`)}
+                                                    fetchMaterials={searchMaterials}
                                                     onChange={(mat) => {
                                                         form.setValue(`details.${index}.resource_id`, mat.id);
                                                         form.setValue(`details.${index}.resource_code`, mat.code);
@@ -196,7 +218,7 @@ export default function NormForm({
                                 onClick={() => append({ resource_id: "", resource_code: "", resource_name: "", unit: "", quantity: 0 })}
                                 className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors shadow-sm"
                             >
-                                <Plus className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" /> Thêm dòng hao phí
+                                <CirclePlus className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" /> Thêm dòng hao phí
                             </Button>
                         </div>
                     </CardContent>

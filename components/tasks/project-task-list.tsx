@@ -22,39 +22,55 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-    // ✅ ĐỒNG BỘ DỮ LIỆU: Khi Server cập nhật (revalidate), Client phải cập nhật theo ngay
     useEffect(() => {
         setTaskList(initialTasks);
     }, [initialTasks]);
 
-    // ✅ TÌM TASK ĐANG ĐƯỢC CHỌN TỪ DANH SÁCH MỚI NHẤT
     const activeTask = useMemo(() => {
         return taskList.find(t => t.id === selectedTaskId) || null;
     }, [selectedTaskId, taskList]);
 
     const displayTasks = useMemo(() => {
-        // Chỉ lấy các Task "Lá" (Task không phải là Cha của ai) để đưa lên Kanban
-        const parentIds = new Set(taskList.map(t => t.parent_id).filter(Boolean));
-        let leaves = taskList.filter(t => !parentIds.has(t.id));
+        let sortedTasks = [...taskList];
 
-        // ✅ THUẬT TOÁN SORT WBS THÔNG MINH
-        leaves.sort((a, b) => {
-            // Tách mã thành các mảng số (VD: "1.10" -> [1, 10])
-            const partsA = (a.wbs_code || "").split('.').map(Number);
-            const partsB = (b.wbs_code || "").split('.').map(Number);
+        sortedTasks.sort((a, b) => {
+            const codeA = (a.wbs_code || "").toString().trim();
+            const codeB = (b.wbs_code || "").toString().trim();
 
-            // So sánh từng cấp độ từ trái sang phải
-            for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
-                const numA = partsA[i] || 0;
-                const numB = partsB[i] || 0;
-                if (numA !== numB) {
-                    return numA - numB; // Nếu khác nhau thì xếp số nhỏ lên trước
+            // Xử lý trường hợp không có mã WBS (đẩy xuống cuối)
+            if (!codeA && !codeB) return 0;
+            if (!codeA) return 1;
+            if (!codeB) return -1;
+
+            // Tách mã WBS thành mảng các thành phần
+            const partsA = codeA.split('.');
+            const partsB = codeB.split('.');
+
+            // So sánh từng cấp độ (độ sâu)
+            const maxLength = Math.max(partsA.length, partsB.length);
+            for (let i = 0; i < maxLength; i++) {
+                const partA = partsA[i] || "";
+                const partB = partsB[i] || "";
+
+                // Chuyển đổi sang số để so sánh (1 < 2 < 10)
+                const numA = parseInt(partA, 10);
+                const numB = parseInt(partB, 10);
+
+                const isNumA = !isNaN(numA);
+                const isNumB = !isNaN(numB);
+
+                if (isNumA && isNumB) {
+                    if (numA !== numB) return numA - numB;
+                } else {
+                    // Nếu là chuỗi ký tự thì so sánh bình thường
+                    const res = partA.localeCompare(partB);
+                    if (res !== 0) return res;
                 }
             }
             return 0;
         });
 
-        return leaves;
+        return sortedTasks;
     }, [taskList]);
 
     const handleDelete = async (taskId: string) => {
@@ -91,14 +107,16 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
         const warning = evaluateProgress(task);
         const isLikedByMe = Array.isArray(task.task_likes) && task.task_likes.some((l: any) => l.user_id === currentUserId);
 
+        // Kiểm tra task này có phải là Task Cha không
+        const isParent = taskList.some(t => t.parent_id === task.id);
+
         return (
-            <div key={task.id} className={`bg-white dark:bg-slate-950 border ${warning?.label === "Trễ hạn" ? "border-red-400 shadow-sm" : "border-slate-200 dark:border-slate-800"} rounded-xl p-3 shadow-sm hover:shadow-md transition-all flex flex-col`}>
+            <div key={task.id} className={`bg-white dark:bg-slate-950 border ${warning?.label === "Trễ hạn" ? "border-red-400 shadow-sm" : "border-slate-200 dark:border-slate-800"} rounded-xl p-3 shadow-sm hover:shadow-md transition-all flex flex-col ${isParent ? 'bg-slate-50 dark:bg-slate-900/50 border-dashed' : ''}`}>
                 <div className="flex justify-between items-start mb-2">
                     <h4
-                        className="font-bold text-slate-800 dark:text-slate-200 text-sm leading-tight line-clamp-2 pr-2 cursor-pointer hover:text-blue-600"
+                        className={`font-bold text-slate-800 dark:text-slate-200 text-sm leading-tight line-clamp-2 pr-2 cursor-pointer hover:text-blue-600 ${isParent ? 'uppercase tracking-wide' : ''}`}
                         onClick={() => setSelectedTaskId(task.id)}
                     >
-                        {/* ✅ HIỂN THỊ MÃ WBS BẰNG FONT MONO ĐỂ DỄ NHÌN THỨ TỰ */}
                         <span className="text-indigo-600 dark:text-indigo-400 mr-1.5 font-mono text-xs">
                             {task.wbs_code ? `[${task.wbs_code}]` : ''}
                         </span>
@@ -147,7 +165,6 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
 
     return (
         <div className="w-full">
-            {/* ✅ THANH HEADER MỚI BỔ SUNG NÚT TẠO TASK */}
             <div className="flex justify-between items-center mb-4 px-1">
                 <Button
                     size="sm"
@@ -174,7 +191,6 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                 })}
             </div>
 
-            {/* MODAL HIỂN THỊ CHI TIẾT */}
             <Dialog open={!!selectedTaskId} onOpenChange={(open) => !open && setSelectedTaskId(null)}>
                 <DialogContent className="max-w-2xl bg-slate-50 dark:bg-slate-900 shadow-2xl p-0 overflow-hidden border-0">
                     {activeTask && (
@@ -189,14 +205,10 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                 </div>
                                 <DialogTitle className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-4 leading-tight">{activeTask.name}</DialogTitle>
 
-                                {/* ✅ BẢNG ĐIỀU KHIỂN TIẾN ĐỘ & RÀNG BUỘC (MỚI THÊM VÀO ĐÂY) */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 mt-2 shadow-sm">
-
-                                    {/* CỘT 1: THÔNG TIN CƠ BẢN & RÀNG BUỘC */}
                                     <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-800/50">
                                         <span className="text-slate-500 text-[11px] font-bold uppercase tracking-wider">Công việc tiền nhiệm (Predecessor)</span>
                                         <div className="grid grid-cols-1 gap-2">
-                                            {/* Chọn công việc đi trước */}
                                             <Select
                                                 defaultValue={activeTask.predecessor_id || "none"}
                                                 onValueChange={async (val) => {
@@ -213,7 +225,7 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                                 <SelectContent>
                                                     <SelectItem value="none">-- Không có (Bắt đầu tự do) --</SelectItem>
                                                     {taskList
-                                                        .filter(t => t.id !== activeTask.id) // Không được chọn chính nó
+                                                        .filter(t => t.id !== activeTask.id)
                                                         .map(t => (
                                                             <SelectItem key={t.id} value={t.id}>
                                                                 <span className="font-mono text-[10px] text-blue-600 mr-1">[{t.wbs_code}]</span> {t.name}
@@ -223,7 +235,6 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                                 </SelectContent>
                                             </Select>
 
-                                            {/* Chọn kiểu ràng buộc và Lag */}
                                             <div className="flex items-center gap-2">
                                                 <Select defaultValue={activeTask.dependency_type || "FS"}>
                                                     <SelectTrigger className="h-8 w-[70px] text-[10px] font-bold bg-slate-100 dark:bg-slate-800 border-none">
@@ -242,7 +253,7 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                                     <input
                                                         type="number"
                                                         defaultValue={activeTask.lag_days || 0}
-                                                        className="w-full bg-transparent border-none text-xs font-bold focus:ring-0 text-right outline-none"
+                                                        className="w-full bg-transparent border-none text-xs font-bold focus:ring-0 text-right outline-none dark:text-slate-200"
                                                     />
                                                     <span className="text-[10px] text-slate-400">ngày</span>
                                                 </div>
@@ -250,7 +261,6 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                         </div>
                                     </div>
 
-                                    {/* CỘT 2: ĐIỀU KHIỂN THỜI GIAN & TĂNG CA */}
                                     <div className="space-y-4">
                                         <div className="space-y-1.5">
                                             <span className="text-slate-500 text-[11px] font-bold uppercase tracking-wider">Thời gian thi công</span>
@@ -258,7 +268,7 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                                 <input
                                                     type="date"
                                                     defaultValue={activeTask.start_date ? activeTask.start_date.split('T')[0] : ''}
-                                                    className="h-8 text-xs font-semibold rounded-md border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:ring-blue-500 w-[120px] outline-none px-2"
+                                                    className="h-8 text-xs font-semibold rounded-md border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 dark:text-slate-200 focus:ring-blue-500 w-[120px] outline-none px-2"
                                                     onBlur={async (e) => {
                                                         const newVal = e.target.value;
                                                         if (newVal && newVal !== activeTask.start_date?.split('T')[0]) {
@@ -275,7 +285,7 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                                         type="number"
                                                         defaultValue={activeTask.duration || 1}
                                                         min={1}
-                                                        className="w-full bg-transparent border-none text-xs font-semibold focus:ring-0 text-center outline-none"
+                                                        className="w-full bg-transparent border-none text-xs font-semibold focus:ring-0 text-center outline-none dark:text-slate-200"
                                                         onBlur={async (e) => {
                                                             const newDuration = parseInt(e.target.value);
                                                             if (newDuration && newDuration !== activeTask.duration) {
@@ -291,7 +301,7 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                                             <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-1">
                                                 <Calendar className="w-3 h-3" /> Dự kiến xong:
                                                 <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                                    {activeTask.end_date ? formatDate(activeTask.end_date) : '--'}
+                                                    {activeTask.due_date ? formatDate(activeTask.due_date) : '--'}
                                                 </span>
                                             </div>
                                         </div>
@@ -319,25 +329,24 @@ export function ProjectTaskList({ tasks: initialTasks, projectId, members, curre
                             </div>
 
                             <div className="p-6 max-h-[50vh] overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950">
-                                {/* ĐÃ XÓA THẺ <h3> Ở ĐÂY CHỈ CÒN LẠI COMPONENT BÌNH LUẬN */}
                                 <TaskCommentSection
                                     taskId={activeTask.id}
                                     projectId={projectId}
                                     members={formattedMembers}
                                     currentUserId={currentUserId}
-                                    commentsCount={activeTask.comments_count} // ✅ TRUYỀN SỐ VÀO BÊN TRONG
+                                    commentsCount={activeTask.comments_count}
                                 />
                             </div>
                         </>
                     )}
                 </DialogContent>
             </Dialog>
-            {/* GỌI MODAL TẠO CÔNG VIỆC Ở ĐÂY */}
+            {/* ✅ ĐÃ SỬA LỖI MODAL BẰNG CÁCH TRUYỀN BIẾN GỐC members VÀO ĐÂY */}
             <TaskCreateModal
                 open={isCreateModalOpen}
                 onOpenChange={setIsCreateModalOpen}
                 projectId={projectId}
-                members={formattedMembers}
+                members={members}
                 tasks={taskList}
             />
         </div>
