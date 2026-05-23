@@ -36,10 +36,8 @@ import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
 import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
 import { getNorms } from "@/lib/action/normActions";
-import { MaterialSelector } from "@/components/common/MaterialSelector";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 import ProjectEstimationTab from "./ProjectEstimationTab";
-//import ProjectGanttTab from "./ProjectGanttTab";
 interface Props { projectId: string; }
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -1059,6 +1057,14 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </div>
                 </TabsContent>             
 
+                {/* TAB 4: TH KINH PHÍ */}
+                <TabsContent value="summary_sheet" className="mt-3">
+                    {/* Truyền các props cần thiết mà ProjectEstimationTab yêu cầu */}
+                    <ProjectEstimationTab
+                        projectId={projectId}
+                    />
+                </TabsContent>
+
                 {/* TAB 5: ĐƠN GIÁ CHI TIẾT */}
                 <TabsContent value="unit_price_sheet" className="mt-3">
                     <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden dark:border-slate-800 dark:bg-slate-950">
@@ -1138,26 +1144,14 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </Card>
                 </TabsContent>
 
-                {/* TAB 6: TH KINH PHÍ */}
-                <TabsContent value="summary_sheet" className="mt-3">
-                    {/* Truyền các props cần thiết mà ProjectEstimationTab yêu cầu */}
-                    <ProjectEstimationTab
-                        projectId={projectId}
-                    // Nếu ProjectEstimationTab cần dữ liệu đã fetch, hãy truyền vào:
-                    // estItems={estItems} 
-                    // qtoTasks={qtoTasks}
-                    // ...
-                    />
-                </TabsContent>
-
-                {/* ✅ TAB 7: LẬP TIẾN ĐỘ THI CÔNG & NGUỒN LỰC (CPM ALGORITHM - BIM 5D) */}
+                {/* ✅ TAB 6: LẬP TIẾN ĐỘ THI CÔNG & NGUỒN LỰC (CPM ALGORITHM - BIM 5D) */}
                 <TabsContent value="schedule_sheet" className="mt-3">
                     <Card className="border border-teal-200 dark:border-teal-900/50 shadow-md bg-white overflow-hidden dark:bg-slate-950">
                         <div className="bg-teal-50/50 dark:bg-teal-900/10 border-b border-teal-100 dark:border-teal-900/30 p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                                 <div className="flex items-center gap-2">
                                     <CalendarClock className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                                    <h4 className="font-black text-teal-800 dark:text-teal-300 uppercase tracking-wide">Bảng phân tích Tiến độ & Nguồn lực (BIM 5D)</h4>
+                                    <h4 className="font-black text-teal-800 dark:text-teal-300 uppercase tracking-wide">Bảng phân tích Tiến độ & Nguồn lực</h4>
                                 </div>
                                 <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-lg border border-teal-100 dark:border-teal-900/30 shadow-sm">
                                     <div className="flex items-center gap-2">
@@ -1169,8 +1163,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                 setProjectStartDate(e.target.value);
                                                 updateProjectSettings('start_date', e.target.value); // Lưu DB
                                             }}
-                                            className="h-8 text-xs font-bold w-[130px]..."
-                                        />                                    </div>
+                                            className="h-8 text-xs font-bold w-[130px]"
+                                        />
+                                    </div>
                                     <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
                                     <div className="flex items-center gap-2">
                                         <Switch
@@ -1180,7 +1175,8 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                 updateProjectSettings('allow_weekend', val); // Lưu DB
                                             }}
                                             className="data-[state=checked]:bg-teal-600"
-                                        />                                        <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
+                                        />
+                                        <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
                                     </div>
                                 </div>
                             </div>
@@ -1228,9 +1224,31 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 </TableHeader>
                                 <TableBody>
                                     {(() => {
-                                        return taskSchedules && Object.keys(taskSchedules).length > 0 && schedulingData.map((task: any) => {
+                                        if (!taskSchedules || Object.keys(taskSchedules).length === 0) return null;
+
+                                        // ✅ TẠO MẢNG MỚI & SORT THEO NGÀY BẮT ĐẦU RỒI MỚI RENDER
+                                        const sortedTasks = [...schedulingData].sort((a, b) => {
+                                            const sDatesA = taskSchedules[a.id];
+                                            const sDatesB = taskSchedules[b.id];
+
+                                            if (!sDatesA && !sDatesB) return 0;
+                                            if (!sDatesA) return 1;
+                                            if (!sDatesB) return -1;
+
+                                            const timeA = new Date(sDatesA.startDate).getTime();
+                                            const timeB = new Date(sDatesB.startDate).getTime();
+
+                                            // Ưu tiên xếp theo Ngày bắt đầu tăng dần
+                                            if (timeA !== timeB) return timeA - timeB;
+
+                                            // Nếu trùng ngày bắt đầu thì xếp theo số STT cũ (hoặc WBS)
+                                            return a.stt - b.stt;
+                                        });
+
+                                        return sortedTasks.map((task: any) => {
                                             const sDates = taskSchedules[task.id];
                                             if (!sDates) return null;
+
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                     <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
@@ -1254,7 +1272,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                     <TableCell className="p-1 align-top pt-2">
                                                         <PredecessorDialog
                                                             task={task}
-                                                            schedData={schedulingData} // ✅ Đã fix tên biến
+                                                            schedData={schedulingData}
                                                             onUpdate={(val) => {
                                                                 updateLocalQTO(task.id, { predecessors: val });
                                                                 handleUpdateQTOField(task.id, 'predecessors', val);
