@@ -38,12 +38,12 @@ import { Badge } from "@/components/ui/badge";
 import MaterialRequestManager from "@/components/projects/requests/MaterialRequestManager";
 import QuotationPageClient from "./quotation/page-client";
 import AIProjectAnalytics from "@/components/projects/analytics/AIProjectAnalytics";
-import ProjectEstimationTab from "@/components/projects/tab/ProjectEstimationTab";
+import ProjectConstructionDocsTab from "@/components/projects/tab/ProjectConstructionDocsTab";
 import ProjectLegalTab from "@/components/projects/tab/ProjectLegalTab";
 
 import {
     Clock, Banknote, TrendingUp, Briefcase, FileText, Activity, Wallet,
-    MapPin, Coins, Package, Scale
+    MapPin, Coins, Package, Scale, BookOpen
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -268,7 +268,7 @@ export default async function ProjectPage({ params }: PageProps) {
                     <TabsTrigger value="overview"><Activity className="w-4 h-4 mr-2" />Tổng quan</TabsTrigger>
                     <TabsTrigger value="legal"><Scale className="w-4 h-4 mr-2 text-purple-600 dark:text-purple-400" />Hồ sơ Pháp lý</TabsTrigger>
                     <TabsTrigger value="execution"><Briefcase className="w-4 h-4 mr-2" />Thi công & Nhiệm vụ</TabsTrigger>
-                    <TabsTrigger value="cost_management"><Coins className="w-4 h-4 mr-2 text-yellow-600 dark:text-yellow-400" />Chi phí & Vật tư</TabsTrigger>
+                    <TabsTrigger value="docs_management"><BookOpen className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />Tài liệu Thi công</TabsTrigger>
                     <TabsTrigger value="material_request"><Package className="w-4 h-4 mr-2" />Yêu cầu Vật tư</TabsTrigger>
                     <TabsTrigger value="quotation"><FileText className="w-4 h-4 mr-2" />Báo giá & Hợp đồng</TabsTrigger>
                 </TabsList>
@@ -411,8 +411,11 @@ export default async function ProjectPage({ params }: PageProps) {
                     </div>
                 </TabsContent>
 
-                <TabsContent value="cost_management">
-                    <ProjectEstimationTab projectId={id} />
+                <TabsContent value="docs_management">
+                    {/* Bọc trong một div để tạo Card giao diện đẹp hơn */}
+                    <div className="bg-card p-2 md:p-6 rounded-xl shadow-sm border border-border min-h-[500px]">
+                        <ProjectConstructionDocsTab projectId={id} />
+                    </div>
                 </TabsContent>
 
                 <TabsContent value="material_request">

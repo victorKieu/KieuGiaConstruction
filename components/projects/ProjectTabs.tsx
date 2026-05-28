@@ -9,7 +9,6 @@ import ProjectMembersTab from "./tab/ProjectMembersTab";
 import ProjectDocumentsTab from "./tab/ProjectDocumentsTab";
 import ProjectFinanceTab from "./tab/ProjectFinanceTab";
 import ProjectSurveyTab from "./tab/ProjectSurveyTab";
-//import ProjectBOQTab from "./tab/ProjectBOQTab"; // ✅ ĐÃ THAY THẾ PHÂN HỆ ĐỘC LẬP THÀNH BOQ TỔNG HỢP
 import ProjectGanttTab from "./tab/ProjectGanttTab";
 import ConstructionLogManager from "@/components/projects/execution/ConstructionLogManager";
 import WBSTaskTable from "@/components/tasks/WBSTaskTable";
