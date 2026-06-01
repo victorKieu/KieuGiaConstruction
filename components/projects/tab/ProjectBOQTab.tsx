@@ -29,15 +29,14 @@ import {
     deleteQTODetail, addManualQTOItem, addQTODetail, createQTOItem
 } from "@/lib/action/qtoActions";
 import {
-    analyzeQTOAndGenerateEstimation, updateEstimationQuantity, updateEstimationPriceByGroup,
-    updateEstimationMaterialByGroup, deleteEstimationItem, createManualEstimationItem
+    analyzeSingleQTOItem, createManualEstimationItem
 } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
-import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
 import { getNorms } from "@/lib/action/normActions";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 import ProjectEstimationTab from "./ProjectEstimationTab";
+import { syncTaskVolumeAndEstimations } from "@/lib/action/estimationActions";
 interface Props { projectId: string; }
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -83,23 +82,29 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            // Lệnh toast.error này gọi ngay lập tức khi set state, dễ gây crash
             if (query.trim().length < 2) { setIsOpen(false); toast.error("Nhập ít nhất 2 ký tự!"); return; }
-            setIsSearching(true); setIsOpen(false);
-            const res = await getNorms(query, 1, 20);
-            setResults(res.data || []); setIsOpen(true); setIsSearching(false);
+            //...
         }
     };
 
     const handleSelect = async (norm: any) => {
-        setQuery(norm.code); setIsOpen(false);
-        const toastId = toast.loading("Đang áp dụng mã định mức...");
+        setQuery(norm.code);
+        setIsOpen(false);
+        const toastId = toast.loading("Đang áp dụng và phân tích vật tư tự động...");
         try {
             await updateQTONormCode(taskId, projectId, norm.code);
             await updateQTOItem(taskId, 'item_name', norm.name);
             await updateQTOItem(taskId, 'unit', norm.unit);
-            toast.success("Đã cập nhật mã và tên công tác!", { id: toastId });
-            onUpdate(norm);
-        } catch (error) { toast.error("Lỗi khi áp dụng định mức!", { id: toastId }); }
+
+            // 🔴 ĐIỂM SÁNG GIÁ NHẤT: Bóc tách tự động ngầm ngay lập tức
+            await analyzeSingleQTOItem(taskId, projectId);
+
+            toast.success("Áp mã và cập nhật Hao phí thành công!", { id: toastId });
+            onUpdate(norm); // Hàm này gọi lại loadData() để làm tươi UI
+        } catch (error) {
+            toast.error("Lỗi khi áp dụng định mức!", { id: toastId });
+        }
     };
 
     return (
@@ -510,8 +515,19 @@ export default function ProjectBOQTab({ projectId }: Props) {
         if (!confirm("⚠️ Bạn có chắc chắn muốn xóa dữ liệu này?")) return;
         const toastId = toast.loading("Đang xóa...");
         try {
-            if (isDetail) await supabase.from('qto_item_details').delete().eq('id', id);
-            else await supabase.from('qto_items').delete().eq('id', id);
+            if (isDetail) {
+                const task = qtoTasks.find(t => t.details?.some((d: any) => d.id === id));
+                await supabase.from('qto_item_details').delete().eq('id', id);
+
+                if (task) {
+                    // Tính lại khối lượng sau khi trừ đi dòng vừa xóa
+                    const updatedDetails = task.details.filter((d: any) => d.id !== id);
+                    const newTaskVol = updatedDetails.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0);
+                    await syncTaskVolumeAndEstimations(task.id, newTaskVol);
+                }
+            } else {
+                await supabase.from('qto_items').delete().eq('id', id);
+            }
             await loadData();
             toast.success("Đã xóa thành công!", { id: toastId });
         } catch (err: any) {
@@ -520,37 +536,57 @@ export default function ProjectBOQTab({ projectId }: Props) {
     };
 
     const handleUpdateDetailField = async (detailId: string, field: string, value: string) => {
-        const val = field === 'explanation' ? value : (parseFloat(value) || 0);
-        setQtoTasks(prev => prev.map(t => ({ ...t, details: t.details ? t.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d) : [] })));
+        let val: string | number | null = value;
+        const numericFields = ['length', 'width', 'height', 'quantity_factor'];
+        if (numericFields.includes(field)) {
+            if (value === undefined || value === null || value.trim() === "") val = null;
+            else val = parseFloat(value) || 0;
+        }
+
+        setQtoTasks(prev => prev.map(t => ({
+            ...t,
+            details: t.details ? t.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d) : []
+        })));
+
         const { error } = await supabase.from('qto_item_details').update({ [field]: val }).eq('id', detailId);
-        if (error) toast.error("Lỗi khi lưu dữ liệu!");
+
+        if (!error) {
+            // 🔥 GỌI SERVER ACTION ÉP ĐỒNG BỘ
+            const task = qtoTasks.find(t => t.details?.some((d: any) => d.id === detailId));
+            if (task) {
+                const updatedDetails = task.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d);
+                const newTaskVol = updatedDetails.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0);
+
+                await syncTaskVolumeAndEstimations(task.id, newTaskVol);
+                loadData();
+            }
+        }
     };
 
     const handleUpdateQTOField = async (itemId: string, field: string, value: string) => {
-        // 1. Cập nhật local state UI ngay lập tức
         setQtoTasks(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
 
-        // 2. Gọi API update
         const res = await updateQTOItem(itemId, field, value);
 
         if (!res?.success) {
             toast.error("Lỗi lưu dữ liệu!");
-            loadData(); // Hoàn tác nếu lỗi
+            loadData();
         } else {
-            toast.success("Đã cập nhật!", { duration: 1000 });
+            // toast.success("Đã cập nhật!", { duration: 1000 });
 
-            await loadData();
+            // 🔴 ĐẢM BẢO CÓ DÒNG NÀY
+            loadData();
         }
     };
 
     const handleAddDetail = async (itemId: string) => {
         const toastId = toast.loading("Đang tạo dòng hình học...");
         try {
-            await addQTODetail(itemId, { projectId, explanation: "Chi tiết khối lượng mới", length: 0, width: 0, height: 0, quantity_factor: 1 });
+            await addQTODetail(itemId, { projectId, explanation: "", length: 0, width: 0, height: 0, quantity_factor: 1 });
             toast.success("Đã thêm dòng diễn giải mới!", { id: toastId });
             setExpandedRows(prev => ({ ...prev, [itemId]: true }));
             await loadData();
-        } catch (err: any) { toast.error("Không thể chèn dòng!", { id: toastId }); }
+        } catch (err: any) { toast.error("Không thể chèn dòng!"); }
     };
 
     const handleSaveManualItem = async () => {
@@ -559,44 +595,25 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
         setIsAddingManual(true);
         const res = await addManualQTOItem(projectId, manualSectionId, newSectionName.trim(), manualItemName.trim(), manualUnit.trim(), manualItemType, manualNormCode);
+
         if (res.success) {
-            toast.success("Thêm công tác thủ công thành công!");
-            setIsManualAddModalOpen(false); setManualItemName(""); setNewSectionName(""); setManualNormCode(""); setManualNormQuery("");
+            // 🔴 NẾU CÓ CHỌN MÃ ĐỊNH MỨC -> GỌI API BÓC TÁCH VẬT TƯ NGAY LẬP TỨC
+            if (manualNormCode && res.data?.id) {
+                toast.loading("Đang phân tích hao phí...", { id: "analyze" });
+                // Hàm analyzeSingleQTOItem này anh nhớ Import từ estimationActions.ts nhé
+                await analyzeSingleQTOItem(res.data.id, projectId, 0);
+                toast.success("Thêm công tác và bóc tách thành công!", { id: "analyze" });
+            } else {
+                toast.success("Thêm công tác thủ công thành công!");
+            }
+
+            setIsManualAddModalOpen(false);
+            setManualItemName(""); setNewSectionName(""); setManualNormCode(""); setManualNormQuery("");
             await loadData();
-        } else { toast.error("Có lỗi xảy ra: " + res.error); }
+        } else {
+            toast.error("Có lỗi xảy ra: " + res.error);
+        }
         setIsAddingManual(false);
-    };
-
-    const handleDeleteEstItem = async (id: string, name: string) => {
-        if (!confirm(`Xóa vật tư/nhân công "${name}" này?`)) return;
-        const res = await deleteEstimationItem(id, projectId);
-        if (res.success) { toast.success(res.message); await loadData(); } else toast.error(res.error);
-    };
-
-    const handleBulkMaterialSelect = async (oldMaterialName: string, category: string, mat: any) => {
-        setEstItems(prev => prev.map(item => (item.material_name === oldMaterialName && item.category === category) ? { ...item, is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0, total_cost: (item.quantity || 0) * (mat.ref_price || 0) } : item));
-        const res = await updateEstimationMaterialByGroup(projectId, oldMaterialName, category, mat);
-        if (!res.success) toast.error("Lỗi đổi mã vật tư: " + res.error);
-        else toast.success(`Đã chuẩn hóa thành mã thương mại: ${mat.name}`);
-    };
-
-    const handleBulkPriceChange = async (materialName: string, category: string, newPrice: string) => {
-        const price = parseFloat(newPrice) || 0;
-        setEstItems(prev => prev.map(item => (item.material_name === materialName && item.category === category) ? { ...item, unit_price: price, total_cost: item.quantity * price } : item));
-        await updateEstimationPriceByGroup(projectId, materialName, category, price);
-    };
-
-    const handleRateChange = async (id: string, value: string) => {
-        const val = parseFloat(value) || 0;
-        setEstItems(prev => prev.map(item => item.id === id ? { ...item, quantity: val } : item));
-        await updateEstimationQuantity(id, projectId, val);
-    };
-
-    const handleSyncQTOToEstimation = async () => {
-        setCalcLoading(true);
-        const res = await analyzeQTOAndGenerateEstimation(projectId);
-        if (res.success) { toast.success(res.message); await loadData(); } else toast.error(res.error);
-        setCalcLoading(false);
     };
 
     const handlePushToGantt = async () => {
@@ -633,11 +650,36 @@ export default function ProjectBOQTab({ projectId }: Props) {
     };
 
     const handleCreateManualItem = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault(); setNewItemLoading(true);
+        e.preventDefault();
+        setNewItemLoading(true);
         const formData = new FormData(e.currentTarget);
-        const data = { name: formData.get("name"), unit: formData.get("unit"), quantity: formData.get("quantity"), unit_price: formData.get("unit_price") };
+
+        // 🔴 FIX LỖI ÉP KIỂU: Phải chuyển String từ Form thành Số thực (Float)
+        const qty = parseFloat(formData.get("quantity")?.toString() || "0");
+        const price = parseFloat(formData.get("unit_price")?.toString() || "0");
+        const name = formData.get("name")?.toString() || "Chi phí khác";
+        const unit = formData.get("unit")?.toString() || "Lần";
+
+        const data = {
+            material_name: name,
+            original_name: name,
+            category: "VL", // Mặc định gán vào nhóm Vật Liệu (hoặc anh có thể cho chọn)
+            unit: unit,
+            quantity: qty,
+            unit_price: price,
+            total_cost: qty * price, // Tự động tính luôn thành tiền
+            is_mapped: false // Đánh dấu đây là mục thêm thủ công
+        };
+
         const res = await createManualEstimationItem(projectId, data);
-        if (res.success) { toast.success(res.message); setOpenManualDialog(false); await loadData(); } else toast.error(res.error);
+
+        if (res.success) {
+            toast.success(res.message || "Đã thêm chi phí thành công!");
+            setOpenManualDialog(false);
+            await loadData();
+        } else {
+            toast.error(res.error || "Lỗi khi lưu chi phí phụ!");
+        }
         setNewItemLoading(false);
     };
 
@@ -836,7 +878,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-lg border dark:border-slate-800 shadow-sm gap-3 transition-colors">
                 <div className="flex flex-wrap items-center gap-2">
                     <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
-                        <DialogTrigger asChild><Button variant="outline" className="border-teal-500 dark:border-teal-600 text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 font-bold bg-teal-50/50 dark:bg-teal-900/10"><FilePlus2 className="w-4 h-4 mr-2" /> Thêm tiên lượng thủ công</Button></DialogTrigger>
                         <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
                             <DialogHeader><DialogTitle className="text-teal-700 dark:text-teal-400 flex items-center gap-2"><FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công</DialogTitle></DialogHeader>
                             <div className="grid gap-4 py-4">
@@ -886,13 +927,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
                     </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <AutoEstimateWizard projectId={projectId} onSuccess={loadData} />
-                    <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto text-white shadow-sm font-bold" onClick={handleSyncQTOToEstimation} disabled={calcLoading}>
-                        {calcLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Calculator className="w-4 h-4 mr-2" />} Phân tích Vật tư
-                    </Button>
                 </div>
             </div>
 
@@ -1103,7 +1137,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                         <span className="text-slate-800 dark:text-slate-200">{task.item_name}</span>
                                                     </TableCell>
                                                     <TableCell className="text-center align-top pt-3">{task.unit}</TableCell>
-                                                    <TableCell className="text-right text-indigo-700 font-black dark:text-indigo-400 align-top pt-3">{taskVol.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
+                                                    <TableCell className="text-right font-bold text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 bg-blue-50/50 dark:bg-blue-500/10 text-base">
+                                                        {taskVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </TableCell>
                                                     <TableCell className="text-right"></TableCell>
                                                     <TableCell className="text-right text-blue-700 font-black dark:text-blue-400 align-top pt-3">{formatCurrency(taskUnitPrice)}</TableCell>
                                                     <TableCell className="text-right text-emerald-700 font-black dark:text-emerald-400 align-top pt-3">{formatCurrency(taskTotalCost)}</TableCell>
@@ -1226,6 +1262,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     {(() => {
                                         if (!taskSchedules || Object.keys(taskSchedules).length === 0) return null;
 
+                                        // 🔴 1. TÍNH TỔNG CHI PHÍ TRỰC TIẾP CỦA DỰ ÁN (LÀM MẪU SỐ)
+                                        // Loại trừ các chi phí % chung (GT, LN, VAT) để tính tỷ trọng cho chuẩn
+                                        const totalDirectCost = estItems
+                                            .filter(e => !['GT', 'LN', 'VAT'].includes(e.category))
+                                            .reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
+
                                         // ✅ TẠO MẢNG MỚI & SORT THEO NGÀY BẮT ĐẦU RỒI MỚI RENDER
                                         const sortedTasks = [...schedulingData].sort((a, b) => {
                                             const sDatesA = taskSchedules[a.id];
@@ -1249,26 +1291,68 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             const sDates = taskSchedules[task.id];
                                             if (!sDates) return null;
 
+                                            // 🔴 2. TÍNH CHI PHÍ CỦA RIÊNG CÔNG TÁC NÀY
+                                            const taskCost = estItems
+                                                .filter(e => e.qto_item_id === task.id)
+                                                .reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
+
+                                            // 🔴 3. CHIA TỶ LỆ % TỶ TRỌNG
+                                            const weight = totalDirectCost > 0 ? (taskCost / totalDirectCost) * 100 : 0;
+
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                     <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
                                                     <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words">{task.item_name}</TableCell>
-                                                    <TableCell className="text-right font-bold text-slate-600 dark:text-slate-400 align-top pt-2">{task.weight.toFixed(2)}%</TableCell>
+
+                                                    {/* 🔴 4. ĐÃ THAY THẾ task.weight BẰNG BIẾN weight VỪA TÍNH */}
+                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">
+                                                        {weight.toFixed(2)}%
+                                                    </TableCell>
+
                                                     <TableCell className="text-right font-semibold align-top pt-2">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
                                                     <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-2">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
-                                                    <TableCell className="p-1 align-top pt-2">
-                                                        <Input
-                                                            type="number"
-                                                            min="1"
-                                                            defaultValue={task.assigned_workers || 1}
-                                                            onBlur={(e) => {
-                                                                updateLocalQTO(task.id, { assigned_workers: e.target.value });
-                                                                handleUpdateQTOField(task.id, 'assigned_workers', e.target.value);
-                                                            }}
-                                                            className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold"
-                                                        />
-                                                    </TableCell>
-                                                    <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">{task.duration}</TableCell>
+                                                    {/* KHỐI TÍNH TOÁN NGÀY LÀM TỰ ĐỘNG THEO THỢ BỐ TRÍ */}
+                                                    {(() => {
+                                                        const currentWorkers = Number(task.assigned_workers) || 1;
+                                                        // Công thức: Hao phí chia cho số thợ (làm tròn lên)
+                                                        const computedDuration = task.manDays > 0 ? Math.ceil(task.manDays / currentWorkers) : 1;
+
+                                                        return (
+                                                            <>
+                                                                {/* CỘT NHẬP THỢ BỐ TRÍ */}
+                                                                <TableCell className="p-1 align-top pt-2">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min="1"
+                                                                        defaultValue={currentWorkers}
+                                                                        onBlur={async (e) => {
+                                                                            const newWorkers = Number(e.target.value) || 1;
+                                                                            const newDuration = task.manDays > 0 ? Math.ceil(task.manDays / newWorkers) : 1;
+
+                                                                            // 1. Cập nhật giao diện (React State) ngay lập tức cho mượt
+                                                                            setQtoTasks(prev => prev.map(t =>
+                                                                                t.id === task.id ? { ...t, assigned_workers: newWorkers, duration: newDuration } : t
+                                                                            ));
+
+                                                                            // 2. Cập nhật Database ĐỒNG THỜI 2 trường để đẩy sang Gantt cho chuẩn
+                                                                            await supabase.from('qto_items')
+                                                                                .update({ assigned_workers: newWorkers, duration: newDuration })
+                                                                                .eq('id', task.id);
+
+                                                                            // 3. Tải lại để tính lại ngày tháng của Gantt ngầm
+                                                                            loadData();
+                                                                        }}
+                                                                        className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold"
+                                                                    />
+                                                                </TableCell>
+
+                                                                {/* CỘT HIỂN THỊ NGÀY LÀM (Tự động nhảy số) */}
+                                                                <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">
+                                                                    {computedDuration}
+                                                                </TableCell>
+                                                            </>
+                                                        );
+                                                    })()}
                                                     <TableCell className="p-1 align-top pt-2">
                                                         <PredecessorDialog
                                                             task={task}

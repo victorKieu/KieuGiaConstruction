@@ -24,28 +24,56 @@ export default function ProjectConstructionDocsTab({ projectId }: Props) {
 
     const loadData = async () => {
         setIsLoading(true);
-        // 1. Fetch dữ liệu công tác kèm details (diễn giải khối lượng)
-        const { data: qtoData } = await supabase
-            .from('qto_items')
-            .select('*, details:qto_item_details(*)')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: true });
+        try {
+            // 1. Fetch dữ liệu công tác kèm details
+            const { data: qtoData, error: qtoError } = await supabase
+                .from('qto_items')
+                .select('*, details:qto_item_details(*)')
+                .eq('project_id', projectId)
+                .order('created_at', { ascending: true });
 
-        // 2. Fetch hao phí vật tư
-        const { data: estData } = await supabase
-            .from('estimation_items')
-            .select('qto_item_id, material_name, category')
-            .eq('project_id', projectId);
+            if (qtoError) {
+                console.error("Lỗi lấy dữ liệu qto_items:", qtoError);
+                toast.error("Lỗi tải khối lượng công tác!");
+            }
+            const tasks = qtoData || [];
 
-        // 3. Fetch thư viện Định mức (lấy execution_guide)
-        const { data: normsData } = await supabase
-            .from('norms')
-            .select('code, execution_guide, name');
+            // 2. Fetch hao phí vật tư
+            const { data: estData } = await supabase
+                .from('estimation_items')
+                .select('qto_item_id, material_name, category')
+                .eq('project_id', projectId);
 
-        setQtoTasks(qtoData || []);
-        setEstItems(estData || []);
-        setNormsList(normsData || []);
-        setIsLoading(false);
+            // 3. Trích xuất danh sách norm_code TỒN TẠI trong dự án và làm sạch chuỗi
+            const uniqueNormCodes = Array.from(
+                new Set(tasks.map(t => t.norm_code?.trim()).filter(Boolean))
+            );
+
+            // 4. CHỈ fetch các thư viện Định mức thuộc dự án này (Vượt qua lỗi limit 1000 dòng của Supabase)
+            let normsData: any[] = [];
+            if (uniqueNormCodes.length > 0) {
+                const { data: nData, error: normsError } = await supabase
+                    .from('norms')
+                    .select('code, execution_guide')
+                    .in('code', uniqueNormCodes);
+
+                if (normsError) {
+                    console.error("Lỗi lấy dữ liệu norms:", normsError);
+                } else {
+                    normsData = nData || [];
+                }
+            }
+
+            setQtoTasks(tasks);
+            setEstItems(estData || []);
+            setNormsList(normsData);
+
+        } catch (error) {
+            console.error("Lỗi hệ thống khi loadData:", error);
+            toast.error("Có lỗi xảy ra khi tải dữ liệu.");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const sections = qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
@@ -166,14 +194,14 @@ export default function ProjectConstructionDocsTab({ projectId }: Props) {
                                                                     {/* Kỹ thuật chuẩn từ Thư viện */}
                                                                     {norm?.execution_guide && (
                                                                         <div className="p-2 bg-white dark:bg-slate-900 rounded border border-indigo-100 dark:border-indigo-900/50 text-slate-700 dark:text-slate-300 leading-relaxed italic shadow-sm">
-                                                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block uppercase mb-1">Kỹ thuật chuẩn:</span>
+                                                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block uppercase mb-1">Kỹ thuật thi công:</span>
                                                                             {norm.execution_guide}
                                                                         </div>
                                                                     )}
                                                                     {/* Lưu ý tại dự án (QTO) */}
                                                                     {task.description && (
                                                                         <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200 leading-relaxed shadow-sm">
-                                                                            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 block uppercase mb-1">Lưu ý tại công trường:</span>
+                                                                            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 block uppercase mb-1">Lưu ý:</span>
                                                                             {task.description}
                                                                         </div>
                                                                     )}

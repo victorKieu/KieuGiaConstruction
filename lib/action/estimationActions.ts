@@ -169,157 +169,188 @@ export async function deleteEstimationItem(itemId: string, projectId: string) {
 
 // ✅ HÀM MỚI: Thêm dòng thủ công
 export async function createManualEstimationItem(projectId: string, data: any) {
-    const supabase = await createClient();
-
-    const newItem = {
-        project_id: projectId,
-        original_name: data.name,
-        unit: data.unit,
-        quantity: parseFloat(data.quantity) || 0,
-        unit_price: parseFloat(data.unit_price) || 0,
-        // ❌ ĐÃ XÓA: total_cost (DB tự tính)
-        is_mapped: false
-    };
-
-    const { error } = await supabase.from("estimation_items").insert(newItem);
-
-    if (error) return { success: false, error: error.message };
-
-    revalidatePath(`/projects/${projectId}`);
-    return { success: true, message: "Đã thêm mới thành công!" };
-}
-
-// ✅ HÀM MỚI: Dùng để lưu tỉ lệ % của GT, LN, VAT
-export async function updateEstimationQuantity(itemId: string, projectId: string, quantity: number) {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = await createClient();
-    const { error } = await supabase.from('estimation_items').update({ quantity }).eq('id', itemId);
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-}
-
-// 🔴 CẬP NHẬT HÀM ĐỒNG BỘ: Tách GT, LN, VAT thành thông số toàn dự án
-export async function analyzeQTOAndGenerateEstimation(projectId: string) {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = await createClient();
     try {
-        const { data: qtoItems, error: qtoErr } = await supabase.from('qto_items')
-            .select('*, details:qto_item_details(*)')
-            .eq('project_id', projectId);
+        const { createClient } = await import("@/lib/supabase/server");
+        const supabase = await createClient();
 
-        if (qtoErr) throw new Error("Lỗi tải QTO: " + qtoErr.message);
-        if (!qtoItems || qtoItems.length === 0) return { success: false, error: "Không có dữ liệu bóc tách" };
+        const insertData = {
+            project_id: projectId,
+            qto_item_id: null, // Chi phí này không bám vào công tác bóc tách nào
+            category: data.category || 'VL',
+            material_name: data.material_name,
+            original_name: data.original_name || data.material_name,
+            quantity: data.quantity,
+            unit: data.unit,
+            unit_price: data.unit_price,
+            total_cost: data.total_cost,
+            is_mapped: data.is_mapped || false,
+        };
 
-        // Xóa vật tư cũ, GIỮ LẠI các biến tổng mức (GT, LN, VAT)
-        await supabase.from('estimation_items')
-            .delete()
-            .eq('project_id', projectId)
-            .not('qto_item_id', 'is', null);
+        const { error } = await supabase
+            .from('estimation_items')
+            .insert(insertData);
 
-        const insertPayload: any[] = [];
-        let taskCount = 0;
+        if (error) throw error;
 
-        for (const qto of qtoItems) {
-            if (qto.item_type === 'section' || !qto.parent_id) continue;
-            taskCount++;
-
-            let taskVol = Number(qto.quantity) || 0;
-            if (taskVol === 0 && qto.details && qto.details.length > 0) {
-                taskVol = qto.details.reduce((sum: number, d: any) => {
-                    const l = parseFloat(d.length) || 0, w = parseFloat(d.width) || 0, h = parseFloat(d.height) || 0, f = parseFloat(d.quantity_factor) || 0;
-                    if (l === 0 && w === 0 && h === 0) return sum + f;
-                    return sum + ((l !== 0 ? l : 1) * (w !== 0 ? w : 1) * (h !== 0 ? h : 1) * (f !== 0 ? f : 1));
-                }, 0);
-            }
-
-            let hasMappedNorm = false;
-
-            if (qto.norm_code) {
-                // ✅ QUERY AN TOÀN: Ép bí danh resource:resources để chống lỗi sập Cache
-                const { data: normData, error: normErr } = await supabase.from('norms')
-                    .select('*, norm_details ( quantity, resource:resources ( id, code, name, unit ) )')
-                    .eq('code', qto.norm_code)
-                    .maybeSingle();
-
-                if (normData && normData.norm_details && normData.norm_details.length > 0) {
-                    hasMappedNorm = true;
-
-                    // ✅ LẤY HỆ SỐ QUY ĐỔI (100m2, 10m3...) TỪ DB CHÚNG TA VỪA SQL
-                    const factor = Number(normData.conversion_factor) || 1;
-
-                    // ✅ CHIA SẴN KHỐI LƯỢNG CHO HỆ SỐ
-                    const actualTaskVol = taskVol / factor;
-
-                    for (const detail of normData.norm_details) {
-                        const res = detail.resource || detail.resources;
-                        if (!res) continue;
-
-                        // ✅ TỰ ĐỘNG PHÂN LOẠI (VL/NC/M) DỰA THEO MÃ HOẶC TÊN (Chống lỗi trống nhóm)
-                        let category = 'VL';
-                        const codeUpper = res.code?.toUpperCase() || "";
-                        const nameLower = res.name?.toLowerCase() || "";
-
-                        if (codeUpper.startsWith('N') || nameLower.includes('nhân công') || nameLower.includes('thợ')) {
-                            category = 'NC';
-                        } else if (codeUpper.startsWith('M') || nameLower.includes('máy')) {
-                            category = 'M';
-                        }
-
-                        insertPayload.push({
-                            project_id: projectId,
-                            qto_item_id: qto.id,
-                            category: category,
-                            material_code: res.code,
-                            material_name: res.name,
-
-                            // ✅ TÍNH TOÁN: (Khối lượng bóc / Hệ số) * Định mức hao phí
-                            quantity: actualTaskVol * Number(detail.quantity),
-
-                            unit: res.unit,
-                            unit_price: res.unit_price || 0,
-                            is_mapped: true,
-                            dimensions: { norm: Number(detail.quantity), factor: factor }
-                        });
-                    }
-                }
-            }
-
-            if (!hasMappedNorm) {
-                insertPayload.push({
-                    project_id: projectId, qto_item_id: qto.id, category: 'VL',
-                    material_name: qto.item_name || 'Vật tư chưa rõ', quantity: taskVol,
-                    unit: qto.unit || 'Lần', unit_price: qto.unit_price || 0,
-                    is_mapped: false, dimensions: { norm: 1, factor: 1 }
-                });
-            }
-        }
-
-        // Bắn dữ liệu vào DB theo từng Lô (Batch) để chống quá tải
-        if (insertPayload.length > 0) {
-            for (let i = 0; i < insertPayload.length; i += 500) {
-                await supabase.from('estimation_items').insert(insertPayload.slice(i, i + 500));
-            }
-        }
-
-        // Khởi tạo các Chi phí cố định nếu chưa có
-        const { data: existingGlobals } = await supabase.from('estimation_items').select('category').eq('project_id', projectId).in('category', ['GT', 'LN', 'VAT']);
-        const existingCategories = existingGlobals?.map(e => e.category) || [];
-        const globalPayload: any[] = [];
-
-        if (!existingCategories.includes('GT')) globalPayload.push({ project_id: projectId, qto_item_id: null, category: 'GT', material_name: 'Chi phí gián tiếp (quản lý, lán trại...)', quantity: 10, unit: '%', unit_price: 0, is_mapped: true });
-        if (!existingCategories.includes('LN')) globalPayload.push({ project_id: projectId, qto_item_id: null, category: 'LN', material_name: 'Lợi nhuận định mức dự kiến', quantity: 12, unit: '%', unit_price: 0, is_mapped: true });
-        if (!existingCategories.includes('VAT')) globalPayload.push({ project_id: projectId, qto_item_id: null, category: 'VAT', material_name: 'Thuế giá trị gia tăng (VAT)', quantity: 10, unit: '%', unit_price: 0, is_mapped: true });
-
-        if (globalPayload.length > 0) {
-            await supabase.from('estimation_items').insert(globalPayload);
-        }
-
-        return { success: true, message: `Đồng bộ thành công! Phân tích ${taskCount} công tác.` };
+        return { success: true, message: "Đã thêm chi phí phụ!" };
     } catch (e: any) {
-        console.error("Lỗi analyzeQTOAndGenerateEstimation:", e);
+        console.error("Lỗi createManualEstimationItem:", e);
         return { success: false, error: e.message };
     }
 }
+
+// ✅ HÀM MỚI: Dùng để lưu tỉ lệ % của GT, LN, VAT
+export async function updateEstimationQuantity(itemId: string, projectId: string, quantity: number, category: string = '') {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    // NẾU LÀ DỮ LIỆU MỚI TẠO (Mang ID giả temp-) -> THỰC HIỆN INSERT
+    if (itemId.startsWith('temp-')) {
+        const cat = category || itemId.split('-')[1].toUpperCase();
+
+        let name = 'Chi phí';
+        if (cat === 'GT') name = 'Chi phí chung (Quản lý, lán trại...)';
+        if (cat === 'LN') name = 'Thu nhập chịu thuế tính trước (Lợi nhuận)';
+        if (cat === 'VAT') name = 'Thuế giá trị gia tăng (VAT)';
+
+        const { error } = await supabase.from('estimation_items').insert({
+            project_id: projectId,
+            qto_item_id: null, // Tham số hệ thống thì không bám vào công tác nào cả
+            category: cat,
+            original_name: name,
+            material_name: name,
+            quantity: quantity,
+            unit: '%',
+            unit_price: 0,
+            is_mapped: true
+        });
+
+        if (error) return { success: false, error: error.message };
+        return { success: true };
+    }
+
+    // NẾU ĐÃ CÓ ID THẬT TRONG DATABASE -> THỰC HIỆN UPDATE BÌNH THƯỜNG
+    const { error } = await supabase.from('estimation_items').update({ quantity }).eq('id', itemId);
+    if (error) return { success: false, error: error.message };
+
+    return { success: true };
+}
+
+// ============================================================================
+// 1. HÀM BÓC TÁCH VẬT TƯ CHO 1 CÔNG TÁC (TẠO HAO PHÍ KHI CÓ MÃ ĐỊNH MỨC)
+// ============================================================================
+export async function analyzeSingleQTOItem(qtoId: string, projectId: string, currentTaskVol: number = 0) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    try {
+        // 1. Lấy thông tin công tác (Đã có sẵn parent_id nhờ hàm addManualQTOItem của anh)
+        const { data: qto } = await supabase.from('qto_items').select('*').eq('id', qtoId).single();
+        if (!qto || !qto.norm_code) return { success: false, error: "Chưa có mã định mức" };
+
+        // 🔴 ĐÂY LÀ ĐIỂM QUYẾT ĐỊNH: Dùng parent_id để truy tìm tên Hạng mục cha
+        let sectionName = 'Hạng mục chung';
+        if (qto.parent_id) {
+            const { data: parentSection } = await supabase.from('qto_items').select('item_name').eq('id', qto.parent_id).single();
+            if (parentSection) {
+                sectionName = parentSection.item_name;
+            }
+        }
+
+        // 2. Lấy định mức
+        const { data: normData } = await supabase.from('norms')
+            .select('*, norm_details ( quantity, resource:resources ( id, code, name, unit, unit_price ) )')
+            .eq('code', qto.norm_code).maybeSingle();
+
+        if (!normData || !normData.norm_details) return { success: true };
+
+        const factor = Number(normData.conversion_factor) || 1;
+        const taskVol = currentTaskVol / factor;
+        const insertPayload: any[] = [];
+
+        // Xóa hao phí cũ
+        await supabase.from('estimation_items').delete().eq('qto_item_id', qtoId);
+
+        // 3. Chuẩn bị dữ liệu Hao phí
+        for (const detail of normData.norm_details) {
+            const res = detail.resource || detail.resources;
+            if (!res) continue;
+
+            let category = 'VL';
+            const codeUpper = res.code?.toUpperCase() || "";
+            const nameLower = res.name?.toLowerCase() || "";
+            if (codeUpper.startsWith('N') || nameLower.includes('nhân công') || nameLower.includes('thợ')) category = 'NC';
+            else if (codeUpper.startsWith('M') || nameLower.includes('máy')) category = 'M';
+
+            insertPayload.push({
+                project_id: projectId,
+                qto_item_id: qto.id,
+                section_name: sectionName, // 🔴 LƯU TÊN HẠNG MỤC ĐỂ TAB 4 GOM NHÓM ĐÚNG
+                category: category,
+                original_name: res.name,
+                material_code: res.code,
+                material_name: res.name,
+                unit_price: res.unit_price || 0,
+                is_mapped: true,
+                quantity: taskVol * Number(detail.quantity),
+                unit: res.unit,
+                dimensions: { norm: Number(detail.quantity), factor: factor }
+            });
+        }
+
+        // 4. Lưu vào DB
+        if (insertPayload.length > 0) {
+            await supabase.from('estimation_items').insert(insertPayload);
+        }
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+// ============================================================================
+// 2. HÀM ĐỒNG BỘ KHỐI LƯỢNG (NHẬP DÀI RỘNG CAO -> CẬP NHẬT HAO PHÍ)
+// ============================================================================
+export async function syncTaskVolumeAndEstimations(taskId: string, newTaskVol: number) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    // 1. Lấy thông tin công tác hiện tại
+    const { data: qto } = await supabase.from('qto_items').select('*').eq('id', taskId).single();
+    if (!qto) return { success: false };
+
+    // 2. Lấy danh sách hao phí của công tác
+    const { data: estItems } = await supabase.from('estimation_items').select('*').eq('qto_item_id', taskId);
+
+    // LOGIC THÔNG MINH: Nếu công tác chưa có Hao phí nhưng lại CÓ mã định mức -> Bóc tách ngay!
+    if ((!estItems || estItems.length === 0) && qto.norm_code) {
+        await analyzeSingleQTOItem(taskId, qto.project_id, newTaskVol);
+    }
+    // Nếu đã có Hao phí -> Tính lại tỷ lệ khối lượng
+    else if (estItems && estItems.length > 0) {
+        const oldVol = Number(qto.quantity) || 0;
+
+        for (const item of estItems) {
+            let newQty = 0;
+            // Dùng chuẩn định mức JSON để tính toán (Chính xác tuyệt đối)
+            if (item.dimensions && item.dimensions.norm !== undefined) {
+                const norm = Number(item.dimensions.norm) || 0;
+                const factor = Number(item.dimensions.factor) || 1;
+                newQty = (newTaskVol / factor) * norm;
+            } else {
+                // Tính tỷ lệ cho hao phí nhập tay
+                newQty = oldVol === 0 ? 0 : (Number(item.quantity) / oldVol) * newTaskVol;
+            }
+
+            await supabase.from('estimation_items').update({ quantity: newQty }).eq('id', item.id);
+        }
+    }
+
+    // 3. Chốt khối lượng tổng vào QTO
+    await supabase.from('qto_items').update({ quantity: newTaskVol }).eq('id', taskId);
+    return { success: true };
+}
+
 
 // ✅ HÀM MỚI: Áp giá hàng loạt từ Bảng Tổng hợp Vật tư/Nhân công/Máy
 export async function updateEstimationPriceByGroup(projectId: string, materialName: string, category: string, price: number) {
@@ -403,3 +434,4 @@ export async function syncCostToWBS(projectId: string) {
         return { success: false, error: e.message };
     }
 }
+

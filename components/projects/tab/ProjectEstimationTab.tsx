@@ -107,16 +107,21 @@ export default function ProjectEstimationTab({ projectId }: Props) {
         router.refresh();
     };
 
-    const handleRateChange = async (id: string, newRate: string) => {
+    const handleRateChange = async (id: string, category: string, newRate: string) => {
         const rate = parseFloat(newRate) || 0;
-        setEstItems(prev => prev.map(item => item.id === id ? { ...item, quantity: rate } : item));
-        const res = await updateEstimationQuantity(id, projectId, rate);
+
+        // Lưu thẳng vào Database (Backend tự lo việc Insert hay Update)
+        const res = await updateEstimationQuantity(id, projectId, rate, category);
+
         if (res?.success === false) {
             toast.error("Lỗi lưu tỷ lệ: " + res.error);
-            loadData(); // Lấy lại dữ liệu cũ nếu lưu lỗi
         } else {
-            router.refresh();
+            toast.success(`Đã cập nhật tỉ lệ ${category} thành ${rate}%`);
         }
+
+        // Bắt buộc Load lại Data để thay thế ID 'temp-' thành ID thật từ DB
+        await loadData();
+        router.refresh();
     };
 
     const handleMaterialSelect = async (itemId: string, mat: any) => {
@@ -195,7 +200,10 @@ export default function ProjectEstimationTab({ projectId }: Props) {
         normalItems.filter(i => i.category === category).forEach(item => {
             const key = item.material_name;
             if (!map.has(key)) map.set(key, { ...item, total_quantity: 0, total_cost_sum: 0 });
-            const exist = map.get(key); exist.total_quantity += Number(item.quantity); exist.total_cost_sum += Number(item.total_cost || 0);
+
+            const exist = map.get(key);
+            exist.total_quantity += Number(item.quantity);
+            exist.total_cost_sum += Number(item.total_cost || 0);
         });
         return Array.from(map.values()).sort((a, b) => a.material_name.localeCompare(b.material_name));
     };
@@ -267,7 +275,7 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Chi phí chung (Quản lý, lán trại...)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">GT = T x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 focus-visible:ring-blue-500" defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, e.target.value)} />
+                                <Input type="number" className="..." defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, 'GT', e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(GT)}</TableCell>
                         </TableRow>
@@ -276,7 +284,7 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Thu nhập chịu thuế tính trước (Lợi nhuận)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">TL = (T+GT) x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 focus-visible:ring-blue-500" defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, e.target.value)} />
+                                <Input type="number" className="..." defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, 'LN', e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(TL)}</TableCell>
                         </TableRow>
@@ -292,7 +300,7 @@ export default function ProjectEstimationTab({ projectId }: Props) {
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Thuế giá trị gia tăng (VAT)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">VAT = G x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="h-8 text-center text-blue-700 dark:text-blue-400 font-bold border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 focus-visible:ring-blue-500" defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, e.target.value)} />
+                                <Input type="number" className="..." defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, 'VAT', e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(VAT)}</TableCell>
                         </TableRow>
@@ -394,7 +402,7 @@ export default function ProjectEstimationTab({ projectId }: Props) {
 
                                                             {/* ✅ TỔNG KL */}
                                                             <TableCell className="text-right font-bold text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 bg-blue-50/50 dark:bg-blue-500/10 text-base">
-                                                                {taskVol.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                                                                {taskVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                             </TableCell>
 
                                                             {/* ✅ ĐƠN GIÁ */}

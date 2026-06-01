@@ -241,7 +241,7 @@ export async function addManualQTOItem(
     itemName: string,
     unit: string,
     itemType: string,
-    normCode: string = "" // ✅ Thêm tham số này
+    normCode: string = ""
 ) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
@@ -253,22 +253,29 @@ export async function addManualQTOItem(
         const { data: newSec, error: secErr } = await supabase.from('qto_items').insert({
             project_id: projectId, item_name: newSectionName, unit: '', item_type: 'section'
         }).select().single();
+
         if (secErr) return { success: false, error: secErr.message };
         finalSectionId = newSec.id;
     }
 
-    // ✅ Lưu thêm cột norm_code
-    const { error } = await supabase.from('qto_items').insert({
-        project_id: projectId,
-        parent_id: finalSectionId,
-        item_name: itemName,
-        unit: unit,
-        item_type: itemType,
-        norm_code: normCode || null // ✅ Lưu mã định mức vào đây
-    });
+    // Insert công tác mới
+    const { data, error } = await supabase
+        .from('qto_items')
+        .insert({
+            project_id: projectId,
+            parent_id: finalSectionId, // ✅ Đã sửa thành finalSectionId (Đúng biến của hàm)
+            item_name: itemName,       // ✅ Đã sửa thành itemName
+            unit: unit,                // ✅ Đã sửa thành unit
+            item_type: itemType || 'task',
+            norm_code: normCode,
+            quantity: 0
+        })
+        .select()
+        .single();
 
     if (error) return { success: false, error: error.message };
-    return { success: true };
+
+    return { success: true, data: data };
 }
 
 // ✅ HÀM MỚI: Sửa trực tiếp thông tin QTO Item (Tên, Đơn vị tính...)
@@ -293,55 +300,61 @@ export async function updateQTOItem(itemId: string, field: string, value: any) {
 
 export async function syncQTOToWBS(projectId: string) {
     try {
+        const { createClient } = await import("@/lib/supabase/server");
         const supabase = await createClient();
+
         const { data: qtoItems } = await supabase.from('qto_items').select('*').eq('project_id', projectId);
         if (!qtoItems || qtoItems.length === 0) throw new Error("Chưa có khối lượng bóc tách");
 
-        const { data: existingTasks } = await supabase.from('project_tasks').select('id, name, parent_id').eq('project_id', projectId);
+        // Lấy danh sách Tasks hiện tại
+        const { data: existingTasks } = await supabase.from('project_tasks').select('id, name, parent_id, qto_item_id').eq('project_id', projectId);
 
         const sections = qtoItems.filter(i => i.item_type === 'section' || !i.parent_id);
         const tasks = qtoItems.filter(i => i.parent_id && i.item_type !== 'section');
         let taskCounter = 1;
 
         for (const sec of sections) {
-            // 1. Tạo Task Cha
-            let parentTask = existingTasks?.find(t => t.name === sec.item_name && !t.parent_id);
+            // 1. Đồng bộ Task Cha (Hạng mục)
+            let parentTask = existingTasks?.find(t => t.qto_item_id === sec.id || (!t.qto_item_id && t.name === sec.item_name && !t.parent_id));
             let parentId = parentTask?.id;
             const secWbsCode = `${taskCounter}`;
 
             if (!parentId) {
                 const { data: newParent } = await supabase.from('project_tasks').insert({
-                    project_id: projectId, name: sec.item_name, wbs_code: secWbsCode
+                    project_id: projectId, name: sec.item_name, wbs_code: secWbsCode, qto_item_id: sec.id
                 }).select().single();
                 parentId = newParent?.id;
             } else {
-                await supabase.from('project_tasks').update({ wbs_code: secWbsCode }).eq('id', parentId);
+                await supabase.from('project_tasks').update({ name: sec.item_name, wbs_code: secWbsCode, qto_item_id: sec.id }).eq('id', parentId);
             }
 
-            // 2. Tạo Task Con + Gắn Khối Lượng (Không gắn tiền)
+            // 2. Đồng bộ Task Con (Công tác)
             const secTasks = tasks.filter(t => t.parent_id === sec.id);
             let childCounter = 1;
 
             for (const t of secTasks) {
                 const childWbsCode = `${secWbsCode}.${childCounter}`;
                 const childQty = Number(t.quantity) || 0;
-                let childTask = existingTasks?.find(ex => ex.name === t.item_name && ex.parent_id === parentId);
+
+                // Nhận diện qua qto_item_id (chuẩn xác 100%)
+                let childTask = existingTasks?.find(ex => ex.qto_item_id === t.id || (!ex.qto_item_id && ex.name === t.item_name && ex.parent_id === parentId));
 
                 if (!childTask) {
                     await supabase.from('project_tasks').insert({
                         project_id: projectId, parent_id: parentId, name: t.item_name,
-                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit
+                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit, qto_item_id: t.id
                     });
                 } else {
+                    // CHỈ UPDATE khối lượng, tên, unit. KHÔNG CHẠM VÀO start_date, duration, predecessor
                     await supabase.from('project_tasks').update({
-                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit
+                        name: t.item_name, wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit, qto_item_id: t.id
                     }).eq('id', childTask.id);
                 }
                 childCounter++;
             }
             taskCounter++;
         }
-        return { success: true, message: "Đã đồng bộ Khối lượng sang Bảng Tiến độ WBS!" };
+        return { success: true, message: "Đồng bộ an toàn: Giữ nguyên tiến độ, cập nhật khối lượng mới!" };
     } catch (e: any) {
         return { success: false, error: e.message };
     }

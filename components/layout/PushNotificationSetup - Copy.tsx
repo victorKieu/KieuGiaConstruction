@@ -3,44 +3,41 @@
 import { useEffect, useRef, useState } from 'react';
 import OneSignal from 'react-onesignal';
 import { BellRing } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation'; // ✅ Thêm import Router của Next.js
 
 export default function PushNotificationSetup({ userId }: { userId?: string }) {
     const isInitTriggered = useRef(false);
     const [isSdkReady, setIsSdkReady] = useState(false);
     const [permissionStatus, setPermissionStatus] = useState<string>("default");
 
-    const router = useRouter();
-    const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID as string;
+    const router = useRouter(); // ✅ Khởi tạo Router
+    const APP_ID = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID as string; // Ép kiểu string để tránh lỗi TS
 
     // 1. Khởi tạo OneSignal
     useEffect(() => {
         const initOneSignal = async () => {
             if (isInitTriggered.current) return;
-
-            // 🔴 FIX LỖI: Chỉ khởi tạo khi không phải là môi trường Localhost
-            if (typeof window !== "undefined" && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-                console.log("OneSignal disabled on localhost to prevent initialization errors.");
-                return;
-            }
-
             isInitTriggered.current = true;
 
             try {
                 await OneSignal.init({
                     appId: APP_ID,
-                    allowLocalhostAsSecureOrigin: true, // Nếu cấu hình OneSignal cho phép localhost, nhưng an toàn nhất là bypass theo logic if ở trên
+                    allowLocalhostAsSecureOrigin: true,
                     notifyButton: { enable: false } as any,
                 });
 
                 setIsSdkReady(true);
 
-                // THÊM LOGIC BẮT SỰ KIỆN CLICK VÀO THÔNG BÁO
+                // ✅ THÊM LOGIC BẮT SỰ KIỆN CLICK VÀO THÔNG BÁO
                 OneSignal.Notifications.addEventListener('click', (event) => {
+                    // Ép kiểu (typecast) để TypeScript hiểu cấu trúc của additionalData
                     const customData = event.notification.additionalData as Record<string, any> | undefined;
+
+                    // Ưu tiên lấy url từ data (để không bị mở tab mới), nếu không có mới lấy launchURL
                     const targetUrl = customData?.url || event.notification.launchURL;
 
                     if (targetUrl) {
+                        // Dùng Next.js Router chuyển trang nội bộ
                         router.push(targetUrl);
                     }
                 });
@@ -49,7 +46,7 @@ export default function PushNotificationSetup({ userId }: { userId?: string }) {
                 const currentPermission = OneSignal.Notifications.permission;
                 setPermissionStatus(currentPermission ? "granted" : "default");
 
-                // Thử gọi tự động
+                // Thử gọi tự động (Có thể bị mobile chặn)
                 if (!currentPermission) {
                     await OneSignal.Slidedown.promptPush();
                 }
@@ -59,6 +56,7 @@ export default function PushNotificationSetup({ userId }: { userId?: string }) {
             }
         };
 
+        // Đảm bảo chỉ chạy trên client
         if (typeof window !== "undefined") {
             initOneSignal();
         }
@@ -66,15 +64,9 @@ export default function PushNotificationSetup({ userId }: { userId?: string }) {
 
     // 2. Gắn User ID
     useEffect(() => {
-        // Fix: Chống gọi khi bị chặn ở localhost
-        if (typeof window !== "undefined" && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) return;
-
         if (isSdkReady && userId) {
-            OneSignal.login(userId).then(() => {
-                console.log("✅ Đã login OneSignal với ID:", userId);
-            }).catch((err) => {
-                console.error("Lỗi đăng nhập OneSignal:", err)
-            });
+            OneSignal.login(userId);
+            console.log("✅ Đã login OneSignal với ID:", userId);
         } else if (isSdkReady && !userId) {
             OneSignal.logout();
         }
@@ -91,11 +83,12 @@ export default function PushNotificationSetup({ userId }: { userId?: string }) {
         }
     };
 
-    // Ẩn khi đã có quyền, khi chưa sẵn sàng, hoặc ĐANG Ở LOCALHOST
-    if (permissionStatus === "granted" || !isSdkReady || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))) {
+    // ✅ NẾU ĐÃ CẤP QUYỀN RỒI -> ẨN ĐI (Trả về null như ý sếp)
+    if (permissionStatus === "granted" || !isSdkReady) {
         return null;
     }
 
+    // 🚨 NẾU CHƯA CẤP QUYỀN -> Hiển thị nút ở góc dưới màn hình để ép Mobile mở popup
     return (
         <div className="fixed bottom-4 left-4 z-50">
             <button

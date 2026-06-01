@@ -98,6 +98,16 @@ export async function resetProjectEstimation(projectId: string) {
 
     if (estError) throw new Error(`Lỗi dọn dẹp hao phí: ${estError.message}`);
 
+    // 3. CHỈ XÓA các công việc bên Tiến độ (Tasks) được đẩy sang từ Tiên lượng
+    // Lọc bằng cách: Chỉ xóa task có chứa qto_item_id (tức là task sinh ra từ dự toán)
+    const { error: taskError } = await supabase
+        .from("project_tasks")
+        .delete()
+        .eq("project_id", projectId)
+        .not("qto_item_id", "is", null); // <--- ĐIỀU KIỆN QUAN TRỌNG Ở ĐÂY
+
+    if (taskError) throw new Error(`Lỗi dọn dẹp tiến độ công việc: ${taskError.message}`);
+
     revalidatePath(`/estimations/${projectId}`);
     revalidatePath("/estimations");
     return { success: true };
