@@ -3,6 +3,35 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
+// --- HÀM KIỂM TRA TRẠNG THÁI GANTT TRƯỚC KHI THAO TÁC (HÀM NỘI BỘ) ---
+async function checkTaskStatusInGantt(qtoItemId: string, supabase: any) {
+    // Chỉ select đúng các cột có trong DB: id, progress, status_id
+    // Bỏ check source_module để bắt được cả những task cũ bị NULL
+    const { data: linkedTask, error } = await supabase
+        .from('project_tasks')
+        .select('id, progress, status_id')
+        .eq('source_id', qtoItemId)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Lỗi khi check Gantt Task:", error.message);
+        return { isLocked: false };
+    }
+
+    if (!linkedTask) {
+        return { isLocked: false, status: 'NOT_IN_GANTT' };
+    }
+
+    // KHÓA BẢO VỆ: Chỉ cần tiến độ > 0 là CẤM XÓA/CẤM SỬA
+    const currentProgress = Number(linkedTask.progress) || 0;
+
+    if (currentProgress > 0) {
+        return { isLocked: true, progress: currentProgress };
+    }
+
+    return { isLocked: false, progress: 0 };
+}
+
 // --- 1. LẤY DỮ LIỆU BÓC TÁCH ---
 export async function getProjectQTO(projectId: string) {
     const supabase = await createClient();
@@ -92,10 +121,16 @@ export async function updateQTODetailText(detailId: string, projectId: string, t
     return { success: true };
 }
 
-// LƯU MÃ ĐỊNH MỨC VÀO HẠNG MỤC QTO
+// --- LƯU MÃ ĐỊNH MỨC VÀO HẠNG MỤC QTO (ĐÃ BỔ SUNG KHÓA) ---
 export async function updateQTONormCode(itemId: string, projectId: string, normCode: string) {
     const supabase = await createClient();
     try {
+        // KIỂM TRA KHÓA
+        const lockCheck = await checkTaskStatusInGantt(itemId, supabase);
+        if (lockCheck.isLocked) {
+            return { success: false, error: "Công tác này đang thi công. Không thể đổi mã định mức!" };
+        }
+
         const { error } = await supabase
             .from('qto_items')
             .update({ norm_code: normCode })
@@ -113,14 +148,50 @@ export async function updateQTONormCode(itemId: string, projectId: string, normC
 // --- 5. DELETE ACTIONS ---
 export async function deleteQTOItem(id: string, projectId: string) {
     const supabase = await createClient();
+
+    // 1. KIỂM TRA KHÓA CHÍNH NÓ (Dành cho Task đơn lẻ)
+    const lockCheck = await checkTaskStatusInGantt(id, supabase);
+    if (lockCheck.isLocked) {
+        return { success: false, error: `Công tác này đã đạt ${lockCheck.progress}% tiến độ ngoài công trường. Tuyệt đối không được xóa!` };
+    }
+
+    // 2. NẾU LÀ HẠNG MỤC CHA -> KIỂM TRA TOÀN BỘ CÔNG TÁC CON CỦA NÓ
+    const { data: childTasks } = await supabase
+        .from('qto_items')
+        .select('id')
+        .eq('parent_id', id);
+
+    if (childTasks && childTasks.length > 0) {
+        for (const child of childTasks) {
+            const childLockCheck = await checkTaskStatusInGantt(child.id, supabase);
+            if (childLockCheck.isLocked) {
+                return { success: false, error: `Hạng mục này chứa công tác đã đạt ${childLockCheck.progress}% tiến độ. Không thể xóa Hạng mục!` };
+            }
+        }
+    }
+
+    // 3. Vượt qua mọi trạm kiểm soát -> Tiến hành xóa
     const { error } = await supabase.from("qto_items").delete().eq("id", id);
     if (error) return { success: false, error: error.message };
+
     revalidatePath(`/projects/${projectId}`);
     return { success: true };
 }
 
 export async function deleteQTODetail(id: string, projectId: string) {
     const supabase = await createClient();
+
+    // Để xóa chi tiết, cần biết source_id của nó
+    const { data: detail } = await supabase.from("qto_item_details").select('source_id').eq('id', id).single();
+
+    if (detail?.source_id) {
+        // KIỂM TRA KHÓA TRÊN TASK CHA
+        const lockCheck = await checkTaskStatusInGantt(detail.source_id, supabase);
+        if (lockCheck.isLocked) {
+            return { success: false, error: "Công tác cha đang thi công. Không thể thay đổi chi tiết khối lượng!" };
+        }
+    }
+
     const { error } = await supabase.from("qto_item_details").delete().eq("id", id);
     if (error) return { success: false, error: error.message };
     revalidatePath(`/projects/${projectId}`);
@@ -282,6 +353,17 @@ export async function addManualQTOItem(
 export async function updateQTOItem(itemId: string, field: string, value: any) {
     const supabase = await createClient();
 
+    // Các field liên quan đến thay đổi nội dung, khối lượng mới bị khóa
+    // Nếu chỉ là mở rộng dòng (expanded) thì không cần khóa
+    const sensitiveFields = ['item_name', 'unit', 'norm_code', 'quantity'];
+
+    if (sensitiveFields.includes(field)) {
+        const lockCheck = await checkTaskStatusInGantt(itemId, supabase);
+        if (lockCheck.isLocked) {
+            return { success: false, error: "Công tác này đang thi công. Không thể sửa thông tin!" };
+        }
+    }
+
     // Nếu field là duration thì parse sang số
     const finalValue = field === 'duration' ? Number(value) : value;
 
@@ -307,7 +389,7 @@ export async function syncQTOToWBS(projectId: string) {
         if (!qtoItems || qtoItems.length === 0) throw new Error("Chưa có khối lượng bóc tách");
 
         // Lấy danh sách Tasks hiện tại
-        const { data: existingTasks } = await supabase.from('project_tasks').select('id, name, parent_id, qto_item_id').eq('project_id', projectId);
+        const { data: existingTasks } = await supabase.from('project_tasks').select('id, name, parent_id, source_id').eq('project_id', projectId);
 
         const sections = qtoItems.filter(i => i.item_type === 'section' || !i.parent_id);
         const tasks = qtoItems.filter(i => i.parent_id && i.item_type !== 'section');
@@ -315,17 +397,17 @@ export async function syncQTOToWBS(projectId: string) {
 
         for (const sec of sections) {
             // 1. Đồng bộ Task Cha (Hạng mục)
-            let parentTask = existingTasks?.find(t => t.qto_item_id === sec.id || (!t.qto_item_id && t.name === sec.item_name && !t.parent_id));
+            let parentTask = existingTasks?.find(t => t.source_id === sec.id || (!t.source_id && t.name === sec.item_name && !t.parent_id));
             let parentId = parentTask?.id;
             const secWbsCode = `${taskCounter}`;
 
             if (!parentId) {
                 const { data: newParent } = await supabase.from('project_tasks').insert({
-                    project_id: projectId, name: sec.item_name, wbs_code: secWbsCode, qto_item_id: sec.id
+                    project_id: projectId, name: sec.item_name, wbs_code: secWbsCode, source_id: sec.id
                 }).select().single();
                 parentId = newParent?.id;
             } else {
-                await supabase.from('project_tasks').update({ name: sec.item_name, wbs_code: secWbsCode, qto_item_id: sec.id }).eq('id', parentId);
+                await supabase.from('project_tasks').update({ name: sec.item_name, wbs_code: secWbsCode, source_id: sec.id }).eq('id', parentId);
             }
 
             // 2. Đồng bộ Task Con (Công tác)
@@ -337,17 +419,17 @@ export async function syncQTOToWBS(projectId: string) {
                 const childQty = Number(t.quantity) || 0;
 
                 // Nhận diện qua qto_item_id (chuẩn xác 100%)
-                let childTask = existingTasks?.find(ex => ex.qto_item_id === t.id || (!ex.qto_item_id && ex.name === t.item_name && ex.parent_id === parentId));
+                let childTask = existingTasks?.find(ex => ex.source_id === t.id || (!ex.source_id && ex.name === t.item_name && ex.parent_id === parentId));
 
                 if (!childTask) {
                     await supabase.from('project_tasks').insert({
                         project_id: projectId, parent_id: parentId, name: t.item_name,
-                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit, qto_item_id: t.id
+                        wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit, source_id: t.id
                     });
                 } else {
                     // CHỈ UPDATE khối lượng, tên, unit. KHÔNG CHẠM VÀO start_date, duration, predecessor
                     await supabase.from('project_tasks').update({
-                        name: t.item_name, wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit, qto_item_id: t.id
+                        name: t.item_name, wbs_code: childWbsCode, planned_quantity: childQty, unit: t.unit, source_id: t.id
                     }).eq('id', childTask.id);
                 }
                 childCounter++;

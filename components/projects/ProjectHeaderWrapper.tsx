@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-    ArrowLeft, MoreVertical, Edit, Trash2, Loader2, Settings, RotateCcw, RefreshCcw, XCircle, ArchiveRestore, PlayCircle, PauseCircle
+    ArrowLeft, MoreVertical, Edit, Trash2, Loader2, Settings, RotateCcw, RefreshCcw, XCircle, ArchiveRestore, PlayCircle, PauseCircle, Hammer
 } from "lucide-react";
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -23,6 +23,7 @@ import { undoConstructionPhase, undoFinishConstructionPhase, undoCancelProject, 
 import FinishProjectDialog from "@/components/projects/dialogs/FinishProjectDialog";
 import CancelProjectDialog from "@/components/projects/dialogs/CancelProjectDialog";
 import PauseProjectDialog from "@/components/projects/dialogs/PauseProjectDialog";
+import ProjectShortcutToggle from "@/components/projects/ProjectShortcutToggle";
 
 // Component con: Xử lý logic xóa dự án
 function DeleteActionItem({ project }: { project: any }) {
@@ -49,7 +50,6 @@ function DeleteActionItem({ project }: { project: any }) {
         <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
             <AlertDialogTrigger asChild>
                 <DropdownMenuItem
-                    // ✅ FIX: Dark mode hover colors
                     className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:text-red-400 dark:focus:bg-red-900/30 cursor-pointer"
                     onSelect={(e) => e.preventDefault()}
                 >
@@ -62,7 +62,6 @@ function DeleteActionItem({ project }: { project: any }) {
                     <AlertDialogTitle>Xác nhận Xóa Dự án?</AlertDialogTitle>
                     <AlertDialogDescription>
                         Bạn có chắc chắn muốn xóa dự án
-                        {/* ✅ FIX: text-black -> text-foreground */}
                         <span className="font-bold text-foreground mx-1">"{project.name}"</span>?
                         <br /><br />
                         Hành động này sẽ xóa vĩnh viễn dự án và tất cả dữ liệu liên quan.
@@ -108,7 +107,6 @@ function UndoConstructionItem({ projectId }: { projectId: string }) {
             onSelect={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={isPending}
-            // ✅ FIX: Dark mode colors
             className="text-orange-700 focus:text-orange-800 focus:bg-orange-50 dark:text-orange-400 dark:focus:bg-orange-900/30 cursor-pointer"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
@@ -140,7 +138,6 @@ function UndoFinishItem({ projectId }: { projectId: string }) {
             onSelect={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={isPending}
-            // ✅ FIX: Dark mode colors
             className="text-blue-700 focus:text-blue-800 focus:bg-blue-50 dark:text-blue-400 dark:focus:bg-blue-900/30 cursor-pointer"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2" />}
@@ -172,7 +169,6 @@ function UndoCancelItem({ projectId }: { projectId: string }) {
             onSelect={(e) => e.preventDefault()}
             onClick={handleUndo}
             disabled={isPending}
-            // ✅ FIX: Dark mode colors
             className="text-green-700 focus:text-green-800 focus:bg-green-50 dark:text-green-400 dark:focus:bg-green-900/30 cursor-pointer"
         >
             {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArchiveRestore className="w-4 h-4 mr-2" />}
@@ -234,29 +230,29 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
     const isPaused = ['paused', 'suspended', 'on_hold'].includes(currentStatusCode);
 
     return (
-        <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 w-full pb-4 border-b border-slate-200 dark:border-slate-800 mb-6">
+            <div className="flex items-center gap-3">
                 <Link href="/projects">
-                    {/* ✅ FIX: bg-white -> bg-background, border-slate-200 -> border-input */}
-                    <Button variant="outline" size="icon" className="h-9 w-9 bg-background hover:bg-accent border-input">
-                        <ArrowLeft className="h-4 w-4 text-muted-foreground" />
+                    <Button variant="outline" size="icon" className="h-9 w-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors shadow-sm">
+                        <ArrowLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
                     </Button>
                 </Link>
 
-                <div>
-                    <div className="flex items-center gap-3">
-                        {/* ✅ FIX: text-slate-800 -> text-foreground */}
-                        <h1 className="text-xl font-bold text-foreground line-clamp-1">{project.name}</h1>
-                        {/* ✅ FIX: bg-slate-50 -> bg-muted, text-slate-600 -> text-muted-foreground */}
-                        <Badge variant="outline" className="font-mono text-xs bg-muted text-muted-foreground border-border hidden sm:inline-flex">
-                            {project.code}
-                        </Badge>
-                    </div>
-                </div>
+                <h1 className="text-xl md:text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
+                    {project.name}
+                </h1>
+
+                {project.code && (
+                    <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono text-xs border border-slate-200 dark:border-slate-700 hidden sm:inline-flex">
+                        {project.code}
+                    </Badge>
+                )}
             </div>
 
             {/* Actions Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+
+                <ProjectShortcutToggle projectId={project.id} projectName={project.name} />
 
                 {permissions.canEdit && canStartConstruction && (
                     <StartConstructionDialog
@@ -280,7 +276,6 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
 
                 {permissions.canEdit && isPaused && (
                     <div className="flex items-center gap-2">
-                        {/* ✅ FIX: Dark mode colors */}
                         <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 h-9 px-3">
                             <PauseCircle className="w-3 h-3 mr-1" /> ĐANG TẠM DỪNG
                         </Badge>
@@ -288,11 +283,10 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
                     </div>
                 )}
 
-                {/* ✅ FIX: bg-white -> bg-background */}
                 {permissions.canEdit && (
                     <Link href={`/projects/${project.id}/edit`}>
-                        <Button variant="outline" size="sm" className="hidden sm:flex bg-background hover:bg-accent border-input">
-                            <Edit className="w-4 h-4 mr-2 text-muted-foreground" />
+                        <Button variant="outline" size="sm" className="hidden sm:flex h-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-sm transition-colors text-slate-700 dark:text-slate-300 font-medium">
+                            <Edit className="w-4 h-4 mr-2 text-slate-500" />
                             Chỉnh sửa
                         </Button>
                     </Link>
@@ -300,13 +294,13 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
 
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-9 w-9">
-                            <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                        <Button variant="outline" size="icon" className="h-9 w-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                            <MoreVertical className="w-4 h-4 text-slate-500" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuContent align="end" className="w-56 dark:bg-slate-900 dark:border-slate-800">
                         {permissions.canEdit && (
-                            <DropdownMenuItem asChild>
+                            <DropdownMenuItem asChild className="dark:text-slate-300 dark:hover:bg-slate-800">
                                 <Link href={`/projects/${project.id}/edit`}>
                                     <Edit className="w-4 h-4 mr-2" />
                                     Chỉnh sửa thông tin
@@ -316,26 +310,26 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
 
                         {permissions.canEdit && canUndoConstruction && (
                             <>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator className="dark:bg-slate-800" />
                                 <UndoConstructionItem projectId={project.id} />
                             </>
                         )}
 
                         {permissions.canEdit && canUndoFinish && (
                             <>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator className="dark:bg-slate-800" />
                                 <UndoFinishItem projectId={project.id} />
                             </>
                         )}
 
                         {permissions.canEdit && isCancelled && (
                             <>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator className="dark:bg-slate-800" />
                                 <UndoCancelItem projectId={project.id} />
                             </>
                         )}
 
-                        <DropdownMenuSeparator />
+                        <DropdownMenuSeparator className="dark:bg-slate-800" />
 
                         {permissions.canEdit && canCancel && (
                             <CancelProjectDialog
@@ -348,14 +342,14 @@ export default function ProjectHeaderWrapper({ project, permissions }: ProjectHe
                             />
                         )}
 
-                        <DropdownMenuItem disabled>
+                        <DropdownMenuItem disabled className="dark:text-slate-500">
                             <Settings className="w-4 h-4 mr-2" />
                             Cấu hình dự án (Coming soon)
                         </DropdownMenuItem>
 
                         {permissions.canDelete && (
                             <>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator className="dark:bg-slate-800" />
                                 <DeleteActionItem project={project} />
                             </>
                         )}
