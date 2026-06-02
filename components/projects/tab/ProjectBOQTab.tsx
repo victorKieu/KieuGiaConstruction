@@ -678,6 +678,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
         tasks.forEach(t => { taskSttMap[t.id] = currentStt; currentStt++; });
 
         return tasks.map(task => {
+            const parentSection = sections.find((s: any) => s.id === task.parent_id);
+            const sectionName = parentSection ? parentSection.item_name : "Chung";
+
             const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
             const workers = Number(task.assigned_workers) || 1;
             const ncItems = estItems.filter(e => e.qto_item_id === task.id && e.category === 'NC');
@@ -689,9 +692,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
             const taskTotalCost = taskUnitPrice * totalVol;
             const weight = TotalProject > 0 ? (taskTotalCost / TotalProject) * 100 : 0;
 
-            return { ...task, totalVol, manDays, duration, weight, taskTotalCost, stt: taskSttMap[task.id] };
+            return { ...task, totalVol, manDays, duration, weight, taskTotalCost, stt: taskSttMap[task.id], sectionName };
         });
-    }, [tasks, estItems, TotalProject]);
+    }, [tasks, estItems, TotalProject, sections]);
 
     const { taskSchedules, projectEndDate } = useMemo(() => {
         const scheds: Record<string, { startDate: Date, endDate: Date }> = {};
@@ -1173,8 +1176,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                     <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
-                                                    <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words">{task.item_name}</TableCell>
-                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">{weight.toFixed(2)}%</TableCell>
+                                                    <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words py-2">
+                                                        <div className="text-[10px] font-bold text-teal-700 dark:text-teal-400 mb-1 uppercase bg-teal-50 dark:bg-teal-900/30 inline-block px-1.5 py-0.5 rounded border border-teal-100 dark:border-teal-800">
+                                                            📍 {task.sectionName}
+                                                        </div>
+                                                        <div className="leading-snug">{task.item_name}</div>
+                                                    </TableCell>                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">{weight.toFixed(2)}%</TableCell>
                                                     <TableCell className="text-right font-semibold align-top pt-2">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
                                                     <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-2">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
                                                     {(() => {
