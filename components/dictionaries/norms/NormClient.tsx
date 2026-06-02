@@ -14,7 +14,6 @@ import { deleteNorm, importNormsCSV, saveNorm } from "@/lib/action/normActions";
 import { crawlNormFromUrl } from "@/lib/action/crawlerActions";
 import NormForm from "@/components/dictionaries/norms/NormForm";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils/utils";
 import { MaterialCatalogManager } from "@/components/dictionaries/norms/MaterialCatalogManager";
 import { ClientOnly } from "@/components/ui/client-only";
 
@@ -26,7 +25,7 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
 
     const [searchInput, setSearchInput] = useState(initialSearch);
     const [appliedSearch, setAppliedSearch] = useState(initialSearch);
-
+    const [filterType, setFilterType] = useState(searchParams.get("type") || "all");
     const [page, setPage] = useState(currentPage);
     const [isOpen, setIsOpen] = useState(false);
     const [editingNorm, setEditingNorm] = useState<any>(null);
@@ -63,11 +62,19 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
             shouldUpdate = true;
         }
 
+        // ✅ BỔ SUNG LƯU FILTER TYPE VÀO URL
+        const currentType = params.get("type") || "all";
+        if (currentType !== filterType) {
+            if (filterType && filterType !== "all") params.set("type", filterType);
+            else params.delete("type");
+            shouldUpdate = true;
+        }
+
         if (shouldUpdate) {
             params.delete("group");
             router.push(`?${params.toString()}`, { scroll: false });
         }
-    }, [appliedSearch, page, searchParams, router]);
+    }, [appliedSearch, page, filterType, searchParams, router]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
@@ -88,9 +95,20 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return;
+
+        // ✅ CHẶN IMPORT NẾU ĐANG CHỌN "TẤT CẢ"
+        if (filterType === "all" || !filterType) {
+            toast.error("Vui lòng chọn cụ thể Định mức Nội bộ hoặc Nhà nước để Import vào!");
+            e.target.value = ''; // Reset file
+            return;
+        }
+
         setIsImporting(true);
-        const toastId = toast.loading(`Đang nạp file thành Định mức ${importType === 'state' ? 'Nhà nước' : 'Nội bộ'}...`);
-        const formData = new FormData(); formData.append("file", file); formData.append("type", importType);
+        const toastId = toast.loading(`Đang nạp file thành Định mức ${filterType === 'state' ? 'Nhà nước' : 'Nội bộ'}...`);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", filterType); // ✅ Dùng luôn biến filterType làm đích đến Import
+
         try {
             const res = await importNormsCSV(formData) as any;
             if (res.success) { toast.success(res.message, { id: toastId, duration: 5000 }); setPage(1); router.refresh(); }
@@ -173,20 +191,28 @@ export default function NormClient({ norms, totalItems, currentPage, pageSize, r
                     <ClientOnly>
                         <MaterialCatalogManager />
                     </ClientOnly>
-                    <Select value={importType} onValueChange={setImportType} disabled={isImporting}>
-                        <SelectTrigger className="w-[180px] h-9 bg-slate- 50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors">
-                            <SelectValue placeholder="Loại định mức" />
-                        </SelectTrigger>
-                        <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                            <SelectItem value="company">Định mức Nội bộ</SelectItem>
-                            <SelectItem value="state">Định mức Nhà nước</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <div className="relative">
-                        <input type="file" accept=".csv" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" />
-                        <Button variant="outline" disabled={isImporting} className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/30 hover:bg-green-100 h-9 transition-colors">
-                            {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />} Import CSV
-                        </Button>
+
+                    {/* ✅ GỘP CHUNG 1 COMBOBOX CHO CẢ 2 NHIỆM VỤ */}
+                    <div className="flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1 gap-1">
+                        <Select value={filterType} onValueChange={(val) => { setFilterType(val); setPage(1); }}>
+                            <SelectTrigger className="w-[180px] h-8 text-xs bg-white dark:bg-slate-950 border-transparent shadow-sm">
+                                <SelectValue placeholder="Lọc / Chọn đích Import" />
+                            </SelectTrigger>
+                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                <SelectItem value="all">Tất cả định mức</SelectItem>
+                                <SelectItem value="company">Định mức Nội bộ</SelectItem>
+                                <SelectItem value="state">Định mức Nhà nước</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        {/* Nút Import sẽ đọc giá trị của Combobox bên cạnh */}
+                        <div className="relative border-l border-slate-200 dark:border-slate-700 pl-1">
+                            <input type="file" accept=".csv" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10" />
+                            <Button variant="ghost" disabled={isImporting} className="h-8 px-3 text-xs text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors font-bold">
+                                {isImporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
+                                Import CSV
+                            </Button>
+                        </div>
                     </div>
                     <Button onClick={handleAddNew} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-9 transition-colors">
                         <CirclePlus className="mr-2 h-4 w-4" /> Thêm định mức mới

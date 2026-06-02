@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { checkIsAdmin } from "@/lib/supabase/getUserProfile";
 
 // --- 1. LẤY DANH SÁCH (✅ ĐÃ FIX: Lấy thêm id của resource để Edit không bị mất) ---
-export async function getNorms(searchTerm: string = "", page: number = 1, pageSize: number = 50) {
+export async function getNorms(searchTerm: string = "", page: number = 1, pageSize: number = 50, type: string = "all") {
     const supabase = await createClient();
 
     // BƯỚC 1: Query bảng norms trước để lấy Data phân trang và Count (Không Join để chống lag)
@@ -18,6 +18,11 @@ export async function getNorms(searchTerm: string = "", page: number = 1, pageSi
     if (searchTerm) {
         const safeText = searchTerm.replace(/["']/g, '').trim();
         query = query.or(`code.ilike.%${safeText}%,name.ilike.%${safeText}%`);
+    }
+
+    // ✅ BỔ SUNG LỌC THEO LOẠI ĐỊNH MỨC NẾU KHÁC "all"
+    if (type !== "all") {
+        query = query.eq("type", type);
     }
 
     const from = (page - 1) * pageSize;

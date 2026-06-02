@@ -20,11 +20,13 @@ export default async function AdminNormsPage({
     const resolvedParams = await searchParams;
     const q = resolvedParams.q || "";
     const page = Number(resolvedParams.page) || 1;
+    const type = resolvedParams.type || "all"; // ✅ Bổ sung lấy type từ URL để phục vụ Filter
     const pageSize = 50;
 
     // 3. Fetch dữ liệu định mức và nguồn hao phí chuẩn (Resources)
+    // ✅ Truyền thêm 'type' vào hàm getNorms để Server query Database
     const [normsResult, resources] = await Promise.all([
-        getNorms(q, page, pageSize),
+        getNorms(q, page, pageSize, type),
         getStandardResources()
     ]);
 
@@ -35,7 +37,6 @@ export default async function AdminNormsPage({
                 totalItems={normsResult.total}
                 currentPage={page}
                 pageSize={pageSize}
-                // Truyền resources xuống thay vì materials
                 resources={resources}
                 initialSearch={q}
             />

@@ -10,38 +10,35 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
-    Loader2, Trash2, Calculator, Layers, HardHat, Tractor,
+    Loader2, Trash2, Layers, HardHat, Tractor,
     ChevronDown, ChevronRight, FoldVertical,
     ListOrdered, FileText, FileBarChart, FilePlus2, PlusCircle,
-    FolderKanban, Hammer, SlidersHorizontal, Settings2, Percent,
-    Send, Upload, Plus, ClipboardList, Download, Printer, CalendarClock, ArrowRight
+    FolderKanban, Hammer, Settings2, Percent,
+    Send, Upload, Plus, ClipboardList, Download, Printer, CalendarClock
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
 import { exportToExcel } from "@/lib/utils/exportExcel";
 import { formatDate } from "@/lib/utils/utils";
-import {
-    deleteQTOItem, updateQTONormCode, updateQTOItem,
-    deleteQTODetail, addManualQTOItem, addQTODetail, createQTOItem
-} from "@/lib/action/qtoActions";
-import {
-    analyzeSingleQTOItem, createManualEstimationItem
-} from "@/lib/action/estimationActions";
+import { updateQTONormCode, updateQTOItem, addManualQTOItem, addQTODetail, createQTOItem } from "@/lib/action/qtoActions";
+import { analyzeSingleQTOItem, createManualEstimationItem, syncTaskVolumeAndEstimations } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
 import { getNorms } from "@/lib/action/normActions";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 import ProjectEstimationTab from "./ProjectEstimationTab";
-import { syncTaskVolumeAndEstimations } from "@/lib/action/estimationActions";
+import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
+
 interface Props { projectId: string; }
+
 function toRoman(num: number): string {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
     return roman[num] || num.toString();
 }
+
 function renderItemTypeBadge(type: string) {
     switch (type) {
         case 'task': return <span className="bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Công tác</span>;
@@ -51,6 +48,7 @@ function renderItemTypeBadge(type: string) {
         default: return null;
     }
 }
+
 function AutoResizeTextarea({ defaultValue, onBlur, className }: { defaultValue: string, onBlur: (e: any) => void, className: string }) {
     return (
         <textarea
@@ -73,18 +71,26 @@ function AutoResizeTextarea({ defaultValue, onBlur, className }: { defaultValue:
         />
     );
 }
+
+// ✅ ĐÃ SỬA LẠI COMPONENT TÌM KIẾM ĐỂ HOẠT ĐỘNG HOÀN HẢO
 function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: (norm: any) => void; }) {
     const [query, setQuery] = useState(defaultCode || "");
     const [results, setResults] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
 
+    // Lắng nghe sự thay đổi của defaultCode từ bên ngoài
+    useEffect(() => { setQuery(defaultCode || ""); }, [defaultCode]);
+
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            // Lệnh toast.error này gọi ngay lập tức khi set state, dễ gây crash
             if (query.trim().length < 2) { setIsOpen(false); toast.error("Nhập ít nhất 2 ký tự!"); return; }
-            //...
+            setIsSearching(true);
+            const res = await getNorms(query, 1, 30);
+            setResults(res.data || []);
+            setIsOpen(true);
+            setIsSearching(false);
         }
     };
 
@@ -96,9 +102,7 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
             await updateQTONormCode(taskId, projectId, norm.code);
             await updateQTOItem(taskId, 'item_name', norm.name);
             await updateQTOItem(taskId, 'unit', norm.unit);
-
-            // 🔴 ĐIỂM SÁNG GIÁ NHẤT: Bóc tách tự động ngầm ngay lập tức
-            await analyzeSingleQTOItem(taskId, projectId);
+            await analyzeSingleQTOItem(taskId, projectId, 0); // Bóc tách ngay lập tức
 
             toast.success("Áp mã và cập nhật Hao phí thành công!", { id: toastId });
             onUpdate(norm); // Hàm này gọi lại loadData() để làm tươi UI
@@ -248,14 +252,12 @@ function SectionRowGroup({
                             {isSectionExpanded ? <ChevronDown className="w-4 h-4 text-slate-600 dark:text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />}
                         </Button>
                         <FolderKanban className="w-4 h-4 mr-1 text-blue-600 dark:text-blue-400 shrink-0 mt-1.5" />
-
                         <AutoResizeTextarea
                             key={`sec_name_${section.id}_${section.item_name}`}
                             defaultValue={section.item_name}
                             onBlur={(e) => handleUpdateQTOField(section.id, 'item_name', e.target.value)}
                             className="font-bold text-slate-800 uppercase tracking-wide h-auto min-h-[32px] py-1 border-transparent hover:border-slate-400 bg-transparent shadow-none flex-1 dark:text-slate-200 resize-none overflow-hidden outline-none focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 rounded-md transition-colors leading-tight whitespace-normal break-words"
                         />
-
                         <Button
                             variant="outline" size="sm"
                             onClick={() => {
@@ -292,14 +294,12 @@ function SectionRowGroup({
                                         {isTaskExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                     </Button>
                                     <Hammer className="w-3.5 h-3.5 mr-1 text-slate-500 dark:text-slate-400 shrink-0 mt-2" />
-
                                     <AutoResizeTextarea
                                         key={`name_${task.id}_${task.item_name}`}
                                         defaultValue={task.item_name}
                                         onBlur={(e) => handleUpdateQTOField(task.id, 'item_name', e.target.value)}
                                         className="flex-1 font-medium text-slate-800 h-auto min-h-[32px] py-1 border-transparent hover:border-slate-300 bg-transparent shadow-none px-2 dark:text-slate-200 resize-none overflow-hidden outline-none focus:border-slate-300 focus:bg-white dark:focus:bg-slate-900 rounded-md transition-colors leading-tight whitespace-normal break-words"
                                     />
-
                                     {renderItemTypeBadge(task.item_type)}
                                 </div>
                             </TableCell>
@@ -309,7 +309,7 @@ function SectionRowGroup({
                             <TableCell className="text-right font-bold text-blue-700 text-base pr-4 dark:text-blue-400 align-top pt-3">
                                 {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="align-top pt-2">
+                            <TableCell className="border-r border-slate-200 dark:border-slate-800 align-top p-1">
                                 <AsyncNormSelector
                                     taskId={task.id}
                                     projectId={projectId}
@@ -411,7 +411,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
     const [pdfExportType, setPdfExportType] = useState("ALL");
 
-    // ✅ STATES MỚI CHO ENGINE LẬP TIẾN ĐỘ THI CÔNG
     const [projectStartDate, setProjectStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [allowWeekendWork, setAllowWeekendWork] = useState(true);
     const holidays: Holiday[] = [
@@ -421,70 +420,33 @@ export default function ProjectBOQTab({ projectId }: Props) {
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
-        // 1. Fetch gộp tất cả trong 1 lần để đảm bảo tính nhất quán
-        const { data: projData } = await supabase
-            .from('projects')
-            .select('*')
-            .eq('id', projectId)
-            .single();
+        const { data: projData } = await supabase.from('projects').select('*').eq('id', projectId).single();
+        const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
+        const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
 
-        const { data: qtoData } = await supabase
-            .from('qto_items')
-            .select('*, details:qto_item_details(*)')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: true });
-
-        const { data: estData } = await supabase
-            .from('estimation_items')
-            .select('*')
-            .eq('project_id', projectId);
-
-        // 2. Gán dữ liệu
         if (projData) {
             setProjectInfo(projData);
-            // ✅ Đảm bảo tên cột trùng khớp với database (start_date và allow_weekend)
             if (projData.start_date) setProjectStartDate(projData.start_date);
             if (projData.allow_weekend !== null) setAllowWeekendWork(projData.allow_weekend);
         }
-        // ✅ BƯỚC THÊM: Fetch dữ liệu tiến độ Gantt từ bảng project_tasks
-        const { data: pTasksData } = await supabase
-            .from('project_tasks')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: true }); // Hoặc order theo wbs_code
 
-        if (pTasksData) {
-            setGanttTasks(pTasksData);
-        }
+        const { data: pTasksData } = await supabase.from('project_tasks').select('*').eq('project_id', projectId).order('created_at', { ascending: true });
+        if (pTasksData) setGanttTasks(pTasksData);
         if (qtoData) {
-            qtoData.forEach((item: any) => {
-                if (item.details) item.details.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-            });
+            qtoData.forEach((item: any) => { if (item.details) item.details.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()); });
             setQtoTasks(qtoData);
         }
-
         setEstItems(estData || []);
     };
 
     const updateProjectSettings = async (field: string, value: any) => {
         const toastId = toast.loading("Đang lưu cài đặt...");
-        const { error } = await supabase.from('projects')
-            .update({ [field]: value })
-            .eq('id', projectId);
-
-        if (error) {
-            toast.error("Lỗi lưu cài đặt!", { id: toastId });
-        } else {
-            toast.success("Đã lưu!", { id: toastId });
-            await loadData();
-        }
+        const { error } = await supabase.from('projects').update({ [field]: value }).eq('id', projectId);
+        if (error) toast.error("Lỗi lưu cài đặt!", { id: toastId });
+        else { toast.success("Đã lưu!", { id: toastId }); await loadData(); }
     };
 
-    // ✅ HÀM CẬP NHẬT STATE CỤC BỘ ĐỂ GIAO DIỆN NHẢY NGAY LẬP TỨC
-    const updateLocalQTO = (id: string, updates: any) => {
-        setQtoTasks(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
-    };
-
+    const updateLocalQTO = (id: string, updates: any) => { setQtoTasks(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item)); };
     const toggleRow = (id: string) => { setExpandedRows(prev => ({ ...prev, [id]: prev[id] === undefined ? false : !prev[id] })); };
     const toggleSection = (id: string) => { setExpandedSections(prev => ({ ...prev, [id]: prev[id] === undefined ? false : !prev[id] })); };
 
@@ -518,21 +480,15 @@ export default function ProjectBOQTab({ projectId }: Props) {
             if (isDetail) {
                 const task = qtoTasks.find(t => t.details?.some((d: any) => d.id === id));
                 await supabase.from('qto_item_details').delete().eq('id', id);
-
                 if (task) {
-                    // Tính lại khối lượng sau khi trừ đi dòng vừa xóa
                     const updatedDetails = task.details.filter((d: any) => d.id !== id);
                     const newTaskVol = updatedDetails.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0);
                     await syncTaskVolumeAndEstimations(task.id, newTaskVol);
                 }
-            } else {
-                await supabase.from('qto_items').delete().eq('id', id);
-            }
+            } else { await supabase.from('qto_items').delete().eq('id', id); }
             await loadData();
             toast.success("Đã xóa thành công!", { id: toastId });
-        } catch (err: any) {
-            toast.error("Lỗi khi xóa: " + err.message, { id: toastId });
-        }
+        } catch (err: any) { toast.error("Lỗi khi xóa: " + err.message, { id: toastId }); }
     };
 
     const handleUpdateDetailField = async (detailId: string, field: string, value: string) => {
@@ -543,20 +499,14 @@ export default function ProjectBOQTab({ projectId }: Props) {
             else val = parseFloat(value) || 0;
         }
 
-        setQtoTasks(prev => prev.map(t => ({
-            ...t,
-            details: t.details ? t.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d) : []
-        })));
-
+        setQtoTasks(prev => prev.map(t => ({ ...t, details: t.details ? t.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d) : [] })));
         const { error } = await supabase.from('qto_item_details').update({ [field]: val }).eq('id', detailId);
 
         if (!error) {
-            // 🔥 GỌI SERVER ACTION ÉP ĐỒNG BỘ
             const task = qtoTasks.find(t => t.details?.some((d: any) => d.id === detailId));
             if (task) {
                 const updatedDetails = task.details.map((d: any) => d.id === detailId ? { ...d, [field]: val } : d);
                 const newTaskVol = updatedDetails.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0);
-
                 await syncTaskVolumeAndEstimations(task.id, newTaskVol);
                 loadData();
             }
@@ -565,18 +515,8 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
     const handleUpdateQTOField = async (itemId: string, field: string, value: string) => {
         setQtoTasks(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
-
         const res = await updateQTOItem(itemId, field, value);
-
-        if (!res?.success) {
-            toast.error("Lỗi lưu dữ liệu!");
-            loadData();
-        } else {
-            // toast.success("Đã cập nhật!", { duration: 1000 });
-
-            // 🔴 ĐẢM BẢO CÓ DÒNG NÀY
-            loadData();
-        }
+        if (!res?.success) { toast.error("Lỗi lưu dữ liệu!"); loadData(); } else { loadData(); }
     };
 
     const handleAddDetail = async (itemId: string) => {
@@ -597,22 +537,16 @@ export default function ProjectBOQTab({ projectId }: Props) {
         const res = await addManualQTOItem(projectId, manualSectionId, newSectionName.trim(), manualItemName.trim(), manualUnit.trim(), manualItemType, manualNormCode);
 
         if (res.success) {
-            // 🔴 NẾU CÓ CHỌN MÃ ĐỊNH MỨC -> GỌI API BÓC TÁCH VẬT TƯ NGAY LẬP TỨC
             if (manualNormCode && res.data?.id) {
                 toast.loading("Đang phân tích hao phí...", { id: "analyze" });
-                // Hàm analyzeSingleQTOItem này anh nhớ Import từ estimationActions.ts nhé
                 await analyzeSingleQTOItem(res.data.id, projectId, 0);
                 toast.success("Thêm công tác và bóc tách thành công!", { id: "analyze" });
-            } else {
-                toast.success("Thêm công tác thủ công thành công!");
-            }
+            } else { toast.success("Thêm công tác thủ công thành công!"); }
 
             setIsManualAddModalOpen(false);
             setManualItemName(""); setNewSectionName(""); setManualNormCode(""); setManualNormQuery("");
             await loadData();
-        } else {
-            toast.error("Có lỗi xảy ra: " + res.error);
-        }
+        } else { toast.error("Có lỗi xảy ra: " + res.error); }
         setIsAddingManual(false);
     };
 
@@ -621,31 +555,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
         setIsSyncing5D(true);
         const toastId = toast.loading("Đang đồng bộ...");
         try {
-            // ✅ QUAN TRỌNG NHẤT LÀ ĐOẠN NÀY:
-            // Lấy ngày tháng chính xác từ thuật toán CPM đắp vào Data
             const syncData = schedulingData.map(t => ({
-                ...t,
-                start_date: taskSchedules[t.id]?.startDate,
-                end_date: taskSchedules[t.id]?.endDate
+                ...t, start_date: taskSchedules[t.id]?.startDate, end_date: taskSchedules[t.id]?.endDate
             }));
-
-            // Gửi dữ liệu đã có NGÀY THÁNG chuẩn xác sang Backend
-            const res = await sync5DToGanttTasks(
-                projectId,
-                { startDate: projectStartDate, allowWeekendWork: allowWeekendWork },
-                syncData // <--- Đổi thành syncData
-            );
-
-            if (res.success) {
-                toast.success(res.message, { id: toastId });
-                await loadData(); // Load lại DB mới
-                router.refresh();
-            } else {
-                toast.error(res.error, { id: toastId });
-            }
-        } catch (error: any) {
-            toast.error("Lỗi: " + error.message, { id: toastId });
-        }
+            const res = await sync5DToGanttTasks(projectId, { startDate: projectStartDate, allowWeekendWork: allowWeekendWork }, syncData);
+            if (res.success) { toast.success(res.message, { id: toastId }); await loadData(); router.refresh(); } else { toast.error(res.error, { id: toastId }); }
+        } catch (error: any) { toast.error("Lỗi: " + error.message, { id: toastId }); }
         setIsSyncing5D(false);
     };
 
@@ -653,33 +568,16 @@ export default function ProjectBOQTab({ projectId }: Props) {
         e.preventDefault();
         setNewItemLoading(true);
         const formData = new FormData(e.currentTarget);
-
-        // 🔴 FIX LỖI ÉP KIỂU: Phải chuyển String từ Form thành Số thực (Float)
         const qty = parseFloat(formData.get("quantity")?.toString() || "0");
         const price = parseFloat(formData.get("unit_price")?.toString() || "0");
         const name = formData.get("name")?.toString() || "Chi phí khác";
         const unit = formData.get("unit")?.toString() || "Lần";
 
         const data = {
-            material_name: name,
-            original_name: name,
-            category: "VL", // Mặc định gán vào nhóm Vật Liệu (hoặc anh có thể cho chọn)
-            unit: unit,
-            quantity: qty,
-            unit_price: price,
-            total_cost: qty * price, // Tự động tính luôn thành tiền
-            is_mapped: false // Đánh dấu đây là mục thêm thủ công
+            material_name: name, original_name: name, category: "VL", unit: unit, quantity: qty, unit_price: price, total_cost: qty * price, is_mapped: false
         };
-
         const res = await createManualEstimationItem(projectId, data);
-
-        if (res.success) {
-            toast.success(res.message || "Đã thêm chi phí thành công!");
-            setOpenManualDialog(false);
-            await loadData();
-        } else {
-            toast.error(res.error || "Lỗi khi lưu chi phí phụ!");
-        }
+        if (res.success) { toast.success(res.message || "Đã thêm chi phí thành công!"); setOpenManualDialog(false); await loadData(); } else { toast.error(res.error || "Lỗi khi lưu chi phí phụ!"); }
         setNewItemLoading(false);
     };
 
@@ -720,33 +618,19 @@ export default function ProjectBOQTab({ projectId }: Props) {
         return Array.from(map.values()).sort((a: any, b: any) => a.material_name.localeCompare(b.material_name));
     }, [estItems]);
 
-    // ✅ ĐÃ SỬ DỤNG HÀM exportToExcel TỪ FILE exportExcel.ts CỦA ANH
     const handleExportExcel = () => {
-        const allData: any[] = [];
-        let stt = 1;
-
+        const allData: any[] = []; let stt = 1;
         ['VL', 'NC', 'M'].forEach(cat => {
             const data = getSummaryByCategory(cat);
             data.forEach(item => {
                 allData.push({
-                    "STT": stt++,
-                    "Loại": cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công',
-                    "Tên nguồn lực / Vật tư": item.material_name,
-                    "Đơn vị tính": item.unit,
-                    "Tổng Khối lượng": item.total_quantity,
-                    "Đơn giá chào (VNĐ)": "",
-                    "Thành tiền (VNĐ)": "",
-                    "Ghi chú": ""
+                    "STT": stt++, "Loại": cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công',
+                    "Tên nguồn lực / Vật tư": item.material_name, "Đơn vị tính": item.unit,
+                    "Tổng Khối lượng": item.total_quantity, "Đơn giá chào (VNĐ)": "", "Thành tiền (VNĐ)": "", "Ghi chú": ""
                 });
             });
         });
-
-        if (allData.length > 0) {
-            exportToExcel(allData, `YeuCauBaoGia_${projectInfo?.code || 'KGC'}`, 'BaoGia');
-            toast.success("Đã xuất file Excel chào giá thành công!");
-        } else {
-            toast.error("Không có dữ liệu để xuất!");
-        }
+        if (allData.length > 0) { exportToExcel(allData, `YeuCauBaoGia_${projectInfo?.code || 'KGC'}`, 'BaoGia'); toast.success("Đã xuất file Excel chào giá thành công!"); } else { toast.error("Không có dữ liệu để xuất!"); }
     };
 
     const handleExportPDF = () => {
@@ -783,7 +667,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
         setIsPdfModalOpen(false);
     };
 
-    // ✅ TÍNH TOÁN NGÀY THÁNG DỰA TRÊN SCHEDULE ENGINE CỦA ANH
     const calculateDisplayVol = (l: any, w: any, h: any, f: any) => {
         const len = parseFloat(l) || 0, wid = parseFloat(w) || 0, hei = parseFloat(h) || 0, fac = parseFloat(f) || 0;
         if (len === 0 && wid === 0 && hei === 0) return fac;
@@ -791,15 +674,11 @@ export default function ProjectBOQTab({ projectId }: Props) {
     };
 
     const schedulingData = useMemo(() => {
-        let totalManDays = 0;
-        let currentStt = 1;
-        const taskSttMap: Record<string, number> = {};
-
+        let totalManDays = 0; let currentStt = 1; const taskSttMap: Record<string, number> = {};
         tasks.forEach(t => { taskSttMap[t.id] = currentStt; currentStt++; });
 
         return tasks.map(task => {
             const totalVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
-            const norm = Number(task.labor_norm) || 0;
             const workers = Number(task.assigned_workers) || 1;
             const ncItems = estItems.filter(e => e.qto_item_id === task.id && e.category === 'NC');
             const manDays = ncItems.reduce((sum, e) => sum + Number(e.quantity), 0);
@@ -814,72 +693,52 @@ export default function ProjectBOQTab({ projectId }: Props) {
         });
     }, [tasks, estItems, TotalProject]);
 
-    // 2. Chạy Thuật toán CPM để cấp Lịch thực tế
     const { taskSchedules, projectEndDate } = useMemo(() => {
         const scheds: Record<string, { startDate: Date, endDate: Date }> = {};
-        let changed = true;
-        let iters = 0;
-        const defaultStart = new Date(projectStartDate);
-
+        let changed = true; let iters = 0; const defaultStart = new Date(projectStartDate);
         const sttToTaskMap: Record<number, any> = {};
         schedulingData.forEach(t => { sttToTaskMap[t.stt] = t; });
 
-        // Khởi tạo tất cả bắt đầu cùng ngày
-        schedulingData.forEach(t => {
-            scheds[t.id] = { startDate: defaultStart, endDate: shiftWorkingDays(defaultStart, t.duration - 1, holidays, allowWeekendWork) };
-        });
+        schedulingData.forEach(t => { scheds[t.id] = { startDate: defaultStart, endDate: shiftWorkingDays(defaultStart, t.duration - 1, holidays, allowWeekendWork) }; });
 
         while (changed && iters < 100) {
-            changed = false;
-            iters++;
+            changed = false; iters++;
             for (const t of schedulingData) {
-                const predsStr = t.predecessors || "";
-                if (!predsStr) continue;
-
-                // Phân tích "1FS+2", "2SS"
+                const predsStr = t.predecessors || ""; if (!predsStr) continue;
                 const preds = predsStr.split(',').map((s: string) => s.trim());
                 let maxStart = scheds[t.id].startDate;
 
                 for (const pStr of preds) {
-                    // Match pattern: Number, Type(FS|SS|FF|SF), Sign(+|-), Lag(Number)
                     const match = pStr.match(/^(\d+)([a-zA-Z]{2})?(?:([+-])(\d+))?$/i);
                     if (!match) continue;
-
-                    const pStt = parseInt(match[1]);
-                    const depType = (match[2]?.toUpperCase() || 'FS') as 'FS' | 'SS' | 'FF' | 'SF';
-                    const sign = match[3] === '-' ? -1 : 1;
-                    const lag = parseInt(match[4] || '0') * sign;
-
-                    const pTask = sttToTaskMap[pStt];
-                    if (!pTask) continue;
-
-                    const predDates = scheds[pTask.id];
-                    const calcRes = calculateTaskDates(predDates, t.duration, depType, lag, holidays, allowWeekendWork);
-
+                    const pStt = parseInt(match[1]); const depType = (match[2]?.toUpperCase() || 'FS') as 'FS' | 'SS' | 'FF' | 'SF';
+                    const sign = match[3] === '-' ? -1 : 1; const lag = parseInt(match[4] || '0') * sign;
+                    const pTask = sttToTaskMap[pStt]; if (!pTask) continue;
+                    const predDates = scheds[pTask.id]; const calcRes = calculateTaskDates(predDates, t.duration, depType, lag, holidays, allowWeekendWork);
                     if (calcRes.startDate > maxStart) maxStart = calcRes.startDate;
                 }
 
                 if (maxStart.getTime() !== scheds[t.id].startDate.getTime()) {
-                    scheds[t.id].startDate = maxStart;
-                    scheds[t.id].endDate = shiftWorkingDays(maxStart, t.duration - 1, holidays, allowWeekendWork);
-                    changed = true;
+                    scheds[t.id].startDate = maxStart; scheds[t.id].endDate = shiftWorkingDays(maxStart, t.duration - 1, holidays, allowWeekendWork); changed = true;
                 }
             }
         }
-
-        let pEnd = defaultStart;
-        Object.values(scheds).forEach(s => { if (s.endDate > pEnd) pEnd = s.endDate; });
-
+        let pEnd = defaultStart; Object.values(scheds).forEach(s => { if (s.endDate > pEnd) pEnd = s.endDate; });
         return { taskSchedules: scheds, projectEndDate: pEnd };
     }, [schedulingData, projectStartDate, allowWeekendWork]);
 
     return (
         <div className="space-y-4">
+            {/* THANH CÔNG CỤ (CHỨA CẢ NÚT WIZARD BÊN PHẢI) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-lg border dark:border-slate-800 shadow-sm gap-3 transition-colors">
+
+                {/* === KHỐI TRÁI: 3 NÚT TÍNH NĂNG === */}
                 <div className="flex flex-wrap items-center gap-2">
+                    {/* Modal Thêm công tác thủ công */}
                     <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
                         <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
                             <DialogHeader><DialogTitle className="text-teal-700 dark:text-teal-400 flex items-center gap-2"><FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công</DialogTitle></DialogHeader>
+                            {/* ... (Toàn bộ Form Thêm thủ công anh giữ nguyên như cũ) ... */}
                             <div className="grid gap-4 py-4">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Hạng mục (Section)</Label>
@@ -891,6 +750,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     </Select>
                                 </div>
                                 {manualSectionId === "NEW" && (<div className="space-y-2"><Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tên hạng mục mới</Label><Input placeholder="Vd: Công tác thi công..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>)}
+
                                 <div className="space-y-2 relative bg-blue-50 dark:bg-blue-900/10 p-3 rounded-md border border-blue-100 dark:border-blue-900/30">
                                     <Label className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1">🔍 Gọi mã định mức (Tùy chọn)</Label>
                                     <Input placeholder="Nhập mã hoặc tên công tác + Nhấn Enter..." value={manualNormQuery} onChange={(e) => setManualNormQuery(e.target.value)} onKeyDown={async (e) => { if (e.key === 'Enter') { e.preventDefault(); if (manualNormQuery.trim().length < 2) return toast.error("Nhập ít nhất 2 ký tự!"); setIsSearchingManualNorm(true); setIsManualNormOpen(false); const res = await getNorms(manualNormQuery, 1, 20); setManualNormResults(res.data || []); setIsManualNormOpen(true); setIsSearchingManualNorm(false); } }} onBlur={() => setTimeout(() => setIsManualNormOpen(false), 200)} className="border-blue-300 dark:border-blue-800 focus-visible:ring-blue-500 bg-white dark:bg-slate-950 dark:text-slate-200" />
@@ -910,8 +770,13 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         </DialogContent>
                     </Dialog>
 
+                    {/* Modal Chi phí phụ */}
                     <Dialog open={openManualDialog} onOpenChange={setOpenManualDialog}>
-                        <DialogTrigger asChild><Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold"><Plus className="w-4 h-4 mr-1" /> Chi phí phụ</Button></DialogTrigger>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
+                                <Plus className="w-4 h-4 mr-1" /> Chi phí phụ
+                            </Button>
+                        </DialogTrigger>
                         <DialogContent className="dark:bg-slate-900 dark:border-slate-800">
                             <DialogHeader><DialogTitle>Thêm hạng mục chi phí phụ trợ</DialogTitle></DialogHeader>
                             <form onSubmit={handleCreateManualItem} className="space-y-4 py-2">
@@ -923,22 +788,45 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         </DialogContent>
                     </Dialog>
 
+                    {/* Import Excel */}
                     <div className="relative">
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                        <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
+                        <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
+                            {isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel
+                        </Button>
                     </div>
                 </div>
+
+                {/* === KHỐI PHẢI: NÚT WIZARD VÀ PHÂN TÍCH === */}
+                <div className="flex items-center gap-2">
+                    <AutoEstimateWizard
+                        projectId={projectId}
+                        onSuccess={() => {
+                            // Khi tính toán xong, gọi hàm loadData() để load lại dữ liệu hiển thị
+                            loadData();
+                        }}
+                    />
+                </div>
+
             </div>
 
-            <Tabs defaultValue="cover_sheet" className="w-full">
-                <TabsList className="bg-slate-100 p-1 rounded-md border w-full justify-start gap-1 flex-wrap h-auto dark:bg-slate-900 dark:border-slate-800">
-                    <TabsTrigger value="cover_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><FileText className="w-3.5 h-3.5 mr-1.5" /> 1. Tổng Hợp</TabsTrigger>
-                    <TabsTrigger value="qto_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ListOrdered className="w-3.5 h-3.5 mr-1.5" /> 2. Tiên lượng </TabsTrigger>
-                    <TabsTrigger value="consumption_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><ClipboardList className="w-3.5 h-3.5 mr-1.5 text-indigo-500" /> 3. Tổng hợp Hao phí</TabsTrigger>
-                    <TabsTrigger value="summary_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Percent className="w-3.5 h-3.5 mr-1.5 text-emerald-500" /> 4. TH Kinh phí</TabsTrigger>
-                    <TabsTrigger value="unit_price_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><Settings2 className="w-3.5 h-3.5 mr-1.5 text-blue-500" /> 5. Đơn giá chi tiết</TabsTrigger>
-                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs dark:data-[state=active]:bg-slate-800"><CalendarClock className="w-3.5 h-3.5 mr-1.5" /> 6. Lập Tiến độ </TabsTrigger>
+            {/* KHUNG TABS CHÍNH CỦA DỰ TOÁN */}
+            <Tabs defaultValue="qto_sheet" className="w-full">
+                <TabsList className="bg-slate-100 p-1.5 rounded-md border w-full justify-start gap-1 flex-wrap h-auto dark:bg-slate-900 dark:border-slate-800 shadow-sm mb-4">
+                    <TabsTrigger value="cover_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><FileText className="w-4 h-4 mr-1.5" /> 1. Tổng Hợp</TabsTrigger>
+                    <TabsTrigger value="qto_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-blue-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ListOrdered className="w-4 h-4 mr-1.5 text-blue-500" /> 2. Tiên lượng (QTO)</TabsTrigger>
+                    <TabsTrigger value="consumption_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ClipboardList className="w-4 h-4 mr-1.5 text-indigo-500" /> 3. Tổng hợp Hao phí</TabsTrigger>
+                    <TabsTrigger value="summary_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-emerald-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><Percent className="w-4 h-4 mr-1.5 text-emerald-500" /> 4. Tài chính dự án</TabsTrigger>
+                    <TabsTrigger value="unit_price_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-orange-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><Settings2 className="w-4 h-4 mr-1.5 text-orange-500" /> 5. Đơn giá chi tiết</TabsTrigger>
+                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-teal-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><CalendarClock className="w-4 h-4 mr-1.5 text-teal-500" /> 6. Lập Tiến độ</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="ai_extract" className="mt-3">
+                    <Card className="p-10 text-center border-dashed border-2 border-slate-300 dark:border-slate-800">
+                        <h3 className="text-xl font-bold text-slate-500 dark:text-slate-400">Không gian bóc tách AI</h3>
+                        <p className="text-slate-400 mt-2">Tính năng đang được phát triển...</p>
+                    </Card>
+                </TabsContent>
 
                 {/* TAB 1: BÌA */}
                 <TabsContent value="cover_sheet" className="mt-3">
@@ -1089,14 +977,11 @@ export default function ProjectBOQTab({ projectId }: Props) {
                             );
                         })}
                     </div>
-                </TabsContent>             
+                </TabsContent>
 
                 {/* TAB 4: TH KINH PHÍ */}
                 <TabsContent value="summary_sheet" className="mt-3">
-                    {/* Truyền các props cần thiết mà ProjectEstimationTab yêu cầu */}
-                    <ProjectEstimationTab
-                        projectId={projectId}
-                    />
+                    <ProjectEstimationTab projectId={projectId} />
                 </TabsContent>
 
                 {/* TAB 5: ĐƠN GIÁ CHI TIẾT */}
@@ -1262,28 +1147,19 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                     {(() => {
                                         if (!taskSchedules || Object.keys(taskSchedules).length === 0) return null;
 
-                                        // 🔴 1. TÍNH TỔNG CHI PHÍ TRỰC TIẾP CỦA DỰ ÁN (LÀM MẪU SỐ)
-                                        // Loại trừ các chi phí % chung (GT, LN, VAT) để tính tỷ trọng cho chuẩn
                                         const totalDirectCost = estItems
                                             .filter(e => !['GT', 'LN', 'VAT'].includes(e.category))
                                             .reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
 
-                                        // ✅ TẠO MẢNG MỚI & SORT THEO NGÀY BẮT ĐẦU RỒI MỚI RENDER
                                         const sortedTasks = [...schedulingData].sort((a, b) => {
                                             const sDatesA = taskSchedules[a.id];
                                             const sDatesB = taskSchedules[b.id];
-
                                             if (!sDatesA && !sDatesB) return 0;
                                             if (!sDatesA) return 1;
                                             if (!sDatesB) return -1;
-
                                             const timeA = new Date(sDatesA.startDate).getTime();
                                             const timeB = new Date(sDatesB.startDate).getTime();
-
-                                            // Ưu tiên xếp theo Ngày bắt đầu tăng dần
                                             if (timeA !== timeB) return timeA - timeB;
-
-                                            // Nếu trùng ngày bắt đầu thì xếp theo số STT cũ (hoặc WBS)
                                             return a.stt - b.stt;
                                         });
 
@@ -1291,84 +1167,39 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             const sDates = taskSchedules[task.id];
                                             if (!sDates) return null;
 
-                                            // 🔴 2. TÍNH CHI PHÍ CỦA RIÊNG CÔNG TÁC NÀY
-                                            const taskCost = estItems
-                                                .filter(e => e.qto_item_id === task.id)
-                                                .reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
-
-                                            // 🔴 3. CHIA TỶ LỆ % TỶ TRỌNG
+                                            const taskCost = estItems.filter(e => e.qto_item_id === task.id).reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
                                             const weight = totalDirectCost > 0 ? (taskCost / totalDirectCost) * 100 : 0;
 
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                     <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
                                                     <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words">{task.item_name}</TableCell>
-
-                                                    {/* 🔴 4. ĐÃ THAY THẾ task.weight BẰNG BIẾN weight VỪA TÍNH */}
-                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">
-                                                        {weight.toFixed(2)}%
-                                                    </TableCell>
-
+                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">{weight.toFixed(2)}%</TableCell>
                                                     <TableCell className="text-right font-semibold align-top pt-2">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
                                                     <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-2">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
-                                                    {/* KHỐI TÍNH TOÁN NGÀY LÀM TỰ ĐỘNG THEO THỢ BỐ TRÍ */}
                                                     {(() => {
                                                         const currentWorkers = Number(task.assigned_workers) || 1;
-                                                        // Công thức: Hao phí chia cho số thợ (làm tròn lên)
                                                         const computedDuration = task.manDays > 0 ? Math.ceil(task.manDays / currentWorkers) : 1;
-
                                                         return (
                                                             <>
-                                                                {/* CỘT NHẬP THỢ BỐ TRÍ */}
                                                                 <TableCell className="p-1 align-top pt-2">
-                                                                    <Input
-                                                                        type="number"
-                                                                        min="1"
-                                                                        defaultValue={currentWorkers}
-                                                                        onBlur={async (e) => {
-                                                                            const newWorkers = Number(e.target.value) || 1;
-                                                                            const newDuration = task.manDays > 0 ? Math.ceil(task.manDays / newWorkers) : 1;
-
-                                                                            // 1. Cập nhật giao diện (React State) ngay lập tức cho mượt
-                                                                            setQtoTasks(prev => prev.map(t =>
-                                                                                t.id === task.id ? { ...t, assigned_workers: newWorkers, duration: newDuration } : t
-                                                                            ));
-
-                                                                            // 2. Cập nhật Database ĐỒNG THỜI 2 trường để đẩy sang Gantt cho chuẩn
-                                                                            await supabase.from('qto_items')
-                                                                                .update({ assigned_workers: newWorkers, duration: newDuration })
-                                                                                .eq('id', task.id);
-
-                                                                            // 3. Tải lại để tính lại ngày tháng của Gantt ngầm
-                                                                            loadData();
-                                                                        }}
-                                                                        className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold"
-                                                                    />
+                                                                    <Input type="number" min="1" defaultValue={currentWorkers} onBlur={async (e) => {
+                                                                        const newWorkers = Number(e.target.value) || 1;
+                                                                        const newDuration = task.manDays > 0 ? Math.ceil(task.manDays / newWorkers) : 1;
+                                                                        setQtoTasks(prev => prev.map(t => t.id === task.id ? { ...t, assigned_workers: newWorkers, duration: newDuration } : t));
+                                                                        await supabase.from('qto_items').update({ assigned_workers: newWorkers, duration: newDuration }).eq('id', task.id);
+                                                                        loadData();
+                                                                    }} className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold" />
                                                                 </TableCell>
-
-                                                                {/* CỘT HIỂN THỊ NGÀY LÀM (Tự động nhảy số) */}
-                                                                <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">
-                                                                    {computedDuration}
-                                                                </TableCell>
+                                                                <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">{computedDuration}</TableCell>
                                                             </>
                                                         );
                                                     })()}
                                                     <TableCell className="p-1 align-top pt-2">
-                                                        <PredecessorDialog
-                                                            task={task}
-                                                            schedData={schedulingData}
-                                                            onUpdate={(val) => {
-                                                                updateLocalQTO(task.id, { predecessors: val });
-                                                                handleUpdateQTOField(task.id, 'predecessors', val);
-                                                            }}
-                                                        />
+                                                        <PredecessorDialog task={task} schedData={schedulingData} onUpdate={(val) => { updateLocalQTO(task.id, { predecessors: val }); handleUpdateQTOField(task.id, 'predecessors', val); }} />
                                                     </TableCell>
-                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 border-l dark:border-slate-800 align-top pt-3">
-                                                        {formatDate(sDates.startDate)}
-                                                    </TableCell>
-                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 align-top pt-3">
-                                                        {formatDate(sDates.endDate)}
-                                                    </TableCell>
+                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 border-l dark:border-slate-800 align-top pt-3">{formatDate(sDates.startDate)}</TableCell>
+                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 align-top pt-3">{formatDate(sDates.endDate)}</TableCell>
                                                 </TableRow>
                                             );
                                         });
