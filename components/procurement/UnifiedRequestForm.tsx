@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+// ✅ ĐÃ IMPORT Controller
+import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { Plus, Trash2, Save, Loader2, Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,19 +14,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils/utils";
 
-// ✅ 1. IMPORT TYPE TỪ SUPABASE (Sửa lại đường dẫn nếu file supabase.ts của bạn nằm ở thư mục khác)
 import { Database } from "@/types/supabase";
 
-// Lấy type Insert chuẩn từ Database
-type MaterialRequestInsert = Database["public"]["Tables"]["material_requests"]["Insert"];
 type MaterialRequestItemInsert = Database["public"]["Tables"]["material_request_items"]["Insert"];
 
-// ✅ 2. ĐỊNH NGHĨA FORM DATA DỰA TRÊN SUPABASE TYPE
 export interface RequestItemForm {
     item_name: string;
-    // Đồng bộ với DB, fallback về cứng nếu DB đang dùng kiểu string thay vì enum
     item_category: NonNullable<MaterialRequestItemInsert["item_category"]> | "material" | "asset";
-    quantity: number;
+    quantity: string | number; // ✅ NHẬN CẢ STRING ĐỂ NHẬP ĐƯỢC 0.5
     unit: string;
     estimated_price: number;
     notes: string;
@@ -42,17 +38,16 @@ export interface UnifiedRequestFormData {
 
 interface UnifiedRequestFormProps {
     initialData?: Partial<UnifiedRequestFormData>;
-    warehouses: { id: string; name: string; location: string }[];
+    warehouses: { id: string | number; name: string; location?: string }[];
     budgetMaterials: any[];
     isSubmitting: boolean;
     onSubmit: (data: UnifiedRequestFormData) => void;
     onCancel: () => void;
 }
 
-// --- COMBOBOX CHỌN VẬT TƯ TRONG DỰ TOÁN ---
 function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
     const [open, setOpen] = useState(false);
-    const selectedItem = options.find((item: any) => item.name === value);
+    const selectedItem = options?.find((item: any) => item.name === value);
     return (
         <Popover open={open} onOpenChange={setOpen} modal={true}>
             <PopoverTrigger asChild>
@@ -67,7 +62,7 @@ function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
                     <CommandList>
                         <CommandEmpty>Không có trong dự toán.</CommandEmpty>
                         <CommandGroup className="max-h-[300px] overflow-y-auto">
-                            {options.map((item: any, index: number) => (
+                            {options?.map((item: any, index: number) => (
                                 <CommandItem key={item.name + index} value={item.name} onSelect={() => { onChange(item.name); if (item.unit && onUnitChange) onUnitChange(item.unit); setOpen(false); }}>
                                     <Check className={cn("mr-2 h-4 w-4", value === item.name ? "opacity-100" : "opacity-0")} />
                                     <div className="flex flex-col w-full">
@@ -87,7 +82,6 @@ function MaterialCombobox({ value, onChange, onUnitChange, options }: any) {
     );
 }
 
-// --- MAIN FORM COMPONENT ---
 export default function UnifiedRequestForm({ initialData, warehouses, budgetMaterials, isSubmitting, onSubmit, onCancel }: UnifiedRequestFormProps) {
     const form = useForm<UnifiedRequestFormData>({
         defaultValues: {
@@ -96,7 +90,7 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
             deadline_date: initialData?.deadline_date || new Date().toISOString().split('T')[0],
             destination_warehouse_id: initialData?.destination_warehouse_id || "",
             notes: initialData?.notes || "",
-            items: initialData?.items?.length ? initialData.items : [{ item_name: "", item_category: "material", quantity: 1, unit: "Cái", estimated_price: 0, notes: "" }]
+            items: initialData?.items?.length ? initialData.items : [{ item_name: "", item_category: "material", quantity: "", unit: "Cái", estimated_price: 0, notes: "" }]
         }
     });
 
@@ -106,38 +100,70 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
         if (initialData) form.reset(initialData as UnifiedRequestFormData);
     }, [initialData, form]);
 
+    // ✅ ÉP TỰ ĐỘNG CHỌN KHO DỰ ÁN
+    useEffect(() => {
+        const currentWh = form.getValues("destination_warehouse_id");
+        if (!currentWh && warehouses && warehouses.length > 0) {
+            form.setValue("destination_warehouse_id", String(warehouses[0].id), {
+                shouldValidate: true,
+                shouldDirty: true
+            });
+        }
+    }, [warehouses, form]);
+
     const inputStyle = "bg-background h-9 border-slate-200 dark:border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
 
     return (
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-5 rounded-xl border shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-5 rounded-xl border shadow-sm relative">
+
                 <div className="space-y-2"><Label>Mã phiếu</Label><Input {...form.register("code")} readOnly className={`${inputStyle} bg-muted cursor-not-allowed`} /></div>
 
                 <div className="space-y-2">
                     <Label>Mức độ ưu tiên</Label>
-                    <Select defaultValue={form.getValues("priority")} onValueChange={(val: any) => form.setValue("priority", val)}>
-                        <SelectTrigger className={inputStyle}><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="low">Thấp</SelectItem>
-                            <SelectItem value="normal">Bình thường</SelectItem> {/* 👈 Sửa value thành "medium" */}
-                            <SelectItem value="high">Cao</SelectItem>
-                            <SelectItem value="urgent">Khẩn cấp</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <Controller
+                        control={form.control}
+                        name="priority"
+                        render={({ field }) => (
+                            <Select value={field.value} onValueChange={field.onChange}>
+                                <SelectTrigger className={inputStyle}><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="low">Thấp</SelectItem>
+                                    <SelectItem value="normal">Bình thường</SelectItem>
+                                    <SelectItem value="high">Cao</SelectItem>
+                                    <SelectItem value="urgent">Khẩn cấp</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
                 </div>
 
                 <div className="space-y-2"><Label>Cần hàng trước ngày <span className="text-red-500">*</span></Label><Input type="date" {...form.register("deadline_date")} required className={inputStyle} /></div>
 
                 <div className="space-y-2 p-2 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200">
                     <Label className="text-amber-800 dark:text-amber-500 font-bold">Kho nhận hàng <span className="text-red-500">*</span></Label>
-                    <Select defaultValue={form.getValues("destination_warehouse_id")} onValueChange={(val) => form.setValue("destination_warehouse_id", val)}>
-                        <SelectTrigger className="bg-white dark:bg-slate-950 border-amber-300">
-                            <SelectValue placeholder="-- Chọn kho nhận hàng --" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {warehouses.map(wh => (<SelectItem key={wh.id} value={wh.id}>{wh.name} - {wh.location}</SelectItem>))}
-                        </SelectContent>
-                    </Select>
+                    {/* ✅ KHO HÀNG ĐƯỢC BỌC BẰNG CONTROLLER */}
+                    <Controller
+                        control={form.control}
+                        name="destination_warehouse_id"
+                        render={({ field }) => (
+                            <Select
+                                value={field.value ? String(field.value) : undefined}
+                                onValueChange={field.onChange}
+                            >
+                                <SelectTrigger className="bg-white dark:bg-slate-950 border-amber-300 font-medium">
+                                    <SelectValue placeholder="-- Chọn kho nhận hàng --" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {warehouses?.map(wh => (
+                                        <SelectItem key={wh.id} value={String(wh.id)}>
+                                            {wh.name} {wh.location ? `- ${wh.location}` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
                 </div>
 
                 <div className="space-y-2 md:col-span-2"><Label>Lý do / Ghi chú chung</Label><Textarea {...form.register("notes")} rows={2} placeholder="Mục đích sử dụng..." className="bg-background" /></div>
@@ -146,7 +172,7 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
             <div className="border rounded-xl shadow-sm overflow-hidden bg-card">
                 <div className="p-3 border-b bg-muted/50 flex justify-between items-center">
                     <h3 className="font-semibold text-foreground">Danh sách Vật tư / Tài sản</h3>
-                    <Button type="button" variant="outline" size="sm" onClick={() => append({ item_name: "", item_category: "material", quantity: 1, unit: "Cái", estimated_price: 0, notes: "" })}><Plus className="w-4 h-4 mr-1" /> Thêm dòng</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => append({ item_name: "", item_category: "material", quantity: "1", unit: "Cái", estimated_price: 0, notes: "" })}><Plus className="w-4 h-4 mr-1" /> Thêm dòng</Button>
                 </div>
                 <div className="overflow-x-auto">
                     <Table>
@@ -162,33 +188,62 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
                         </TableHeader>
                         <TableBody>
                             {fields.map((field, index) => {
-                                const currentCategory = form.watch(`items.${index}.item_category`);
-                                const currentName = form.watch(`items.${index}.item_name`);
                                 return (
                                     <TableRow key={field.id}>
                                         <TableCell className="p-2 align-top">
-                                            <Select defaultValue={field.item_category} onValueChange={(val: any) => form.setValue(`items.${index}.item_category`, val)}>
-                                                <SelectTrigger className={inputStyle}><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="material">Vật tư</SelectItem>
-                                                    <SelectItem value="asset">Tài sản</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                            <Controller
+                                                control={form.control}
+                                                name={`items.${index}.item_category`}
+                                                render={({ field: catField }) => (
+                                                    <Select value={catField.value} onValueChange={catField.onChange}>
+                                                        <SelectTrigger className={inputStyle}><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="material">Vật tư</SelectItem>
+                                                            <SelectItem value="asset">Tài sản</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
                                         </TableCell>
                                         <TableCell className="p-2 align-top">
-                                            {currentCategory === 'material' ? (
-                                                <MaterialCombobox
-                                                    value={currentName}
-                                                    options={budgetMaterials}
-                                                    onChange={(val: string) => form.setValue(`items.${index}.item_name`, val)}
-                                                    onUnitChange={(unit: string) => form.setValue(`items.${index}.unit`, unit)}
-                                                />
-                                            ) : (
-                                                <Input {...form.register(`items.${index}.item_name`)} required placeholder="Nhập tên tài sản / thiết bị..." className={inputStyle} />
-                                            )}
+                                            <Controller
+                                                control={form.control}
+                                                name={`items.${index}.item_name`}
+                                                render={({ field: nameField }) => (
+                                                    form.watch(`items.${index}.item_category`) === 'material' ? (
+                                                        <MaterialCombobox
+                                                            value={nameField.value}
+                                                            options={budgetMaterials || []}
+                                                            onChange={nameField.onChange}
+                                                            onUnitChange={(unit: string) => form.setValue(`items.${index}.unit`, unit)}
+                                                        />
+                                                    ) : (
+                                                        <Input {...nameField} required placeholder="Tên thiết bị..." className={inputStyle} />
+                                                    )
+                                                )}
+                                            />
                                         </TableCell>
                                         <TableCell className="p-2 align-top"><Input {...form.register(`items.${index}.unit`)} className={inputStyle} /></TableCell>
-                                        <TableCell className="p-2 align-top"><Input type="number" min="1" {...form.register(`items.${index}.quantity`)} required className={`${inputStyle} text-center font-bold`} /></TableCell>
+
+                                        {/* ✅ SỐ LƯỢNG ĐÃ LOẠI BỎ MIN=1, THÊM BỌC CONTROLLER VÀ STEP=ANY */}
+                                        <TableCell className="p-2 align-top">
+                                            <Controller
+                                                control={form.control}
+                                                name={`items.${index}.quantity`}
+                                                render={({ field: qtyField }) => (
+                                                    <Input
+                                                        type="number"
+                                                        step="any"
+                                                        min="0.001"
+                                                        value={qtyField.value}
+                                                        onChange={(e) => qtyField.onChange(e.target.value)}
+                                                        required
+                                                        className={`${inputStyle} text-center font-bold text-blue-600`}
+                                                    />
+                                                )}
+                                            />
+                                        </TableCell>
+
                                         <TableCell className="p-2 align-top"><Input {...form.register(`items.${index}.notes`)} placeholder="..." className={inputStyle} /></TableCell>
                                         <TableCell className="p-2 text-center align-top"><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-red-500 hover:text-red-700 hover:bg-red-50 h-9 w-9"><Trash2 className="w-4 h-4" /></Button></TableCell>
                                     </TableRow>
@@ -196,7 +251,6 @@ export default function UnifiedRequestForm({ initialData, warehouses, budgetMate
                             })}
                         </TableBody>
                     </Table>
-                    {fields.length === 0 && <div className="text-center py-8 text-muted-foreground italic border-t border-dashed">Vui lòng thêm ít nhất 1 mặt hàng.</div>}
                 </div>
             </div>
 

@@ -12,14 +12,6 @@ import { sendPushToUser } from "@/lib/action/pushNotification";
 // HỆ THỐNG THÔNG BÁO (NOTIFICATION ENGINE - APP & MOBILE)
 // ==============================================================================
 
-/**
- * Hàm tiện ích gửi thông báo đa kênh (Web + Mobile Push)
- * @param targetEmployeeId ID của nhân viên nhận (employee.id)
- * @param targetRole Role hoặc Phòng ban nhận (vd: 'procurement', 'warehouse', 'accounting', 'director')
- * @param title Tiêu đề thông báo
- * @param message Nội dung
- * @param link Link điều hướng khi click vào thông báo
- */
 async function sendSystemNotification(supabase: any, params: { targetEmployeeId?: string, targetRole?: string, title: string, message: string, link?: string }) {
     try {
         let authIdsToNotify: string[] = [];
@@ -32,8 +24,6 @@ async function sendSystemNotification(supabase: any, params: { targetEmployeeId?
 
         // 2. Tìm Auth ID của cả một phòng ban / chức vụ
         if (params.targetRole) {
-            // LƯU Ý: Giả định bạn lưu thông tin phòng ban ở cột 'department' trong bảng 'employees'
-            // Bạn có thể sửa 'department' thành cột thực tế của bạn (vd: 'position', 'role')
             const { data: users } = await supabase
                 .from('employees')
                 .select('auth_id')
@@ -137,7 +127,7 @@ export async function createMaterialRequest(data: any, items: any[]) {
             }
         }
 
-        // 🔔 THÔNG BÁO 1: Tạo đơn thành công -> Báo cho Quản lý của người tạo (Manager theo Org Chart)
+        // 🔔 THÔNG BÁO 1: Tạo đơn thành công -> Báo cho Quản lý của người tạo
         const { data: emp } = await supabase.from('employees').select('manager_id, name').eq('id', data.requester_id).single();
         if (emp && emp.manager_id) {
             await sendSystemNotification(supabase, {
@@ -174,13 +164,24 @@ export async function getProjectMembers(projectId: string) {
 }
 
 // ==============================================================================
-// PHẦN 2: LOGIC DUYỆT & XỬ LÝ (CHECK TỒN KHO)
+// PHẦN 2: LOGIC DUYỆT & XỬ LÝ (ĐÃ NHÚNG TỶ LỆ QUY ĐỔI ĐƠN VỊ TÍNH)
 // ==============================================================================
 
 export async function checkRequestFeasibility(requestId: string, projectId: string) {
     const supabase = await createClient();
     const { data: requestItems } = await supabase.from('material_request_items').select('*').eq('request_id', requestId);
     if (!requestItems || requestItems.length === 0) return { success: false, error: "Phiếu rỗng" };
+
+    // Kéo toàn bộ danh mục vật tư để lấy hệ số quy đổi
+    const { data: masterMaterials } = await supabase.from('materials').select('name, unit, purchase_unit, conversion_rate');
+    const catalogMap = new Map();
+    masterMaterials?.forEach(m => {
+        catalogMap.set(m.name.toLowerCase().trim(), {
+            baseUnit: m.unit,
+            purchaseUnit: m.purchase_unit,
+            rate: m.conversion_rate || 1
+        });
+    });
 
     const { data: warehouse } = await supabase.from('warehouses').select('id').eq('project_id', projectId).limit(1).single();
 
@@ -194,15 +195,31 @@ export async function checkRequestFeasibility(requestId: string, projectId: stri
     const { data: estimates } = await supabase.from('estimation_items').select('material_name, quantity').eq('project_id', projectId);
     estimates?.forEach(item => { budgetMap[item.material_name.toLowerCase().trim()] = item.quantity; });
 
+    // Phân tích có áp dụng quy đổi
     const analysis = requestItems.map(item => {
         const key = item.item_name.toLowerCase().trim();
+        const masterInfo = catalogMap.get(key) || { rate: 1, baseUnit: item.unit };
+
+        const requestedQty = Number(item.quantity);
+        const baseRequestedQty = requestedQty * masterInfo.rate; // Quy đổi ra số lượng Core (VD: kg)
+
         const stock = inventoryMap[key] || 0;
         const budget = budgetMap[key] || 0;
-        const requested = Number(item.quantity);
-        const issueQty = Math.min(stock, requested);
-        const purchaseQty = Math.max(0, requested - stock);
 
-        return { ...item, stock_available: stock, budget_quantity: budget, approved_quantity: requested, action_issue: issueQty, action_purchase: purchaseQty };
+        // Tính bằng số lượng Base Unit
+        const issueQtyBase = Math.min(stock, baseRequestedQty);
+        const purchaseQtyBase = Math.max(0, baseRequestedQty - stock);
+
+        return {
+            ...item,
+            conversion_rate: masterInfo.rate,
+            base_unit: masterInfo.baseUnit,
+            stock_available: stock,
+            budget_quantity: budget,
+            approved_quantity: requestedQty,
+            action_issue: issueQtyBase,
+            action_purchase: purchaseQtyBase
+        };
     });
 
     return { success: true, data: analysis, warehouseId: warehouse?.id };
@@ -228,7 +245,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
         if (toIssueItems.length === 0 && toPurchaseItems.length === 0) {
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         } else {
-            // A. XUẤT KHO
+            // A. XUẤT KHO (Theo Base Unit)
             if (toIssueItems.length > 0) {
                 if (!warehouseId) throw new Error("Dự án chưa được gán kho vật tư.");
                 const issueCode = `PXK-${Date.now().toString().slice(-6)}`;
@@ -242,7 +259,11 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 if (issueErr) throw new Error("Lỗi tạo phiếu xuất: " + issueErr.message);
 
                 const issueDetails = toIssueItems.map(item => ({
-                    issue_id: issue.id, item_name: item.item_name, unit: item.unit, quantity: Number(item.action_issue), unit_price: 0
+                    issue_id: issue.id,
+                    item_name: item.item_name,
+                    unit: item.base_unit || item.unit, // Ép về đơn vị gốc
+                    quantity: Number(item.action_issue),
+                    unit_price: 0
                 }));
 
                 const { error: issueItemsErr } = await supabase.from('goods_issue_items').insert(issueDetails);
@@ -252,11 +273,13 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 for (const item of toIssueItems) {
                     const { data: stock } = await supabase.from('project_inventory').select('id, quantity_on_hand')
                         .eq('warehouse_id', warehouseId).ilike('item_name', item.item_name).maybeSingle();
-                    if (stock) await supabase.from('project_inventory').update({ quantity_on_hand: stock.quantity_on_hand - Number(item.action_issue) }).eq('id', stock.id);
+                    if (stock) {
+                        await supabase.from('project_inventory').update({ quantity_on_hand: stock.quantity_on_hand - Number(item.action_issue) }).eq('id', stock.id);
+                    }
                 }
             }
 
-            // B. MUA HÀNG PO
+            // B. MUA HÀNG PO (Theo Base Unit)
             if (toPurchaseItems.length > 0) {
                 const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
                     project_id: projectId, code: `PO-AUTO-${Date.now().toString().slice(-6)}`, status: 'draft',
@@ -267,7 +290,11 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 if (poErr) throw new Error("Lỗi tạo PO: " + poErr.message);
 
                 const poDetails = toPurchaseItems.map(item => ({
-                    po_id: po.id, item_name: item.item_name, unit: item.unit, quantity: Number(item.action_purchase), unit_price: 0
+                    po_id: po.id,
+                    item_name: item.item_name,
+                    unit: item.base_unit || item.unit,
+                    quantity: Number(item.action_purchase),
+                    unit_price: 0
                 }));
                 const { error: poItemsErr } = await supabase.from('purchase_order_items').insert(poDetails);
                 if (poItemsErr) throw new Error("Lỗi thêm chi tiết PO: " + poItemsErr.message);
@@ -287,7 +314,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
 
             // 🔔 THÔNG BÁO 2b: Báo cho bộ phận Procurement tiếp tục xử lý
             await sendSystemNotification(supabase, {
-                targetRole: 'procurement', // Giả định mã bộ phận là 'procurement'
+                targetRole: 'procurement',
                 title: "Đề xuất cần tiến hành mua sắm",
                 message: `Phiếu yêu cầu ${originalReq.code} đã được duyệt. Vui lòng tiến hành tìm kiếm NCC và báo giá.`,
                 link: `/procurement/orders`
@@ -411,10 +438,10 @@ export async function createSplitPOAction(projectId: string, requestId: string, 
 
         // 🔔 THÔNG BÁO 3: Chốt được NCC và Giá (Tạo PO) -> Báo cho bộ phận Kho chờ nhận hàng
         await sendSystemNotification(supabase, {
-            targetRole: 'warehouse', // Mã bộ phận Kho
+            targetRole: 'warehouse',
             title: "Đơn mua hàng PO mới sắp giao",
             message: `Thu mua đã chốt đơn hàng ${code} với NCC. Vui lòng theo dõi tiến độ và chuẩn bị nhận hàng.`,
-            link: `/inventory/inbound` // Link tới màn hình chờ nhận hàng
+            link: `/inventory/inbound`
         });
 
         revalidatePath(`/procurement`);
@@ -525,9 +552,9 @@ export async function createGoodsReceiptAction(poId: string, notes: string, targ
         }
         await supabase.from("purchase_orders").update({ status: 'received' }).eq("id", poId);
 
-        // 🔔 THÔNG BÁO 4: Đã nhận hàng -> Báo cho Kế toán để tiến hành thanh toán
+        // 🔔 THÔNG BÁO 4: Đã nhận hàng -> Báo cho Kế toán
         await sendSystemNotification(supabase, {
-            targetRole: 'accounting', // Mã bộ phận Kế toán
+            targetRole: 'accounting',
             title: "Hàng đã nhập kho, chờ thanh toán",
             message: `Đơn hàng ${po.code} đã hoàn tất thủ tục nhập kho. Vui lòng kiểm tra chứng từ và tiến hành thanh toán cho NCC.`,
             link: `/finance/payables`
@@ -566,9 +593,9 @@ export async function createPaymentForPOAction(poId: string, projectId: string, 
             await supabase.from("purchase_orders").update({ status: 'completed' }).eq("id", poId);
         }
 
-        // 🔔 THÔNG BÁO 5: Thanh toán hoàn tất -> Báo cáo Ban Giám Đốc nắm thông tin
+        // 🔔 THÔNG BÁO 5: Thanh toán hoàn tất -> Báo cáo Ban Giám Đốc
         await sendSystemNotification(supabase, {
-            targetRole: 'director', // Mã Role Giám đốc
+            targetRole: 'director',
             title: "Hoàn tất thanh toán đơn hàng",
             message: `Kế toán đã thanh toán thành công số tiền ${amount.toLocaleString()} VNĐ cho đơn hàng ${po?.code || poId}.`,
             link: `/finance/transactions`
@@ -581,30 +608,64 @@ export async function createPaymentForPOAction(poId: string, projectId: string, 
     }
 }
 
-// PHẦN CENTRAL & QTO
+// ==============================================================================
+// PHẦN: CENTRAL & QTO (ĐÃ KHÔI PHỤC ĐẦY ĐỦ LOGIC FALLBACK & THÊM QUY ĐỔI)
+// ==============================================================================
 export async function getProjectStandardizedMaterials(projectId: string) {
     const supabase = await createClient();
+
+    // 1. Kéo Master Data để ánh xạ đơn vị mua sắm và quy đổi
+    const { data: masterData } = await supabase.from('materials').select('name, unit, purchase_unit, conversion_rate');
+    const masterMap = new Map();
+    masterData?.forEach(m => masterMap.set(m.name.toLowerCase().trim(), m));
+
+    // Hàm helper để map dữ liệu chuẩn (Thêm đơn vị mua sắm và quy đổi)
+    const mapWithMasterData = (itemName: string, baseUnit: string, budgetQty: number) => {
+        const mInfo = masterMap.get(itemName.toLowerCase().trim());
+        return {
+            name: itemName,
+            unit: mInfo?.purchase_unit || baseUnit, // Ưu tiên đơn vị mua sắm để hiển thị
+            base_unit: baseUnit,
+            rate: mInfo?.conversion_rate || 1,
+            budget: budgetQty
+        };
+    };
+
+    // Ưu tiên 1: Lấy từ Dự toán chi tiết
     const { data: estimates } = await supabase.from('estimation_items').select('material_name, unit, quantity').eq('project_id', projectId).gt('quantity', 0);
-    if (estimates?.length) return estimates.map(i => ({ name: i.material_name, unit: i.unit, budget: i.quantity }));
+    if (estimates?.length) {
+        return estimates.map(i => mapWithMasterData(i.material_name, i.unit, i.quantity));
+    }
 
+    // Ưu tiên 2 (Dự phòng): Ngân sách vật tư tổng quan
     const { data: budget } = await supabase.from('project_material_budget').select('material_name, unit, budget_quantity').eq('project_id', projectId);
-    if (budget?.length) return budget.map(i => ({ name: i.material_name, unit: i.unit, budget: i.budget_quantity }));
+    if (budget?.length) {
+        return budget.map(i => mapWithMasterData(i.material_name, i.unit, i.budget_quantity));
+    }
 
+    // Ưu tiên 3 (Dự phòng cuối): Bóc tách khối lượng tự động (QTO)
     const { data: raw } = await supabase.from('qto_items_calculated').select(`material_name, unit, quantity, qto_items!inner(project_id)`).eq('qto_items.project_id', projectId);
     if (raw?.length) {
         const map = new Map();
         raw.forEach((i: any) => {
             const key = i.material_name?.trim().toLowerCase();
             if (!key) return;
-            if (map.has(key)) map.get(key).budget += Number(i.quantity || 0);
-            else map.set(key, { name: i.material_name, unit: i.unit, budget: Number(i.quantity || 0) });
+            if (map.has(key)) {
+                map.get(key).budget += Number(i.quantity || 0);
+            } else {
+                map.set(key, mapWithMasterData(i.material_name, i.unit, Number(i.quantity || 0)));
+            }
         });
         return Array.from(map.values());
     }
+
     return [];
 }
 
-// --- TẠO NHÀ CUNG CẤP ---
+// ==============================================================================
+// PHẦN: NHÀ CUNG CẤP (SUPPLIER)
+// ==============================================================================
+
 export async function createSupplierAction(data: any) {
     const supabase = await createClient();
     try {
@@ -622,7 +683,6 @@ export async function createSupplierAction(data: any) {
     }
 }
 
-// --- UPDATE SUPPLIER ---
 export async function updateSupplierAction(id: string, data: any) {
     const supabase = await createClient();
     try {
@@ -640,7 +700,6 @@ export async function updateSupplierAction(id: string, data: any) {
     }
 }
 
-// --- DELETE SUPPLIER ---
 export async function deleteSupplierAction(id: string) {
     const supabase = await createClient();
     try {

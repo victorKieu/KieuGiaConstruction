@@ -11,7 +11,7 @@ import {
 
 import { getProjectDocuments } from "@/lib/action/documentActions";
 import { getProjectTasks } from "@/lib/action/taskActions";
-import { getDictionaryItems } from "@/lib/action/dictionaryActions"; // ✅ Đảm bảo action này tồn tại
+import { getDictionaryItems } from "@/lib/action/dictionaryActions";
 
 import { getProjectSurveys } from "@/lib/action/surveyActions";
 import { getEmployees } from "@/lib/action/employeeActions";
@@ -24,7 +24,7 @@ import { getEstimationItems, getCostTemplates } from "@/lib/action/estimationAct
 import { getProjectRequests } from "@/lib/action/requestActions";
 import { getProjectLegalDocs } from "@/lib/action/legal-actions";
 import { getConstructionLogs } from "@/lib/action/log-actions";
-import { getActiveWorkersOnSite } from "@/lib/action/attendanceActions"; 
+import { getActiveWorkersOnSite } from "@/lib/action/attendanceActions";
 import { formatDate, formatCurrency } from "@/lib/utils/utils";
 import { getCurrentSession } from "@/lib/supabase/session";
 
@@ -46,8 +46,8 @@ import {
     MapPin, Coins, Package, Scale, BookOpen
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProjectData } from "@/types/project";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Type mở rộng để hứng dữ liệu từ View
 type ProjectWithExtras = ProjectData & {
@@ -71,13 +71,24 @@ type ProjectWithExtras = ProjectData & {
     num_floors?: number | null;
 };
 
+// ✅ FIX 1: THÊM searchParams VÀO ĐỊNH NGHĨA PageProps
 interface PageProps {
     params: Promise<{ id: string }>;
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function ProjectPage({ params }: PageProps) {
+export default async function ProjectPage({ params, searchParams }: PageProps) {
     const { id } = await params;
     const session = await getCurrentSession();
+
+    // ✅ FIX 2: LẤY TÊN TAB TỪ URL 
+    const resolvedSearchParams = await searchParams;
+    let currentTab = (resolvedSearchParams.tab as string) || "overview";
+
+    // Nếu URL là ?tab=requests thì chuyển thành material_request cho khớp với TabsTrigger bên dưới
+    if (currentTab === "requests") {
+        currentTab = "material_request";
+    }
 
     if (!session.isAuthenticated) {
         return <div className="p-10 text-center">Vui lòng đăng nhập để xem dự án.</div>;
@@ -98,7 +109,7 @@ export default async function ProjectPage({ params }: PageProps) {
         projectRes, membersRes, docsRes, milestonesRes,
         tasksRes,
         surveysRes,
-        surveyTypesRes,     // 1. Dictionary SURVEY_TYPE
+        surveyTypesRes,
         rolesRes,
         employeesRes,
         quotationsRes,
@@ -111,9 +122,9 @@ export default async function ProjectPage({ params }: PageProps) {
         materialRequestsRes,
         legalDocsRes,
         constructionLogsRes,
-        taskStatusesRes,    // 2. Dictionary TASK_STATUS
-        taskPrioritiesRes,  // 3. Dictionary TASK_PRIORITY
-        projectStatusesRes  // 4. Dictionary PROJECT_STATUS
+        taskStatusesRes,
+        taskPrioritiesRes,
+        projectStatusesRes
     ] = await Promise.all([
         getProject(id),
         getProjectMembers(id),
@@ -164,15 +175,14 @@ export default async function ProjectPage({ params }: PageProps) {
     const activeWorkersRes = await getActiveWorkersOnSite(id);
     const activeWorkers = activeWorkersRes.data || [];
 
-    // 🔴 Xử lý dữ liệu Dictionary Survey Types
+    // Xử lý dữ liệu Dictionary Survey Types
     const rawSurveyTypes = await getDictionaryOptions("SURVEY_TYPE");
     const surveyTypes = Array.isArray(rawSurveyTypes)
         ? rawSurveyTypes.map((item: any) => ({
             ...item,
-            value: item.code || item.id // ✅ Bơm thêm 'value' để TypeScript và Dropdown Select không báo lỗi
+            value: item.code || item.id
         }))
         : [];
-    console.log("CHECK DICTIONARY:", surveyTypes);
 
     const roles = Array.isArray(rolesRes) ? rolesRes : ((rolesRes as any)?.data || []);
     const allEmployees = (employeesRes as any)?.employees || [];
@@ -184,7 +194,7 @@ export default async function ProjectPage({ params }: PageProps) {
         const data = Array.isArray(res) ? res : [];
         return data.map(item => ({
             ...item,
-            value: item.code // Map 'code' sang 'value' để component Select cũ chạy được
+            value: item.code
         }));
     };
 
@@ -263,7 +273,8 @@ export default async function ProjectPage({ params }: PageProps) {
                 />
             </div>
 
-            <Tabs defaultValue="overview" className="space-y-4">
+            {/* ✅ FIX 3: GẮN currentTab VÀO defaultValue CỦA TABS */}
+            <Tabs defaultValue={currentTab} className="space-y-4">
                 <TabsList className="bg-card p-1 border border-border rounded-lg w-full md:w-auto flex justify-start overflow-x-auto">
                     <TabsTrigger value="overview"><Activity className="w-4 h-4 mr-2" />Tổng quan</TabsTrigger>
                     <TabsTrigger value="legal"><Scale className="w-4 h-4 mr-2 text-purple-600 dark:text-purple-400" />Hồ sơ Pháp lý</TabsTrigger>
@@ -278,7 +289,6 @@ export default async function ProjectPage({ params }: PageProps) {
                         project={project}
                         financeStats={{ totalRevenue, totalCost, actualReceived, profit }}
                     />
-                    {/* Chèn Widget này vào cột bên phải của Tab Tổng quan (Chỗ hiển thị Tài chính) */}
                     <Card className="shadow-sm border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/10 mb-6">
                         <CardHeader className="pb-2 flex flex-row items-center justify-between">
                             <CardTitle className="text-base text-emerald-800 dark:text-emerald-400 flex items-center">
@@ -412,7 +422,6 @@ export default async function ProjectPage({ params }: PageProps) {
                 </TabsContent>
 
                 <TabsContent value="docs_management">
-                    {/* Bọc trong một div để tạo Card giao diện đẹp hơn */}
                     <div className="bg-card p-2 md:p-6 rounded-xl shadow-sm border border-border min-h-[500px]">
                         <ProjectConstructionDocsTab projectId={id} />
                     </div>

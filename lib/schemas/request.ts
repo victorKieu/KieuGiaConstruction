@@ -34,7 +34,7 @@ export const materialRequestSchema = z.object({
         unit: z.string().min(1, "ĐVT là bắt buộc"),
 
         // Ép kiểu (coerce) cực kỳ tốt để chống lỗi gõ chữ vào ô số
-        quantity: z.coerce.number().min(0.0001, "Số lượng phải lớn hơn 0"),
+        quantity: z.coerce.number().min(0.001, "Số lượng phải lớn hơn 0"),
 
         // ✅ Dùng 'notes' (Ghi chú chi tiết)
         notes: z.string().optional().nullable()

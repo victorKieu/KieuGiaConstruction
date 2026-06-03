@@ -22,7 +22,7 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
     const [fetching, setFetching] = useState(true);
     const [requestData, setRequestData] = useState<any>(null);
     const [warehouses, setWarehouses] = useState<any[]>([]);
-    const [budgetMaterials, setBudgetMaterials] = useState<any[]>([]); // ✅ Thêm state lưu vật tư dự toán
+    const [budgetMaterials, setBudgetMaterials] = useState<any[]>([]);
 
     // 1. Load dữ liệu phiếu cũ, danh sách kho & vật tư dự toán
     useEffect(() => {
@@ -32,7 +32,7 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
                 const [data, whList, budgetMats] = await Promise.all([
                     getMaterialRequestById(requestId),
                     getProjectWarehouses(projectId),
-                    getProjectStandardizedMaterials(projectId) // ✅ Kéo danh sách vật tư có trong dự toán
+                    getProjectStandardizedMaterials(projectId)
                 ]);
 
                 setWarehouses(whList || []);
@@ -48,8 +48,9 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
                         notes: data.notes || "",
                         items: data.items.map((i: any) => ({
                             item_name: i.item_name,
-                            item_category: i.item_category || "material", // Mặc định nếu cũ chưa có
-                            quantity: Number(i.quantity),
+                            item_category: i.item_category || "material",
+                            // ✅ FIX EDIT: Chuyển thẳng thành String để Form hiển thị chuẩn số thập phân (VD: "0.5") mà không bị React báo lỗi
+                            quantity: String(i.quantity),
                             unit: i.unit,
                             estimated_price: Number(i.estimated_price) || 0,
                             notes: i.notes || ""
@@ -74,19 +75,26 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
     const handleSubmit = async (formData: any) => {
         setLoading(true);
 
-        // ✅ CHUẨN HÓA DỮ LIỆU CHO KHỚP VỚI ZOD SCHEMA TRƯỚC KHI GỬI
+        // 🔥 CHUẨN HÓA SỐ LƯỢNG THÀNH FLOAT ĐỂ TRÁNH ZOD & DATABASE TỪ CHỐI KHI EDIT
+        const formattedItems = formData.items.map((item: any) => ({
+            ...item,
+            quantity: Number(item.quantity) // Bắt buộc ép kiểu float (số thập phân) ở đây
+        }));
+
+        // ✅ CHUẨN HÓA DỮ LIỆU CHO KHỚP VỚI ZOD SCHEMA TRƯỚC KHI GỬI LÊN SERVER
         const payload = {
             ...formData,
-            project_id: projectId, // Bơm thêm projectId từ URL vào
-            deadline_date: new Date(formData.deadline_date), // Ép chuỗi String thành kiểu Date
+            items: formattedItems, // Dùng mảng đã ép kiểu
+            project_id: projectId,
+            deadline_date: new Date(formData.deadline_date),
         };
 
         const res = await updateMaterialRequestAction(requestId, payload);
         setLoading(false);
 
         if (res.success) {
-            toast.success(res.message);
-            router.push(`/projects/${projectId}/requests/${requestId}`);
+            toast.success("Cập nhật phiếu thành công!"); // ✅ Đổi câu thông báo cho hợp ngữ cảnh Edit
+            router.push(`/projects/${projectId}/?tab=requests`);
             router.refresh();
         } else {
             toast.error(res.error);
@@ -108,7 +116,7 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
 
             {/* Header Màn hình */}
             <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" size="icon" onClick={() => router.back()} className="hover:bg-slate-200 dark:hover:bg-slate-800">
+                <Button variant="ghost" size="icon" onClick={() => router.push(`/projects/${projectId}/?tab=requests`)} className="hover:bg-slate-200 dark:hover:bg-slate-800">
                     <ArrowLeft className="w-5 h-5" />
                 </Button>
                 <div>
@@ -118,14 +126,16 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* ✅ LÔI UNIFIED FORM RA XÀI */}
-            <UnifiedRequestForm
-                initialData={requestData}       // Tự động fill data cũ
-                warehouses={warehouses}         // Đổ danh sách kho vào Select
-                budgetMaterials={budgetMaterials} // ✅ Đổ danh sách vật tư vào Combobox
-                isSubmitting={loading}          // Khóa nút khi đang lưu
-                onSubmit={handleSubmit}         // Hàm lưu data
-                onCancel={() => router.back()}    // Hàm hủy
-            />
+            {requestData && (
+                <UnifiedRequestForm
+                    initialData={requestData}       // Tự động fill data cũ
+                    warehouses={warehouses}         // Đổ danh sách kho vào Select
+                    budgetMaterials={budgetMaterials} // Đổ danh sách vật tư vào Combobox
+                    isSubmitting={loading}          // Khóa nút khi đang lưu
+                    onSubmit={handleSubmit}         // Hàm lưu data
+                    onCancel={() => router.push(`/projects/${projectId}/?tab=requests`)}    // Hàm hủy
+                />
+            )}
 
         </div>
     );

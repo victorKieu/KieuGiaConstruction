@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Folder, Filter, MoreHorizontal, Pencil, Trash2, Loader2, Settings } from "lucide-react";
+import { Plus, Search, Folder, Filter, MoreHorizontal, Pencil, Trash2, Loader2, Settings, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -128,17 +128,27 @@ export default function CatalogPage() {
     // --- HANDLERS MATERIAL ---
     const handleCreateMaterial = async (e: any) => {
         e.preventDefault();
+        setLoading(true);
         const form = new FormData(e.target);
+
+        // ✅ Lấy dữ liệu quy đổi mới
+        const rawPurchaseUnit = form.get("purchase_unit") as string;
+        const purchaseUnit = rawPurchaseUnit === "none" ? null : rawPurchaseUnit;
+        const conversionRate = Number(form.get("conversion_rate")) || 1;
 
         const res = await createMaterialAction({
             group_id: form.get("group_id"),
             code: form.get("code"),
             name: form.get("name"),
             unit: form.get("unit"),
+            purchase_unit: purchaseUnit,
+            conversion_rate: conversionRate,
             specs: form.get("specs"),
             supplier_ref: form.get("supplier_ref"),
-            ref_price: form.get("ref_price")
+            ref_price: Number(form.get("ref_price")) || 0
         });
+
+        setLoading(false);
         if (res.success) { toast.success(res.message); setOpenMatDialog(false); loadData(); }
         else toast.error(res.error);
     };
@@ -153,15 +163,24 @@ export default function CatalogPage() {
         if (!selectedItem) return;
         setLoading(true);
         const form = new FormData(e.target);
+
+        // ✅ Lấy dữ liệu quy đổi mới
+        const rawPurchaseUnit = form.get("purchase_unit") as string;
+        const purchaseUnit = rawPurchaseUnit === "none" ? null : rawPurchaseUnit;
+        const conversionRate = Number(form.get("conversion_rate")) || 1;
+
         const res = await updateMaterialAction(selectedItem.id, {
             group_id: form.get("group_id"),
             code: form.get("code"),
             name: form.get("name"),
             unit: form.get("unit"),
+            purchase_unit: purchaseUnit,
+            conversion_rate: conversionRate,
             specs: form.get("specs"),
             supplier_ref: form.get("supplier_ref"),
-            ref_price: form.get("ref_price")
+            ref_price: Number(form.get("ref_price")) || 0
         });
+
         setLoading(false);
         if (res.success) { toast.success(res.message); setOpenEditDialog(false); loadData(); }
         else toast.error(res.error);
@@ -188,7 +207,7 @@ export default function CatalogPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100 transition-colors">Danh mục Vật tư & Thiết bị</h2>
-                    <p className="text-muted-foreground dark:text-slate-400 mt-1 transition-colors">Quản lý mã hàng chuẩn (Master Data) cho toàn hệ thống.</p>
+                    <p className="text-muted-foreground dark:text-slate-400 mt-1 transition-colors">Quản lý mã hàng chuẩn và hệ số quy đổi đơn vị.</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -217,10 +236,16 @@ export default function CatalogPage() {
                                 <Plus className="mr-2 h-4 w-4" /> Thêm Vật Tư Mới
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-2xl dark:bg-slate-900 dark:border-slate-800 transition-colors">
+                        <DialogContent className="max-w-3xl dark:bg-slate-900 dark:border-slate-800 transition-colors max-h-[90vh] overflow-y-auto">
                             <DialogHeader><DialogTitle className="dark:text-slate-100">Tạo Mã Vật Tư Mới</DialogTitle></DialogHeader>
-                            <form onSubmit={handleCreateMaterial} className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
+                            <form onSubmit={handleCreateMaterial} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+
+                                <div className="md:col-span-12">
+                                    <Label className="dark:text-slate-300">Tên hàng hóa <span className="text-red-500">*</span></Label>
+                                    <Input name="name" placeholder="VD: Xi măng Hà Tiên PCB40" required className={inputClass} />
+                                </div>
+
+                                <div className="md:col-span-6">
                                     <Label className="dark:text-slate-300">Thuộc nhóm <span className="text-red-500">*</span></Label>
                                     <Select name="group_id" required defaultValue={selectedGroup !== 'all' ? selectedGroup : undefined}>
                                         <SelectTrigger className={inputClass}><SelectValue placeholder="Chọn nhóm..." /></SelectTrigger>
@@ -229,27 +254,51 @@ export default function CatalogPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div><Label className="dark:text-slate-300">Mã hàng <span className="text-red-500">*</span></Label><Input name="code" placeholder="VD: XM-HT-40" required className={inputClass} /></div>
+                                <div className="md:col-span-6"><Label className="dark:text-slate-300">Mã hàng <span className="text-red-500">*</span></Label><Input name="code" placeholder="VD: XM-HT-40" required className={inputClass} /></div>
 
-                                <div>
-                                    <Label className="dark:text-slate-300">Đơn vị tính <span className="text-red-500">*</span></Label>
-                                    <Select name="unit" required>
-                                        <SelectTrigger className={inputClass}><SelectValue placeholder="Chọn ĐVT" /></SelectTrigger>
-                                        <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                            {units.length > 0 ? (
-                                                units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>)
-                                            ) : (
-                                                <SelectItem value="cai" className="dark:text-slate-200">Cái (Mặc định)</SelectItem>
-                                            )}
-                                        </SelectContent>
-                                    </Select>
+                                {/* ✅ BLOCK QUY ĐỔI ĐƠN VỊ TÍNH */}
+                                <div className="md:col-span-12 p-4 bg-blue-50 dark:bg-slate-800/50 rounded-lg border border-blue-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
+                                    <div className="md:col-span-12"><h4 className="text-sm font-bold text-blue-800 dark:text-blue-400">Thiết lập Quy đổi Đơn vị</h4></div>
+
+                                    <div className="md:col-span-4">
+                                        <Label className="dark:text-slate-300">ĐV Dự toán (Cơ sở) <span className="text-red-500">*</span></Label>
+                                        <Select name="unit" required>
+                                            <SelectTrigger className="bg-white dark:bg-slate-950 border-blue-200"><SelectValue placeholder="VD: kg, m3" /></SelectTrigger>
+                                            <SelectContent className="dark:bg-slate-900">
+                                                {units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="md:col-span-4">
+                                        <Label className="dark:text-slate-300 text-orange-600 dark:text-orange-400 font-semibold">ĐV Mua sắm (Thực tế)</Label>
+                                        <Select name="purchase_unit" defaultValue="none">
+                                            <SelectTrigger className="bg-white dark:bg-slate-950 border-orange-200"><SelectValue placeholder="VD: bao, cây" /></SelectTrigger>
+                                            <SelectContent className="dark:bg-slate-900">
+                                                <SelectItem value="none" className="italic text-slate-500">-- Không quy đổi --</SelectItem>
+                                                {units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="md:col-span-4">
+                                        <Label className="dark:text-slate-300 font-semibold">Hệ số (1 ĐV Mua = ? ĐV Cơ sở)</Label>
+                                        <Input name="conversion_rate" type="number" step="any" defaultValue="1" min="0.001" className="bg-white dark:bg-slate-950 font-bold" />
+                                    </div>
+                                    <div className="md:col-span-12 text-xs italic text-slate-500">
+                                        Ví dụ Xi măng: ĐV Cơ sở là <b>kg</b> | ĐV Mua sắm là <b>Bao</b> | Hệ số là <b>50</b> (Vì 1 Bao = 50kg)
+                                    </div>
                                 </div>
 
-                                <div className="col-span-2"><Label className="dark:text-slate-300">Tên hàng hóa <span className="text-red-500">*</span></Label><Input name="name" placeholder="VD: Xi măng Hà Tiên PCB40" required className={inputClass} /></div>
-                                <div className="col-span-2"><Label className="dark:text-slate-300">Thông số / Quy cách</Label><Textarea name="specs" placeholder="VD: PCB40, TCVN..." className={inputClass} /></div>
-                                <div><Label className="dark:text-slate-300">NCC ưu tiên (Ref)</Label><Input name="supplier_ref" className={inputClass} /></div>
-                                <div><Label className="dark:text-slate-300">Giá tham khảo</Label><Input name="ref_price" type="number" className={inputClass} /></div>
-                                <div className="col-span-2 pt-2"><Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors">Lưu Vật Tư</Button></div>
+                                <div className="md:col-span-12"><Label className="dark:text-slate-300">Thông số / Quy cách</Label><Textarea name="specs" placeholder="VD: PCB40, TCVN..." className={inputClass} rows={2} /></div>
+                                <div className="md:col-span-6"><Label className="dark:text-slate-300">NCC ưu tiên (Ref)</Label><Input name="supplier_ref" className={inputClass} /></div>
+                                <div className="md:col-span-6"><Label className="dark:text-slate-300">Giá tham khảo</Label><Input name="ref_price" type="number" className={inputClass} /></div>
+
+                                <div className="md:col-span-12 pt-2">
+                                    <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                                        {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Lưu Vật Tư"}
+                                    </Button>
+                                </div>
                             </form>
                         </DialogContent>
                     </Dialog>
@@ -281,16 +330,9 @@ export default function CatalogPage() {
                                     <Folder className={`mr-2 h-4 w-4 ${selectedGroup === g.id ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"}`} />
                                     <span className="truncate">{g.name}</span>
                                 </Button>
-                                {/* Nút Sửa Nhóm (Hiện khi hover) */}
                                 <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 mr-1 opacity-0 group-hover:opacity-100 transition-opacity dark:hover:bg-slate-700"
-                                    onClick={(e) => {
-                                        e.stopPropagation(); // Chặn click vào nút cha
-                                        setEditingGroup(g);
-                                        setOpenEditGroupDialog(true);
-                                    }}
+                                    variant="ghost" size="icon" className="h-8 w-8 mr-1 opacity-0 group-hover:opacity-100 transition-opacity dark:hover:bg-slate-700"
+                                    onClick={(e) => { e.stopPropagation(); setEditingGroup(g); setOpenEditGroupDialog(true); }}
                                 >
                                     <Settings className="h-3.5 w-3.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400" />
                                 </Button>
@@ -313,14 +355,14 @@ export default function CatalogPage() {
 
                     <Card className="border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm transition-colors">
                         <div className="overflow-x-auto">
-                            <Table className="bg-white dark:bg-slate-950 transition-colors w-full min-w-[700px]">
+                            <Table className="bg-white dark:bg-slate-950 transition-colors w-full min-w-[850px]">
                                 <TableHeader>
                                     <TableRow className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
-                                        <TableHead className="w-[120px] font-bold text-slate-700 dark:text-slate-300">Mã hàng</TableHead>
+                                        <TableHead className="w-[110px] font-bold text-slate-700 dark:text-slate-300">Mã hàng</TableHead>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Tên hàng hóa</TableHead>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Thông số</TableHead>
-                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
-                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300">NCC (Ref)</TableHead>
+                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300 w-[180px]">ĐVT & Quy đổi</TableHead>
+                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300">NCC</TableHead>
                                         <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Giá tham khảo</TableHead>
                                         <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
@@ -340,8 +382,22 @@ export default function CatalogPage() {
                                                     <div className="font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer transition-colors" onClick={() => openEdit(m)}>{m.name}</div>
                                                     <div className="text-xs text-muted-foreground dark:text-slate-500 mt-0.5 transition-colors">{m.group?.name}</div>
                                                 </TableCell>
-                                                <TableCell className="text-sm text-muted-foreground dark:text-slate-400 max-w-[200px] truncate transition-colors" title={m.specs}>{m.specs || "-"}</TableCell>
-                                                <TableCell className="text-slate-700 dark:text-slate-300">{m.unit}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground dark:text-slate-400 max-w-[150px] truncate transition-colors" title={m.specs}>{m.specs || "-"}</TableCell>
+
+                                                {/* Hiển thị Quy đổi thông minh */}
+                                                <TableCell className="text-slate-700 dark:text-slate-300">
+                                                    {m.purchase_unit ? (
+                                                        <div className="flex flex-col text-sm">
+                                                            <span className="font-bold text-orange-600 dark:text-orange-400">{m.purchase_unit}</span>
+                                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                                                (1 {m.purchase_unit} <ArrowRight className="w-2 h-2" /> {m.conversion_rate} {m.unit})
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="font-bold text-slate-700 dark:text-slate-300">{m.unit}</span>
+                                                    )}
+                                                </TableCell>
+
                                                 <TableCell className="text-slate-700 dark:text-slate-300">{m.supplier_ref || "-"}</TableCell>
                                                 <TableCell className="text-right font-medium text-slate-800 dark:text-slate-200 transition-colors">{new Intl.NumberFormat("vi-VN").format(m.ref_price)} đ</TableCell>
                                                 <TableCell className="text-right">
@@ -375,12 +431,17 @@ export default function CatalogPage() {
 
             {/* --- DIALOG SỬA VẬT TƯ --- */}
             <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
-                <DialogContent className="max-w-2xl dark:bg-slate-900 dark:border-slate-800 transition-colors">
+                <DialogContent className="max-w-3xl dark:bg-slate-900 dark:border-slate-800 transition-colors max-h-[90vh] overflow-y-auto">
                     <DialogHeader><DialogTitle className="dark:text-slate-100">Cập nhật Vật tư: <span className="font-mono text-blue-600 dark:text-blue-400">{selectedItem?.code}</span></DialogTitle></DialogHeader>
                     {selectedItem && (
-                        <form onSubmit={handleUpdateMaterial} className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2">
-                                <Label className="dark:text-slate-300">Thuộc nhóm</Label>
+                        <form onSubmit={handleUpdateMaterial} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                            <div className="md:col-span-12">
+                                <Label className="dark:text-slate-300">Tên hàng hóa <span className="text-red-500">*</span></Label>
+                                <Input name="name" defaultValue={selectedItem.name} required className={inputClass} />
+                            </div>
+
+                            <div className="md:col-span-6">
+                                <Label className="dark:text-slate-300">Thuộc nhóm <span className="text-red-500">*</span></Label>
                                 <Select name="group_id" defaultValue={selectedItem.group_id}>
                                     <SelectTrigger className={inputClass}><SelectValue /></SelectTrigger>
                                     <SelectContent className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
@@ -388,28 +449,44 @@ export default function CatalogPage() {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div><Label className="dark:text-slate-300">Mã hàng</Label><Input name="code" defaultValue={selectedItem.code} required className={inputClass} /></div>
+                            <div className="md:col-span-6"><Label className="dark:text-slate-300">Mã hàng <span className="text-red-500">*</span></Label><Input name="code" defaultValue={selectedItem.code} required className={inputClass} /></div>
 
-                            <div>
-                                <Label className="dark:text-slate-300">Đơn vị tính</Label>
-                                <Select name="unit" defaultValue={selectedItem.unit}>
-                                    <SelectTrigger className={inputClass}><SelectValue /></SelectTrigger>
-                                    <SelectContent className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
-                                        {units.length > 0 ? (
-                                            units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>)
-                                        ) : (
-                                            <SelectItem value={selectedItem.unit} className="dark:text-slate-200">{selectedItem.unit}</SelectItem>
-                                        )}
-                                    </SelectContent>
-                                </Select>
+                            {/* ✅ BLOCK QUY ĐỔI ĐƠN VỊ TÍNH KHI EDIT */}
+                            <div className="md:col-span-12 p-4 bg-blue-50 dark:bg-slate-800/50 rounded-lg border border-blue-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
+                                <div className="md:col-span-12"><h4 className="text-sm font-bold text-blue-800 dark:text-blue-400">Thiết lập Quy đổi Đơn vị</h4></div>
+
+                                <div className="md:col-span-4">
+                                    <Label className="dark:text-slate-300">ĐV Dự toán (Cơ sở)</Label>
+                                    <Select name="unit" defaultValue={selectedItem.unit}>
+                                        <SelectTrigger className="bg-white dark:bg-slate-950 border-blue-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent className="dark:bg-slate-900">
+                                            {units.length > 0 ? units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>) : <SelectItem value={selectedItem.unit}>{selectedItem.unit}</SelectItem>}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="md:col-span-4">
+                                    <Label className="dark:text-slate-300 text-orange-600 dark:text-orange-400 font-semibold">ĐV Mua sắm (Thực tế)</Label>
+                                    <Select name="purchase_unit" defaultValue={selectedItem.purchase_unit || "none"}>
+                                        <SelectTrigger className="bg-white dark:bg-slate-950 border-orange-200"><SelectValue placeholder="-- Không quy đổi --" /></SelectTrigger>
+                                        <SelectContent className="dark:bg-slate-900">
+                                            <SelectItem value="none" className="italic text-slate-500">-- Không quy đổi --</SelectItem>
+                                            {units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="md:col-span-4">
+                                    <Label className="dark:text-slate-300 font-semibold">Hệ số (1 ĐV Mua = ? ĐV Cơ sở)</Label>
+                                    <Input name="conversion_rate" type="number" step="any" min="0.001" defaultValue={selectedItem.conversion_rate || 1} className="bg-white dark:bg-slate-950 font-bold" />
+                                </div>
                             </div>
 
-                            <div className="col-span-2"><Label className="dark:text-slate-300">Tên hàng hóa</Label><Input name="name" defaultValue={selectedItem.name} required className={inputClass} /></div>
-                            <div className="col-span-2"><Label className="dark:text-slate-300">Thông số / Quy cách</Label><Textarea name="specs" defaultValue={selectedItem.specs} className={inputClass} /></div>
-                            <div><Label className="dark:text-slate-300">NCC ưu tiên (Ref)</Label><Input name="supplier_ref" defaultValue={selectedItem.supplier_ref} className={inputClass} /></div>
-                            <div><Label className="dark:text-slate-300">Giá tham khảo</Label><Input name="ref_price" type="number" defaultValue={selectedItem.ref_price} className={inputClass} /></div>
+                            <div className="md:col-span-12"><Label className="dark:text-slate-300">Thông số / Quy cách</Label><Textarea name="specs" defaultValue={selectedItem.specs} className={inputClass} rows={2} /></div>
+                            <div className="md:col-span-6"><Label className="dark:text-slate-300">NCC ưu tiên (Ref)</Label><Input name="supplier_ref" defaultValue={selectedItem.supplier_ref} className={inputClass} /></div>
+                            <div className="md:col-span-6"><Label className="dark:text-slate-300">Giá tham khảo</Label><Input name="ref_price" type="number" defaultValue={selectedItem.ref_price} className={inputClass} /></div>
 
-                            <div className="col-span-2 flex justify-end gap-2 pt-4 border-t dark:border-slate-800 mt-2">
+                            <div className="md:col-span-12 flex justify-end gap-2 pt-4 border-t dark:border-slate-800 mt-2">
                                 <Button type="button" variant="outline" onClick={() => setOpenEditDialog(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
                                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={loading}>{loading ? <Loader2 className="animate-spin w-4 h-4" /> : "Lưu thay đổi"}</Button>
                             </div>
@@ -424,23 +501,12 @@ export default function CatalogPage() {
                     <DialogHeader><DialogTitle className="dark:text-slate-100">Chỉnh sửa Nhóm Vật tư</DialogTitle></DialogHeader>
                     {editingGroup && (
                         <form onSubmit={handleUpdateGroup} className="space-y-4">
-                            <div>
-                                <Label className="dark:text-slate-300">Mã nhóm</Label>
-                                <Input name="code" defaultValue={editingGroup.code} required className={inputClass} />
-                            </div>
-                            <div>
-                                <Label className="dark:text-slate-300">Tên nhóm</Label>
-                                <Input name="name" defaultValue={editingGroup.name} required className={inputClass} />
-                            </div>
-                            <div>
-                                <Label className="dark:text-slate-300">Mô tả</Label>
-                                <Textarea name="description" defaultValue={editingGroup.description || ""} className={inputClass} />
-                            </div>
+                            <div><Label className="dark:text-slate-300">Mã nhóm</Label><Input name="code" defaultValue={editingGroup.code} required className={inputClass} /></div>
+                            <div><Label className="dark:text-slate-300">Tên nhóm</Label><Input name="name" defaultValue={editingGroup.name} required className={inputClass} /></div>
+                            <div><Label className="dark:text-slate-300">Mô tả</Label><Textarea name="description" defaultValue={editingGroup.description || ""} className={inputClass} /></div>
                             <div className="flex justify-end gap-2 pt-4 border-t dark:border-slate-800 mt-2">
                                 <Button type="button" variant="outline" onClick={() => setOpenEditGroupDialog(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
-                                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={loading}>
-                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu thay đổi"}
-                                </Button>
+                                <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={loading}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu thay đổi"}</Button>
                             </div>
                         </form>
                     )}

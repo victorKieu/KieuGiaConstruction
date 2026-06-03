@@ -28,11 +28,9 @@ import {
     getCurrentRequesterInfo,
     getProjectStandardizedMaterials
 } from "@/lib/action/procurement";
-// Lưu ý: Import thêm getProjectWarehouses để lấy danh sách kho truyền vào Form
 import { getProjectWarehouses } from "@/lib/action/requestActions";
 import { formatDate } from "@/lib/utils/utils";
 
-// ✅ GỌI COMPONENT FORM DÙNG CHUNG VÀO ĐÂY
 import UnifiedRequestForm from "@/components/procurement/UnifiedRequestForm";
 
 interface MaterialRequestManagerProps {
@@ -44,16 +42,14 @@ interface MaterialRequestManagerProps {
 export default function MaterialRequestManager({ projectId, requests: initialRequests, projectStatus }: MaterialRequestManagerProps) {
     const router = useRouter();
     const [requests, setRequests] = useState(initialRequests || []);
-    const [warehouses, setWarehouses] = useState<any[]>([]); // State lưu danh sách Kho
+    const [warehouses, setWarehouses] = useState<any[]>([]);
     const [currentUser, setCurrentUser] = useState({ id: "", name: "" });
     const [loading, setLoading] = useState(true);
 
-    // UI States
     const [open, setOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [processOpen, setProcessOpen] = useState(false);
 
-    // Process States
     const [selectedRequest, setSelectedRequest] = useState<any>(null);
     const [approvalItems, setApprovalItems] = useState<any[]>([]);
     const [warehouseId, setWarehouseId] = useState<string>("");
@@ -71,17 +67,16 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
     const loadData = async () => {
         try {
-            // Thứ tự gọi: 1.Requests, 2.UserInfo, 3.Warehouses, 4.StandardizedMaterials
             const [reqs, userInfo, whList, budgetMats] = await Promise.all([
                 getMaterialRequests(projectId),
                 getCurrentRequesterInfo(),
                 getProjectWarehouses(projectId),
-                getProjectStandardizedMaterials(projectId) // ✅ Gọi hàm ở vị trí thứ 4
+                getProjectStandardizedMaterials(projectId)
             ]);
 
             setRequests(reqs || []);
             setWarehouses(whList || []);
-            setBudgetMaterials(budgetMats || []); // ✅ Gán dữ liệu vào state
+            setBudgetMaterials(budgetMats || []);
 
             if (userInfo) setCurrentUser({ id: userInfo.id, name: userInfo.name });
         } catch (error) {
@@ -92,28 +87,32 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
         }
     };
 
-    // --- XỬ LÝ KHI BẤM "LƯU PHIẾU" TỪ UNIFIED FORM ---
+    // --- FIX SỐ THẬP PHÂN TRƯỚC KHI GỬI SERVER ---
     const handleCreateSubmit = async (formData: any) => {
         if (!currentUser.id) return toast.error("Lỗi: Tài khoản chưa có ID nhân sự.");
 
         setSubmitting(true);
 
-        // ✅ CHUẨN HÓA DỮ LIỆU TRƯỚC KHI GỬI
         const payload = {
             ...formData,
-            project_id: projectId, // Bơm projectId
+            project_id: projectId,
             requester_id: currentUser.id,
-            deadline_date: formData.deadline_date ? new Date(formData.deadline_date) : new Date(), // Ép kiểu Date
+            deadline_date: formData.deadline_date ? new Date(formData.deadline_date) : new Date(),
             request_date: new Date().toISOString()
         };
 
-        // Lưu ý: Nếu createMaterialRequest của bạn cũng dùng Zod, nó sẽ pass mượt mà!
-        const res = await createMaterialRequest(payload, formData.items);
+        // 🔥 CHUẨN HÓA LẠI SỐ LƯỢNG THÀNH FLOAT (SỐ THẬP PHÂN) ĐỂ TRÁNH SERVER HIỂU NHẦM LÀ CHUỖI
+        const formattedItems = formData.items.map((item: any) => ({
+            ...item,
+            quantity: Number(item.quantity) // Bắt buộc ép kiểu float ở đây
+        }));
+
+        const res = await createMaterialRequest(payload, formattedItems);
 
         if (res.success) {
             toast.success("Tạo đề xuất thành công!");
             setOpen(false);
-            loadData(); // Cập nhật lại danh sách
+            loadData();
         } else {
             toast.error(res.error);
         }
@@ -123,17 +122,14 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
     const handleDelete = async (id: string) => {
         if (!confirm("Bạn có chắc chắn muốn xóa phiếu yêu cầu này?")) return;
 
-        // Hiển thị toast loading ngay lập tức
         const toastId = toast.loading("Đang xóa phiếu...");
 
         try {
-            // Đợi kết quả từ action
             const res = await deleteMaterialRequest(id, projectId);
 
-            // Bây giờ 'res' đã có kiểu dữ liệu { success: boolean, error?: string }
             if (res && res.success) {
                 toast.success("Đã xóa phiếu thành công!", { id: toastId });
-                loadData(); // Tải lại danh sách
+                loadData();
             } else {
                 toast.error(res?.error || "Lỗi không xác định khi xóa", { id: toastId });
             }
@@ -142,7 +138,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
         }
     };
 
-    // --- APPROVAL HANDLERS (Giữ nguyên) ---
     const handleOpenProcess = async (req: any) => {
         setSelectedRequest(req);
         setProcessOpen(true);
@@ -200,10 +195,12 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
         return <Badge variant="outline" className={map[p] || map.normal}>{p === 'urgent' ? 'Khẩn cấp' : p === 'high' ? 'Cao' : 'Bình thường'}</Badge>;
     };
 
+    // --- FIX UI CHỌN KHO: XÁC ĐỊNH ĐÚNG KHO CỦA DỰ ÁN TRƯỚC KHI TRUYỀN VÀO FORM ---
+    const targetWarehouse = warehouses.find(w => w.project_id === projectId) || warehouses[0];
+    const defaultWarehouseId = targetWarehouse ? String(targetWarehouse.id) : "";
+
     return (
         <div className="space-y-6">
-
-            {/* 1. HEADER & CONTROL */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-card p-4 rounded-lg border border-border shadow-sm">
                 <div>
                     <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -215,21 +212,30 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                 {isActive ? (
                     <Dialog open={open} onOpenChange={setOpen}>
                         <DialogTrigger asChild>
-                            <Button className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 text-white shadow-sm">
-                                <Plus className="w-4 h-4 mr-2" /> Tạo Đề xuất
+                            <Button
+                                disabled={warehouses.length === 0}
+                                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 text-white shadow-sm"
+                            >
+                                {warehouses.length === 0 ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                                Tạo Đề xuất
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
                             <DialogHeader><DialogTitle>Tạo phiếu yêu cầu mua sắm mới</DialogTitle></DialogHeader>
                             <div className="py-4">
-                                {/* ✅ GỌI COMPONENT UNIFIED FORM RA ĐÂY */}
-                                <UnifiedRequestForm
-                                    warehouses={warehouses}
-                                    budgetMaterials={budgetMaterials} // ✅ Truyền prop này vào
-                                    isSubmitting={submitting}
-                                    onSubmit={handleCreateSubmit}
-                                    onCancel={() => setOpen(false)}
-                                />
+                                {open && ( // 🔥 CHỈ RENDER FORM KHI DIALOG MỞ
+                                    <UnifiedRequestForm
+                                        key={`form-${open}`} // 🔥 ÉP BUỘC RENDER LẠI TỪ ĐẦU KHÔNG DÙNG CACHE
+                                        initialData={{
+                                            destination_warehouse_id: defaultWarehouseId // Bơm thẳng Kho vào đây
+                                        }}
+                                        warehouses={warehouses}
+                                        budgetMaterials={budgetMaterials}
+                                        isSubmitting={submitting}
+                                        onSubmit={handleCreateSubmit}
+                                        onCancel={() => setOpen(false)}
+                                    />
+                                )}
                             </div>
                         </DialogContent>
                     </Dialog>
@@ -243,7 +249,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                 )}
             </div>
 
-            {/* BANNER CẢNH BÁO TẠM DỪNG */}
             {isPaused && (
                 <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
                     <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 mt-0.5" />
@@ -256,7 +261,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                 </div>
             )}
 
-            {/* 2. LIST REQUESTS */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {requests.map((req) => (
                     <Card key={req.id} className={`hover:shadow-md transition-all border-l-4 ${req.status === 'approved' ? 'border-l-green-500 bg-green-50/20 dark:bg-green-900/10' : 'border-l-blue-500'}`}>
@@ -272,7 +276,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                 {req.items?.length > 3 && <div className="text-center text-blue-500 italic pt-1">+ {req.items.length - 3} khác...</div>}
                             </div>
 
-                            {/* CÁC NÚT THAO TÁC */}
                             <div className="pt-2 flex justify-between items-center border-t border-border mt-3">
                                 <span className={`text-xs font-bold flex items-center gap-1 ${req.status === 'approved' ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'}`}>
                                     {req.status === 'pending' ? <><Loader2 className="w-3 h-3 animate-spin" /> Chờ xử lý</> : <><CheckSquare className="w-3 h-3" /> Đã duyệt</>}
@@ -288,8 +291,7 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                             <Button
                                                 variant="outline"
                                                 size="icon"
-                                                className="..."
-                                                // Thêm / ở đầu và đảm bảo cấu trúc: /projects/[projectId]/requests/[requestId]/edit
+                                                className="h-7 w-7"
                                                 onClick={() => router.push(`/projects/${projectId}/requests/${req.id}/edit`)}
                                             >
                                                 <Edit className="w-3 h-3" />
@@ -315,7 +317,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                 ))}
             </div>
 
-            {/* PROCESS DIALOG (DUYỆT PHIẾU - Giữ nguyên logic) */}
             <Dialog open={processOpen} onOpenChange={setProcessOpen}>
                 <DialogContent className="max-w-4xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Phân tích & Duyệt Đề xuất</DialogTitle></DialogHeader>

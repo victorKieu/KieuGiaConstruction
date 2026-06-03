@@ -109,7 +109,7 @@ export async function createMaterialRequestAction(
                 item_name: item.item_name,
                 item_category: 'material', // Mặc định luồng cũ là vật tư
                 unit: item.unit,
-                quantity: item.quantity,
+                quantity: Number(item.quantity),
                 notes: item.notes
             }));
 
@@ -159,7 +159,7 @@ export async function updateMaterialRequestAction(id: string, data: any) {
                 item_name: i.item_name,
                 item_category: i.item_category || 'material',
                 unit: i.unit,
-                quantity: i.quantity,
+                quantity: Number(i.quantity),
                 notes: i.notes
             }));
 

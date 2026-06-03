@@ -55,7 +55,10 @@ export async function createMaterialAction(data: any) {
     const cleanData = {
         ...data,
         ref_price: data.ref_price ? Number(data.ref_price) : 0,
-        group_id: data.group_id || null
+        group_id: data.group_id || null,
+        // ✅ Bắt chuẩn dữ liệu Quy đổi đơn vị
+        purchase_unit: data.purchase_unit || null,
+        conversion_rate: data.conversion_rate ? Number(data.conversion_rate) : 1
     };
 
     const { error } = await supabase.from("materials").insert(cleanData);
@@ -72,9 +75,13 @@ export async function createMaterialAction(data: any) {
 export async function updateMaterialAction(id: string, data: any) {
     const supabase = await createClient();
 
+    // Clean data trước khi update
     const cleanData = {
         ...data,
-        ref_price: data.ref_price ? Number(data.ref_price) : 0
+        ref_price: data.ref_price ? Number(data.ref_price) : 0,
+        // ✅ Bắt chuẩn dữ liệu Quy đổi đơn vị
+        purchase_unit: data.purchase_unit || null,
+        conversion_rate: data.conversion_rate ? Number(data.conversion_rate) : 1
     };
 
     const { error } = await supabase
@@ -98,7 +105,7 @@ export async function deleteMaterialAction(id: string) {
     return { success: true, message: "Đã xóa vật tư!" };
 }
 
-// ✅ HÀM MỚI: Cập nhật nhóm vật tư
+// Cập nhật nhóm vật tư
 export async function updateMaterialGroupAction(id: string, data: { code: string; name: string; description?: string }) {
     const supabase = await createClient();
     const { error } = await supabase
