@@ -24,14 +24,17 @@ import { formatCurrency } from "@/lib/utils/utils";
 import { exportToExcel } from "@/lib/utils/exportExcel";
 import { formatDate } from "@/lib/utils/utils";
 import { updateQTONormCode, updateQTOItem, addManualQTOItem, addQTODetail, createQTOItem } from "@/lib/action/qtoActions";
-import { analyzeSingleQTOItem, createManualEstimationItem, syncTaskVolumeAndEstimations } from "@/lib/action/estimationActions";
+import { analyzeSingleQTOItem, createManualEstimationItem, syncTaskVolumeAndEstimations, recalculateProjectEffectivePrices } from "@/lib/action/estimationActions";
 import { importBOQFromExcel } from "@/lib/action/import-excel";
 import { sync5DToGanttTasks } from "@/lib/action/rollupActions";
 import { getNorms } from "@/lib/action/normActions";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 import ProjectEstimationTab from "./ProjectEstimationTab";
 import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
-
+import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import * as XLSX from "xlsx";
 interface Props { projectId: string; }
 
 function toRoman(num: number): string {
@@ -72,14 +75,12 @@ function AutoResizeTextarea({ defaultValue, onBlur, className }: { defaultValue:
     );
 }
 
-// ✅ ĐÃ SỬA LẠI COMPONENT TÌM KIẾM ĐỂ HOẠT ĐỘNG HOÀN HẢO
 function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskId: string; projectId: string; defaultCode: string; onUpdate: (norm: any) => void; }) {
     const [query, setQuery] = useState(defaultCode || "");
     const [results, setResults] = useState<any[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
 
-    // Lắng nghe sự thay đổi của defaultCode từ bên ngoài
     useEffect(() => { setQuery(defaultCode || ""); }, [defaultCode]);
 
     const handleKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -102,10 +103,10 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
             await updateQTONormCode(taskId, projectId, norm.code);
             await updateQTOItem(taskId, 'item_name', norm.name);
             await updateQTOItem(taskId, 'unit', norm.unit);
-            await analyzeSingleQTOItem(taskId, projectId, 0); // Bóc tách ngay lập tức
+            await analyzeSingleQTOItem(taskId, projectId, 0);
 
             toast.success("Áp mã và cập nhật Hao phí thành công!", { id: toastId });
-            onUpdate(norm); // Hàm này gọi lại loadData() để làm tươi UI
+            onUpdate(norm);
         } catch (error) {
             toast.error("Lỗi khi áp dụng định mức!", { id: toastId });
         }
@@ -135,6 +136,7 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
         </div>
     );
 }
+
 
 function PredecessorDialog({ task, schedData, onUpdate }: { task: any, schedData: any[], onUpdate: (val: string) => void }) {
     const [preds, setPreds] = useState(task.predecessors || "");
@@ -483,11 +485,16 @@ export default function ProjectBOQTab({ projectId }: Props) {
                 if (task) {
                     const updatedDetails = task.details.filter((d: any) => d.id !== id);
                     const newTaskVol = updatedDetails.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0);
+                    // Hành động này đã tự gọi recalculateProjectEffectivePrices ở Backend
                     await syncTaskVolumeAndEstimations(task.id, newTaskVol);
                 }
-            } else { await supabase.from('qto_items').delete().eq('id', id); }
+            } else {
+                await supabase.from('qto_items').delete().eq('id', id);
+                // Gọi thẳng recalculate để chia lại giá vì tổng lượng đã giảm
+                await recalculateProjectEffectivePrices(projectId);
+            }
             await loadData();
-            toast.success("Đã xóa thành công!", { id: toastId });
+            toast.success("Đã xóa và cập nhật lại đơn giá!", { id: toastId });
         } catch (err: any) { toast.error("Lỗi khi xóa: " + err.message, { id: toastId }); }
     };
 
@@ -599,23 +606,41 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const sections = useMemo(() => qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type)), [qtoTasks]);
     const tasks = useMemo(() => qtoTasks.filter(i => i.item_type === 'task'), [qtoTasks]);
 
-    const T = normalItems.reduce((sum, item) => sum + (item.total_cost || 0), 0);
+    // ✅ ĐÃ CHUẨN HOÁ LẠI CÔNG THỨC: TÍNH TIỀN TỪ SỐ LƯỢNG GỐC * ĐƠN GIÁ HIỆU DỤNG (Real-time)
+    const T = normalItems.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.unit_price) || 0), 0);
     const GT = T * (gtParam.quantity / 100);
     const TL = (T + GT) * (lnParam.quantity / 100);
     const Gxd = T + GT + TL;
     const VAT = Gxd * (vatParam.quantity / 100);
     const TotalProject = Gxd + VAT;
 
+    // 🧠 LOGIC GOM NHÓM TAB 4 (TRONG BẢNG CHA): QUY ĐỔI RA ĐƠN VỊ LỚN NHẤT ĐỂ MUA SẮM (MATH.CEIL)
     const getSummaryByCategory = useMemo(() => (category: string) => {
         const map = new Map();
         estItems.filter(i => i.category === category).forEach(item => {
             const key = item.material_name;
-            if (!map.has(key)) map.set(key, { ...item, total_quantity: 0, total_cost_sum: 0 });
+            if (!map.has(key)) {
+                const dim = item.dimensions || {};
+                map.set(key, {
+                    ...item,
+                    display_unit: dim.purchase_unit || item.unit,
+                    conversion_rate: Number(dim.conversion_rate) || 1,
+                    total_quantity: 0,
+                    total_cost_sum: 0
+                });
+            }
             const exist = map.get(key);
             exist.total_quantity += Number(item.quantity);
-            exist.total_cost_sum += Number(item.total_cost || 0);
+            exist.total_cost_sum += Number(item.quantity) * Number(item.unit_price || 0);
         });
-        return Array.from(map.values()).sort((a: any, b: any) => a.material_name.localeCompare(b.material_name));
+
+        return Array.from(map.values()).map((exist: any) => {
+            // Lượng mua: Làm tròn lên
+            exist.display_quantity = Math.ceil(exist.total_quantity / exist.conversion_rate);
+            // Giá mua: Nội suy ngược từ Tổng tiền để luôn khớp
+            exist.display_purchase_price = exist.display_quantity > 0 ? exist.total_cost_sum / exist.display_quantity : 0;
+            return exist;
+        }).sort((a: any, b: any) => a.material_name.localeCompare(b.material_name));
     }, [estItems]);
 
     const handleExportExcel = () => {
@@ -625,46 +650,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
             data.forEach(item => {
                 allData.push({
                     "STT": stt++, "Loại": cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công',
-                    "Tên nguồn lực / Vật tư": item.material_name, "Đơn vị tính": item.unit,
-                    "Tổng Khối lượng": item.total_quantity, "Đơn giá chào (VNĐ)": "", "Thành tiền (VNĐ)": "", "Ghi chú": ""
+                    "Tên nguồn lực / Vật tư": item.material_name, "Đơn vị tính": item.display_unit || item.unit,
+                    "Tổng Khối lượng": item.display_quantity || item.total_quantity, "Đơn giá chào (VNĐ)": "", "Thành tiền (VNĐ)": "", "Ghi chú": ""
                 });
             });
         });
         if (allData.length > 0) { exportToExcel(allData, `YeuCauBaoGia_${projectInfo?.code || 'KGC'}`, 'BaoGia'); toast.success("Đã xuất file Excel chào giá thành công!"); } else { toast.error("Không có dữ liệu để xuất!"); }
-    };
-
-    const handleExportPDF = () => {
-        let dataToExport: any[] = [];
-        if (pdfExportType === "ALL" || pdfExportType === "VL") dataToExport.push({ title: "DANH MỤC VẬT LIỆU", data: getSummaryByCategory("VL") });
-        if (pdfExportType === "ALL" || pdfExportType === "NC") dataToExport.push({ title: "DANH MỤC NHÂN CÔNG", data: getSummaryByCategory("NC") });
-        if (pdfExportType === "ALL" || pdfExportType === "M") dataToExport.push({ title: "DANH MỤC MÁY THI CÔNG", data: getSummaryByCategory("M") });
-
-        let html = `<html><head><title>Yêu Cầu Báo Giá - ${projectInfo?.name}</title><style>
-            @page { size: A4; margin: 15mm; } body { font-family: Arial, sans-serif; padding: 0; color: #1e293b; line-height: 1.5; }
-            .header { text-align: center; margin-bottom: 30px; } .header h1 { color: #1e3a8a; margin: 0 0 10px 0; font-size: 24px; text-transform: uppercase; }
-            .header p { margin: 2px 0; font-size: 14px; } .info-box { border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin-bottom: 20px; background: #f8fafc; }
-            .info-box p { margin: 5px 0; font-size: 14px; } h3 { color: #0f172a; border-left: 4px solid #ea580c; padding-left: 10px; margin-top: 30px; font-size: 16px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; } th, td { border: 1px solid #cbd5e1; padding: 10px 8px; text-align: left; }
-            th { background-color: #f1f5f9; color: #0f172a; font-weight: bold; } .text-right { text-align: right; } .text-center { text-align: center; }
-            .footer { margin-top: 50px; text-align: right; font-style: italic; font-size: 14px; } .footer-title { font-weight: bold; font-style: normal; margin-bottom: 80px; }
-        </style></head><body>
-            <div class="header"><h1>YÊU CẦU BÁO GIÁ CUNG CẤP</h1><p>Số: YCBG-${projectInfo?.code || '01'}/${new Date().getFullYear()}</p></div>
-            <div class="info-box"><p><strong>Tên Dự án / Công trình:</strong> ${projectInfo?.name || '---'}</p><p><strong>Đơn vị yêu cầu:</strong> CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</p>
-            <p><strong>Ngày gửi yêu cầu:</strong> ${new Date().toLocaleDateString('vi-VN')}</p><p><strong>Ghi chú:</strong> Kính đề nghị Quý nhà cung cấp điền Đơn giá vào ô trống và gửi lại báo giá sớm nhất.</p></div>
-        `;
-        dataToExport.forEach(section => {
-            if (section.data.length > 0) {
-                html += `<h3>${section.title}</h3><table><thead><tr><th class="text-center" width="50">STT</th><th>Tên quy cách / Chủng loại vật tư</th><th class="text-center" width="60">ĐVT</th><th class="text-right" width="100">Khối lượng</th><th class="text-right" width="120">Đơn giá chào (VNĐ)</th><th class="text-right" width="120">Thành tiền (VNĐ)</th></tr></thead><tbody>`;
-                section.data.forEach((item: any, idx: number) => {
-                    html += `<tr><td class="text-center">${idx + 1}</td><td>${item.material_name}</td><td class="text-center">${item.unit}</td><td class="text-right"><strong>${(item.total_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</strong></td><td></td><td></td></tr>`;
-                });
-                html += `</tbody></table>`;
-            }
-        });
-        html += `<div class="footer"><p>TP. Hồ Chí Minh, ngày ... tháng ... năm ${new Date().getFullYear()}</p><p class="footer-title">ĐẠI DIỆN ĐƠN VỊ CHÀO GIÁ</p><p>(Ký, ghi rõ họ tên và đóng dấu)</p></div></body></html>`;
-        const printWindow = window.open('', '_blank');
-        if (printWindow) { printWindow.document.write(html); printWindow.document.close(); printWindow.focus(); setTimeout(() => { printWindow.print(); printWindow.close(); }, 250); }
-        setIsPdfModalOpen(false);
     };
 
     const calculateDisplayVol = (l: any, w: any, h: any, f: any) => {
@@ -687,8 +678,10 @@ export default function ProjectBOQTab({ projectId }: Props) {
             const manDays = ncItems.reduce((sum, e) => sum + Number(e.quantity), 0);
             totalManDays += manDays;
             const duration = Math.ceil((manDays > 0 ? manDays : (totalVol * (Number(task.labor_norm) || 0))) / workers) || 1;
+
             const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
-            const taskUnitPrice = taskHaoPhi.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
+            // ✅ FIX LẤY SỐ LƯỢNG * ĐƠN GIÁ THỰC TẾ
+            const taskUnitPrice = taskHaoPhi.reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
             const taskTotalCost = taskUnitPrice * totalVol;
             const weight = TotalProject > 0 ? (taskTotalCost / TotalProject) * 100 : 0;
 
@@ -730,18 +723,51 @@ export default function ProjectBOQTab({ projectId }: Props) {
         return { taskSchedules: scheds, projectEndDate: pEnd };
     }, [schedulingData, projectStartDate, allowWeekendWork]);
 
+    // ✅ HÀM XUẤT PDF CHẤT LƯỢNG CAO
+    const handleExportPDF = async () => {
+        setIsPdfModalOpen(false);
+        const toastId = toast.loading("Đang tạo file PDF độ phân giải cao...");
+        try {
+            const element = document.getElementById('pdf-export-content');
+            if (!element) throw new Error("Không tìm thấy nội dung để in");
+
+            // html2canvas config với scale = 3 để tăng độ phân giải cực nét
+            const canvas = await html2canvas(element, {
+                scale: 3,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // Tính toán tỷ lệ ảnh để fit vừa trang A4
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+            // Nếu nội dung dài hơn 1 trang A4, jsPDF mặc định sẽ cắt trang, 
+            // nhưng với báo cáo tổng hợp thường fit trong 1 trang dài.
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`BaoGia_HaoPhi_${projectId}.pdf`);
+
+            toast.success("Xuất PDF thành công!", { id: toastId });
+        } catch (error: any) {
+            toast.error("Lỗi xuất PDF: " + error.message, { id: toastId });
+        }
+    };
+
     return (
         <div className="space-y-4">
-            {/* THANH CÔNG CỤ (CHỨA CẢ NÚT WIZARD BÊN PHẢI) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-lg border dark:border-slate-800 shadow-sm gap-3 transition-colors">
-
-                {/* === KHỐI TRÁI: 3 NÚT TÍNH NĂNG === */}
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* Modal Thêm công tác thủ công */}
                     <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
                         <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
                             <DialogHeader><DialogTitle className="text-teal-700 dark:text-teal-400 flex items-center gap-2"><FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công</DialogTitle></DialogHeader>
-                            {/* ... (Toàn bộ Form Thêm thủ công anh giữ nguyên như cũ) ... */}
                             <div className="grid gap-4 py-4">
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Hạng mục (Section)</Label>
@@ -773,7 +799,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         </DialogContent>
                     </Dialog>
 
-                    {/* Modal Chi phí phụ */}
                     <Dialog open={openManualDialog} onOpenChange={setOpenManualDialog}>
                         <DialogTrigger asChild>
                             <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
@@ -791,7 +816,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         </DialogContent>
                     </Dialog>
 
-                    {/* Import Excel */}
                     <div className="relative">
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
@@ -800,28 +824,18 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </div>
                 </div>
 
-                {/* === KHỐI PHẢI: NÚT WIZARD VÀ PHÂN TÍCH === */}
                 <div className="flex items-center gap-2">
-                    <AutoEstimateWizard
-                        projectId={projectId}
-                        onSuccess={() => {
-                            // Khi tính toán xong, gọi hàm loadData() để load lại dữ liệu hiển thị
-                            loadData();
-                        }}
-                    />
+                    <AutoEstimateWizard projectId={projectId} onSuccess={() => { loadData(); }} />
                 </div>
-
             </div>
 
-            {/* KHUNG TABS CHÍNH CỦA DỰ TOÁN */}
             <Tabs defaultValue="qto_sheet" className="w-full">
                 <TabsList className="bg-slate-100 p-1.5 rounded-md border w-full justify-start gap-1 flex-wrap h-auto dark:bg-slate-900 dark:border-slate-800 shadow-sm mb-4">
                     <TabsTrigger value="cover_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><FileText className="w-4 h-4 mr-1.5" /> 1. Tổng Hợp</TabsTrigger>
                     <TabsTrigger value="qto_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-blue-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ListOrdered className="w-4 h-4 mr-1.5 text-blue-500" /> 2. Tiên lượng (QTO)</TabsTrigger>
-                    <TabsTrigger value="consumption_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ClipboardList className="w-4 h-4 mr-1.5 text-indigo-500" /> 3. Tổng hợp Hao phí</TabsTrigger>
-                    <TabsTrigger value="summary_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-emerald-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><Percent className="w-4 h-4 mr-1.5 text-emerald-500" /> 4. Tài chính dự án</TabsTrigger>
-                    <TabsTrigger value="unit_price_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-orange-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><Settings2 className="w-4 h-4 mr-1.5 text-orange-500" /> 5. Đơn giá chi tiết</TabsTrigger>
-                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-teal-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><CalendarClock className="w-4 h-4 mr-1.5 text-teal-500" /> 6. Lập Tiến độ</TabsTrigger>
+                    <TabsTrigger value="summary_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-emerald-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><Percent className="w-4 h-4 mr-1.5 text-emerald-500" /> 3. Tài chính dự án</TabsTrigger>
+                    <TabsTrigger value="consumption_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ClipboardList className="w-4 h-4 mr-1.5 text-indigo-500" /> 4. Tổng hợp Hao phí</TabsTrigger>
+                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-teal-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><CalendarClock className="w-4 h-4 mr-1.5 text-teal-500" /> 5. Lập Tiến độ</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="ai_extract" className="mt-3">
@@ -831,7 +845,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </Card>
                 </TabsContent>
 
-                {/* TAB 1: BÌA */}
                 <TabsContent value="cover_sheet" className="mt-3">
                     <Card className="border shadow-sm bg-white overflow-hidden p-10 min-h-[500px] flex flex-col items-center justify-center relative dark:border-slate-800 dark:bg-slate-950">
                         <div className="text-center z-10 space-y-6">
@@ -856,7 +869,6 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </Card>
                 </TabsContent>
 
-                {/* TAB 2: TIÊN LƯỢNG (QTO) */}
                 <TabsContent value="qto_sheet" className="mt-3">
                     <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden dark:border-slate-800 dark:bg-slate-950">
                         <div className="bg-slate-50 border-b border-slate-200 p-2 flex items-center justify-between dark:bg-slate-900 dark:border-slate-800">
@@ -904,171 +916,326 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </Card>
                 </TabsContent>
 
-                {/* TAB 3: TỔNG HỢP HAO PHÍ */}
+                {/* TAB 3: TH KINH PHÍ */}
+                <TabsContent value="summary_sheet" className="mt-3">
+                    <ProjectEstimationTab projectId={projectId} onUpdate={loadData} />
+                </TabsContent>
+
+                {/* TAB 4: TỔNG HỢP HAO PHÍ (ĐÃ ÁP DỤNG QUY ĐỔI LÀM TRÒN MATH.CEIL VÀ BIỂU ĐỒ) */}
                 <TabsContent value="consumption_sheet" className="mt-3">
-                    <Card className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950 mb-4 p-3 flex flex-col sm:flex-row justify-between items-center gap-3">
-                        <div>
-                            <h4 className="font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wide flex items-center gap-2">
-                                <ClipboardList className="w-5 h-5" /> Bảng Tổng hợp Hao phí (Yêu cầu chào giá)
-                            </h4>
-                            <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Sử dụng bảng này để xuất file gửi cho Nhà cung cấp điền báo giá.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline" className="h-8 text-xs border-green-500 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/30 font-bold" onClick={handleExportExcel}>
-                                <Download className="w-3.5 h-3.5 mr-1" /> Xuất Excel
-                            </Button>
-                            <Dialog open={isPdfModalOpen} onOpenChange={setIsPdfModalOpen}>
-                                <DialogTrigger asChild>
-                                    <Button variant="outline" className="h-8 text-xs border-rose-500 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/30 font-bold">
-                                        <Printer className="w-3.5 h-3.5 mr-1" /> In / Xuất PDF
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-[400px] dark:bg-slate-900 dark:border-slate-800">
-                                    <DialogHeader><DialogTitle>Tuỳ chọn Xuất PDF Chào Giá</DialogTitle></DialogHeader>
-                                    <div className="space-y-4 py-4">
-                                        <div className="space-y-2">
-                                            <Label>Chọn loại hao phí cần xuất:</Label>
-                                            <Select value={pdfExportType} onValueChange={setPdfExportType}>
-                                                <SelectTrigger className="dark:bg-slate-950"><SelectValue /></SelectTrigger>
-                                                <SelectContent className="dark:bg-slate-900">
-                                                    <SelectItem value="ALL">Tất cả (Vật liệu, Nhân công, Máy)</SelectItem>
-                                                    <SelectItem value="VL">Chỉ Vật liệu</SelectItem>
-                                                    <SelectItem value="NC">Chỉ Nhân công</SelectItem>
-                                                    <SelectItem value="M">Chỉ Máy thi công</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                    {(() => {
+                        // ==========================================
+                        // 1. CÁC HÀM XUẤT FILE (EXCEL & PDF CHUẨN FORM CHÀO GIÁ)
+                        // ==========================================
+                        const handleExportQuotationExcel = () => {
+                            const aoaData: any[][] = [];
+                            aoaData.push(["CÔNG TY TNHH XD KIỀU GIA", "", "", "", "", "Ngày ..... tháng ..... năm 202..."]);
+                            aoaData.push([""]);
+                            aoaData.push(["", "", "THƯ YÊU CẦU CHÀO GIÁ", "", "", ""]);
+
+                            const subTitle = pdfExportType === 'ALL' ? "Toàn bộ" : pdfExportType === 'VL' ? "Vật liệu" : pdfExportType === 'NC' ? "Nhân công" : "Máy thi công";
+                            aoaData.push(["", "", `(Hạng mục: ${subTitle})`, "", "", ""]);
+                            aoaData.push([""]);
+
+                            aoaData.push(["STT", "Tên vật tư / Nguồn lực", "ĐVT", "Khối lượng yêu cầu", "Đơn giá báo", "Thành tiền", "Ghi chú"]);
+
+                            ['VL', 'NC', 'M'].filter(cat => pdfExportType === 'ALL' || pdfExportType === cat).forEach(cat => {
+                                const list = getSummaryByCategory(cat);
+                                if (list.length === 0) return;
+
+                                const catName = cat === 'VL' ? 'I. VẬT LIỆU' : cat === 'NC' ? 'II. NHÂN CÔNG' : 'III. MÁY THI CÔNG';
+                                aoaData.push([catName, "", "", "", "", "", ""]);
+
+                                list.forEach((item: any, idx: number) => {
+                                    aoaData.push([
+                                        idx + 1,
+                                        item.material_name,
+                                        item.display_unit,
+                                        Number(item.display_quantity || 0),
+                                        "", "", ""
+                                    ]);
+                                });
+                            });
+
+                            aoaData.push([""]);
+                            aoaData.push(["", "ĐẠI DIỆN BÊN YÊU CẦU", "", "", "ĐẠI DIỆN NHÀ CUNG CẤP", ""]);
+                            aoaData.push(["", "(Ký, ghi rõ họ tên)", "", "", "(Ký, đóng dấu)", ""]);
+
+                            const ws = XLSX.utils.aoa_to_sheet(aoaData);
+                            ws['!cols'] = [{ wch: 6 }, { wch: 45 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 15 }];
+
+                            const wb = XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(wb, ws, "Thu_Chao_Gia");
+                            XLSX.writeFile(wb, `Thu_Chao_Gia_${projectId}.xlsx`);
+                            toast.success("Đã xuất file Excel mẫu Chào giá!");
+                        };
+
+                        const handleExportPDF = async () => {
+                            setIsPdfModalOpen(false);
+                            const toastId = toast.loading("Đang tạo Thư Chào Giá PDF siêu nét...");
+                            try {
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                                const element = document.getElementById('pdf-quotation-template');
+                                if (!element) throw new Error("Không tìm thấy template PDF");
+
+                                const canvas = await html2canvas(element, { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' });
+                                const imgData = canvas.toDataURL('image/jpeg', 1.0);
+
+                                // Đã fix lỗi cảnh báo 'portrait' is deprecated -> dùng 'p'
+                                const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+                                const pdfWidth = pdf.internal.pageSize.getWidth();
+                                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                                const pageHeight = pdf.internal.pageSize.getHeight();
+
+                                let heightLeft = pdfHeight;
+                                let position = 0;
+
+                                pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+                                heightLeft -= pageHeight;
+                                while (heightLeft > 0) {
+                                    position = heightLeft - pdfHeight;
+                                    pdf.addPage();
+                                    pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+                                    heightLeft -= pageHeight;
+                                }
+
+                                pdf.save(`Thu_Chao_Gia_${projectId}.pdf`);
+                                toast.success("Xuất PDF thành công!", { id: toastId });
+                            } catch (error: any) {
+                                toast.error("Lỗi xuất PDF: " + error.message, { id: toastId });
+                            }
+                        };
+
+                        // ==========================================
+                        // 2. TÍNH TOÁN DỮ LIỆU BIỂU ĐỒ & BẢNG
+                        // ==========================================
+                        const summaryVL = getSummaryByCategory('VL');
+                        const summaryNC = getSummaryByCategory('NC');
+                        const summaryM = getSummaryByCategory('M');
+
+                        const totalVL = summaryVL.reduce((sum: number, item: any) => sum + (Number(item.total_cost_sum) || 0), 0);
+                        const totalNC = summaryNC.reduce((sum: number, item: any) => sum + (Number(item.total_cost_sum) || 0), 0);
+                        const totalM = summaryM.reduce((sum: number, item: any) => sum + (Number(item.total_cost_sum) || 0), 0);
+                        const rawTotalCost = totalVL + totalNC + totalM;
+
+                        let costDistributionData = rawTotalCost === 0
+                            ? [{ name: 'Chưa có dữ liệu', value: 1, color: '#334155' }]
+                            : [
+                                { name: 'Vật liệu (VL)', value: totalVL, color: '#f97316' },
+                                { name: 'Nhân công (NC)', value: totalNC, color: '#22c55e' },
+                                { name: 'Máy thi công (M)', value: totalM, color: '#a855f7' },
+                            ].filter(item => item.value > 0);
+
+                        let rawTotalCostVL = 0;
+                        let actualPurchaseCostVL = 0;
+                        summaryVL.forEach((item: any) => {
+                            const rawQty = Number(item.total_quantity) || 0;
+                            const roundedQty = Number(item.display_quantity) || 0;
+                            const rate = Number(item.conversion_rate) || 1;
+                            let purchasePrice = Number(item.display_price) || (Number(item.unit_price || 0) * rate);
+
+                            rawTotalCostVL += (rawQty * (rate > 0 ? purchasePrice / rate : purchasePrice));
+                            actualPurchaseCostVL += (roundedQty * purchasePrice);
+                        });
+
+                        rawTotalCostVL = Math.round(rawTotalCostVL);
+                        actualPurchaseCostVL = Math.round(actualPurchaseCostVL);
+                        const finalWasteVL = Math.max(0, actualPurchaseCostVL - rawTotalCostVL);
+
+                        const wasteData = (rawTotalCostVL === 0 && finalWasteVL === 0)
+                            ? [{ name: 'Chưa có dữ liệu', value: 1, color: '#334155' }]
+                            : [
+                                { name: 'Chi phí gốc (VL)', value: rawTotalCostVL, color: '#3b82f6' },
+                                { name: 'Hao hụt mua chẵn', value: finalWasteVL, color: '#ef4444' },
+                            ];
+
+                        let topMaterials = summaryVL.filter((item: any) => (Number(item.total_cost_sum) || 0) > 0)
+                            .sort((a: any, b: any) => (Number(b.total_cost_sum) || 0) - (Number(a.total_cost_sum) || 0))
+                            .slice(0, 5).map((item: any) => ({ name: item.material_name.substring(0, 20), value: Number(item.total_cost_sum) || 0 }));
+
+                        if (topMaterials.length === 0) topMaterials = [{ name: 'Chưa có dữ liệu', value: 0 }];
+
+                        const formatTooltipCurrency = (value: number, name: string) => (name === 'Chưa có dữ liệu') ? ['0 ₫', name] : [new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value), name];
+
+                        // ==========================================
+                        // 3. RENDER GIAO DIỆN
+                        // ==========================================
+                        return (
+                            <>
+                                <Card className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950 mb-4 p-3 flex flex-col sm:flex-row justify-between items-center gap-3">
+                                    <div>
+                                        <h4 className="font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wide flex items-center gap-2">
+                                            <ClipboardList className="w-5 h-5" /> Bảng Tổng hợp Hao phí (Yêu cầu chào giá)
+                                        </h4>
+                                        <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Xuất file PDF/Excel sẽ tự động tạo thư mời thầu trắng giá để gửi Nhà cung cấp.</p>
                                     </div>
-                                    <DialogFooter><Button variant="outline" onClick={() => setIsPdfModalOpen(false)}>Huỷ</Button><Button className="bg-rose-600 hover:bg-rose-700 text-white" onClick={handleExportPDF}>Tạo & In PDF</Button></DialogFooter>
-                                </DialogContent>
-                            </Dialog>
-                        </div>
-                    </Card>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        {['VL', 'NC', 'M'].map((cat) => {
-                            const catTitle = cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công';
-                            const listSummary = getSummaryByCategory(cat);
-                            return (
-                                <Card key={cat} className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950">
-                                    <div className="bg-slate-50 border-b p-2.5 flex items-center gap-1.5 dark:bg-slate-900 dark:border-slate-800">
-                                        {cat === 'VL' ? <Layers className="w-4 h-4 text-orange-500" /> : cat === 'NC' ? <HardHat className="w-4 h-4 text-green-500" /> : <Tractor className="w-4 h-4 text-purple-500" />}
-                                        <h4 className="font-bold text-slate-700 text-xs uppercase dark:text-slate-300">Tổng hao phí {catTitle}</h4>
-                                    </div>
-                                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
-                                        <Table>
-                                            <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b dark:bg-slate-900 dark:border-slate-800">
-                                                <TableRow>
-                                                    <TableHead className="font-bold text-[11px]">Tên nguồn lực / Vật tư</TableHead>
-                                                    <TableHead className="w-[50px] text-center font-bold text-[11px]">ĐVT</TableHead>
-                                                    <TableHead className="w-[100px] text-right font-bold text-indigo-600 text-[11px] dark:text-indigo-400">Tổng Khối lượng</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {listSummary.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={3} className="text-center py-6 text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
-                                                ) : listSummary.map((mat: any, idx: number) => (
-                                                    <TableRow key={idx} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/40">
-                                                        <TableCell className="p-2 text-xs font-medium text-slate-800 dark:text-slate-200">{mat.material_name}</TableCell>
-                                                        <TableCell className="text-center text-xs text-slate-500 dark:text-slate-400">{mat.unit}</TableCell>
-                                                        <TableCell className="text-right text-xs font-bold text-indigo-700 dark:text-indigo-400 pr-4">{(mat.total_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline" className="h-8 text-xs border-green-500 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/30 font-bold" onClick={handleExportQuotationExcel}>
+                                            <Download className="w-3.5 h-3.5 mr-1" /> Xuất Excel
+                                        </Button>
+                                        <Dialog open={isPdfModalOpen} onOpenChange={setIsPdfModalOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button variant="outline" className="h-8 text-xs border-rose-500 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/30 font-bold">
+                                                    <Printer className="w-3.5 h-3.5 mr-1" /> Xuất PDF
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="sm:max-w-[400px] dark:bg-slate-900 dark:border-slate-800">
+                                                <DialogHeader><DialogTitle>Tuỳ chọn Xuất PDF Chào Giá</DialogTitle></DialogHeader>
+                                                <div className="space-y-4 py-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Chọn loại hao phí cần gửi NCC:</Label>
+                                                        <Select value={pdfExportType} onValueChange={setPdfExportType}>
+                                                            <SelectTrigger className="dark:bg-slate-950"><SelectValue /></SelectTrigger>
+                                                            <SelectContent className="dark:bg-slate-900">
+                                                                <SelectItem value="ALL">Gửi tất cả (Vật liệu, Nhân công, Máy)</SelectItem>
+                                                                <SelectItem value="VL">Chỉ gửi Vật liệu</SelectItem>
+                                                                <SelectItem value="NC">Chỉ gửi Nhân công</SelectItem>
+                                                                <SelectItem value="M">Chỉ gửi Máy thi công</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                                <DialogFooter><Button variant="outline" onClick={() => setIsPdfModalOpen(false)}>Huỷ</Button><Button className="bg-rose-600 hover:bg-rose-700 text-white" onClick={handleExportPDF}>Tạo File PDF</Button></DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
                                     </div>
                                 </Card>
-                            );
-                        })}
-                    </div>
-                </TabsContent>
 
-                {/* TAB 4: TH KINH PHÍ */}
-                <TabsContent value="summary_sheet" className="mt-3">
-                    <ProjectEstimationTab projectId={projectId} />
-                </TabsContent>
+                                {/* KHU VỰC BIỂU ĐỒ (HIỂN THỊ WEB) */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                    <Card className="p-4 border shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                        <h5 className="text-xs font-bold text-slate-500 uppercase text-center mb-2">Cơ cấu Chi phí</h5>
+                                        <div className="h-[200px] w-full"><ResponsiveContainer><RechartsPie><Pie data={costDistributionData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" stroke="none">{costDistributionData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Tooltip formatter={formatTooltipCurrency} /><Legend wrapperStyle={{ fontSize: '10px' }} /></RechartsPie></ResponsiveContainer></div>
+                                    </Card>
+                                    <Card className="p-4 border shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                        <h5 className="text-xs font-bold text-slate-500 uppercase text-center mb-2">Hao hụt mua chẵn (Vật liệu)</h5>
+                                        <div className="h-[200px] w-full"><ResponsiveContainer><RechartsPie><Pie data={wasteData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" stroke="none">{wasteData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Tooltip formatter={formatTooltipCurrency} /><Legend wrapperStyle={{ fontSize: '10px' }} /></RechartsPie></ResponsiveContainer></div>
+                                    </Card>
+                                    <Card className="p-4 border shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                        <h5 className="text-xs font-bold text-slate-500 uppercase text-center mb-2">Top 5 Vật tư giá trị cao</h5>
+                                        <div className="h-[200px] w-full"><ResponsiveContainer><BarChart data={topMaterials} layout="vertical" margin={{ top: 5, right: 10, left: 30, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.3} /><XAxis type="number" hide /><YAxis dataKey="name" type="category" axisLine={false} tickLine={false} style={{ fontSize: '9px', fill: '#64748b' }} width={80} /><Tooltip formatter={formatTooltipCurrency} cursor={{ fill: 'transparent' }} /><Bar dataKey="value" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={15} /></BarChart></ResponsiveContainer></div>
+                                    </Card>
+                                </div>
 
-                {/* TAB 5: ĐƠN GIÁ CHI TIẾT */}
-                <TabsContent value="unit_price_sheet" className="mt-3">
-                    <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden dark:border-slate-800 dark:bg-slate-950">
-                        <div className="bg-blue-50 border-b border-blue-100 p-2.5 flex items-center gap-2 dark:bg-blue-900/30 dark:border-blue-900/50">
-                            <FileBarChart className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                            <h4 className="font-bold text-blue-800 uppercase tracking-wide text-xs dark:text-blue-300">Bảng phân tích Đơn giá chi tiết công tác</h4>
-                        </div>
-                        <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
-                            <table className="w-full text-sm bg-white min-w-[1000px] dark:bg-slate-950">
-                                <TableHeader className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
-                                    <TableRow className="border-none">
-                                        <TableHead className="w-[50px] text-center font-bold text-slate-700 dark:text-slate-300">STT</TableHead>
-                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300 min-w-[500px]">Mã / Thành phần công tác</TableHead>
-                                        <TableHead className="w-[80px] text-center font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
-                                        <TableHead className="w-[120px] text-right font-bold text-indigo-600 dark:text-indigo-400">Khối lượng</TableHead>
-                                        <TableHead className="w-[120px] text-right font-bold text-orange-600 dark:text-orange-400">Định mức</TableHead>
-                                        <TableHead className="w-[150px] text-right font-bold text-blue-600 dark:text-blue-400">Đơn giá</TableHead>
-                                        <TableHead className="w-[150px] text-right font-bold text-emerald-600 dark:text-emerald-400">Thành tiền</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {tasks.map((task: any, tIdx: number) => {
-                                        const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
-                                        if (taskHaoPhi.length === 0) return null;
-
-                                        const taskVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || 0;
-                                        const taskTotalCost = taskHaoPhi.reduce((sum, e) => sum + (e.quantity * e.unit_price), 0);
-                                        const taskUnitPrice = taskVol > 0 ? taskTotalCost / taskVol : 0;
-
+                                {/* KHU VỰC BẢNG VIEW (HIỂN THỊ WEB) */}
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    {['VL', 'NC', 'M'].map((cat) => {
+                                        const catTitle = cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công';
+                                        const listSummary = getSummaryByCategory(cat);
                                         return (
-                                            <Fragment key={`up_${task.id}`}>
-                                                <TableRow className="bg-slate-200 border-b font-bold dark:bg-slate-800 dark:border-slate-700">
-                                                    <TableCell className="text-center align-top pt-3">{tIdx + 1}</TableCell>
-                                                    <TableCell className="whitespace-normal break-words">
-                                                        <span className="text-blue-700 mr-2 dark:text-blue-400 font-bold">[{task.norm_code}]</span>
-                                                        <span className="text-slate-800 dark:text-slate-200">{task.item_name}</span>
-                                                    </TableCell>
-                                                    <TableCell className="text-center align-top pt-3">{task.unit}</TableCell>
-                                                    <TableCell className="text-right font-bold text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 bg-blue-50/50 dark:bg-blue-500/10 text-base">
-                                                        {taskVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </TableCell>
-                                                    <TableCell className="text-right"></TableCell>
-                                                    <TableCell className="text-right text-blue-700 font-black dark:text-blue-400 align-top pt-3">{formatCurrency(taskUnitPrice)}</TableCell>
-                                                    <TableCell className="text-right text-emerald-700 font-black dark:text-emerald-400 align-top pt-3">{formatCurrency(taskTotalCost)}</TableCell>
-                                                </TableRow>
-                                                {['VL', 'NC', 'M'].map(cat => {
-                                                    const items = taskHaoPhi.filter(e => e.category === cat);
-                                                    if (items.length === 0) return null;
-                                                    const catName = cat === 'VL' ? 'Vật liệu' : cat === 'NC' ? 'Nhân công' : 'Máy thi công';
-                                                    return (
-                                                        <Fragment key={`${task.id}_${cat}`}>
-                                                            <TableRow className="bg-slate-50/50 border-b dark:bg-slate-900/30 dark:border-slate-800">
-                                                                <TableCell></TableCell><TableCell colSpan={6} className="font-bold text-slate-700 text-xs py-1 pl-4 dark:text-slate-400">{catName}</TableCell>
+                                            <Card key={cat} className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950">
+                                                <div className="bg-slate-50 border-b p-2.5 flex items-center gap-1.5 dark:bg-slate-900 dark:border-slate-800">
+                                                    {cat === 'VL' ? <Layers className="w-4 h-4 text-orange-500" /> : cat === 'NC' ? <HardHat className="w-4 h-4 text-green-500" /> : <Tractor className="w-4 h-4 text-purple-500" />}
+                                                    <h4 className="font-bold text-slate-700 text-xs uppercase dark:text-slate-300">Tổng hao phí {catTitle}</h4>
+                                                </div>
+                                                <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                                                    <Table>
+                                                        <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b dark:bg-slate-900 dark:border-slate-800">
+                                                            <TableRow>
+                                                                <TableHead className="font-bold text-[11px]">Tên nguồn lực / Vật tư</TableHead>
+                                                                <TableHead className="w-[80px] text-center font-bold text-[11px]">ĐVT</TableHead>
+                                                                <TableHead className="w-[100px] text-right font-bold text-indigo-600 text-[11px] dark:text-indigo-400">Khối lượng Mua</TableHead>
                                                             </TableRow>
-                                                            {items.map(hp => {
-                                                                const normVal = taskVol > 0 ? hp.quantity / taskVol : 0;
-                                                                return (
-                                                                    <TableRow key={hp.id} className="text-xs hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                                                        <TableCell></TableCell>
-                                                                        <TableCell className="pl-8 text-slate-600 dark:text-slate-400 whitespace-normal break-words">- {hp.material_name}</TableCell>
-                                                                        <TableCell className="text-center dark:text-slate-400">{hp.unit}</TableCell>
-                                                                        <TableCell className="text-right dark:text-slate-300 font-medium">{hp.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
-                                                                        <TableCell className="text-right dark:text-slate-300">{normVal.toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
-                                                                        <TableCell className="text-right dark:text-slate-300">{formatCurrency(hp.unit_price)}</TableCell>
-                                                                        <TableCell className="text-right font-medium dark:text-slate-200">{formatCurrency(hp.quantity * hp.unit_price)}</TableCell>
-                                                                    </TableRow>
-                                                                )
-                                                            })}
-                                                        </Fragment>
-                                                    )
-                                                })}
-                                                <TableRow><TableCell colSpan={7} className="h-2 p-0 bg-slate-50 border-0 dark:bg-slate-900/30"></TableCell></TableRow>
-                                            </Fragment>
-                                        )
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {listSummary.length === 0 ? (
+                                                                <TableRow><TableCell colSpan={3} className="text-center py-6 text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
+                                                            ) : listSummary.map((mat: any, idx: number) => (
+                                                                <TableRow key={idx} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                                                                    <TableCell className="p-2 text-xs font-medium text-slate-800 dark:text-slate-200">{mat.material_name}</TableCell>
+                                                                    <TableCell className="text-center text-xs font-bold text-orange-600 dark:text-orange-400">{mat.display_unit}</TableCell>
+                                                                    <TableCell className="text-right text-xs font-bold text-indigo-700 dark:text-indigo-400 pr-4">{(mat.display_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
+                                                                </TableRow>
+                                                            ))}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                            </Card>
+                                        );
                                     })}
-                                </TableBody>
-                            </table>
-                        </div>
-                    </Card>
+                                </div>
+
+                                {/* KHU VỰC ẨN: TEMPLATE MẪU A4 DÙNG ĐỂ CHỤP PDF THƯ CHÀO GIÁ */}
+                                <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+                                    <div id="pdf-quotation-template" className="bg-white text-black p-10 w-[800px]" style={{ fontFamily: 'Arial, sans-serif' }}>
+                                        <div className="flex justify-between items-start mb-8">
+                                            <div className="text-left">
+                                                <h2 className="font-bold text-lg uppercase text-blue-800">CÔNG TY TNHH XD KIỀU GIA</h2>
+                                                <p className="text-sm text-slate-600 mt-1">Hồ sơ dự án: {projectId}</p>
+                                            </div>
+                                            <div className="text-right text-sm italic text-slate-600">
+                                                Ngày ..... tháng ..... năm 202...
+                                            </div>
+                                        </div>
+
+                                        <div className="text-center mb-8">
+                                            <h1 className="text-2xl font-bold uppercase mb-1 text-slate-800">THƯ YÊU CẦU CHÀO GIÁ</h1>
+                                            <p className="text-sm italic text-slate-500">
+                                                (Hạng mục: {pdfExportType === 'ALL' ? 'Vật liệu, Nhân công, Máy thi công' : pdfExportType === 'VL' ? 'Vật tư' : pdfExportType === 'NC' ? 'Nhân công' : 'Máy thi công'})
+                                            </p>
+                                        </div>
+
+                                        <table className="w-full border-collapse border border-slate-800 text-[13px] mb-8">
+                                            <thead>
+                                                <tr className="bg-slate-100">
+                                                    <th className="border border-slate-800 p-2 text-center w-12">STT</th>
+                                                    <th className="border border-slate-800 p-2 text-center">Tên vật tư / Nguồn lực</th>
+                                                    <th className="border border-slate-800 p-2 text-center w-20">ĐVT</th>
+                                                    <th className="border border-slate-800 p-2 text-center w-24">Số lượng</th>
+                                                    <th className="border border-slate-800 p-2 text-center w-28">Đơn giá báo</th>
+                                                    <th className="border border-slate-800 p-2 text-center w-32">Thành tiền</th>
+                                                    <th className="border border-slate-800 p-2 text-center w-20">Ghi chú</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {['VL', 'NC', 'M']
+                                                    .filter(cat => pdfExportType === 'ALL' || pdfExportType === cat)
+                                                    .map((cat) => {
+                                                        const list = getSummaryByCategory(cat);
+                                                        if (list.length === 0) return null;
+                                                        return (
+                                                            <React.Fragment key={`pdf_${cat}`}>
+                                                                <tr>
+                                                                    <td colSpan={7} className="border border-slate-800 p-2 font-bold bg-slate-50 uppercase text-blue-800">
+                                                                        {cat === 'VL' ? 'I. VẬT LIỆU' : cat === 'NC' ? 'II. NHÂN CÔNG' : 'III. MÁY THI CÔNG'}
+                                                                    </td>
+                                                                </tr>
+                                                                {list.map((item: any, idx: number) => (
+                                                                    <tr key={`pdf_row_${idx}`}>
+                                                                        <td className="border border-slate-800 p-2 text-center">{idx + 1}</td>
+                                                                        <td className="border border-slate-800 p-2 font-medium">{item.material_name}</td>
+                                                                        <td className="border border-slate-800 p-2 text-center">{item.display_unit}</td>
+                                                                        <td className="border border-slate-800 p-2 text-right font-bold">{(item.display_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
+                                                                        <td className="border border-slate-800 p-2 text-slate-300 italic text-center"></td>
+                                                                        <td className="border border-slate-800 p-2"></td>
+                                                                        <td className="border border-slate-800 p-2"></td>
+                                                                    </tr>
+                                                                ))}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                            </tbody>
+                                        </table>
+
+                                        <div className="flex justify-between mt-12 px-10">
+                                            <div className="text-center">
+                                                <p className="font-bold text-sm">ĐẠI DIỆN BÊN YÊU CẦU</p>
+                                                <p className="text-xs italic text-slate-500 mt-1">(Ký, ghi rõ họ tên)</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="font-bold text-sm">ĐẠI DIỆN NHÀ CUNG CẤP</p>
+                                                <p className="text-xs italic text-slate-500 mt-1">(Ký, đóng dấu)</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        );
+                    })()}
                 </TabsContent>
 
-                {/* ✅ TAB 6: LẬP TIẾN ĐỘ THI CÔNG & NGUỒN LỰC (CPM ALGORITHM - BIM 5D) */}
+                {/* TAB 5: LẬP TIẾN ĐỘ THI CÔNG */}
                 <TabsContent value="schedule_sheet" className="mt-3">
                     <Card className="border border-teal-200 dark:border-teal-900/50 shadow-md bg-white overflow-hidden dark:bg-slate-950">
                         <div className="bg-teal-50/50 dark:bg-teal-900/10 border-b border-teal-100 dark:border-teal-900/30 p-4">
@@ -1080,56 +1247,24 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-lg border border-teal-100 dark:border-teal-900/30 shadow-sm">
                                     <div className="flex items-center gap-2">
                                         <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Ngày khởi công:</Label>
-                                        <Input
-                                            type="date"
-                                            value={projectStartDate}
-                                            onChange={(e) => {
-                                                setProjectStartDate(e.target.value);
-                                                updateProjectSettings('start_date', e.target.value); // Lưu DB
-                                            }}
-                                            className="h-8 text-xs font-bold w-[130px]"
-                                        />
+                                        <Input type="date" value={projectStartDate} onChange={(e) => { setProjectStartDate(e.target.value); updateProjectSettings('start_date', e.target.value); }} className="h-8 text-xs font-bold w-[130px]" />
                                     </div>
                                     <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
                                     <div className="flex items-center gap-2">
-                                        <Switch
-                                            checked={allowWeekendWork}
-                                            onCheckedChange={(val) => {
-                                                setAllowWeekendWork(val);
-                                                updateProjectSettings('allow_weekend', val); // Lưu DB
-                                            }}
-                                            className="data-[state=checked]:bg-teal-600"
-                                        />
+                                        <Switch checked={allowWeekendWork} onCheckedChange={(val) => { setAllowWeekendWork(val); updateProjectSettings('allow_weekend', val); }} className="data-[state=checked]:bg-teal-600" />
                                         <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng quy mô dự án</p>
-                                    <p className="text-xl font-black text-slate-800 dark:text-slate-100">{formatCurrency(TotalProject)}</p>
-                                </div>
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng hao phí nhân công</p>
-                                    <p className="text-xl font-black text-slate-800 dark:text-slate-100">
-                                        {estItems.filter(e => e.category === 'NC').reduce((sum, e) => sum + e.quantity, 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} <span className="text-sm font-medium text-slate-500">Ca</span>
-                                    </p>
-                                </div>
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Ngày kết thúc dự kiến</p>
-                                    <p className="text-xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-2">
-                                        {formatDate(projectEndDate)}
-                                    </p>
-                                </div>
+                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng quy mô dự án</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{formatCurrency(TotalProject)}</p></div>
+                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng hao phí nhân công</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{estItems.filter(e => e.category === 'NC').reduce((sum, e) => sum + e.quantity, 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} <span className="text-sm font-medium text-slate-500">Ca</span></p></div>
+                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Ngày kết thúc dự kiến</p><p className="text-xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-2">{formatDate(projectEndDate)}</p></div>
                                 <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center">
-                                    <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="bg-white text-teal-700 hover:bg-teal-50 shadow-sm w-full font-bold">
-                                        {isSyncing5D ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />} Chốt Thông Số (Gantt)
-                                    </Button>
+                                    <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="bg-white text-teal-700 hover:bg-teal-50 shadow-sm w-full font-bold">{isSyncing5D ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />} Chốt Thông Số (Gantt)</Button>
                                 </div>
                             </div>
                         </div>
-
                         <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
                             <table className="w-full text-sm bg-white min-w-[1000px] table-fixed dark:bg-slate-950">
                                 <TableHeader className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
@@ -1149,39 +1284,27 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 <TableBody>
                                     {(() => {
                                         if (!taskSchedules || Object.keys(taskSchedules).length === 0) return null;
-
-                                        const totalDirectCost = estItems
-                                            .filter(e => !['GT', 'LN', 'VAT'].includes(e.category))
-                                            .reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
-
+                                        const totalDirectCost = estItems.filter(e => !['GT', 'LN', 'VAT'].includes(e.category)).reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
                                         const sortedTasks = [...schedulingData].sort((a, b) => {
-                                            const sDatesA = taskSchedules[a.id];
-                                            const sDatesB = taskSchedules[b.id];
-                                            if (!sDatesA && !sDatesB) return 0;
-                                            if (!sDatesA) return 1;
-                                            if (!sDatesB) return -1;
-                                            const timeA = new Date(sDatesA.startDate).getTime();
-                                            const timeB = new Date(sDatesB.startDate).getTime();
-                                            if (timeA !== timeB) return timeA - timeB;
-                                            return a.stt - b.stt;
+                                            const sDatesA = taskSchedules[a.id]; const sDatesB = taskSchedules[b.id];
+                                            if (!sDatesA && !sDatesB) return 0; if (!sDatesA) return 1; if (!sDatesB) return -1;
+                                            const timeA = new Date(sDatesA.startDate).getTime(); const timeB = new Date(sDatesB.startDate).getTime();
+                                            if (timeA !== timeB) return timeA - timeB; return a.stt - b.stt;
                                         });
 
                                         return sortedTasks.map((task: any) => {
-                                            const sDates = taskSchedules[task.id];
-                                            if (!sDates) return null;
-
-                                            const taskCost = estItems.filter(e => e.qto_item_id === task.id).reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
+                                            const sDates = taskSchedules[task.id]; if (!sDates) return null;
+                                            const taskCost = estItems.filter(e => e.qto_item_id === task.id).reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
                                             const weight = totalDirectCost > 0 ? (taskCost / totalDirectCost) * 100 : 0;
 
                                             return (
                                                 <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
                                                     <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
                                                     <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words py-2">
-                                                        <div className="text-[10px] font-bold text-teal-700 dark:text-teal-400 mb-1 uppercase bg-teal-50 dark:bg-teal-900/30 inline-block px-1.5 py-0.5 rounded border border-teal-100 dark:border-teal-800">
-                                                            📍 {task.sectionName}
-                                                        </div>
+                                                        <div className="text-[10px] font-bold text-teal-700 dark:text-teal-400 mb-1 uppercase bg-teal-50 dark:bg-teal-900/30 inline-block px-1.5 py-0.5 rounded border border-teal-100 dark:border-teal-800">📍 {task.sectionName}</div>
                                                         <div className="leading-snug">{task.item_name}</div>
-                                                    </TableCell>                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">{weight.toFixed(2)}%</TableCell>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">{weight.toFixed(2)}%</TableCell>
                                                     <TableCell className="text-right font-semibold align-top pt-2">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
                                                     <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-2">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
                                                     {(() => {

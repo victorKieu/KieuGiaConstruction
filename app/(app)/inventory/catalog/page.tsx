@@ -65,6 +65,10 @@ export default function CatalogPage() {
     const [editingGroup, setEditingGroup] = useState<any>(null);
     const [openEditGroupDialog, setOpenEditGroupDialog] = useState(false);
 
+    // ✅ Thêm State Quản lý Auto-Calculate Đơn giá trên UI
+    const [createFormState, setCreateFormState] = useState({ purchasePrice: 0, conversionRate: 1, purchaseUnit: "none", baseUnit: "" });
+    const [editFormState, setEditFormState] = useState({ purchasePrice: 0, conversionRate: 1, purchaseUnit: "none", baseUnit: "" });
+
     // Data load
     useEffect(() => {
         loadData();
@@ -131,10 +135,11 @@ export default function CatalogPage() {
         setLoading(true);
         const form = new FormData(e.target);
 
-        // ✅ Lấy dữ liệu quy đổi mới
         const rawPurchaseUnit = form.get("purchase_unit") as string;
         const purchaseUnit = rawPurchaseUnit === "none" ? null : rawPurchaseUnit;
         const conversionRate = Number(form.get("conversion_rate")) || 1;
+        // Lấy giá base trực tiếp từ ô Readonly
+        const refPrice = Number(form.get("ref_price")) || 0;
 
         const res = await createMaterialAction({
             group_id: form.get("group_id"),
@@ -145,7 +150,7 @@ export default function CatalogPage() {
             conversion_rate: conversionRate,
             specs: form.get("specs"),
             supplier_ref: form.get("supplier_ref"),
-            ref_price: Number(form.get("ref_price")) || 0
+            ref_price: refPrice
         });
 
         setLoading(false);
@@ -155,6 +160,13 @@ export default function CatalogPage() {
 
     const openEdit = (item: any) => {
         setSelectedItem(item);
+        // Load lại dữ liệu để tính ngược Giá Purchase Price
+        setEditFormState({
+            purchasePrice: (item.ref_price || 0) * (item.conversion_rate || 1),
+            conversionRate: item.conversion_rate || 1,
+            purchaseUnit: item.purchase_unit || "none",
+            baseUnit: item.unit || ""
+        });
         setOpenEditDialog(true);
     };
 
@@ -164,10 +176,10 @@ export default function CatalogPage() {
         setLoading(true);
         const form = new FormData(e.target);
 
-        // ✅ Lấy dữ liệu quy đổi mới
         const rawPurchaseUnit = form.get("purchase_unit") as string;
         const purchaseUnit = rawPurchaseUnit === "none" ? null : rawPurchaseUnit;
         const conversionRate = Number(form.get("conversion_rate")) || 1;
+        const refPrice = Number(form.get("ref_price")) || 0;
 
         const res = await updateMaterialAction(selectedItem.id, {
             group_id: form.get("group_id"),
@@ -178,7 +190,7 @@ export default function CatalogPage() {
             conversion_rate: conversionRate,
             specs: form.get("specs"),
             supplier_ref: form.get("supplier_ref"),
-            ref_price: Number(form.get("ref_price")) || 0
+            ref_price: refPrice
         });
 
         setLoading(false);
@@ -230,7 +242,10 @@ export default function CatalogPage() {
                     </Dialog>
 
                     {/* Nút tạo Vật tư */}
-                    <Dialog open={openMatDialog} onOpenChange={setOpenMatDialog}>
+                    <Dialog open={openMatDialog} onOpenChange={(val) => {
+                        setOpenMatDialog(val);
+                        if (val) setCreateFormState({ purchasePrice: 0, conversionRate: 1, purchaseUnit: "none", baseUnit: "" });
+                    }}>
                         <DialogTrigger asChild>
                             <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors">
                                 <Plus className="mr-2 h-4 w-4" /> Thêm Vật Tư Mới
@@ -256,13 +271,13 @@ export default function CatalogPage() {
                                 </div>
                                 <div className="md:col-span-6"><Label className="dark:text-slate-300">Mã hàng <span className="text-red-500">*</span></Label><Input name="code" placeholder="VD: XM-HT-40" required className={inputClass} /></div>
 
-                                {/* ✅ BLOCK QUY ĐỔI ĐƠN VỊ TÍNH */}
+                                {/* ✅ BLOCK QUY ĐỔI & ĐƠN GIÁ THÔNG MINH */}
                                 <div className="md:col-span-12 p-4 bg-blue-50 dark:bg-slate-800/50 rounded-lg border border-blue-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
-                                    <div className="md:col-span-12"><h4 className="text-sm font-bold text-blue-800 dark:text-blue-400">Thiết lập Quy đổi Đơn vị</h4></div>
+                                    <div className="md:col-span-12"><h4 className="text-sm font-bold text-blue-800 dark:text-blue-400">Thiết lập Đơn giá & Quy đổi</h4></div>
 
                                     <div className="md:col-span-4">
                                         <Label className="dark:text-slate-300">ĐV Dự toán (Cơ sở) <span className="text-red-500">*</span></Label>
-                                        <Select name="unit" required>
+                                        <Select name="unit" required onValueChange={(val) => setCreateFormState(p => ({ ...p, baseUnit: val }))}>
                                             <SelectTrigger className="bg-white dark:bg-slate-950 border-blue-200"><SelectValue placeholder="VD: kg, m3" /></SelectTrigger>
                                             <SelectContent className="dark:bg-slate-900">
                                                 {units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>)}
@@ -272,7 +287,7 @@ export default function CatalogPage() {
 
                                     <div className="md:col-span-4">
                                         <Label className="dark:text-slate-300 text-orange-600 dark:text-orange-400 font-semibold">ĐV Mua sắm (Thực tế)</Label>
-                                        <Select name="purchase_unit" defaultValue="none">
+                                        <Select name="purchase_unit" defaultValue="none" onValueChange={(val) => setCreateFormState(p => ({ ...p, purchaseUnit: val }))}>
                                             <SelectTrigger className="bg-white dark:bg-slate-950 border-orange-200"><SelectValue placeholder="VD: bao, cây" /></SelectTrigger>
                                             <SelectContent className="dark:bg-slate-900">
                                                 <SelectItem value="none" className="italic text-slate-500">-- Không quy đổi --</SelectItem>
@@ -283,16 +298,39 @@ export default function CatalogPage() {
 
                                     <div className="md:col-span-4">
                                         <Label className="dark:text-slate-300 font-semibold">Hệ số (1 ĐV Mua = ? ĐV Cơ sở)</Label>
-                                        <Input name="conversion_rate" type="number" step="any" defaultValue="1" min="0.001" className="bg-white dark:bg-slate-950 font-bold" />
+                                        <Input name="conversion_rate" type="number" step="any" min="0.001" value={createFormState.conversionRate} onChange={(e) => setCreateFormState(p => ({ ...p, conversionRate: Number(e.target.value) || 1 }))} className="bg-white dark:bg-slate-950 font-bold" disabled={createFormState.purchaseUnit === "none"} />
                                     </div>
-                                    <div className="md:col-span-12 text-xs italic text-slate-500">
-                                        Ví dụ Xi măng: ĐV Cơ sở là <b>kg</b> | ĐV Mua sắm là <b>Bao</b> | Hệ số là <b>50</b> (Vì 1 Bao = 50kg)
+
+                                    {/* KHỐI NHẬP GIÁ */}
+                                    <div className="md:col-span-6 mt-2">
+                                        <Label className="dark:text-slate-300 font-bold text-emerald-700 dark:text-emerald-400">
+                                            Nhập Giá Mua <span className="text-[10px] text-muted-foreground font-normal">(Giá của 1 {createFormState.purchaseUnit !== "none" ? createFormState.purchaseUnit : createFormState.baseUnit || "Đơn vị"})</span>
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            placeholder="Nhập giá lấy từ NCC..."
+                                            value={createFormState.purchasePrice || ""}
+                                            onChange={(e) => setCreateFormState(p => ({ ...p, purchasePrice: Number(e.target.value) }))}
+                                            className="bg-white dark:bg-slate-950 font-bold border-emerald-300"
+                                        />
                                     </div>
+
+                                    <div className="md:col-span-6 mt-2 relative">
+                                        <Label className="dark:text-slate-300 font-bold text-blue-700 dark:text-blue-400">Giá Cơ sở<span className="text-[10px] text-muted-foreground font-normal">(1 {createFormState.baseUnit})</span></Label>
+                                        <Input
+                                            name="ref_price"
+                                            type="number"
+                                            readOnly
+                                            value={createFormState.purchaseUnit === "none" ? createFormState.purchasePrice : (createFormState.purchasePrice / (createFormState.conversionRate || 1)).toFixed(2)}
+                                            className="bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold cursor-not-allowed border-none"
+                                        />
+                                        <div className="absolute right-2 top-8 text-xs text-muted-foreground italic pointer-events-none">Autofill</div>
+                                    </div>
+
                                 </div>
 
                                 <div className="md:col-span-12"><Label className="dark:text-slate-300">Thông số / Quy cách</Label><Textarea name="specs" placeholder="VD: PCB40, TCVN..." className={inputClass} rows={2} /></div>
                                 <div className="md:col-span-6"><Label className="dark:text-slate-300">NCC ưu tiên (Ref)</Label><Input name="supplier_ref" className={inputClass} /></div>
-                                <div className="md:col-span-6"><Label className="dark:text-slate-300">Giá tham khảo</Label><Input name="ref_price" type="number" className={inputClass} /></div>
 
                                 <div className="md:col-span-12 pt-2">
                                     <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white transition-colors">
@@ -363,7 +401,7 @@ export default function CatalogPage() {
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Thông số</TableHead>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300 w-[180px]">ĐVT & Quy đổi</TableHead>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">NCC</TableHead>
-                                        <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Giá tham khảo</TableHead>
+                                        <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Giá tham khảo DB</TableHead>
                                         <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -399,7 +437,16 @@ export default function CatalogPage() {
                                                 </TableCell>
 
                                                 <TableCell className="text-slate-700 dark:text-slate-300">{m.supplier_ref || "-"}</TableCell>
-                                                <TableCell className="text-right font-medium text-slate-800 dark:text-slate-200 transition-colors">{new Intl.NumberFormat("vi-VN").format(m.ref_price)} đ</TableCell>
+
+                                                <TableCell className="text-right flex flex-col justify-end">
+                                                    <span className="font-medium text-slate-800 dark:text-slate-200 transition-colors">{new Intl.NumberFormat("vi-VN").format(m.ref_price)} đ <span className="text-[10px] font-normal text-muted-foreground">/{m.unit}</span></span>
+                                                    {m.purchase_unit && (
+                                                        <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium italic mt-0.5">
+                                                            (~ {new Intl.NumberFormat("vi-VN").format(m.ref_price * m.conversion_rate)} đ /{m.purchase_unit})
+                                                        </span>
+                                                    )}
+                                                </TableCell>
+
                                                 <TableCell className="text-right">
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
@@ -451,13 +498,13 @@ export default function CatalogPage() {
                             </div>
                             <div className="md:col-span-6"><Label className="dark:text-slate-300">Mã hàng <span className="text-red-500">*</span></Label><Input name="code" defaultValue={selectedItem.code} required className={inputClass} /></div>
 
-                            {/* ✅ BLOCK QUY ĐỔI ĐƠN VỊ TÍNH KHI EDIT */}
+                            {/* ✅ BLOCK QUY ĐỔI & ĐƠN GIÁ KHI EDIT */}
                             <div className="md:col-span-12 p-4 bg-blue-50 dark:bg-slate-800/50 rounded-lg border border-blue-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-12 gap-4 mt-2">
-                                <div className="md:col-span-12"><h4 className="text-sm font-bold text-blue-800 dark:text-blue-400">Thiết lập Quy đổi Đơn vị</h4></div>
+                                <div className="md:col-span-12"><h4 className="text-sm font-bold text-blue-800 dark:text-blue-400">Thiết lập Đơn giá & Quy đổi</h4></div>
 
                                 <div className="md:col-span-4">
                                     <Label className="dark:text-slate-300">ĐV Dự toán (Cơ sở)</Label>
-                                    <Select name="unit" defaultValue={selectedItem.unit}>
+                                    <Select name="unit" value={editFormState.baseUnit} onValueChange={(val) => setEditFormState(p => ({ ...p, baseUnit: val }))}>
                                         <SelectTrigger className="bg-white dark:bg-slate-950 border-blue-200"><SelectValue /></SelectTrigger>
                                         <SelectContent className="dark:bg-slate-900">
                                             {units.length > 0 ? units.map(u => <SelectItem key={u.id} value={u.name} className="dark:text-slate-200">{u.name}</SelectItem>) : <SelectItem value={selectedItem.unit}>{selectedItem.unit}</SelectItem>}
@@ -467,7 +514,7 @@ export default function CatalogPage() {
 
                                 <div className="md:col-span-4">
                                     <Label className="dark:text-slate-300 text-orange-600 dark:text-orange-400 font-semibold">ĐV Mua sắm (Thực tế)</Label>
-                                    <Select name="purchase_unit" defaultValue={selectedItem.purchase_unit || "none"}>
+                                    <Select name="purchase_unit" value={editFormState.purchaseUnit} onValueChange={(val) => setEditFormState(p => ({ ...p, purchaseUnit: val }))}>
                                         <SelectTrigger className="bg-white dark:bg-slate-950 border-orange-200"><SelectValue placeholder="-- Không quy đổi --" /></SelectTrigger>
                                         <SelectContent className="dark:bg-slate-900">
                                             <SelectItem value="none" className="italic text-slate-500">-- Không quy đổi --</SelectItem>
@@ -478,13 +525,37 @@ export default function CatalogPage() {
 
                                 <div className="md:col-span-4">
                                     <Label className="dark:text-slate-300 font-semibold">Hệ số (1 ĐV Mua = ? ĐV Cơ sở)</Label>
-                                    <Input name="conversion_rate" type="number" step="any" min="0.001" defaultValue={selectedItem.conversion_rate || 1} className="bg-white dark:bg-slate-950 font-bold" />
+                                    <Input name="conversion_rate" type="number" step="any" min="0.001" value={editFormState.conversionRate} onChange={(e) => setEditFormState(p => ({ ...p, conversionRate: Number(e.target.value) || 1 }))} className="bg-white dark:bg-slate-950 font-bold" disabled={editFormState.purchaseUnit === "none"} />
+                                </div>
+
+                                {/* KHỐI NHẬP GIÁ */}
+                                <div className="md:col-span-6 mt-2">
+                                    <Label className="dark:text-slate-300 font-bold text-emerald-700 dark:text-emerald-400">
+                                        Nhập Giá Mua <span className="text-[10px] text-muted-foreground font-normal">(Giá của 1 {editFormState.purchaseUnit !== "none" ? editFormState.purchaseUnit : editFormState.baseUnit || "Đơn vị"})</span>
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        value={editFormState.purchasePrice || ""}
+                                        onChange={(e) => setEditFormState(p => ({ ...p, purchasePrice: Number(e.target.value) }))}
+                                        className="bg-white dark:bg-slate-950 font-bold border-emerald-300"
+                                    />
+                                </div>
+
+                                <div className="md:col-span-6 mt-2 relative">
+                                    <Label className="dark:text-slate-300 font-bold text-blue-700 dark:text-blue-400">Giá Cơ sở <span className="text-[10px] text-muted-foreground font-normal">(1 {editFormState.baseUnit})</span></Label>
+                                    <Input
+                                        name="ref_price"
+                                        type="number"
+                                        readOnly
+                                        value={editFormState.purchaseUnit === "none" ? editFormState.purchasePrice : (editFormState.purchasePrice / (editFormState.conversionRate || 1)).toFixed(2)}
+                                        className="bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold cursor-not-allowed border-none"
+                                    />
+                                    <div className="absolute right-2 top-8 text-xs text-muted-foreground italic pointer-events-none">Autofill</div>
                                 </div>
                             </div>
 
                             <div className="md:col-span-12"><Label className="dark:text-slate-300">Thông số / Quy cách</Label><Textarea name="specs" defaultValue={selectedItem.specs} className={inputClass} rows={2} /></div>
                             <div className="md:col-span-6"><Label className="dark:text-slate-300">NCC ưu tiên (Ref)</Label><Input name="supplier_ref" defaultValue={selectedItem.supplier_ref} className={inputClass} /></div>
-                            <div className="md:col-span-6"><Label className="dark:text-slate-300">Giá tham khảo</Label><Input name="ref_price" type="number" defaultValue={selectedItem.ref_price} className={inputClass} /></div>
 
                             <div className="md:col-span-12 flex justify-end gap-2 pt-4 border-t dark:border-slate-800 mt-2">
                                 <Button type="button" variant="outline" onClick={() => setOpenEditDialog(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>

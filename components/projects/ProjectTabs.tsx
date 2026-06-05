@@ -52,7 +52,6 @@ const TABS = {
     TASKS: "Công việc & Mốc",
     GANTT: "Tiến độ (Gantt)",
     SURVEY: "Khảo sát",
-    //BOQ: "Dự Toán & Khối Lượng (BOQ)",
     MEMBERS: "Nhân sự",
     LOGS: "Nhật ký thi công",
     DOCUMENTS: "Tài liệu",

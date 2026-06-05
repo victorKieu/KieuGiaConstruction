@@ -172,14 +172,15 @@ export async function checkRequestFeasibility(requestId: string, projectId: stri
     const { data: requestItems } = await supabase.from('material_request_items').select('*').eq('request_id', requestId);
     if (!requestItems || requestItems.length === 0) return { success: false, error: "Phiếu rỗng" };
 
-    // Kéo toàn bộ danh mục vật tư để lấy hệ số quy đổi
-    const { data: masterMaterials } = await supabase.from('materials').select('name, unit, purchase_unit, conversion_rate');
+    // ✅ LẤY THÊM ref_price ĐỂ TỰ ĐỘNG TÍNH GIÁ MUA 1 BAO CHO PO
+    const { data: masterMaterials } = await supabase.from('materials').select('name, unit, purchase_unit, conversion_rate, ref_price');
     const catalogMap = new Map();
     masterMaterials?.forEach(m => {
         catalogMap.set(m.name.toLowerCase().trim(), {
             baseUnit: m.unit,
             purchaseUnit: m.purchase_unit,
-            rate: m.conversion_rate || 1
+            rate: m.conversion_rate || 1,
+            refPrice: m.ref_price || 0
         });
     });
 
@@ -195,25 +196,29 @@ export async function checkRequestFeasibility(requestId: string, projectId: stri
     const { data: estimates } = await supabase.from('estimation_items').select('material_name, quantity').eq('project_id', projectId);
     estimates?.forEach(item => { budgetMap[item.material_name.toLowerCase().trim()] = item.quantity; });
 
-    // Phân tích có áp dụng quy đổi
+    // ✅ THUẬT TOÁN PHÂN TÍCH QUY ĐỔI MỚI (CHUẨN THỰC TẾ CÔNG TRƯỜNG)
     const analysis = requestItems.map(item => {
         const key = item.item_name.toLowerCase().trim();
-        const masterInfo = catalogMap.get(key) || { rate: 1, baseUnit: item.unit };
+        const masterInfo = catalogMap.get(key) || { rate: 1, baseUnit: item.unit, purchaseUnit: item.unit, refPrice: 0 };
 
         const requestedQty = Number(item.quantity);
-        const baseRequestedQty = requestedQty * masterInfo.rate; // Quy đổi ra số lượng Core (VD: kg)
+
+        // Kỹ sư công trường thường lập bằng ĐVT gốc (VD: kg). Nếu họ cố tình lập bằng ĐVT mua (Bao) thì mới nhân lên.
+        const isPurchaseUnit = item.unit?.toLowerCase().trim() === masterInfo.purchaseUnit?.toLowerCase().trim();
+        const baseRequestedQty = (isPurchaseUnit && masterInfo.rate > 1) ? (requestedQty * masterInfo.rate) : requestedQty;
 
         const stock = inventoryMap[key] || 0;
         const budget = budgetMap[key] || 0;
 
-        // Tính bằng số lượng Base Unit
-        const issueQtyBase = Math.min(stock, baseRequestedQty);
-        const purchaseQtyBase = Math.max(0, baseRequestedQty - stock);
+        const issueQtyBase = Math.min(stock, baseRequestedQty); // Số lượng xuất kho (theo kg)
+        const purchaseQtyBase = Math.max(0, baseRequestedQty - stock); // Số lượng cần mua (theo kg)
 
         return {
             ...item,
             conversion_rate: masterInfo.rate,
-            base_unit: masterInfo.baseUnit,
+            base_unit: masterInfo.baseUnit || item.unit,
+            purchase_unit: masterInfo.purchaseUnit || masterInfo.baseUnit || item.unit,
+            purchase_price: masterInfo.refPrice * masterInfo.rate, // Tự động tính giá 1 Bao
             stock_available: stock,
             budget_quantity: budget,
             approved_quantity: requestedQty,
@@ -245,7 +250,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
         if (toIssueItems.length === 0 && toPurchaseItems.length === 0) {
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         } else {
-            // A. XUẤT KHO (Theo Base Unit)
+            // A. XUẤT KHO (Luôn luôn Xuất theo ĐVT gốc - Base Unit)
             if (toIssueItems.length > 0) {
                 if (!warehouseId) throw new Error("Dự án chưa được gán kho vật tư.");
                 const issueCode = `PXK-${Date.now().toString().slice(-6)}`;
@@ -261,7 +266,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 const issueDetails = toIssueItems.map(item => ({
                     issue_id: issue.id,
                     item_name: item.item_name,
-                    unit: item.base_unit || item.unit, // Ép về đơn vị gốc
+                    unit: item.base_unit || item.unit,
                     quantity: Number(item.action_issue),
                     unit_price: 0
                 }));
@@ -269,7 +274,6 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 const { error: issueItemsErr } = await supabase.from('goods_issue_items').insert(issueDetails);
                 if (issueItemsErr) throw new Error("Lỗi thêm chi tiết phiếu xuất: " + issueItemsErr.message);
 
-                // Trừ tồn kho
                 for (const item of toIssueItems) {
                     const { data: stock } = await supabase.from('project_inventory').select('id, quantity_on_hand')
                         .eq('warehouse_id', warehouseId).ilike('item_name', item.item_name).maybeSingle();
@@ -279,7 +283,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 }
             }
 
-            // B. MUA HÀNG PO (Theo Base Unit)
+            // B. MUA HÀNG PO (TỰ ĐỘNG QUY ĐỔI SANG BAO/CÂY)
             if (toPurchaseItems.length > 0) {
                 const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
                     project_id: projectId, code: `PO-AUTO-${Date.now().toString().slice(-6)}`, status: 'draft',
@@ -289,13 +293,23 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
 
                 if (poErr) throw new Error("Lỗi tạo PO: " + poErr.message);
 
-                const poDetails = toPurchaseItems.map(item => ({
-                    po_id: po.id,
-                    item_name: item.item_name,
-                    unit: item.base_unit || item.unit,
-                    quantity: Number(item.action_purchase),
-                    unit_price: 0
-                }));
+                const poDetails = toPurchaseItems.map(item => {
+                    const rate = Number(item.conversion_rate) || 1;
+                    const purchaseUnit = item.purchase_unit || item.base_unit || item.unit;
+
+                    // ✅ CHUYỂN HÓA: Mua 250 kg -> Chia cho 50 = 5 Bao (Làm tròn lên mua chẵn)
+                    const purchaseQtyConverted = rate > 1 ? Math.ceil(item.action_purchase / rate) : item.action_purchase;
+                    const unitPrice = Number(item.purchase_price || 0);
+
+                    return {
+                        po_id: po.id,
+                        item_name: item.item_name,
+                        unit: purchaseUnit, // Trả về "bao"
+                        quantity: purchaseQtyConverted, // Trả về 5
+                        unit_price: unitPrice // Trả về Giá gốc * Hệ số
+                    };
+                });
+
                 const { error: poItemsErr } = await supabase.from('purchase_order_items').insert(poDetails);
                 if (poItemsErr) throw new Error("Lỗi thêm chi tiết PO: " + poItemsErr.message);
             }

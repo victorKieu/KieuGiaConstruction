@@ -1,15 +1,26 @@
 ﻿"use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft, Edit, Printer, CheckCircle2, XCircle, Clock, Building2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+    ArrowLeft, Edit, Printer, CheckCircle2,
+    XCircle, Clock, Building2, Trash2, Loader2
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+// Cập nhật đường dẫn action xóa phiếu của anh (Tùy theo cấu trúc dự án, nếu báo lỗi đỏ anh đổi sang đường dẫn đúng nhé)
+import { deleteMaterialRequest } from "@/lib/action/procurement";
+
 export default function RequestDetailClient({ request }: { request: any }) {
     const router = useRouter();
+    const [isDeleting, setIsDeleting] = useState(false);
+
     if (!request) return <div className="p-8 text-center text-slate-500">Không tìm thấy dữ liệu phiếu yêu cầu.</div>;
 
     // --- 1. HÀM VIỆT HÓA MỨC ĐỘ ƯU TIÊN ---
@@ -21,7 +32,7 @@ export default function RequestDetailClient({ request }: { request: any }) {
         }
     };
 
-    // --- HÀM VIỆT HÓA TRẠNG THÁI ---
+    // --- 2. HÀM VIỆT HÓA TRẠNG THÁI ---
     const getStatusLabel = (status: string) => {
         switch (status?.toLowerCase()) {
             case 'approved': return { label: 'Đã duyệt', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3 mr-1" /> };
@@ -36,6 +47,29 @@ export default function RequestDetailClient({ request }: { request: any }) {
     // --- 3. HÀM IN PHIẾU ---
     const handlePrint = () => {
         window.print();
+    };
+
+    // --- 4. HÀM XÓA PHIẾU ---
+    const handleDelete = async () => {
+        if (!confirm(`Anh có chắc chắn muốn xóa phiếu [${request.code}] không? Hành động này không thể hoàn tác!`)) return;
+
+        setIsDeleting(true);
+        try {
+            // Gọi API Xóa (Nếu action nằm file khác, anh sửa lại dòng import ở trên nhé)
+            const res = await deleteMaterialRequest(request.id, request.project_id);
+
+            if (res.success) {
+                toast.success("Đã xóa phiếu thành công!");
+                router.push(`/projects/${request.project_id}/?tab=requests`);
+                router.refresh();
+            } else {
+                toast.error(res.error || "Không thể xóa phiếu lúc này.");
+            }
+        } catch (error) {
+            toast.error("Lỗi hệ thống khi xóa phiếu.");
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     return (
@@ -53,16 +87,25 @@ export default function RequestDetailClient({ request }: { request: any }) {
                         <Printer className="w-4 h-4 mr-2" /> In phiếu
                     </Button>
 
-                    {/* 2. NÚT CHỈNH SỬA (Chỉ hiện khi phiếu đang chờ duyệt) */}
+                    {/* NÚT CHỈNH SỬA VÀ XÓA (Chỉ hiện khi phiếu đang chờ duyệt) */}
                     {request.status === 'pending' && (
-                        <Button
-                            variant="default"
-                            // Phải dùng template string với dấu / ở đầu để Next.js hiểu đây là đường dẫn gốc
-                            onClick={() => router.push(`/projects/${request.project_id}/requests/${request.id}/edit`)}
-                            className="..."
-                        >
-                            <Edit className="w-4 h-4 mr-2" /> Sửa phiếu
-                        </Button>
+                        <>
+                            <Button
+                                variant="default"
+                                onClick={() => router.push(`/projects/${request.project_id}/requests/${request.id}/edit`)}
+                            >
+                                <Edit className="w-4 h-4 mr-2" /> Sửa phiếu
+                            </Button>
+
+                            <Button
+                                variant="destructive"
+                                onClick={handleDelete}
+                                disabled={isDeleting}
+                            >
+                                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                                Xóa phiếu
+                            </Button>
+                        </>
                     )}
                 </div>
             </div>
@@ -73,7 +116,7 @@ export default function RequestDetailClient({ request }: { request: any }) {
                     <Building2 className="w-6 h-6" />
                     <h2 className="text-2xl font-bold uppercase tracking-wide">CÔNG TY KIỀU GIA</h2>
                 </div>
-                <h3 className="text-xl font-bold mt-2">PHIẾU YÊU CẦU MUA SẮM</h3>
+                <h3 className="text-xl font-bold mt-2">PHIẾU YÊU CẦU MUA SẮM</h3>
                 <p className="text-sm italic mt-1">Mã phiếu: {request.code}</p>
             </div>
 

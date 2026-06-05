@@ -56,7 +56,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             {/* TOOLBAR */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 print:hidden">
                 <div className="flex items-center gap-4">
-                    <Button variant="outline" size="icon" className="dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 transition-colors" asChild>
+                    <Button variant="outline" size="icon" className="bg-white dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 transition-colors" asChild>
                         <Link href="/procurement/orders"><ArrowLeft className="w-4 h-4" /></Link>
                     </Button>
                     <div>
@@ -70,7 +70,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" className="dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 transition-colors">
+                    <Button variant="outline" className="bg-white dark:bg-slate-900 dark:border-slate-800 dark:hover:bg-slate-800 transition-colors">
                         <Printer className="w-4 h-4 mr-2" /> In phiếu
                     </Button>
 
@@ -108,8 +108,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 {/* CỘT TRÁI: THÔNG TIN CHÍNH */}
                 <div className="md:col-span-2 space-y-6">
                     {/* THÔNG TIN NCC & DỰ ÁN */}
-                    <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm transition-colors">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-950/50 py-3 border-b dark:border-slate-800 transition-colors">
+                    <Card className="bg-white dark:bg-slate-950 dark:border-slate-800 shadow-sm transition-colors">
+                        <CardHeader className="bg-slate-50 dark:bg-slate-900 py-3 border-b dark:border-slate-800 transition-colors">
                             <CardTitle className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Thông tin giao dịch</CardTitle>
                         </CardHeader>
                         <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-8">
@@ -133,8 +133,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     </Card>
 
                     {/* CHI TIẾT VẬT TƯ */}
-                    <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-950/50 py-3 border-b dark:border-slate-800 transition-colors">
+                    <Card className="bg-white dark:bg-slate-950 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+                        <CardHeader className="bg-slate-50 dark:bg-slate-900 py-3 border-b dark:border-slate-800 transition-colors">
                             <CardTitle className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Bảng kê chi tiết vật tư</CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
@@ -149,11 +149,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                                             <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Thành tiền</TableHead>
                                         </TableRow>
                                     </TableHeader>
-                                    <TableBody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
+                                    <TableBody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
                                         {po.items.map((item: any) => (
                                             <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-none">
                                                 <TableCell className="font-semibold text-slate-800 dark:text-slate-200 transition-colors">{item.item_name}</TableCell>
-                                                <TableCell className="text-center text-slate-500 dark:text-slate-400 font-medium transition-colors">{item.unit}</TableCell>
+                                                {/* ✅ FIX ĐƠN VỊ TÍNH TƯƠNG ĐỒNG BẢNG HAO PHÍ */}
+                                                <TableCell className="text-center text-xs font-bold text-orange-600 dark:text-orange-400 transition-colors">{item.unit}</TableCell>
                                                 <TableCell className="text-right font-bold text-slate-900 dark:text-slate-100 transition-colors">{item.quantity.toLocaleString()}</TableCell>
                                                 <TableCell className="text-right text-slate-600 dark:text-slate-400 transition-colors">{money(item.unit_price)}</TableCell>
                                                 <TableCell className="text-right font-bold text-slate-800 dark:text-slate-200 transition-colors">
@@ -164,7 +165,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                                     </TableBody>
                                 </Table>
                             </div>
-                            <div className="p-6 flex justify-end border-t dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 transition-colors">
+                            <div className="p-6 flex justify-end border-t dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 transition-colors">
                                 <div className="w-full sm:w-1/2 space-y-3">
                                     <div className="flex justify-between text-lg font-black text-blue-700 dark:text-blue-400 transition-colors tracking-tight">
                                         <span className="uppercase text-sm mt-1">Tổng cộng đơn hàng:</span>
@@ -178,8 +179,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
                 {/* CỘT PHẢI: TÀI CHÍNH & GHI CHÚ */}
                 <div className="space-y-6">
-                    <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm transition-colors">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-950/50 py-3 border-b dark:border-slate-800 transition-colors">
+                    <Card className="bg-white dark:bg-slate-950 dark:border-slate-800 shadow-sm transition-colors">
+                        <CardHeader className="bg-slate-50 dark:bg-slate-900 py-3 border-b dark:border-slate-800 transition-colors">
                             <CardTitle className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Tình hình thanh toán</CardTitle>
                         </CardHeader>
                         <CardContent className="p-6 space-y-6 transition-colors">
@@ -230,8 +231,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     </Card>
 
                     {po.notes && (
-                        <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm transition-colors">
-                            <CardHeader className="bg-slate-50 dark:bg-slate-950/50 py-3 border-b dark:border-slate-800 transition-colors">
+                        <Card className="bg-white dark:bg-slate-950 dark:border-slate-800 shadow-sm transition-colors">
+                            <CardHeader className="bg-slate-50 dark:bg-slate-900 py-3 border-b dark:border-slate-800 transition-colors">
                                 <CardTitle className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Ghi chú đơn hàng</CardTitle>
                             </CardHeader>
                             <CardContent className="p-6 transition-colors">

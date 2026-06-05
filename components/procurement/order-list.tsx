@@ -84,13 +84,8 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                             <TableRow>
                                 <TableHead className="w-[100px]">Mã đơn</TableHead>
                                 <TableHead className="w-[100px]">Ngày đặt</TableHead>
-
-                                {/* 👇 FIX: Dùng min-w để đảm bảo không bị bóp nghẹt, nhưng không giới hạn max */}
                                 <TableHead className="min-w-[180px]">Nhà cung cấp</TableHead>
-
-                                {/* 👇 FIX: Dành không gian rộng rãi cho Dự án */}
                                 <TableHead className="min-w-[250px]">Dự án</TableHead>
-
                                 <TableHead className="text-right whitespace-nowrap">Tổng tiền</TableHead>
                                 <TableHead className="text-center w-[120px]">Trạng thái</TableHead>
                                 <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -112,15 +107,11 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                                         <TableCell className="align-top py-4">
                                             {format(new Date(po.order_date), "dd/MM/yyyy", { locale: vi })}
                                         </TableCell>
-
-                                        {/* 👇 FIX: Bỏ truncate, cho phép xuống dòng (whitespace-normal) */}
                                         <TableCell className="align-top py-4">
                                             <div className="font-medium whitespace-normal leading-snug">
                                                 {po.supplier?.name || "---"}
                                             </div>
                                         </TableCell>
-
-                                        {/* 👇 FIX: Bỏ line-clamp, cho phép hiển thị hết tên dự án */}
                                         <TableCell className="align-top py-4">
                                             <div className="flex flex-col gap-1">
                                                 <span className="font-semibold text-slate-800 whitespace-normal leading-snug">
@@ -134,7 +125,6 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                                                 )}
                                             </div>
                                         </TableCell>
-
                                         <TableCell className="text-right font-bold text-slate-700 align-top py-4 whitespace-nowrap">
                                             {formatMoney(po.total_amount)}
                                         </TableCell>
@@ -181,9 +171,9 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
             <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Bạn có chắc muốn xóa?</AlertDialogTitle>
+                        <AlertDialogTitle className="text-red-600">Bạn có chắc muốn xóa?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Hành động này không thể hoàn tác. Đơn hàng và toàn bộ chi tiết vật tư sẽ bị xóa vĩnh viễn.
+                            Hành động này không thể hoàn tác. Đơn hàng này và <strong className="text-slate-800">Phiếu yêu cầu vật tư gốc (nếu có)</strong> sẽ bị xóa vĩnh viễn khỏi hệ thống.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -194,7 +184,7 @@ export function OrderList({ data }: { data: PurchaseOrder[] }) {
                             disabled={isDeleting}
                         >
                             {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isDeleting ? "Đang xóa..." : "Xóa đơn hàng"}
+                            {isDeleting ? "Đang xóa..." : "Xóa toàn bộ"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

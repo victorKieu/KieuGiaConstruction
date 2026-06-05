@@ -3,11 +3,11 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// Import API Actions
-import { updateMaterialRequestAction, getMaterialRequestById, getProjectWarehouses } from "@/lib/action/requestActions";
+// Import API Actions (Nhớ kiểm tra file action xem đã có hàm deleteMaterialRequestAction chưa nhé)
+import { updateMaterialRequestAction, getMaterialRequestById, getProjectWarehouses, deleteMaterialRequest } from "@/lib/action/requestActions";
 // Import API lấy danh mục vật tư dự toán
 import { getProjectStandardizedMaterials } from "@/lib/action/procurement";
 
@@ -19,6 +19,7 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
     const router = useRouter();
 
     const [loading, setLoading] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [fetching, setFetching] = useState(true);
     const [requestData, setRequestData] = useState<any>(null);
     const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -49,7 +50,7 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
                         items: data.items.map((i: any) => ({
                             item_name: i.item_name,
                             item_category: i.item_category || "material",
-                            // ✅ FIX EDIT: Chuyển thẳng thành String để Form hiển thị chuẩn số thập phân (VD: "0.5") mà không bị React báo lỗi
+                            // Chuyển thẳng thành String để Form hiển thị chuẩn số thập phân
                             quantity: String(i.quantity),
                             unit: i.unit,
                             estimated_price: Number(i.estimated_price) || 0,
@@ -93,11 +94,32 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
         setLoading(false);
 
         if (res.success) {
-            toast.success("Cập nhật phiếu thành công!"); // ✅ Đổi câu thông báo cho hợp ngữ cảnh Edit
+            toast.success("Cập nhật phiếu thành công!");
             router.push(`/projects/${projectId}/?tab=requests`);
             router.refresh();
         } else {
             toast.error(res.error);
+        }
+    };
+
+    // 3. Xử lý XÓA PHIẾU
+    const handleDelete = async () => {
+        if (!confirm(`Anh có chắc chắn muốn xóa phiếu [${requestData?.code}] không? Dữ liệu đã xóa không thể khôi phục!`)) return;
+
+        setIsDeleting(true);
+        try {
+            const res = await deleteMaterialRequest(requestId);
+            if (res.success) {
+                toast.success("Đã xóa phiếu thành công!");
+                router.push(`/projects/${projectId}/?tab=requests`);
+                router.refresh();
+            } else {
+                toast.error(res.error || "Không thể xóa phiếu lúc này.");
+            }
+        } catch (error) {
+            toast.error("Lỗi hệ thống khi xóa phiếu.");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -114,15 +136,23 @@ export default function EditRequestPage({ params }: { params: Promise<{ id: stri
     return (
         <div className="flex-1 p-4 md:p-8 pt-6 max-w-5xl mx-auto animate-in fade-in duration-500">
 
-            {/* Header Màn hình */}
-            <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" size="icon" onClick={() => router.push(`/projects/${projectId}/?tab=requests`)} className="hover:bg-slate-200 dark:hover:bg-slate-800">
-                    <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100">Chỉnh sửa Yêu cầu</h2>
-                    <p className="text-muted-foreground text-sm">Cập nhật thông tin phiếu <span className="font-semibold">{requestData?.code}</span></p>
+            {/* Header Màn hình & Nút Xóa */}
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon" onClick={() => router.push(`/projects/${projectId}/?tab=requests`)} className="hover:bg-slate-200 dark:hover:bg-slate-800">
+                        <ArrowLeft className="w-5 h-5" />
+                    </Button>
+                    <div>
+                        <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100">Chỉnh sửa Yêu cầu</h2>
+                        <p className="text-muted-foreground text-sm">Cập nhật thông tin phiếu <span className="font-semibold">{requestData?.code}</span></p>
+                    </div>
                 </div>
+
+                {/* ✅ NÚT XÓA PHIẾU */}
+                <Button variant="destructive" onClick={handleDelete} disabled={isDeleting} className="shadow-sm">
+                    {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    Xóa phiếu này
+                </Button>
             </div>
 
             {/* ✅ LÔI UNIFIED FORM RA XÀI */}
