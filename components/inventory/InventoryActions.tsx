@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowRightLeft, RotateCcw, ClipboardCheck, Plus, Trash2, Loader2, LogOut } from "lucide-react";
+import {
+    ArrowRightLeft, RotateCcw, ClipboardCheck, Plus, Trash2, Loader2, LogOut, CheckSquare, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
-
+import { formatDate } from "@/lib/utils/utils";
+import { Badge } from "@/components/ui/badge";
 // Import đầy đủ các Actions
 import {
     createTransferAction,
@@ -36,7 +37,7 @@ export function IssueDialog({ warehouseId, projectId, inventory }: Props) {
     const [loading, setLoading] = useState(false);
 
     const [receiver, setReceiver] = useState("");
-    const [issueDate, setIssueDate] = useState(format(new Date(), "yyyy-MM-dd"));
+    const [issueDate, setIssueDate] = useState(formatDate(new Date()));
     const [notes, setNotes] = useState("");
     const [items, setItems] = useState<{ item_name: string; unit: string; quantity: number; stock: number; notes: string }[]>([]);
 
@@ -238,47 +239,172 @@ export function ReturnDialog({ warehouseId, inventory }: Props) {
     )
 }
 
-// 4. DIALOG KIỂM KÊ
+// 4. DIALOG KIỂM KÊ KHO (CHUẨN KẾ TOÁN)
 export function InventoryCheckDialog({ warehouseId, inventory }: Props) {
     const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [items, setItems] = useState<any[]>([]);
+    const [notes, setNotes] = useState("");
 
-    const startCheck = () => { setItems(inventory.map(i => ({ item_name: i.item_name, system_qty: i.quantity_on_hand, actual_qty: i.quantity_on_hand, reason: "" }))); setOpen(true); }
+    // Lưu trạng thái số lượng thực đếm (Mặc định lấy bằng tồn trên máy)
+    const [actualData, setActualData] = useState<Record<string, number>>({});
+
+    // Reset data mỗi khi mở dialog
+    const handleOpenChange = (isOpen: boolean) => {
+        setOpen(isOpen);
+        if (isOpen) {
+            const initialData: Record<string, number> = {};
+            inventory.forEach(item => {
+                initialData[item.id] = item.quantity_on_hand;
+            });
+            setActualData(initialData);
+            setNotes("");
+        }
+    };
+
+    const handleQtyChange = (itemId: string, value: string) => {
+        setActualData(prev => ({
+            ...prev,
+            [itemId]: value === "" ? 0 : Number(value)
+        }));
+    };
+
     const handleSubmit = async () => {
         setLoading(true);
-        const res = await createInventoryCheckAction(warehouseId, items);
+
+        // Gói dữ liệu gửi lên
+        const itemsToUpdate = inventory.map(item => ({
+            inventory_id: item.id,
+            item_name: item.item_name,
+            system_qty: item.quantity_on_hand,
+            actual_qty: actualData[item.id] !== undefined ? actualData[item.id] : item.quantity_on_hand
+        }));
+
+        const res = await createInventoryCheckAction(warehouseId, notes, itemsToUpdate);
+
+        if (res.success) {
+            toast.success(res.message);
+            setOpen(false);
+            router.refresh();
+        } else {
+            toast.error(res.error);
+        }
         setLoading(false);
-        if (res.success) { toast.success(res.message); setOpen(false); router.refresh(); }
-    }
+    };
+
+    // Đếm số mặt hàng bị lệch để cảnh báo
+    const diffCount = inventory.filter(item => {
+        const actQty = actualData[item.id];
+        return actQty !== undefined && actQty !== item.quantity_on_hand;
+    }).length;
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild><Button variant="outline" onClick={startCheck}><ClipboardCheck className="w-4 h-4 mr-2" /> Kiểm kê</Button></DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-                <DialogHeader><DialogTitle>Kiểm kê kho</DialogTitle></DialogHeader>
-                <div className="flex-1 overflow-y-auto">
-                    <Table>
-                        <TableHeader><TableRow><TableHead>Vật tư</TableHead><TableHead className="text-right">Tồn Máy</TableHead><TableHead className="text-right">Thực tế</TableHead><TableHead>Ghi chú lệch</TableHead></TableRow></TableHeader>
-                        <TableBody>{items.map((item, idx) => {
-                            const diff = item.actual_qty - item.system_qty;
-                            return (
-                                <TableRow key={idx} className={diff !== 0 ? "bg-yellow-50" : ""}>
-                                    <TableCell>{item.item_name}</TableCell>
-                                    <TableCell className="text-right text-slate-500">{item.system_qty}</TableCell>
-                                    <TableCell><Input type="number" className={`text-right font-bold ${diff !== 0 ? (diff < 0 ? 'text-red-600' : 'text-green-600') : ''}`} value={item.actual_qty} onChange={e => { const n = [...items]; n[idx].actual_qty = Number(e.target.value); setItems(n) }} /></TableCell>
-                                    <TableCell><Input value={item.reason} onChange={e => { const n = [...items]; n[idx].reason = e.target.value; setItems(n) }} disabled={diff === 0} /></TableCell>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-400 dark:hover:bg-indigo-900/20 font-medium">
+                    <ClipboardCheck className="w-4 h-4 mr-2" />
+                    Kiểm kê kho
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col dark:bg-slate-950 dark:border-slate-800">
+                <DialogHeader>
+                    <DialogTitle className="text-indigo-700 dark:text-indigo-400 flex items-center gap-2">
+                        <ClipboardCheck className="w-5 h-5" /> Bảng Kiểm Kê & Cân Bằng Kho
+                    </DialogTitle>
+                </DialogHeader>
+
+                <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-sm text-indigo-800 dark:text-indigo-300">
+                        <span className="font-bold">Hướng dẫn:</span> Nhập số lượng thực tế đếm được tại kho vào ô <strong>Tồn thực đếm</strong>. Hệ thống sẽ tự động đối chiếu, tính chênh lệch và chốt sổ sau khi xác nhận.
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Ghi chú đợt kiểm kê / Giải trình chênh lệch</Label>
+                        <Input
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ví dụ: Kiểm kê định kỳ tháng 10, hao hụt xi măng do rách bao..."
+                            className="dark:bg-slate-900 dark:border-slate-800"
+                        />
+                    </div>
+
+                    <div className="border rounded-lg overflow-hidden dark:border-slate-800">
+                        <Table>
+                            <TableHeader className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-10 shadow-sm">
+                                <TableRow>
+                                    <TableHead className="w-[50px] font-bold">STT</TableHead>
+                                    <TableHead className="font-bold">Tên vật tư</TableHead>
+                                    <TableHead className="text-center font-bold">ĐVT</TableHead>
+                                    <TableHead className="text-center font-bold text-slate-500">Tồn trên máy</TableHead>
+                                    <TableHead className="text-center font-bold text-indigo-600">Tồn thực đếm</TableHead>
+                                    <TableHead className="text-right font-bold">Chênh lệch</TableHead>
                                 </TableRow>
-                            )
-                        })}</TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {inventory.length === 0 ? (
+                                    <TableRow><TableCell colSpan={6} className="text-center py-6 text-slate-500">Kho trống, không có gì để đếm.</TableCell></TableRow>
+                                ) : inventory.map((item, idx) => {
+                                    const sysQty = Number(item.quantity_on_hand);
+                                    const actQty = actualData[item.id] !== undefined ? actualData[item.id] : sysQty;
+                                    const diff = actQty - sysQty;
+
+                                    return (
+                                        <TableRow key={item.id} className="dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50">
+                                            <TableCell>{idx + 1}</TableCell>
+                                            <TableCell className="font-medium">{item.item_name}</TableCell>
+                                            <TableCell className="text-center">{item.unit}</TableCell>
+                                            <TableCell className="text-center font-bold text-slate-400 bg-slate-50/50 dark:bg-slate-900/20">
+                                                {sysQty.toLocaleString()}
+                                            </TableCell>
+                                            <TableCell className="p-2">
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={actualData[item.id] === 0 ? "" : actualData[item.id]}
+                                                    onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                                    className={`text-center font-bold h-9 dark:bg-slate-950 ${diff !== 0 ? 'border-indigo-400 focus-visible:ring-indigo-500 text-indigo-700 dark:text-indigo-400' : 'dark:border-slate-800'}`}
+                                                    placeholder="0"
+                                                />
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {diff === 0 ? (
+                                                    <span className="text-slate-300 dark:text-slate-600 font-medium flex items-center justify-end"><CheckSquare className="w-3 h-3 mr-1" /> Khớp</span>
+                                                ) : diff > 0 ? (
+                                                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none font-bold">+ {diff.toLocaleString()}</Badge>
+                                                ) : (
+                                                    <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-none font-bold">- {Math.abs(diff).toLocaleString()}</Badge>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </div>
-                <DialogFooter className="pt-4 border-t"><Button onClick={handleSubmit} disabled={loading}>Cân bằng kho</Button></DialogFooter>
+
+                <DialogFooter className="border-t pt-4 dark:border-slate-800 flex items-center justify-between">
+                    <div className="text-sm font-medium mr-auto">
+                        {diffCount > 0 ? (
+                            <span className="text-orange-600 dark:text-orange-400 flex items-center"><AlertTriangle className="w-4 h-4 mr-1" /> Có {diffCount} mặt hàng bị lệch so với hệ thống.</span>
+                        ) : (
+                            <span className="text-slate-500">Tất cả khớp với hệ thống.</span>
+                        )}
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setOpen(false)} className="dark:border-slate-800">Hủy</Button>
+                        <Button onClick={handleSubmit} disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[140px]">
+                            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Chốt sổ Kiểm Kê
+                        </Button>
+                    </div>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
-    )
+    );
 }
+
 // --- [CẬP NHẬT] 5. DIALOG XỬ LÝ HÀNG HÓA (CÓ CHỌN PO KHI TRẢ) ---
 export function OtherIssueDialog({ warehouseId, inventory }: Props) {
     const router = useRouter();
@@ -291,7 +417,7 @@ export function OtherIssueDialog({ warehouseId, inventory }: Props) {
 
     const [type, setType] = useState<'RETURN_VENDOR' | 'DISPOSAL'>('RETURN_VENDOR');
     const [partner, setPartner] = useState("");
-    const [issueDate, setIssueDate] = useState(format(new Date(), "yyyy-MM-dd"));
+    const [issueDate, setIssueDate] = useState(formatDate(new Date()));
     const [notes, setNotes] = useState("");
     const [items, setItems] = useState<{ item_name: string; unit: string; quantity: number; stock: number; notes: string }[]>([]);
 
@@ -500,3 +626,4 @@ export function OtherIssueDialog({ warehouseId, inventory }: Props) {
         </Dialog>
     );
 }
+

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { supplierSchema, purchaseOrderSchema, SupplierFormValues, PurchaseOrderFormValues } from "@/lib/schemas/procurement";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
+import { checkApprovalPermission } from "@/lib/auth/permissions";
 
 // ✅ IMPORT HÀM GỬI PUSH NOTIFICATION MOBILE
 import { sendPushToUser } from "@/lib/action/pushNotification";
@@ -172,7 +173,6 @@ export async function checkRequestFeasibility(requestId: string, projectId: stri
     const { data: requestItems } = await supabase.from('material_request_items').select('*').eq('request_id', requestId);
     if (!requestItems || requestItems.length === 0) return { success: false, error: "Phiếu rỗng" };
 
-    // ✅ LẤY THÊM ref_price ĐỂ TỰ ĐỘNG TÍNH GIÁ MUA 1 BAO CHO PO
     const { data: masterMaterials } = await supabase.from('materials').select('name, unit, purchase_unit, conversion_rate, ref_price');
     const catalogMap = new Map();
     masterMaterials?.forEach(m => {
@@ -196,34 +196,30 @@ export async function checkRequestFeasibility(requestId: string, projectId: stri
     const { data: estimates } = await supabase.from('estimation_items').select('material_name, quantity').eq('project_id', projectId);
     estimates?.forEach(item => { budgetMap[item.material_name.toLowerCase().trim()] = item.quantity; });
 
-    // ✅ THUẬT TOÁN PHÂN TÍCH QUY ĐỔI MỚI (CHUẨN THỰC TẾ CÔNG TRƯỜNG)
+    // ✅ SỬA LỖI TÍNH TOÁN: SO SÁNH TRỰC TIẾP THEO ĐVT NGƯỜI DÙNG NHẬP
     const analysis = requestItems.map(item => {
         const key = item.item_name.toLowerCase().trim();
         const masterInfo = catalogMap.get(key) || { rate: 1, baseUnit: item.unit, purchaseUnit: item.unit, refPrice: 0 };
 
         const requestedQty = Number(item.quantity);
-
-        // Kỹ sư công trường thường lập bằng ĐVT gốc (VD: kg). Nếu họ cố tình lập bằng ĐVT mua (Bao) thì mới nhân lên.
-        const isPurchaseUnit = item.unit?.toLowerCase().trim() === masterInfo.purchaseUnit?.toLowerCase().trim();
-        const baseRequestedQty = (isPurchaseUnit && masterInfo.rate > 1) ? (requestedQty * masterInfo.rate) : requestedQty;
-
         const stock = inventoryMap[key] || 0;
         const budget = budgetMap[key] || 0;
 
-        const issueQtyBase = Math.min(stock, baseRequestedQty); // Số lượng xuất kho (theo kg)
-        const purchaseQtyBase = Math.max(0, baseRequestedQty - stock); // Số lượng cần mua (theo kg)
+        // Không nhân chia hệ số ở bước này để tránh lệch đơn vị với kho (VD: 5 Bao vs 35 Bao)
+        const issueQty = Math.min(stock, requestedQty);
+        const purchaseQty = Math.max(0, requestedQty - stock);
 
         return {
             ...item,
             conversion_rate: masterInfo.rate,
             base_unit: masterInfo.baseUnit || item.unit,
             purchase_unit: masterInfo.purchaseUnit || masterInfo.baseUnit || item.unit,
-            purchase_price: masterInfo.refPrice * masterInfo.rate, // Tự động tính giá 1 Bao
+            purchase_price: masterInfo.refPrice * masterInfo.rate,
             stock_available: stock,
             budget_quantity: budget,
             approved_quantity: requestedQty,
-            action_issue: issueQtyBase,
-            action_purchase: purchaseQtyBase
+            action_issue: issueQty,
+            action_purchase: purchaseQty
         };
     });
 
@@ -241,16 +237,21 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
             employeeId = emp?.id || null;
         }
 
+        // ✅ GỌI SANG TRUNG TÂM PHÂN QUYỀN
+        const hasPermission = await checkApprovalPermission(projectId);
+        if (!hasPermission) {
+            throw new Error("Từ chối truy cập: Chỉ Quản trị viên hoặc Ban quản lý dự án mới có quyền phê duyệt phiếu này!");
+        }
+
         const toIssueItems = approvedItems.filter(i => i.action_issue > 0);
         const toPurchaseItems = approvedItems.filter(i => i.action_purchase > 0);
 
-        // Lấy thông tin người tạo phiếu
         const { data: originalReq } = await supabase.from('material_requests').select('code, requester_id').eq('id', requestId).single();
 
         if (toIssueItems.length === 0 && toPurchaseItems.length === 0) {
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         } else {
-            // A. XUẤT KHO (Luôn luôn Xuất theo ĐVT gốc - Base Unit)
+            // A. XUẤT KHO
             if (toIssueItems.length > 0) {
                 if (!warehouseId) throw new Error("Dự án chưa được gán kho vật tư.");
                 const issueCode = `PXK-${Date.now().toString().slice(-6)}`;
@@ -266,7 +267,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 const issueDetails = toIssueItems.map(item => ({
                     issue_id: issue.id,
                     item_name: item.item_name,
-                    unit: item.base_unit || item.unit,
+                    unit: item.unit,
                     quantity: Number(item.action_issue),
                     unit_price: 0
                 }));
@@ -283,7 +284,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 }
             }
 
-            // B. MUA HÀNG PO (TỰ ĐỘNG QUY ĐỔI SANG BAO/CÂY)
+            // B. MUA HÀNG PO
             if (toPurchaseItems.length > 0) {
                 const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
                     project_id: projectId, code: `PO-AUTO-${Date.now().toString().slice(-6)}`, status: 'draft',
@@ -297,16 +298,20 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                     const rate = Number(item.conversion_rate) || 1;
                     const purchaseUnit = item.purchase_unit || item.base_unit || item.unit;
 
-                    // ✅ CHUYỂN HÓA: Mua 250 kg -> Chia cho 50 = 5 Bao (Làm tròn lên mua chẵn)
-                    const purchaseQtyConverted = rate > 1 ? Math.ceil(item.action_purchase / rate) : item.action_purchase;
+                    let purchaseQtyConverted = item.action_purchase;
                     const unitPrice = Number(item.purchase_price || 0);
+
+                    // CHỈ QUY ĐỔI NẾU NGƯỜI DÙNG YÊU CẦU BẰNG ĐVT NHỎ
+                    if (item.unit?.toLowerCase().trim() !== purchaseUnit?.toLowerCase().trim() && rate > 1) {
+                        purchaseQtyConverted = Math.ceil(item.action_purchase / rate);
+                    }
 
                     return {
                         po_id: po.id,
                         item_name: item.item_name,
-                        unit: purchaseUnit, // Trả về "bao"
-                        quantity: purchaseQtyConverted, // Trả về 5
-                        unit_price: unitPrice // Trả về Giá gốc * Hệ số
+                        unit: purchaseUnit,
+                        quantity: purchaseQtyConverted,
+                        unit_price: unitPrice
                     };
                 });
 
@@ -317,22 +322,25 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         }
 
-        // 🔔 THÔNG BÁO 2a: Duyệt thành công -> Báo cho Người tạo
         if (originalReq) {
-            await sendSystemNotification(supabase, {
-                targetEmployeeId: originalReq.requester_id,
-                title: "Đề xuất đã được duyệt",
-                message: `Đề xuất ${originalReq.code} của bạn đã được Giám đốc/Quản lý phê duyệt.`,
-                link: `/projects/${projectId}/requests/${requestId}`
-            });
+            // Send system notifications
+            try {
+                await sendSystemNotification(supabase, {
+                    targetEmployeeId: originalReq.requester_id,
+                    title: "Đề xuất đã được duyệt",
+                    message: `Đề xuất ${originalReq.code} của bạn đã được phê duyệt.`,
+                    link: `/projects/${projectId}/requests/${requestId}`
+                });
 
-            // 🔔 THÔNG BÁO 2b: Báo cho bộ phận Procurement tiếp tục xử lý
-            await sendSystemNotification(supabase, {
-                targetRole: 'procurement',
-                title: "Đề xuất cần tiến hành mua sắm",
-                message: `Phiếu yêu cầu ${originalReq.code} đã được duyệt. Vui lòng tiến hành tìm kiếm NCC và báo giá.`,
-                link: `/procurement/orders`
-            });
+                await sendSystemNotification(supabase, {
+                    targetRole: 'procurement',
+                    title: "Đề xuất cần tiến hành mua sắm",
+                    message: `Phiếu yêu cầu ${originalReq.code} đã được duyệt. Vui lòng tiến hành tìm kiếm NCC và báo giá.`,
+                    link: `/procurement/orders`
+                });
+            } catch (notifyErr) {
+                console.error("Lỗi gửi thông báo:", notifyErr);
+            }
         }
 
         revalidatePath(`/projects/${projectId}`);

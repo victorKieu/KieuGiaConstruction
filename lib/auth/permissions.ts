@@ -1,6 +1,8 @@
-// lib/auth/permissions.ts
+"use server";
+
 import { get_user_role } from "@/lib/supabase/functions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
 // 1. Định nghĩa các Tài nguyên (Resources) trong hệ thống
 export type Resource =
@@ -16,7 +18,7 @@ export type Resource =
 export type Action = "view" | "create" | "update" | "delete" | "approve";
 
 // 3. Định nghĩa Vai trò (Roles) - Khớp với DB của bạn
-export type Role = "admin" | "manager" | "hr_manager" | "hr_staff" | "accountant" | "employee" | "employee" | "customer" | "supplier";
+export type Role = "admin" | "manager" | "hr_manager" | "hr_staff" | "accountant" | "employee" | "customer" | "supplier";
 
 // 4. MA TRẬN PHÂN QUYỀN (PERMISSION MATRIX)
 // Đây là nơi duy nhất bạn cần sửa khi muốn thay đổi luật chơi
@@ -53,14 +55,12 @@ const PERMISSIONS: PermissionRules = {
         create: ["admin", "accountant"],
         approve: ["admin"],
     },
-    // ✅ FIX: Bổ sung Customers (Khách hàng)
     customers: {
         view: ["admin", "manager", "employee"], // Sale/CSKH cần xem
         create: ["admin", "manager", "employee"], // Sale tạo khách hàng
         update: ["admin", "manager", "employee"],
         delete: ["admin", "manager"],
     },
-    // ✅ FIX: Bổ sung Contracts (Hợp đồng)
     contracts: {
         view: ["admin", "manager", "accountant"],
         create: ["admin", "manager"],
@@ -146,4 +146,61 @@ export async function getResourcePermissions(resource: Resource) {
         canDelete: await checkPermission(resource, "delete", role),
         canApprove: await checkPermission(resource, "approve", role),
     };
+}
+
+/**
+* Lõi kiểm tra quyền tổng quát cho toàn dự án.
+* Tự động Join với bảng sys_dictionaries để lấy mã role.
+*/
+export async function checkProjectPermission(
+    projectId: string,
+    allowedGlobalRoles: string[],
+    allowedProjectRoles: string[]
+) {
+    // 1. TẬN DỤNG HÀM GET USER PROFILE ĐÃ CACHE
+    const profile = await getUserProfile();
+
+    // Nếu chưa đăng nhập hoặc không phải Employee (không có entityId) -> Cấm
+    if (!profile || !profile.entityId || profile.type !== 'EMPLOYEE') return false;
+
+    // 2. CHECK QUYỀN TOÀN CỤC (Global Role - Lấy sẵn từ profile.role)
+    const globalRole = profile.role.toLowerCase();
+    if (allowedGlobalRoles.map(r => r.toLowerCase()).includes(globalRole)) {
+        return true;
+    }
+
+    // 3. CHECK QUYỀN DỰ ÁN (Local Role - Quét trong project_members)
+    const supabase = await createSupabaseServerClient();
+    const { data: member } = await supabase
+        .from('project_members')
+        .select(`
+            role_id,
+            sys_dictionaries ( code, name )
+        `)
+        .eq('project_id', projectId)
+        .eq('employee_id', profile.entityId) // ✅ ĐÃ FIX: Truyền đúng entityId (tức là employees.id)
+        .single();
+
+    if (member && member.sys_dictionaries) {
+        const dict = member.sys_dictionaries as any;
+        const roleCode = (dict.code || dict.name || '').toUpperCase();
+        const upperAllowed = allowedProjectRoles.map(r => r.toUpperCase());
+
+        if (upperAllowed.includes(roleCode)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Hàm kiểm tra quyền Duyệt Yêu Cầu Vật Tư (Dùng cho RequestManager)
+ */
+export async function checkApprovalPermission(projectId: string) {
+    return checkProjectPermission(
+        projectId,
+        ['DI', 'PM', 'MNG'], // Các sếp tổng
+        ['ADMIN', 'manager'] // Các mã role dự án được phép duyệt
+    );
 }

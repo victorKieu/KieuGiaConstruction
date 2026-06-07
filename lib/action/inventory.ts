@@ -10,14 +10,13 @@ async function getCurrentEmployeeId(supabase: any) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    // Tìm profile linked với auth_id
-    const { data: profile } = await supabase
-        .from('user_profiles')
+    const { data: emp } = await supabase
+        .from('employees')
         .select('id')
-        .eq('auth_id', user.id)
-        .single();
+        .eq('auth_id', user.id) // Tìm trực tiếp bằng Auth ID (nếu auth_id = id)
+        .maybeSingle();
 
-    return profile?.id || null;
+    return emp?.id || null;
 }
 
 // ==============================================================================
@@ -52,30 +51,42 @@ export async function getMyAuthorizedWarehouses() {
     const supabase = await createClient();
     const employeeId = await getCurrentEmployeeId(supabase);
 
-    if (!employeeId) return [];
+    // DEBUG: Kiểm tra xem có lấy được ID nhân viên không
+    console.log("Current Employee ID:", employeeId);
 
-    // Lấy dự án user tham gia
+    if (!employeeId) {
+        console.warn("Không tìm thấy Employee ID!");
+        return [];
+    }
+
     const { data: members } = await supabase
         .from('project_members')
         .select('project_id')
         .eq('employee_id', employeeId);
+
+    // DEBUG: Kiểm tra xem user có thuộc dự án nào không
+    console.log("Dự án của nhân viên:", members);
 
     const projectIds = members?.map(m => m.project_id) || [];
 
     let query = supabase
         .from("warehouses")
         .select(`*, project:projects(code, name)`)
-        .eq("is_active", true)
+        .eq("is_active", true) // Có cột này rồi, để nguyên nhé!
         .order("created_at", { ascending: false });
 
     if (projectIds.length > 0) {
-        // Lấy kho thuộc dự án tham gia OR Kho chung (project_id is null)
         query = query.or(`project_id.in.(${projectIds.join(',')}),project_id.is.null`);
     } else {
         query = query.is('project_id', null);
     }
 
-    const { data: warehouses } = await query;
+    const { data: warehouses, error } = await query;
+    if (error) {
+        console.error("Lỗi query kho:", error);
+        return [];
+    }
+
     const result = await Promise.all((warehouses || []).map(async (w) => {
         const { count } = await supabase
             .from("project_inventory")
@@ -165,34 +176,76 @@ export async function getReceivedPOsByWarehouse(warehouseId: string) {
     return pos || [];
 }
 
-// 7. Lấy lịch sử kho (Tổng hợp Xuất, Nhập trả)
-export async function getWarehouseHistory(warehouseId: string) {
+// 7. Lấy toàn bộ Sổ kho (Ledger) của một kho cụ thể
+export async function getWarehouseLedger(warehouseId: string) {
     const supabase = await createClient();
 
-    const { data: issues } = await supabase
-        .from("goods_issues")
-        .select("id, code, issue_date, receiver_name, notes, created_at")
-        .eq("warehouse_id", warehouseId)
-        .order("created_at", { ascending: false })
-        .limit(10);
+    // 1. Kéo dữ liệu từ 5 bảng song song để tối ưu tốc độ
+    const [
+        { data: receipts },  // Nhập từ PO
+        { data: issues },    // Xuất công trường / Trả NCC / Hủy
+        { data: returns },   // Nhập trả từ công trường
+        { data: transfersOut }, // Chuyển kho đi
+        { data: transfersIn },  // Chuyển kho đến
+        { data: checks }     // Kiểm kê
+    ] = await Promise.all([
+        supabase.from("goods_receipts").select("id, code, received_date, notes, created_at, items:goods_receipt_items(item_name, quantity_received, unit)").eq("warehouse_id", warehouseId),
+        supabase.from("goods_issues").select("id, code, issue_date, receiver_name, type, notes, created_at, items:goods_issue_items(item_name, quantity, unit)").eq("warehouse_id", warehouseId),
+        supabase.from("goods_returns").select("id, code, return_date, returner_name, notes, created_at, items:goods_return_items(item_name, quantity, unit)").eq("warehouse_id", warehouseId),
+        supabase.from("inventory_transfers").select("id, code, transfer_date, to_warehouse:warehouses!inventory_transfers_to_warehouse_id_fkey(name), notes, created_at, items:inventory_transfer_items(item_name, quantity, unit)").eq("from_warehouse_id", warehouseId),
+        supabase.from("inventory_transfers").select("id, code, transfer_date, from_warehouse:warehouses!inventory_transfers_from_warehouse_id_fkey(name), notes, created_at, items:inventory_transfer_items(item_name, quantity, unit)").eq("to_warehouse_id", warehouseId),
+        supabase.from("inventory_checks").select("id, check_date, notes, created_at, items:inventory_check_items(item_name, system_qty, actual_qty)").eq("warehouse_id", warehouseId)
+    ]);
 
-    const { data: returns } = await supabase
-        .from("goods_returns")
-        .select("id, code, return_date, returner_name, notes, created_at")
-        .eq("warehouse_id", warehouseId)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-    const history = [
+    // 2. Map dữ liệu về một Format chuẩn duy nhất (Ledger Format)
+    const ledger = [
+        ...(receipts || []).map(r => ({
+            id: r.id, code: r.code, type: 'IN_RECEIPT', typeLabel: 'Nhập mua (PO)',
+            date: r.received_date, partner: 'Nhà cung cấp', notes: r.notes, created_at: r.created_at,
+            items: r.items.map((i: any) => ({ name: i.item_name, qty: i.quantity_received, unit: i.unit, sign: '+' }))
+        })),
         ...(issues || []).map(i => ({
-            id: i.id, type: 'ISSUE', code: i.code, date: i.issue_date, partner: i.receiver_name, notes: i.notes
+            id: i.id, code: i.code,
+            type: i.type === 'return_vendor' ? 'OUT_RETURN_VENDOR' : i.type === 'disposal' ? 'OUT_DISPOSAL' : 'OUT_ISSUE',
+            typeLabel: i.type === 'return_vendor' ? 'Xuất trả NCC' : i.type === 'disposal' ? 'Xuất hủy' : 'Xuất thi công',
+            date: i.issue_date, partner: i.receiver_name || 'Công trường', notes: i.notes, created_at: i.created_at,
+            items: i.items.map((it: any) => ({ name: it.item_name, qty: it.quantity, unit: it.unit, sign: '-' }))
         })),
         ...(returns || []).map(r => ({
-            id: r.id, type: 'RETURN', code: r.code, date: r.return_date, partner: r.returner_name, notes: r.notes
-        }))
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            id: r.id, code: r.code, type: 'IN_RETURN', typeLabel: 'Nhập trả về',
+            date: r.return_date, partner: r.returner_name || 'Tổ đội/Công trường', notes: r.notes, created_at: r.created_at,
+            items: r.items.map((i: any) => ({ name: i.item_name, qty: i.quantity, unit: i.unit, sign: '+' }))
+        })),
+        ...(transfersOut || []).map(t => ({
+            id: t.id, code: t.code, type: 'OUT_TRANSFER', typeLabel: 'Xuất điều chuyển',
+            date: t.transfer_date, partner: `Đến: ${(t.to_warehouse as any)?.name || 'Kho khác'}`, notes: t.notes, created_at: t.created_at,
+            items: t.items.map((i: any) => ({ name: i.item_name, qty: i.quantity, unit: i.unit, sign: '-' }))
+        })),
+        ...(transfersIn || []).map(t => ({
+            id: t.id, code: t.code, type: 'IN_TRANSFER', typeLabel: 'Nhập điều chuyển',
+            date: t.transfer_date, partner: `Từ: ${(t.from_warehouse as any)?.name || 'Kho khác'}`, notes: t.notes, created_at: t.created_at,
+            items: t.items.map((i: any) => ({ name: i.item_name, qty: i.quantity, unit: i.unit, sign: '+' }))
+        })),
+        ...(checks || []).map(c => {
+            // Lọc ra các item có chênh lệch để hiển thị trên sổ
+            const diffItems = c.items
+                .filter((i: any) => i.actual_qty !== i.system_qty)
+                .map((i: any) => ({
+                    name: i.item_name,
+                    qty: Math.abs(i.actual_qty - i.system_qty),
+                    unit: '',
+                    sign: i.actual_qty > i.system_qty ? '+' : '-'
+                }));
+            return {
+                id: c.id, code: `KK-${format(new Date(c.check_date), "yyyyMMdd")}`, type: 'CHECK_ADJUST', typeLabel: 'Cân bằng kiểm kê',
+                date: c.check_date, partner: 'Hệ thống tự cân bằng', notes: c.notes, created_at: c.created_at,
+                items: diffItems
+            };
+        }).filter(c => c.items.length > 0) // Chỉ hiện phiếu kiểm kê có chênh lệch
+    ];
 
-    return history;
+    // 3. Sắp xếp theo ngày thực hiện mới nhất
+    return ledger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export async function getRecentIssues(warehouseId: string) {
@@ -458,34 +511,69 @@ export async function createGoodsReturnFromIssueAction(data: {
 }
 
 // 6. KIỂM KÊ KHO (CHECK)
-export async function createInventoryCheckAction(
-    warehouseId: string, items: { item_name: string; system_qty: number; actual_qty: number; reason?: string }[]
-) {
+// ==============================================================================
+// NGHIỆP VỤ KIỂM KÊ KHO (INVENTORY CHECK) CHUẨN KẾ TOÁN
+// ==============================================================================
+export async function createInventoryCheckAction(warehouseId: string, notes: string, items: any[]) {
     const supabase = await createClient();
-    const employeeId = await getCurrentEmployeeId(supabase);
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { data: check, error } = await supabase.from("inventory_checks").insert({
-        warehouse_id: warehouseId, check_date: new Date().toISOString(),
-        status: 'completed', notes: "Kiểm kê định kỳ / Đột xuất", checked_by: employeeId // ✅ Dùng checked_by
-    }).select("id").single();
-
-    if (error) return { success: false, error: error.message };
-
-    for (const item of items) {
-        await supabase.from("inventory_check_items").insert({
-            check_id: check.id, item_name: item.item_name,
-            system_qty: item.system_qty, actual_qty: item.actual_qty, diff_reason: item.reason
-        });
-
-        if (item.system_qty !== item.actual_qty) {
-            await supabase.from("project_inventory").update({
-                quantity_on_hand: item.actual_qty, last_updated: new Date().toISOString()
-            }).eq("warehouse_id", warehouseId).eq("item_name", item.item_name);
+    try {
+        let employeeId = null;
+        if (user) {
+            const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
+            employeeId = emp?.id || null;
         }
-    }
 
-    revalidatePath(`/inventory/${warehouseId}`);
-    return { success: true, message: "Đã cân bằng kho thành công!" };
+        // 1. Tạo Phiếu Kiểm Kê (Chốt sổ)
+        const { data: checkDoc, error: checkErr } = await supabase.from('inventory_checks').insert({
+            warehouse_id: warehouseId,
+            check_date: new Date().toISOString(),
+            notes: notes || "Kiểm kê định kỳ",
+            created_by: employeeId
+        }).select().single();
+
+        if (checkErr) throw new Error("Lỗi tạo phiếu kiểm kê: " + checkErr.message);
+
+        const checkItems = [];
+
+        // 2. Xử lý từng mặt hàng được đếm
+        for (const item of items) {
+            // Chỉ lưu những mặt hàng có đếm (người dùng nhập số)
+            if (item.actual_qty !== undefined && item.actual_qty !== null) {
+                const sysQty = Number(item.system_qty);
+                const actQty = Number(item.actual_qty);
+
+                checkItems.push({
+                    check_id: checkDoc.id,
+                    item_name: item.item_name,
+                    system_qty: sysQty,
+                    actual_qty: actQty,
+                    diff_qty: actQty - sysQty
+                });
+
+                // 3. Cập nhật lại tồn kho thực tế nếu có chênh lệch
+                if (sysQty !== actQty) {
+                    await supabase.from('project_inventory').update({
+                        quantity_on_hand: actQty,
+                        last_updated: new Date().toISOString()
+                    }).eq('id', item.inventory_id);
+                }
+            }
+        }
+
+        // Lưu chi tiết kiểm kê
+        if (checkItems.length > 0) {
+            const { error: itemsErr } = await supabase.from('inventory_check_items').insert(checkItems);
+            if (itemsErr) throw new Error("Lỗi lưu chi tiết kiểm kê: " + itemsErr.message);
+        }
+
+        revalidatePath(`/inventory/${warehouseId}`);
+        return { success: true, message: "Đã chốt sổ kiểm kê và cân bằng kho thành công!" };
+
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
 }
 
 // 7. XUẤT HỦY / TRẢ NCC (OTHER ISSUE)
@@ -553,3 +641,136 @@ export async function deleteInventoryItemAction(id: string) {
         return { success: true, message: "Đã xóa vật tư!" };
     } catch (e: any) { return { success: false, error: e.message }; }
 }
+
+// 8. Lấy danh sách các kỳ kiểm kê đã thực hiện của một kho (Inventory Audit Cycles)
+export async function getInventoryAuditCycles(warehouseId: string) {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from("inventory_checks")
+        .select(`
+            id, name, status, check_date, start_date, end_date, notes,
+            created_by:employees(name),
+            items:inventory_check_items(count)
+        `)
+        .eq("warehouse_id", warehouseId)
+        .order("created_at", { ascending: false });
+
+    if (error) return [];
+    return data || [];
+}
+
+// 9. Tạo kỳ kiểm kê mới (Create Inventory Audit Cycle)
+export async function createAuditCycleAction(data: {
+    warehouse_id: string;
+    name: string;
+    start_date: string;
+    end_date: string;
+    participants: any[]; // Mảng chứa thông tin nhân viên
+    notes: string;
+}) {
+    const supabase = await createClient();
+    const employeeId = await getCurrentEmployeeId(supabase);
+
+    const { data: audit, error } = await supabase.from("inventory_checks").insert({
+        warehouse_id: data.warehouse_id,
+        name: data.name,
+        status: 'draft',
+        start_date: data.start_date,
+        end_date: data.end_date,
+        participants: data.participants,
+        notes: data.notes,
+        created_by: employeeId
+    }).select("id").single();
+
+    if (error) return { success: false, error: error.message };
+
+    revalidatePath(`/inventory/${data.warehouse_id}`);
+    return { success: true, message: "Đã khởi tạo kỳ kiểm kê!" };
+}
+
+// 10. Lấy danh sách nhân viên để chọn tham gia kiểm kê (Get Employees for Inventory Audit)
+export async function getEmployeesForAudit() {
+    const supabase = await createClient();
+
+    // Join qua khóa ngoại status_id để lọc nhân viên đang hoạt động
+    const { data, error } = await supabase
+        .from("employees")
+        .select(`
+            id, 
+            name, 
+            position:sys_dictionaries!employees_position_id_fkey(name),
+            status:sys_dictionaries!employees_status_id_fkey(code)
+        `)
+        // Lọc những nhân viên có status là 'ACTIVE' (Anh kiểm tra lại code trong DB của anh nhé)
+        .eq("status.code", "ACTIVE");
+
+    if (error) {
+        console.error("Lỗi getEmployeesForAudit:", error.message);
+        return [];
+    }
+
+    // Nếu data trả về có chứa _debugInfo hoặc cấu trúc lạ, ta map lại cho sạch
+    return Array.isArray(data) ? data : [];
+}
+
+// 11. Lấy chi tiết một kỳ kiểm kê cụ thể (Get Inventory Audit Cycle Details)
+export async function getAuditCycleById(auditId: string) {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from("inventory_checks")
+        .select(`
+            *,
+            items:inventory_check_items(*)
+        `)
+        .eq("id", auditId)
+        .single();
+
+    return data;
+}
+
+//. 12. Bắt đầu kỳ kiểm kê (Start Inventory Audit Cycle) - Chốt sổ sách tồn kho hiện tại và chuyển trạng thái sang COUNTING
+export async function startAuditCycleAction(auditId: string, warehouseId: string) {
+    const supabase = await createClient();
+
+    // 1. Lấy toàn bộ tồn kho hiện tại của kho
+    const { data: inventory, error: invError } = await supabase
+        .from("project_inventory")
+        .select("item_name, unit, quantity_on_hand") // Kiểm tra lại tên cột trong bảng này
+        .eq("warehouse_id", warehouseId);
+
+    if (invError || !inventory) return { success: false, error: "Không lấy được dữ liệu tồn kho." };
+
+    // 2. Insert vào bảng chi tiết kiểm kê
+    const itemsToInsert = inventory.map(item => ({
+        check_id: auditId,
+        item_name: item.item_name,
+        unit: item.unit,
+        system_qty: item.quantity_on_hand, // Số lượng sổ sách tại thời điểm chốt
+        actual_qty: 0,
+        cross_check_qty: 0
+    }));
+
+    const { error: insertError } = await supabase.from("inventory_check_items").insert(itemsToInsert);
+    if (insertError) return { success: false, error: insertError.message };
+
+    // 3. Cập nhật trạng thái sang 'COUNTING'
+    await supabase.from("inventory_checks")
+        .update({ status: 'COUNTING', start_date: new Date().toISOString() })
+        .eq("id", auditId);
+
+    revalidatePath(`/inventory/${warehouseId}/audit/${auditId}`);
+    return { success: true, message: "Đã chốt sổ sách thành công!" };
+}
+
+// 13. Cập nhật số lượng thực tế của một mặt hàng trong kỳ kiểm kê (Update Actual Quantity for an Item in Audit Cycle)
+export async function updateAuditItemAction(itemId: string, actualQty: number) {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from("inventory_check_items")
+        .update({ actual_qty: actualQty })
+        .eq("id", itemId);
+
+    return { success: !error, error: error?.message };
+}
+

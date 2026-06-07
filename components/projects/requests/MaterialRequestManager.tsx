@@ -2,9 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import {
-    Card, CardContent, CardHeader, CardTitle
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,12 +10,8 @@ import {
     Plus, Trash2, FileText, Calendar, User, ShoppingCart, Package,
     AlertTriangle, CheckSquare, Truck, Loader2, Lock, AlertCircle, Edit
 } from "lucide-react";
-import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
-} from "@/components/ui/dialog";
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import {
     createMaterialRequest,
@@ -30,6 +24,7 @@ import {
 } from "@/lib/action/procurement";
 import { getProjectWarehouses } from "@/lib/action/requestActions";
 import { formatDate } from "@/lib/utils/utils";
+import { checkApprovalPermission } from "@/lib/auth/permissions";
 
 import UnifiedRequestForm from "@/components/procurement/UnifiedRequestForm";
 
@@ -57,6 +52,9 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
     const [analyzing, setAnalyzing] = useState(false);
     const [processing, setProcessing] = useState(false);
 
+    // ✅ THÊM STATE LƯU QUYỀN DUYỆT CỦA USER HIỆN TẠI
+    const [canApprove, setCanApprove] = useState(false);
+
     const isActive = ['in_progress', 'execution', 'construction'].includes(projectStatus?.toLowerCase());
     const isPaused = ['paused', 'suspended', 'on_hold'].includes(projectStatus?.toLowerCase());
     const [budgetMaterials, setBudgetMaterials] = useState<any[]>([]);
@@ -67,16 +65,19 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
     const loadData = async () => {
         try {
-            const [reqs, userInfo, whList, budgetMats] = await Promise.all([
+            // Kéo song song cả quyền duyệt (canApprove) để render UI
+            const [reqs, userInfo, whList, budgetMats, hasPerm] = await Promise.all([
                 getMaterialRequests(projectId),
                 getCurrentRequesterInfo(),
                 getProjectWarehouses(projectId),
-                getProjectStandardizedMaterials(projectId)
+                getProjectStandardizedMaterials(projectId),
+                checkApprovalPermission(projectId)
             ]);
 
             setRequests(reqs || []);
             setWarehouses(whList || []);
             setBudgetMaterials(budgetMats || []);
+            setCanApprove(hasPerm); // Gán quyền
 
             if (userInfo) setCurrentUser({ id: userInfo.id, name: userInfo.name });
         } catch (error) {
@@ -87,10 +88,8 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
         }
     };
 
-    // --- FIX SỐ THẬP PHÂN TRƯỚC KHI GỬI SERVER ---
     const handleCreateSubmit = async (formData: any) => {
         if (!currentUser.id) return toast.error("Lỗi: Tài khoản chưa có ID nhân sự.");
-
         setSubmitting(true);
 
         const payload = {
@@ -101,10 +100,9 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
             request_date: new Date().toISOString()
         };
 
-        // 🔥 CHUẨN HÓA LẠI SỐ LƯỢNG THÀNH FLOAT (SỐ THẬP PHÂN) ĐỂ TRÁNH SERVER HIỂU NHẦM LÀ CHUỖI
         const formattedItems = formData.items.map((item: any) => ({
             ...item,
-            quantity: Number(item.quantity) // Bắt buộc ép kiểu float ở đây
+            quantity: Number(item.quantity)
         }));
 
         const res = await createMaterialRequest(payload, formattedItems);
@@ -121,12 +119,9 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
     const handleDelete = async (id: string) => {
         if (!confirm("Bạn có chắc chắn muốn xóa phiếu yêu cầu này?")) return;
-
         const toastId = toast.loading("Đang xóa phiếu...");
-
         try {
             const res = await deleteMaterialRequest(id, projectId);
-
             if (res && res.success) {
                 toast.success("Đã xóa phiếu thành công!", { id: toastId });
                 loadData();
@@ -195,7 +190,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
         return <Badge variant="outline" className={map[p] || map.normal}>{p === 'urgent' ? 'Khẩn cấp' : p === 'high' ? 'Cao' : 'Bình thường'}</Badge>;
     };
 
-    // --- FIX UI CHỌN KHO: XÁC ĐỊNH ĐÚNG KHO CỦA DỰ ÁN TRƯỚC KHI TRUYỀN VÀO FORM ---
     const targetWarehouse = warehouses.find(w => w.project_id === projectId) || warehouses[0];
     const defaultWarehouseId = targetWarehouse ? String(targetWarehouse.id) : "";
 
@@ -212,10 +206,7 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                 {isActive ? (
                     <Dialog open={open} onOpenChange={setOpen}>
                         <DialogTrigger asChild>
-                            <Button
-                                disabled={warehouses.length === 0}
-                                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 text-white shadow-sm"
-                            >
+                            <Button disabled={warehouses.length === 0} className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 text-white shadow-sm">
                                 {warehouses.length === 0 ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
                                 Tạo Đề xuất
                             </Button>
@@ -223,12 +214,10 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                         <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
                             <DialogHeader><DialogTitle>Tạo phiếu yêu cầu mua sắm mới</DialogTitle></DialogHeader>
                             <div className="py-4">
-                                {open && ( // 🔥 CHỈ RENDER FORM KHI DIALOG MỞ
+                                {open && (
                                     <UnifiedRequestForm
-                                        key={`form-${open}`} // 🔥 ÉP BUỘC RENDER LẠI TỪ ĐẦU KHÔNG DÙNG CACHE
-                                        initialData={{
-                                            destination_warehouse_id: defaultWarehouseId // Bơm thẳng Kho vào đây
-                                        }}
+                                        key={`form-${open}`}
+                                        initialData={{ destination_warehouse_id: defaultWarehouseId }}
                                         warehouses={warehouses}
                                         budgetMaterials={budgetMaterials}
                                         isSubmitting={submitting}
@@ -248,18 +237,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                     </div>
                 )}
             </div>
-
-            {isPaused && (
-                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg p-4 flex items-start gap-3 animate-in fade-in">
-                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 mt-0.5" />
-                    <div>
-                        <h4 className="font-bold text-amber-800 dark:text-amber-400">Dự án đang trong trạng thái TẠM DỪNG</h4>
-                        <p className="text-sm text-amber-700 dark:text-amber-300">
-                            Mọi hoạt động nhập/xuất vật tư đều bị vô hiệu hóa để phục vụ việc kiểm kê.
-                        </p>
-                    </div>
-                </div>
-            )}
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {requests.map((req) => (
@@ -288,24 +265,18 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
 
                                     {req.status === 'pending' && isActive && (
                                         <>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-7 w-7"
-                                                onClick={() => router.push(`/projects/${projectId}/requests/${req.id}/edit`)}
-                                            >
+                                            <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => router.push(`/projects/${projectId}/requests/${req.id}/edit`)}>
                                                 <Edit className="w-3 h-3" />
                                             </Button>
-                                            <Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm px-2 text-white" onClick={() => handleOpenProcess(req)}>
-                                                Duyệt
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                                onClick={() => handleDelete(req.id)}
-                                                title="Xóa phiếu"
-                                            >
+
+                                            {/* ✅ ẨN NÚT DUYỆT NẾU KHÔNG CÓ QUYỀN */}
+                                            {canApprove && (
+                                                <Button size="sm" className="h-7 bg-indigo-600 hover:bg-indigo-700 text-xs shadow-sm px-2 text-white" onClick={() => handleOpenProcess(req)}>
+                                                    Duyệt
+                                                </Button>
+                                            )}
+
+                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" onClick={() => handleDelete(req.id)} title="Xóa phiếu">
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>
                                         </>
@@ -370,11 +341,6 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                         ))}
                                     </TableBody>
                                 </Table>
-                            </div>
-
-                            <div className="bg-amber-50 p-3 rounded border border-amber-200 text-xs text-amber-800 flex gap-2 items-start">
-                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                                <div><span className="font-bold">Lưu ý:</span> Hệ thống sẽ tự động chẻ phiếu thành Lệnh Xuất kho (có sẵn) và Yêu cầu Mua mới (còn thiếu).</div>
                             </div>
 
                             <Button onClick={handleApprove} disabled={processing} className="w-full bg-green-600 hover:bg-green-700 h-10 text-white">

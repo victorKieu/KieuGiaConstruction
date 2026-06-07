@@ -14,12 +14,12 @@ export async function sync5DToGanttTasks(
         const { data: qtoItems } = await supabase.from('qto_items').select('*').eq('project_id', projectId);
         const { data: estItems } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
 
-        // 1. Chỉ lấy các Task do Dự Toán (ESTIMATION) sinh ra để xử lý, không đụng vào Task Khảo Sát/Thiết Kế
+        // 1. Chỉ lấy các Task do Dự Toán (ESTIMATION) sinh ra
         const { data: existingEstimationTasks } = await supabase
             .from('project_tasks')
             .select('*')
             .eq('project_id', projectId)
-            .eq('source_module', 'ESTIMATION'); // <-- Cột này rất quan trọng
+            .eq('source_module', 'ESTIMATION');
 
         if (!qtoItems || qtoItems.length === 0) throw new Error("Chưa có dữ liệu bóc tách.");
 
@@ -29,14 +29,13 @@ export async function sync5DToGanttTasks(
         let wbsCounter = 1;
         let fallbackStartDate = config?.startDate ? new Date(config.startDate) : new Date();
 
-        // Lưu danh sách ID các QTO đang có trên bảng để Lọc Task Mồ Côi ở bước cuối
         const activeQtoItemIds = new Set(qtoItems.map(q => q.id));
 
         for (const sec of sections) {
             const secWbsCode = `${wbsCounter}`;
 
-            // ✅ SỬ DỤNG qto_item_id LÀM "DÂY RỐN" THAY VÌ name
-            let parentExistTask = existingEstimationTasks?.find(t => t.qto_item_id === sec.id);
+            // ✅ TÌM KIẾM KÉP: Quét cả 2 cột để không bỏ lọt task cũ
+            let parentExistTask = existingEstimationTasks?.find(t => t.qto_item_id === sec.id || t.source_id === sec.id);
             let parentTaskId = parentExistTask?.id;
 
             let sectionTotalBudget = 0;
@@ -44,20 +43,23 @@ export async function sync5DToGanttTasks(
             let maxEnd: Date | null = null;
 
             if (!parentTaskId) {
-                // NẾU HẠNG MỤC CHƯA CÓ TRONG GANTT -> THÊM MỚI
-                const { data: newParent } = await supabase.from('project_tasks').insert({
+                // TẠO MỚI HẠNG MỤC (Bơm cả 2 dây rốn)
+                const { data: newParent, error: pError } = await supabase.from('project_tasks').insert({
                     project_id: projectId,
                     name: sec.item_name,
                     wbs_code: secWbsCode,
                     planned_cost: 0,
-                    source_module: 'ESTIMATION', // Gắn nhãn
-                    source_id: sec.id // Dây rốn
+                    source_module: 'ESTIMATION',
+                    source_id: sec.id,    // Dự phòng Backend
+                    qto_item_id: sec.id   // Bắt buộc cho Frontend Gantt
                 }).select().single();
+
+                if (pError) console.error("Lỗi tạo hạng mục cha:", pError);
                 parentTaskId = newParent?.id;
             } else {
-                // NẾU HẠNG MỤC ĐÃ CÓ TRONG GANTT -> CHỈ CẬP NHẬT
+                // CẬP NHẬT HẠNG MỤC
                 await supabase.from('project_tasks').update({
-                    name: sec.item_name, // Cập nhật tên nếu Dự toán có đổi
+                    name: sec.item_name,
                     wbs_code: secWbsCode
                 }).eq('id', parentTaskId);
             }
@@ -72,7 +74,6 @@ export async function sync5DToGanttTasks(
                 const taskBudget = mappedEstItems.reduce((sum, e) => sum + (Number(e.total_cost) || 0), 0);
                 sectionTotalBudget += taskBudget;
 
-                // Lấy thông số từ Frontend gửi sang
                 const fTask = frontendTasks?.find(t => t.id === qTask.id);
 
                 let startDate = fTask?.start_date ? new Date(fTask.start_date) : new Date(fallbackStartDate);
@@ -88,70 +89,69 @@ export async function sync5DToGanttTasks(
                 if (!minStart || startDate < minStart) minStart = new Date(startDate);
                 if (!maxEnd || endDate > maxEnd) maxEnd = new Date(endDate);
 
-                // ✅ SỬ DỤNG qto_item_id LÀM "DÂY RỐN" (Thay vì name)
-                let childExistTask = existingEstimationTasks?.find(ex => ex.qto_item_id === qTask.id);
+                // ✅ TÌM KIẾM KÉP CHO TASK CON
+                let childExistTask = existingEstimationTasks?.find(ex => ex.qto_item_id === qTask.id || ex.source_id === qTask.id);
 
-                // KHÓA BẢO VỆ: NẾU ĐANG THI CÔNG HOẶC ĐÃ XONG -> KHÔNG ĐƯỢC PHÉP CHẠM VÀO!
-                if (childExistTask && ['IN_PROGRESS', 'COMPLETED'].includes(childExistTask.status)) {
-                    childCounter++;
-                    continue; // Bỏ qua task này, giữ nguyên tiền và lịch sử ngoài công trường
-                }
-
-                const taskPayload = {
-                    project_id: projectId,
-                    parent_id: parentTaskId,
+                // Gói dữ liệu cập nhật an toàn (TUYỆT ĐỐI KHÔNG CÓ CỘT progress VÀ status)
+                const updatePayload: any = {
                     name: qTask.item_name,
                     wbs_code: childWbsCode,
                     planned_quantity: Number(qTask.quantity) || 0,
                     planned_cost: taskBudget,
                     unit: qTask.unit,
-                    progress: childExistTask?.progress || 0,
                     start_date: startDate.toISOString(),
                     due_date: endDate.toISOString(),
                     duration: fTask?.duration || 1,
-                    source_module: 'ESTIMATION', // Gắn nhãn
-                    source_id: qTask.id // Dây rốn
                 };
 
                 if (!childExistTask) {
-                    await supabase.from('project_tasks').insert(taskPayload);
+                    // ✅ TẠO MỚI TASK CON (Bơm đầy đủ khóa ngoại)
+                    const { error: insError } = await supabase.from('project_tasks').insert({
+                        ...updatePayload,
+                        project_id: projectId,
+                        parent_id: parentTaskId,
+                        source_module: 'ESTIMATION',
+                        source_id: qTask.id,     // Cho hệ thống
+                        qto_item_id: qTask.id,   // Cho Gantt Chart UI
+                        progress: 0,
+                        status: 'TODO'
+                    });
+                    if (insError) console.error("Lỗi tạo task con:", insError);
                 } else {
-                    await supabase.from('project_tasks').update(taskPayload).eq('id', childExistTask.id);
+                    // CẬP NHẬT TASK CON (Chỉ update thông số kế hoạch, bảo toàn % thực tế)
+                    await supabase.from('project_tasks').update(updatePayload).eq('id', childExistTask.id);
                 }
 
                 childCounter++;
             }
 
-            // Ghi ngày nhỏ nhất và lớn nhất cho Hạng Mục (Cha)
             if (parentTaskId) {
-                // Kiểm tra xem Hạng mục cha có đang thi công không? (Có thể bỏ qua nếu cha luôn tự động theo con)
                 await supabase.from('project_tasks').update({
                     planned_cost: sectionTotalBudget,
                     start_date: minStart ? minStart.toISOString() : null,
                     due_date: maxEnd ? maxEnd.toISOString() : null
                 }).eq('id', parentTaskId);
             }
-
             wbsCounter++;
         }
 
-        // 2. DỌN DẸP RÁC (Xóa những Task mồ côi khỏi Gantt)
-        // Điều kiện: Task đó thuộc ESTIMATION, CHƯA thi công, và không còn tồn tại trong bảng qto_items
+        // 2. DỌN DẸP RÁC (Quét cả 2 cột để tránh xóa nhầm)
         const orphanedTasks = existingEstimationTasks?.filter(t =>
             !activeQtoItemIds.has(t.qto_item_id) &&
+            !activeQtoItemIds.has(t.source_id) &&
             !['IN_PROGRESS', 'COMPLETED'].includes(t.status)
         ) || [];
 
         if (orphanedTasks.length > 0) {
             const orphanedIds = orphanedTasks.map(t => t.id);
             await supabase.from('project_tasks').delete().in('id', orphanedIds);
-            console.log(`Đã xóa ${orphanedTasks.length} task mồ côi do xóa ở dự toán.`);
         }
 
         revalidatePath(`/projects/${projectId}`);
         return { success: true, message: "Đồng bộ Tiến độ 5D sang Gantt thành công!" };
 
     } catch (error: any) {
+        console.error("Lỗi Sync 5D:", error);
         return { success: false, error: error.message };
     }
 }
