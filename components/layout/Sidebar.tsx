@@ -2,23 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-    LayoutDashboard,
-    Users,
-    Settings,
-    Building2,
-    Package,
-    BarChart3,
-    ShieldAlert,
-    ChevronDown,
-    ChevronRight,
-    Activity,
-    DollarSign,
-    Truck,
-    Handshake,
-    Menu as MenuIcon,
-    Calculator
-} from "lucide-react";
+import { LayoutDashboard, Users, Settings, Building2, Package, BarChart3, ShieldAlert, ChevronDown, ChevronRight, Activity, DollarSign, Truck, Handshake, Menu as MenuIcon, Calculator} from "lucide-react";
 import Image from "next/image";
 
 // ==== Menu List (Giữ nguyên gốc, chỉ thêm Dự Toán) ====
@@ -101,12 +85,14 @@ const navItems = [
         ],
     },
     {
-        title: "Thu Mua",
+        title: "Trung tâm Mua hàng",
         href: "/procurement",
         icon: Truck,
+        // Thêm logic roles vào đây
+        roles: ["admin", "procurement"],
         children: [
             { title: "Danh sách nhà cung cấp", href: "/procurement/suppliers" },
-            { title: "Kế hoạch mua vật tư", href: "/procurement" },
+            { title: "QL Đấu Thầu", href: "/procurement/rfq" },
             { title: "QL Nhu Cầu Mua Hàng", href: "/procurement/orders" },
         ],
     },
@@ -280,91 +266,90 @@ export default function Sidebar({ user, className }: SidebarProps) {
             </div>
 
             <nav className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto custom-scrollbar">
-                {navItems.map((item) =>
-                    item.children ? (
-                        <div key={item.href} className="mb-1">
-                            {collapsed ? (
-                                <Tooltip text={item.title}>
+                {navItems
+                    // BƯỚC 1: LỌC MENU THEO ROLE CỦA USER
+                    .filter((item) => {
+                        if (item.roles && user?.role) {
+                            return item.roles.includes(user.role);
+                        }
+                        return true; // Nếu menu không yêu cầu role cụ thể, hiển thị cho mọi user
+                    })
+                    .map((item) =>
+                        item.children ? (
+                            <div key={item.href} className="mb-1">
+                                {/* Phần hiển thị menu có con (giữ nguyên logic của anh) */}
+                                {collapsed ? (
+                                    <Tooltip text={item.title}>
+                                        <button
+                                            onClick={() => toggleExpand(item.href)}
+                                            className={`group flex items-center w-full px-4 py-2 rounded-r-full transition-all ${isActive(item.href)
+                                                    ? "bg-primary/10 text-primary font-semibold scale-110 shadow-sm border-r-4 border-primary"
+                                                    : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                                                }`}
+                                        >
+                                            <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
+                                        </button>
+                                    </Tooltip>
+                                ) : (
                                     <button
                                         onClick={() => toggleExpand(item.href)}
-                                        className={`
-                      group flex items-center w-full px-4 py-2 rounded-r-full transition-all
-                      ${isActive(item.href)
-                                                ? "bg-primary/10 text-primary font-semibold scale-110 shadow-sm border-r-4 border-primary"
-                                                : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
-                    `}
+                                        className={`group flex items-center w-full px-4 py-2 rounded-r-full transition-all ${isActive(item.href)
+                                                ? "bg-primary/10 text-primary font-semibold shadow-sm border-r-4 border-primary"
+                                                : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                                            }`}
                                     >
-                                        <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
+                                        <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
+                                        <span className="flex-grow truncate text-left">{item.title}</span>
+                                        {expandedItems[item.href] ? (
+                                            <ChevronDown className="ml-auto w-4 h-4 flex-shrink-0 transition-transform duration-300 rotate-180" />
+                                        ) : (
+                                            <ChevronRight className="ml-auto w-4 h-4 flex-shrink-0 transition-transform duration-300" />
+                                        )}
                                     </button>
-                                </Tooltip>
-                            ) : (
-                                <button
-                                    onClick={() => toggleExpand(item.href)}
-                                    className={`
-                    group flex items-center w-full px-4 py-2 rounded-r-full transition-all
-                    ${isActive(item.href)
-                                            ? "bg-primary/10 text-primary font-semibold shadow-sm border-r-4 border-primary"
-                                            : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
-                  `}
+                                )}
+                                <div
+                                    className={`transition-all duration-300 ease-in-out overflow-hidden ${expandedItems[item.href] && !collapsed ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+                                        }`}
+                                    style={{ pointerEvents: expandedItems[item.href] && !collapsed ? "auto" : "none" }}
                                 >
-                                    <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
-                                    <span className="flex-grow truncate text-left">{item.title}</span>
-                                    {expandedItems[item.href] ? (
-                                        <ChevronDown className="ml-auto w-4 h-4 flex-shrink-0 transition-transform duration-300 rotate-180" />
-                                    ) : (
-                                        <ChevronRight className="ml-auto w-4 h-4 flex-shrink-0 transition-transform duration-300" />
-                                    )}
-                                </button>
-                            )}
-                            <div
-                                className={`
-                  transition-all duration-300 ease-in-out overflow-hidden
-                  ${expandedItems[item.href] && !collapsed ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}
-                `}
-                                style={{ pointerEvents: expandedItems[item.href] && !collapsed ? "auto" : "none" }}
-                            >
-                                <div className="ml-6 pl-2 border-l border-border">
-                                    {item.children.map((child) => (
-                                        <Link
-                                            key={child.href}
-                                            href={child.href}
-                                            className={`
-                        flex items-center px-4 py-2 text-sm rounded-r-full my-1 transition-all
-                        ${isActive(child.href)
-                                                    ? "bg-primary/10 text-primary font-bold scale-105 shadow-sm border-r-2 border-primary"
-                                                    : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
-                      `}
-                                        >
-                                            {child.title}
-                                        </Link>
-                                    ))}
+                                    <div className="ml-6 pl-2 border-l border-border">
+                                        {item.children.map((child) => (
+                                            <Link
+                                                key={child.href}
+                                                href={child.href}
+                                                className={`flex items-center px-4 py-2 text-sm rounded-r-full my-1 transition-all ${isActive(child.href)
+                                                        ? "bg-primary/10 text-primary font-bold scale-105 shadow-sm border-r-2 border-primary"
+                                                        : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                                                    }`}
+                                            >
+                                                {child.title}
+                                            </Link>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ) : (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`
-                group flex items-center px-4 py-2 rounded-r-full transition-all mb-1
-                ${isActive(item.href)
-                                    ? "bg-primary/10 text-primary font-semibold scale-105 shadow-sm border-r-4 border-primary"
-                                    : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"}
-              `}
-                        >
-                            {collapsed ? (
-                                <Tooltip text={item.title}>
-                                    <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
-                                </Tooltip>
-                            ) : (
-                                <>
-                                    <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
-                                    <span className="flex-grow truncate text-left">{item.title}</span>
-                                </>
-                            )}
-                        </Link>
-                    )
-                )}
+                        ) : (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`group flex items-center px-4 py-2 rounded-r-full transition-all mb-1 ${isActive(item.href)
+                                        ? "bg-primary/10 text-primary font-semibold scale-105 shadow-sm border-r-4 border-primary"
+                                        : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                                    }`}
+                            >
+                                {collapsed ? (
+                                    <Tooltip text={item.title}>
+                                        <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
+                                    </Tooltip>
+                                ) : (
+                                    <>
+                                        <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
+                                        <span className="flex-grow truncate text-left">{item.title}</span>
+                                    </>
+                                )}
+                            </Link>
+                        )
+                    )}
             </nav>
         </aside>
     );

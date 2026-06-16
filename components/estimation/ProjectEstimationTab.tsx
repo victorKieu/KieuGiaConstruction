@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
 import { exportToExcel } from "@/lib/utils/exportExcel";
-
+import { pushEstimationToProcurementAction } from "@/lib/action/estimationActions";
 import {
     updateEstimationPrice, deleteEstimationItem, createManualEstimationItem,
     updateEstimationQuantity, updateEstimationPriceByGroup, updateEstimationMaterialByGroup
@@ -350,6 +350,39 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         }
     };
 
+    const handlePushToProcurement = async () => {
+        if (!confirm("Hệ thống sẽ tổng hợp vật tư và gửi sang Phòng Thu Mua. Bạn có chắc chắn?")) return;
+
+        const toastId = "push-procurement";
+        toast.loading("Đang tổng hợp và đẩy dữ liệu sang Thu Mua...", { id: toastId });
+
+        // Lọc ra các vật tư cần mua (Bỏ Nhân Công - NC và các chi phí khác)
+        // Và chỉ đẩy những mã đã được chuẩn hóa (is_mapped = true)
+        const itemsToProcurement = aggregatedSummaries
+            .filter(item => (item.category === 'VL' || item.category === 'M') && item.is_mapped)
+            .map(item => ({
+                project_id: projectId,
+                material_code: item.material_code,
+                material_name: item.material_name,
+                purchase_unit: item.display_unit,
+                purchase_quantity: item.display_quantity,
+                current_supplier_id: item.preferred_supplier_id_1 || null
+            }));
+
+        if (itemsToProcurement.length === 0) {
+            toast.error("Không có vật tư nào được chuẩn hóa mã để gửi đi!", { id: toastId });
+            return;
+        }
+
+        const res = await pushEstimationToProcurementAction(projectId, itemsToProcurement);
+
+        if (res.success) {
+            toast.success(res.message, { id: toastId });
+        } else {
+            toast.error("Lỗi: " + res.error, { id: toastId });
+        }
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500 transition-colors">
 
@@ -385,7 +418,12 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" disabled={isImporting} className="h-9 border-slate-200 dark:border-slate-800 dark:text-slate-300">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
                     </div>
-
+                    <Button
+                        onClick={handlePushToProcurement}
+                        className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold ml-4"
+                    >
+                        <Tractor className="w-4 h-4 mr-2" /> Chốt dự toán & Gửi Thu Mua
+                    </Button>
                 </div>
             </div>
 

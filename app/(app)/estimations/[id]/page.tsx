@@ -2,7 +2,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
-import ProjectBOQTab from "@/components/projects/tab/ProjectBOQTab";
+import ProjectBOQTab from "@/components/estimation/ProjectBOQTab";
 import { Calculator } from "lucide-react";
 import EstimationHeaderControls from "./EstimationHeaderControls"; // ✅ Nhúng bộ nút điều khiển mới
 

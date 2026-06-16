@@ -737,3 +737,605 @@ export async function deleteSupplierAction(id: string) {
         return { success: false, error: e.message };
     }
 }
+
+export async function getPurchaseRequests() {
+    // Lưu ý: Đảm bảo anh đã import createClient ở đầu file này
+    // import { createClient } from "@/lib/supabase/server"; 
+    const supabase = await createClient();
+
+    // Thay 'purchase_requests' bằng tên bảng Yêu cầu vật tư thực tế trong DB của anh
+    const { data, error } = await supabase
+        .from('purchase_requests')
+        .select(`
+            id,
+            code,
+            status,
+            created_at,
+            project:projects(id, name, code),
+            requester:employees(name) 
+        `)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("Lỗi lấy danh sách Yêu cầu vật tư:", error);
+        return [];
+    }
+
+    return data || [];
+}
+
+export async function createRfqAction(payload: {
+    project_id: string;
+    purchase_request_id: string;
+    deadline: string;
+    items: { item_name: string; unit: string; quantity: number }[];
+}) {
+    try {
+        const supabase = await createClient();
+        const profile = await getUserProfile();
+
+        // 1. Tạo mã RFQ tự động (Dùng timestamp kết hợp để không bị trùng)
+        const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+        const rfqCode = `RFQ-${dateStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        // 2. Insert vào bảng rfqs (Bổ sung title và created_by)
+        const { data: rfq, error: rfqError } = await supabase
+            .from('rfqs')
+            .insert({
+                code: rfqCode,
+                // Bọc fallback trường hợp slice ID bị lỗi nếu purchase_request_id bị undefined
+                title: `Báo giá cho yêu cầu PR-${(payload.purchase_request_id || 'NEW').slice(0, 6).toUpperCase()}`,
+                project_id: payload.project_id,
+                purchase_request_id: payload.purchase_request_id,
+                deadline: payload.deadline,
+                status: 'published',
+                created_by: profile?.authId || profile?.id || null
+            })
+            .select('id')
+            .single();
+
+        if (rfqError) throw rfqError;
+
+        // 3. Insert danh sách vật tư vào rfq_items (Chống lỗi NOT NULL triệt để)
+        const rfqItemsData = payload.items.map(item => ({
+            rfq_id: rfq.id,
+            // Ép giá trị mặc định nếu item_name bị rỗng
+            item_name: item.item_name || "Vật tư chưa có tên",
+            material_name: item.item_name || "Vật tư chưa có tên",
+            purchase_unit: item.unit || "Cái",
+            // Ép chắc chắn kiểu Số (tránh lỗi string "1.05")
+            purchase_quantity: Number(item.quantity) || 0
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('rfq_items')
+            .insert(rfqItemsData);
+
+        if (itemsError) throw itemsError;
+
+        return { success: true, message: "Đã tạo Yêu cầu báo giá (RFQ) từ PR thành công!", rfqId: rfq.id };
+    } catch (error: any) {
+        console.error("[createRfqAction] Lỗi:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Hàm nhập Báo giá từ Nhà cung cấp
+export async function submitBidAction(payload: {
+    rfq_id: string;
+    supplier_id: string;
+    bids: { rfq_item_id: string; unit_price: number; delivery_time_days?: number }[];
+    profileData?: {
+        tax_code?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+        bank_account?: string;
+        bank_name?: string;
+        latitude?: string;
+        longitude?: string;
+    } | null;
+}) {
+    const supabase = await createClient();
+
+    if (payload.profileData) {
+        await supabase
+            .from('suppliers')
+            .update({
+                tax_code: payload.profileData.tax_code,
+                phone: payload.profileData.phone,
+                email: payload.profileData.email,
+                address: payload.profileData.address,
+                bank_account: payload.profileData.bank_account,
+                bank_name: payload.profileData.bank_name,
+                latitude: payload.profileData.latitude ? parseFloat(payload.profileData.latitude) : null,
+                longitude: payload.profileData.longitude ? parseFloat(payload.profileData.longitude) : null,
+                status: 'active'
+            })
+            .eq('id', payload.supplier_id);
+    }
+
+    const bidData = payload.bids.map(bid => ({
+        rfq_id: payload.rfq_id,
+        supplier_id: payload.supplier_id,
+        rfq_item_id: bid.rfq_item_id,
+        unit_price: bid.unit_price,
+        delivery_time_days: bid.delivery_time_days || 0
+    }));
+
+    const { error: bidError } = await supabase
+        .from('rfq_bids')
+        .upsert(bidData, { onConflict: 'rfq_item_id, supplier_id' });
+
+    if (bidError) return { success: false, error: bidError.message };
+
+    await supabase
+        .from('rfq_suppliers')
+        .update({ status: 'submitted' })
+        .match({ rfq_id: payload.rfq_id, supplier_id: payload.supplier_id });
+
+    return { success: true, message: "Đã cập nhật báo giá của Nhà cung cấp!" };
+}
+
+// hàm Lấy Ma trận so sánh giá (Bid Tabulation)
+export async function getBidTabulation(rfqId: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Lấy danh sách NCC đã mời (hoặc đã nộp)
+        const { data: rawSuppliers } = await supabase
+            .from('rfq_suppliers')
+            .select('supplier_id, supplier:suppliers(name)')
+            .eq('rfq_id', rfqId);
+
+        // Format lại dữ liệu supplier cho dễ đọc
+        const suppliers = (rawSuppliers || []).map((s: any) => ({
+            id: s.supplier_id, // Bắt buộc phải là ID thật của bảng suppliers
+            name: Array.isArray(s.supplier) ? s.supplier[0]?.name : s.supplier?.name
+        }));
+
+        // 2. LẤY BÁO GIÁ (ĐÂY LÀ PHẦN QUAN TRỌNG NHẤT)
+        // Chú ý: Thay 'rfq_bids' bằng đúng tên bảng lưu giá của anh nếu khác
+        const { data: matrix, error: matrixError } = await supabase
+            .from('rfq_bids')
+            .select('supplier_id, rfq_item_id, unit_price')
+            .eq('rfq_id', rfqId);
+
+        if (matrixError) console.error("Lỗi kéo giá:", matrixError);
+
+        return {
+            suppliers,
+            matrix: matrix || []
+        };
+    } catch (error) {
+        console.error("Lỗi getBidTabulation:", error);
+        return null;
+    }
+}
+
+// Hàm Chốt thầu (Select Bid)
+export async function selectBidAction(rfqItemId: string, supplierId: string) {
+    const supabase = await createClient();
+
+    // Bước 1: Reset tất cả bids của item này về false
+    await supabase
+        .from('rfq_bids')
+        .update({ is_selected: false })
+        .eq('rfq_item_id', rfqItemId);
+
+    // Bước 2: Set true cho bid được chọn
+    const { error } = await supabase
+        .from('rfq_bids')
+        .update({ is_selected: true })
+        .match({ rfq_item_id: rfqItemId, supplier_id: supplierId });
+
+    return { success: !error, error: error?.message };
+}
+
+// Hàm Submit báo giá từ Nhà cung cấp MỚI HOÀN TOÀN (Không có hồ sơ trong hệ thống, phải tạo mới)
+export async function submitOpenBidAction(payload: {
+    rfq_id: string;
+    bids: { rfq_item_id: string; unit_price: number; delivery_time_days?: number }[];
+    profileData: {
+        name: string;
+        tax_code: string;
+        phone: string;
+        email?: string;
+        address: string;
+        bank_account?: string;
+        bank_name?: string;
+        latitude?: string;
+        longitude?: string;
+    };
+}) {
+    const supabase = await createClient();
+
+    const { data: newSupplier, error: supplierError } = await supabase
+        .from('suppliers')
+        .insert({
+            name: payload.profileData.name,
+            tax_code: payload.profileData.tax_code,
+            phone: payload.profileData.phone,
+            email: payload.profileData.email,
+            address: payload.profileData.address,
+            bank_account: payload.profileData.bank_account,
+            bank_name: payload.profileData.bank_name,
+            latitude: payload.profileData.latitude ? parseFloat(payload.profileData.latitude) : null,
+            longitude: payload.profileData.longitude ? parseFloat(payload.profileData.longitude) : null,
+            status: 'active'
+        })
+        .select('id')
+        .single();
+
+    if (supplierError || !newSupplier) {
+        return { success: false, error: "Lỗi tạo hồ sơ đối tác: " + supplierError?.message };
+    }
+
+    const supplierId = newSupplier.id;
+
+    await supabase
+        .from('rfq_suppliers')
+        .insert({
+            rfq_id: payload.rfq_id,
+            supplier_id: supplierId,
+            status: 'submitted',
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        });
+
+    const bidData = payload.bids.map(bid => ({
+        rfq_id: payload.rfq_id,
+        supplier_id: supplierId,
+        rfq_item_id: bid.rfq_item_id,
+        unit_price: bid.unit_price,
+        delivery_time_days: bid.delivery_time_days || 0
+    }));
+
+    const { error: bidError } = await supabase.from('rfq_bids').insert(bidData);
+    if (bidError) return { success: false, error: bidError.message };
+
+    return { success: true, message: "Đã ghi nhận báo giá và thiết lập hồ sơ đối tác!" };
+}
+
+// Ghi nhận giải trình và Cập nhật danh mục dự toán (estimation_items)
+export async function approveBidTabulationAction({ rfqId, selections, justification }: {
+    rfqId: string;
+    selections: Record<string, string>; // { qto_item_id: supplier_id }
+    justification: string;
+}) {
+    const supabase = await createClient();
+
+    // 1. Lưu biên bản phê duyệt vào bid_tabulations
+    const { error: tabError } = await supabase.from('bid_tabulations').insert({
+        rfq_id: rfqId,
+        procurement_justification: justification,
+        status: 'approved'
+    });
+
+    if (tabError) return { success: false, error: tabError.message };
+
+    // 2. Cập nhật NCC ưu tiên vào bảng estimation_items (theo đúng logic đã chốt)
+    for (const [qtoItemId, supplierId] of Object.entries(selections)) {
+        await supabase
+            .from('estimation_items')
+            .update({ preferred_supplier_id_1: supplierId })
+            .eq('qto_item_id', qtoItemId);
+    }
+
+    return { success: true };
+}
+
+// Tạo mã RFQ tự động, chuyển dữ liệu từ "Giỏ nhu cầu" sang rfq_items và khóa các nhu cầu đã được xử lý
+export async function createRFQAction({ title, deadline, needIds }: { title: string, deadline: string, needIds: string[] }) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Sử dụng getUserProfile thay vì supabase.auth.getUser() để lấy ID chuẩn xác
+        const profile = await getUserProfile();
+
+        if (!profile || !profile.authId) {
+            throw new Error("Không xác thực được phiên đăng nhập. Vui lòng thử lại!");
+        }
+
+        // 2. Sinh mã RFQ tự động (VD: RFQ-2606-001)
+        const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
+        const { count } = await supabase.from('rfqs').select('*', { count: 'exact', head: true });
+        const rfqCode = `RFQ-${dateStr}-${String((count || 0) + 1).padStart(3, '0')}`;
+
+        // 3. Tạo bản ghi RFQ mới
+        const { data: rfq, error: rfqError } = await supabase
+            .from('rfqs')
+            .insert({
+                code: rfqCode,
+                title: title,
+                deadline: deadline,
+                created_by: profile.authId, // Dùng ID chuẩn từ profile để không vi phạm Foreign Key
+                status: 'published'
+            })
+            .select()
+            .single();
+
+        if (rfqError) throw rfqError;
+
+        // 4. Lấy chi tiết các Nhu cầu (Procurement Needs) đang được chọn
+        const { data: needs, error: needsError } = await supabase
+            .from('procurement_needs')
+            .select('*')
+            .in('id', needIds);
+
+        if (needsError) throw needsError;
+
+        // 5. Đẩy vào bảng rfq_items (Snapshots)
+        const rfqItems = needs.map(need => ({
+            rfq_id: rfq.id,
+            procurement_need_id: need.id,
+            material_code: need.material_code,
+            material_name: need.material_name,
+            purchase_unit: need.purchase_unit,
+            purchase_quantity: need.purchase_quantity
+        }));
+
+        const { error: itemsError } = await supabase.from('rfq_items').insert(rfqItems);
+        if (itemsError) throw itemsError;
+
+        // 6. Cập nhật trạng thái trong Giỏ nhu cầu thành 'rfq_created'
+        const { error: updateError } = await supabase
+            .from('procurement_needs')
+            .update({ status: 'rfq_created', rfq_id: rfq.id })
+            .in('id', needIds);
+
+        if (updateError) throw updateError;
+
+        revalidatePath('/procurement/rfq');
+        return { success: true, message: `Đã tạo gói thầu ${rfqCode} thành công!`, rfqId: rfq.id };
+    } catch (error: any) {
+        console.error("[createRFQAction] Lỗi:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Lấy chi tiết RFQ
+export async function getRfqDetails(id: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Lấy thông tin RFQ
+        const { data: rfq } = await supabase.from('rfqs').select('*').eq('id', id).single();
+
+        // 2. Lấy danh sách Vật tư
+        const { data: items } = await supabase.from('rfq_items').select('*').eq('rfq_id', id);
+
+        // 3. LẤY DANH SÁCH NCC ĐÃ MỜI
+        const { data: invitedSuppliers, error: invError } = await supabase
+            .from('rfq_suppliers')
+            .select(`
+                id, rfq_id, supplier_id, status, token, 
+                supplier:suppliers (id, name, tax_code, phone, email) 
+            `) // <-- Đổi 'code' thành 'tax_code'
+            .eq('rfq_id', id);
+
+        if (invError) {
+            console.error("Lỗi khi kéo list NCC:", invError);
+        }
+
+        // 4. Lấy tất cả NCC để bỏ vào Combobox mời thêm
+        const { data: allSuppliers } = await supabase.from('suppliers').select('id, name, code').eq('status', 'active');
+
+        return { rfq, items, invitedSuppliers, allSuppliers };
+    } catch (error) {
+        console.error("Lỗi getRfqDetails:", error);
+        return null;
+    }
+}
+
+// Thêm NCC vào danh sách mời thầu
+export async function inviteSupplierAction(rfqId: string, supplierId: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Kiểm tra xem NCC này đã được mời trong gói này chưa
+        const { data: exist } = await supabase
+            .from('rfq_suppliers')
+            .select('id')
+            .eq('rfq_id', rfqId)
+            .eq('supplier_id', supplierId)
+            .single();
+
+        if (exist) return { success: false, error: "Nhà cung cấp này đã có trong danh sách mời!" };
+
+        // 2. Lấy deadline của gói thầu để gán làm hạn chốt link báo giá
+        const { data: rfq, error: rfqError } = await supabase
+            .from('rfqs')
+            .select('deadline')
+            .eq('id', rfqId)
+            .single();
+
+        if (rfqError) throw new Error("Không tìm thấy thông tin gói thầu!");
+
+        // 3. Insert với đầy đủ các trường bắt buộc (bao gồm expires_at)
+        const { error } = await supabase.from('rfq_suppliers').insert({
+            rfq_id: rfqId,
+            supplier_id: supplierId,
+            status: 'pending',
+            expires_at: rfq.deadline // Gán hạn chốt của link bằng deadline gói thầu
+        });
+
+        if (error) throw error;
+
+        revalidatePath(`/procurement/rfq/${rfqId}`);
+        return { success: true, message: "Đã thêm Nhà cung cấp vào danh sách mời!" };
+    } catch (error: any) {
+        console.error("[inviteSupplierAction] Lỗi:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Xử lý Nhà cung cấp đăng ký từ Link Công Khai
+export async function registerPublicSupplierAction(publicToken: string, formData: { name: string; phone: string; tax_code?: string; email?: string }) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Kiểm tra xem Link Công Khai này có hợp lệ và gói thầu còn mở không
+        const { data: rfq, error: rfqError } = await supabase
+            .from('rfqs')
+            // BỔ SUNG: Gọi thêm trường deadline ở đây
+            .select('id, title, status, deadline')
+            .eq('public_token', publicToken)
+            .single();
+
+        if (rfqError || !rfq) throw new Error("Đường dẫn không hợp lệ hoặc đã hết hạn!");
+        if (rfq.status !== 'published') throw new Error("Gói thầu này đã đóng, không thể nhận thêm báo giá!");
+
+        // 2. Tạo Nhà cung cấp mới vào danh bạ (Bảng suppliers)
+        const { data: newSupplier, error: suppError } = await supabase
+            .from('suppliers')
+            .insert({
+                name: formData.name,
+                phone: formData.phone,
+                tax_code: formData.tax_code || null,
+                email: formData.email || null,
+                status: 'active',
+                type: 'material'
+            })
+            .select('id')
+            .single();
+
+        if (suppError) throw suppError;
+
+        // 3. Đưa NCC này vào danh sách dự thầu của RFQ (Tạo token bí mật)
+        const { data: rfqSupp, error: inviteError } = await supabase
+            .from('rfq_suppliers')
+            .insert({
+                rfq_id: rfq.id,
+                supplier_id: newSupplier.id,
+                status: 'viewed',
+                // BỔ SUNG: Gắn hạn sử dụng link bằng đúng deadline của gói thầu
+                expires_at: rfq.deadline
+            })
+            .select('token')
+            .single();
+
+        if (inviteError) throw inviteError;
+
+        // 4. Trả về token bí mật để Redirect họ sang trang nhập giá
+        return { success: true, privateToken: rfqSupp.token };
+    } catch (error: any) {
+        console.error("[registerPublicSupplier] Lỗi:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Lấy dữ liệu để hiển thị lên Cổng báo giá bằng Token
+export async function getBidDataByToken(token: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Lấy thông tin từ token
+        const { data: rfqSupplier, error: tokenError } = await supabase
+            .from('rfq_suppliers')
+            .select('*, supplier:suppliers(*), rfq:rfqs(*)')
+            .eq('token', token)
+            .single();
+
+        if (tokenError || !rfqSupplier) throw new Error("Đường dẫn không hợp lệ hoặc không tồn tại!");
+
+        // 2. Kiểm tra trạng thái gói thầu
+        if (rfqSupplier.rfq.status !== 'published') {
+            throw new Error("Gói thầu này đã kết thúc hoặc bị đóng. Không thể cập nhật báo giá!");
+        }
+
+        // 3. Lấy danh sách vật tư cần mua
+        const { data: items } = await supabase
+            .from('rfq_items')
+            .select('*')
+            .eq('rfq_id', rfqSupplier.rfq_id);
+
+        // 4. Lấy báo giá cũ (nếu NCC đã từng vào điền rồi muốn sửa lại)
+        const { data: existingBids } = await supabase
+            .from('rfq_bids')
+            .select('*')
+            .eq('supplier_id', rfqSupplier.supplier_id)
+            .eq('rfq_id', rfqSupplier.rfq_id);
+
+        return {
+            success: true,
+            data: {
+                rfqSupplier,
+                rfq: rfqSupplier.rfq,
+                supplier: rfqSupplier.supplier,
+                items: items || [],
+                existingBids: existingBids || []
+            }
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+// Xóa gói thầu (RFQ) - Cập nhật lại trạng thái của các nhu cầu vật tư về 'pending' để có thể tạo lại gói thầu mới
+export async function deleteRFQAction(rfqId: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Cập nhật lại status của các "nhu cầu vật tư" trong giỏ về 'pending' 
+        // để người dùng có thể tạo lại gói thầu mới
+        const { error: resetError } = await supabase
+            .from('procurement_needs')
+            .update({ status: 'pending', rfq_id: null })
+            .eq('rfq_id', rfqId);
+
+        if (resetError) throw resetError;
+
+        // 2. Xóa gói thầu (RFQ) - Các rfq_items và rfq_suppliers sẽ bị xóa theo 
+        // nhờ ràng buộc "on delete cascade" mà chúng ta đã cấu hình
+        const { error: deleteError } = await supabase
+            .from('rfqs')
+            .delete()
+            .eq('id', rfqId);
+
+        if (deleteError) throw deleteError;
+
+        revalidatePath('/procurement/rfq');
+        return { success: true, message: "Đã hủy gói thầu và hoàn trả vật tư về giỏ nhu cầu!" };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+// Chốt thầu: Cập nhật trạng thái gói thầu thành Completed, đánh dấu NCC trúng thầu và các NCC còn lại
+export async function awardRfqAction(rfqId: string, winningSupplierId: string) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Cập nhật trạng thái Gói thầu thành Completed
+        const { error: rfqError } = await supabase
+            .from('rfqs')
+            .update({
+                status: 'completed',
+                // Nếu bảng rfqs có cột winning_supplier_id thì uncomment dòng dưới:
+                // winning_supplier_id: winningSupplierId 
+            })
+            .eq('id', rfqId);
+
+        if (rfqError) throw rfqError;
+
+        // 2. Đánh dấu NCC trúng thầu (won)
+        await supabase
+            .from('rfq_suppliers')
+            .update({ status: 'won' })
+            .eq('rfq_id', rfqId)
+            .eq('supplier_id', winningSupplierId);
+
+        // 3. Đánh dấu các NCC còn lại là trượt (lost)
+        await supabase
+            .from('rfq_suppliers')
+            .update({ status: 'lost' })
+            .eq('rfq_id', rfqId)
+            .neq('supplier_id', winningSupplierId);
+
+        revalidatePath(`/procurement/rfq/${rfqId}`);
+        return { success: true };
+    } catch (error: any) {
+        console.error("Lỗi awardRfqAction:", error);
+        return { success: false, error: error.message };
+    }
+}

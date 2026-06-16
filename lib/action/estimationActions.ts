@@ -344,3 +344,49 @@ export async function syncCostToWBS(projectId: string) {
         return { success: true, message: "Đã chốt giá và nạp Ngân sách vào WBS!" };
     } catch (e: any) { return { success: false, error: e.message }; }
 }
+
+// 
+export async function pushEstimationToProcurementAction(projectId: string, items: any[]) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Xóa các nhu cầu thu mua cũ của dự án này đang ở trạng thái 'pending'
+        // Việc này đảm bảo nếu QS chỉnh sửa dự toán và bấm gửi lại, Thu mua luôn nhận bản mới nhất
+        const { error: deleteError } = await supabase
+            .from('procurement_needs')
+            .delete()
+            .eq('project_id', projectId)
+            .eq('status', 'pending');
+
+        if (deleteError) throw deleteError;
+
+        // 2. Insert danh sách vật tư mới vào "Giỏ hàng" của Thu mua
+        if (items.length > 0) {
+            const { error: insertError } = await supabase
+                .from('procurement_needs')
+                .insert(items);
+
+            if (insertError) throw insertError;
+        }
+
+        // 3. Tự động gửi thông báo (Notification) cho phòng Thu mua
+        const { data: project } = await supabase
+            .from('projects')
+            .select('name')
+            .eq('id', projectId)
+            .single();
+
+        await supabase.from('notifications').insert({
+            user_role: 'PROCUREMENT',
+            title: 'Nhu cầu vật tư mới từ công trường',
+            message: `Dự án ${project?.name || 'không xác định'} vừa chốt tiên lượng. Mời phòng Thu mua vào tạo RFQ lấy giá.`,
+            link: '/procurement/rfq',
+            status: 'unread'
+        });
+
+        return { success: true, message: "Đã chuyển danh sách vật tư sang Thu mua thành công!" };
+    } catch (error: any) {
+        console.error("[pushEstimationToProcurementAction] Lỗi:", error);
+        return { success: false, error: error.message };
+    }
+}

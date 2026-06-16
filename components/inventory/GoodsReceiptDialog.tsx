@@ -94,19 +94,20 @@ export default function GoodsReceiptDialog({ po, warehouseId }: Props) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className="bg-green-600 hover:bg-green-700 shadow-sm transition-all">
+                <Button className="bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white shadow-sm transition-all">
                     <PackageCheck className="w-4 h-4 mr-2" /> Nhập Kho
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0">
-                <DialogHeader className="p-6 border-b bg-slate-50/50">
-                    <DialogTitle className="text-xl text-slate-800 flex items-center gap-2">
-                        <PackageCheck className="w-6 h-6 text-green-600" />
+            {/* Thêm dark:bg-slate-950 cho nền Dialog chính */}
+            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 dark:bg-slate-950 dark:border-slate-800">
+                <DialogHeader className="p-6 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                    <DialogTitle className="text-xl text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <PackageCheck className="w-6 h-6 text-green-600 dark:text-green-500" />
                         Phiếu Nhập Kho (Goods Receipt)
                     </DialogTitle>
-                    <p className="text-sm text-slate-500 mt-1">
-                        Nhập hàng cho đơn: <span className="font-mono font-bold text-slate-700">{po.code}</span>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                        Nhập hàng cho đơn: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{po.code}</span>
                     </p>
                 </DialogHeader>
 
@@ -114,50 +115,54 @@ export default function GoodsReceiptDialog({ po, warehouseId }: Props) {
                     {/* Thông tin chung */}
                     <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <Label className="text-slate-600">Số phiếu giao hàng (NCC) <span className="text-red-500">*</span></Label>
+                            <Label className="text-slate-600 dark:text-slate-300">Số phiếu giao hàng (NCC) <span className="text-red-500 dark:text-red-400">*</span></Label>
                             <Input
                                 placeholder="VD: PX-NCC-001..."
                                 value={deliveryNote}
                                 onChange={(e) => setDeliveryNote(e.target.value)}
                                 autoFocus
-                                className="font-medium"
+                                className="font-medium dark:bg-slate-900 dark:border-slate-700"
                             />
-                            <p className="text-[11px] text-slate-400">Nhập số phiếu in trên giấy giao hàng của NCC.</p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">Nhập số phiếu in trên giấy giao hàng của NCC.</p>
                         </div>
                         <div className="space-y-2">
-                            <Label className="text-slate-600">Ghi chú chung</Label>
+                            <Label className="text-slate-600 dark:text-slate-300">Ghi chú chung</Label>
                             <Input
                                 placeholder="VD: Hàng về đủ, bao bì nguyên vẹn..."
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
+                                className="dark:bg-slate-900 dark:border-slate-700"
                             />
                         </div>
                     </div>
 
                     {/* Bảng chi tiết */}
-                    <div className="border rounded-lg overflow-hidden bg-white">
-                        <div className="bg-blue-50/50 px-4 py-2 border-b flex items-center gap-2 text-blue-700 text-sm">
+                    <div className="border dark:border-slate-800 rounded-lg overflow-hidden bg-white dark:bg-slate-900/30">
+                        <div className="bg-blue-50/50 dark:bg-blue-950/30 px-4 py-2 border-b dark:border-slate-800 flex items-center gap-2 text-blue-700 dark:text-blue-400 text-sm">
                             <Info className="w-4 h-4" />
                             <span>Vui lòng kiểm đếm kỹ số lượng thực tế trước khi nhập.</span>
                         </div>
                         <Table>
                             <TableHeader>
-                                <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                    <TableHead className="w-[40%]">Tên Vật tư / Thiết bị</TableHead>
-                                    <TableHead className="w-[10%] text-center">ĐVT</TableHead>
-                                    <TableHead className="w-[15%] text-right text-slate-500">SL Đặt</TableHead>
-                                    <TableHead className="w-[15%] text-right bg-green-50/50 font-bold text-green-700">Thực Nhập</TableHead>
-                                    <TableHead className="w-[20%]">Ghi chú dòng</TableHead>
+                                <TableRow className="bg-slate-50 dark:bg-slate-900/80 hover:bg-slate-50 dark:hover:bg-slate-900/80 border-b dark:border-slate-800">
+                                    <TableHead className="w-[40%] text-slate-600 dark:text-slate-300">Tên Vật tư / Thiết bị</TableHead>
+                                    <TableHead className="w-[10%] text-center text-slate-600 dark:text-slate-300">ĐVT</TableHead>
+                                    <TableHead className="w-[15%] text-right text-slate-500 dark:text-slate-400">SL Đặt</TableHead>
+                                    <TableHead className="w-[15%] text-right bg-green-50/50 dark:bg-green-950/30 font-bold text-green-700 dark:text-green-500">Thực Nhập</TableHead>
+                                    <TableHead className="w-[20%] text-slate-600 dark:text-slate-300">Ghi chú dòng</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {items.map((item: any, idx: number) => (
-                                    <TableRow key={item.po_item_id} className={item.quantity_received !== item.quantity_ordered ? "bg-yellow-50/30" : ""}>
-                                        <TableCell className="font-medium text-slate-700">
+                                    <TableRow
+                                        key={item.po_item_id}
+                                        className={`border-b dark:border-slate-800 ${item.quantity_received !== item.quantity_ordered ? "bg-yellow-50/30 dark:bg-yellow-900/10" : "dark:hover:bg-slate-800/50"}`}
+                                    >
+                                        <TableCell className="font-medium text-slate-700 dark:text-slate-200">
                                             {item.item_name}
                                         </TableCell>
-                                        <TableCell className="text-center text-slate-500">{item.unit}</TableCell>
-                                        <TableCell className="text-right text-slate-500">
+                                        <TableCell className="text-center text-slate-500 dark:text-slate-400">{item.unit}</TableCell>
+                                        <TableCell className="text-right text-slate-500 dark:text-slate-400">
                                             {item.quantity_ordered.toLocaleString()}
                                         </TableCell>
                                         <TableCell className="text-right p-2">
@@ -165,8 +170,11 @@ export default function GoodsReceiptDialog({ po, warehouseId }: Props) {
                                                 type="number"
                                                 min="0"
                                                 step="any"
-                                                className={`text-right font-bold h-9 ${item.quantity_received > item.quantity_ordered ? "text-red-600 border-red-200 bg-red-50" :
-                                                        item.quantity_received < item.quantity_ordered ? "text-orange-600 border-orange-200" : "text-green-700 border-green-200"
+                                                className={`text-right font-bold h-9 dark:bg-slate-950 ${item.quantity_received > item.quantity_ordered
+                                                        ? "text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30" :
+                                                        item.quantity_received < item.quantity_ordered
+                                                            ? "text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-900/50" :
+                                                            "text-green-700 dark:text-green-500 border-green-200 dark:border-green-900/50"
                                                     }`}
                                                 value={item.quantity_received}
                                                 onChange={(e) => handleQuantityChange(idx, e.target.value)}
@@ -175,7 +183,7 @@ export default function GoodsReceiptDialog({ po, warehouseId }: Props) {
                                         <TableCell className="p-2">
                                             <Input
                                                 placeholder="..."
-                                                className="h-9 text-xs"
+                                                className="h-9 text-xs dark:bg-slate-950 dark:border-slate-700"
                                                 value={item.note}
                                                 onChange={(e) => handleNoteChange(idx, e.target.value)}
                                             />
@@ -187,13 +195,13 @@ export default function GoodsReceiptDialog({ po, warehouseId }: Props) {
                     </div>
                 </div>
 
-                <DialogFooter className="p-4 border-t bg-slate-50 flex justify-between items-center">
-                    <div className="text-xs text-slate-500 italic mr-auto">
+                <DialogFooter className="p-4 border-t dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex justify-between items-center rounded-b-lg">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 italic mr-auto">
                         * Sau khi nhập, tồn kho sẽ tăng tự động.
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setOpen(false)}>Hủy bỏ</Button>
-                        <Button onClick={handleSubmit} disabled={loading} className="bg-green-600 hover:bg-green-700 min-w-[150px]">
+                        <Button variant="outline" onClick={() => setOpen(false)} className="dark:bg-slate-950 dark:border-slate-700 dark:hover:bg-slate-800">Hủy bỏ</Button>
+                        <Button onClick={handleSubmit} disabled={loading} className="bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white min-w-[150px]">
                             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <PackageCheck className="w-4 h-4 mr-2" />}
                             Xác nhận Nhập
                         </Button>

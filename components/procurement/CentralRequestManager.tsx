@@ -9,7 +9,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Building2, Search, Filter } from "lucide-react";
+import { ShoppingCart, Building2, Search, Filter, Link } from "lucide-react";
 
 interface Props {
     allRequests: any[];
@@ -117,9 +117,20 @@ export default function CentralRequestManager({ allRequests }: Props) {
                                     )}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Button size="sm" onClick={() => handleCreatePO(req.id)} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-8 transition-colors">
-                                        <ShoppingCart className="w-3.5 h-3.5 mr-1.5" /> Tạo PO
-                                    </Button>
+                                    <div className="flex items-center justify-end gap-2">
+                                        {/* Nút chuyển sang trang Sàng lọc giá (RFQ) */}
+                                        <Button size="sm" variant="outline" asChild className="border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-blue-900/50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors h-8">
+                                            {/* Tạm thời để một ID tĩnh để anh test UI. Sau này sẽ truyền rfq_id thật từ DB */}
+                                            <Link href={`/procurement/rfq/2aafddaa-c8b0-43fa-a388-f31d1ea0a2cc`}>
+                                                <Filter className="w-3.5 h-3.5 mr-1.5" /> So sánh giá
+                                            </Link>
+                                        </Button>
+
+                                        {/* Nút Tạo PO gốc */}
+                                        <Button size="sm" onClick={() => handleCreatePO(req.id)} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-8 transition-colors">
+                                            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" /> Tạo PO
+                                        </Button>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}
