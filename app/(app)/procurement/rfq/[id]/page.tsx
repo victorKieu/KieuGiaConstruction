@@ -8,6 +8,9 @@ import { CalendarClock, FileText, Users, Calculator, ArrowLeft } from "lucide-re
 import InviteSupplierClient from "./InviteSupplierClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DeleteRfqButton } from "@/components/procurement/DeleteRfqButton"; // Import component chuẩn
+import { ExtendDeadlineButton } from "@/components/procurement/ExtendDeadlineButton";
+import { toVNDatetimeLocal, formatVNDate } from "@/lib/utils/date";
+import { formatDateVN } from "../../../../../lib/utils/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -63,13 +66,14 @@ export default async function RfqDetailPage({ params }: { params: Promise<{ id: 
                         <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 px-4 py-2 rounded-lg border border-slate-200 shadow-sm">
                             <CalendarClock className="w-5 h-5 text-red-500" />
                             <div>
-                                <p className="text-xs text-slate-500 font-semibold uppercase">Hạn chót</p>
+                                <p className="text-xs text-slate-500 font-semibold uppercase">Thời hạn đóng thầu</p>
                                 <p className="font-bold text-slate-800">
-                                    {new Date(rfq.deadline).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                    {formatVNDate(rfq.deadline)}
                                 </p>
                             </div>
                         </div>
                         {/* Nút Hủy sử dụng Component Client riêng biệt */}
+                        <ExtendDeadlineButton rfqId={rfq.id} currentDeadline={rfq.deadline} />
                         <DeleteRfqButton rfqId={id} />
                     </div>
                 </div>
@@ -77,7 +81,7 @@ export default async function RfqDetailPage({ params }: { params: Promise<{ id: 
                 <Tabs defaultValue="suppliers" className="w-full">
                     <TabsList className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm h-12">
                         <TabsTrigger value="suppliers" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 px-6 font-semibold">
-                            <Users className="w-4 h-4 mr-2" /> Mời Thầu & Link Gửi
+                            <Users className="w-4 h-4 mr-2" /> Thông Tin Mời Thầu
                         </TabsTrigger>
                         <TabsTrigger value="items" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 px-6 font-semibold">
                             <FileText className="w-4 h-4 mr-2" /> Danh mục vật tư ({items?.length})

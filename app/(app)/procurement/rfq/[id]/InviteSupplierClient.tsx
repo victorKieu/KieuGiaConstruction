@@ -11,7 +11,6 @@ import {
     Link as LinkIcon, UserPlus, Loader2, Eye, XCircle, Globe
 } from "lucide-react";
 import { inviteSupplierAction } from "@/lib/action/procurement";
-import { SupplierSelector } from "@/components/common/SupplierSelector";
 
 interface Supplier {
     id: string;
@@ -78,7 +77,7 @@ export default function InviteSupplierClient({ rfqId, publicToken, invitedSuppli
 
         navigator.clipboard.writeText(url).then(() => {
             setCopiedToken(token);
-            toast.success(isPublic ? "Đã copy Link Công Khai!" : "Đã copy Link Định Danh!");
+            toast.success(isPublic ? "Đã copy link mời thầu!" : "Đã copy Link Định Danh!");
             setTimeout(() => setCopiedToken(null), 3000);
         });
     };
@@ -103,7 +102,7 @@ export default function InviteSupplierClient({ rfqId, publicToken, invitedSuppli
                             <Globe className="w-5 h-5" /> Link Mời Thầu Công Khai (Public Link)
                         </h3>
                         <p className="text-sm text-emerald-600/80 dark:text-emerald-500/80 mt-1">
-                            Sử dụng link này để đăng lên các Group Zalo/Facebook. NCC mới khi bấm vào sẽ được yêu cầu nhập Tên công ty & SĐT trước khi báo giá. Hệ thống sẽ tự động lưu họ vào danh bạ.
+                            Sử dụng link này để gởi cho NCC chào giá.
                         </p>
                     </div>
                     <Button
@@ -113,32 +112,10 @@ export default function InviteSupplierClient({ rfqId, publicToken, invitedSuppli
                         {copiedToken === publicToken ? (
                             <><CheckCircle2 className="w-4 h-4 mr-2" /> Đã Copy Link Mở</>
                         ) : (
-                            <><LinkIcon className="w-4 h-4 mr-2" /> Copy Link Gửi Hàng Loạt</>
+                            <><LinkIcon className="w-4 h-4 mr-2" /> Link Mời Thầu</>
                         )}
                     </Button>
                 </div>
-            </Card>
-
-            {/* Khu vực thêm Nhà cung cấp cũ */}
-            <Card className="p-4 border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-950/20 shadow-sm flex flex-col md:flex-row items-end md:items-center gap-4">
-                <div className="flex-1 w-full">
-                    <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-300 mb-1.5">
-                        Chỉ định đích danh Nhà cung cấp (từ danh bạ)
-                    </label>
-                    <SupplierSelector
-                        selectedId={selectedSupplier}
-                        onSelect={(id) => setSelectedSupplier(id)}
-                        placeholder="Nhập tên để tìm Nhà cung cấp hiện hữu..."
-                    />
-                </div>
-                <Button
-                    onClick={handleInvite}
-                    disabled={isInviting || !selectedSupplier}
-                    className="w-full md:w-auto h-10 bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                    {isInviting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
-                    Chỉ định mời thầu
-                </Button>
             </Card>
 
             {/* Bảng danh sách đã mời */}
@@ -170,7 +147,7 @@ export default function InviteSupplierClient({ rfqId, publicToken, invitedSuppli
                                             onClick={() => handleCopyLink(invite.token, false)}
                                             className={copiedToken === invite.token ? "bg-green-50 border-green-200 text-green-700" : "bg-white border-blue-200 text-blue-700"}
                                         >
-                                            {copiedToken === invite.token ? <><CheckCircle2 className="w-4 h-4 mr-1.5" /> Đã Copy</> : <><Copy className="w-4 h-4 mr-1.5" /> Copy Link Riêng</>}
+                                            {copiedToken === invite.token ? <><CheckCircle2 className="w-4 h-4 mr-1.5" /> Đã Copy</> : <><Copy className="w-4 h-4 mr-1.5" /> Link đích danh</>}
                                         </Button>
                                     </TableCell>
                                 </TableRow>
