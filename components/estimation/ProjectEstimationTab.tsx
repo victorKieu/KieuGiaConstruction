@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical, Download } from "lucide-react";
+import { Loader2, FileSpreadsheet, Upload, Trash2, Plus, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical, Download, RefreshCw, CheckCircle2, Radar, Link2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -25,7 +25,6 @@ import { MaterialSelector } from "@/components/common/MaterialSelector";
 
 interface Props { projectId: string; onUpdate?: () => void; }
 
-// ✅ ĐỊNH NGHĨA TYPE ĐỂ FIX LỖI TS2339 TỪ SERVER ACTIONS
 type ActionResponse = {
     success: boolean;
     message?: string;
@@ -37,12 +36,18 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const router = useRouter();
     const supabase = createClient();
 
-    // STATES
     const [loading, setLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [qtoTasks, setQtoTasks] = useState<any[]>([]);
     const [estItems, setEstItems] = useState<any[]>([]);
+    const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
     const [initLoaded, setInitLoaded] = useState(false);
+
+    const [awardedNeeds, setAwardedNeeds] = useState<any[]>([]);
+    const [diffs, setDiffs] = useState<any[]>([]);
+    const [showSyncPopup, setShowSyncPopup] = useState(false);
+    const [hasShownPopup, setHasShownPopup] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const [openManualDialog, setOpenManualDialog] = useState(false);
     const [newItemLoading, setNewItemLoading] = useState(false);
@@ -57,8 +62,69 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         if (!projectId) return;
         const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
         const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
+        const { data: mData } = await supabase.from('materials').select('*');
+
+        // ==============================================================================
+        // 🚀 CỖ MÁY VÉT CẠN DỮ LIỆU TỪ NHIỀU NGUỒN CỦA THU MUA
+        // ==============================================================================
+        let rawAwarded: any[] = [];
+
+        // NGUỒN 1: QUÉT TỪ GIỎ NHU CẦU
+        const { data: needsData } = await supabase
+            .from('procurement_needs')
+            .select('material_code, material_name, awarded_price')
+            .eq('project_id', projectId)
+            .in('status', ['awarded', 'AWARDED']);
+
+        if (needsData && needsData.length > 0) {
+            rawAwarded = [...rawAwarded, ...needsData];
+        }
+
+        // NGUỒN 2: QUÉT TRỰC TIẾP TỪ GÓI THẦU (DỰ PHÒNG CHỐNG TRƯỢT DỮ LIỆU)
+        const { data: completedRfqs } = await supabase
+            .from('rfqs')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('status', 'completed');
+
+        if (completedRfqs && completedRfqs.length > 0) {
+            const rfqIds = completedRfqs.map(r => r.id);
+
+            // Lấy tất cả Item trong các gói thầu này
+            const { data: rfqItems } = await supabase.from('rfq_items').select('*').in('rfq_id', rfqIds);
+
+            // Lấy TẤT CẢ các báo giá ĐÃ TRÚNG THẦU thuộc các gói thầu này
+            const { data: winningBids } = await supabase.from('rfq_bids').select('*').in('rfq_id', rfqIds).eq('is_selected', true);
+
+            if (rfqItems && winningBids) {
+                winningBids.forEach(bid => {
+                    // Dò tìm ID của item (Đề phòng database đặt tên cột là rfq_item_id hoặc item_id)
+                    const rItem = rfqItems.find(i => i.id === bid.rfq_item_id || i.id === bid.item_id);
+                    if (rItem) {
+                        rawAwarded.push({
+                            material_code: rItem.material_code || rItem.code,
+                            material_name: rItem.material_name || rItem.item_name || rItem.name,
+                            awarded_price: Number(bid.unit_price || bid.price || 0)
+                        });
+                    }
+                });
+            }
+        }
+
+        // BƯỚC 3: GỘP TRÙNG LẶP (DEDUP) ĐỂ KHÔNG BÁO CÁO NHIỀU LẦN
+        const dedupedAwarded = Object.values(rawAwarded.reduce((acc, curr) => {
+            if (curr.material_name && curr.awarded_price > 0) {
+                // Ưu tiên gom nhóm bằng mã, nếu ko có thì dùng tên
+                const key = curr.material_code ? curr.material_code.trim().toUpperCase() : curr.material_name.trim().toLowerCase();
+                acc[key] = curr;
+            }
+            return acc;
+        }, {}));
+
         setQtoTasks(qtoData || []);
         setEstItems(estData || []);
+        setMasterMaterials(mData || []);
+        setAwardedNeeds(dedupedAwarded);
         setInitLoaded(true);
     };
 
@@ -68,10 +134,8 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const handleToggleAllSections = () => {
         const sections = qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
         const isAnyCollapsed = sections.some(s => expandedSections[s.id] === false);
-
-        if (isAnyCollapsed) {
-            setExpandedSections({});
-        } else {
+        if (isAnyCollapsed) setExpandedSections({});
+        else {
             const newState: Record<string, boolean> = {};
             sections.forEach(s => newState[s.id] = false);
             newState['standalone'] = false;
@@ -82,74 +146,31 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const handleDelete = async (id: string, name: string) => {
         if (!confirm(`Xóa mục này?`)) return;
         const res = (await deleteEstimationItem(id, projectId)) as ActionResponse;
-        if (res.success) {
-            toast.success(res.message);
-            await loadData();
-            if (onUpdate) onUpdate();
-            router.refresh();
-        } else { toast.error(res.error); }
-    };
-
-    const handlePriceChange = async (id: string, newPrice: string) => {
-        const price = parseFloat(newPrice) || 0;
-        const res = (await updateEstimationPrice(id, projectId, price)) as ActionResponse;
-        if (!res.success) toast.error("Lỗi lưu giá: " + res.error);
-        else {
-            await loadData();
-            if (onUpdate) onUpdate();
-            router.refresh();
-        }
+        if (res.success) { toast.success(res.message); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
+        else { toast.error(res.error); }
     };
 
     const handleBulkPriceChange = async (materialName: string, category: string, newPrice: string) => {
-        const price = parseFloat(newPrice) || 0;
-        const res = (await updateEstimationPriceByGroup(projectId, materialName, category, price)) as ActionResponse;
+        const inputPrice = parseFloat(newPrice) || 0;
+        const res = (await updateEstimationPriceByGroup(projectId, materialName, category, inputPrice)) as ActionResponse;
         if (!res.success) toast.error("Lỗi áp giá: " + res.error);
-        else {
-            await loadData();
-            if (onUpdate) onUpdate();
-            router.refresh();
-        }
+        else { await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
     };
 
     const handleBulkMaterialSelect = async (oldMaterialName: string, category: string, mat: any) => {
-        // ✅ Cố định ID cho Toast để tránh bị thông báo rác xếp hàng dài
         const toastId = `toast-bulk-${oldMaterialName}`;
-        toast.loading("Đang tính toán hệ số quy đổi và đổi mã...", { id: toastId });
+        toast.loading("Đang gắn mã vật tư...", { id: toastId });
         const res = (await updateEstimationMaterialByGroup(projectId, oldMaterialName, category, mat)) as ActionResponse;
-        if (!res.success) {
-            toast.error("Lỗi đổi mã vật tư: " + res.error, { id: toastId });
-        } else {
-            toast.success(`Đã đổi mã và cập nhật hệ số: ${mat.name}`, { id: toastId });
-            await loadData();
-            if (onUpdate) onUpdate();
-            router.refresh();
-        }
+        if (!res.success) { toast.error("Lỗi đổi mã: " + res.error, { id: toastId }); }
+        else { toast.success(`Đã đổi mã: ${mat.name}`, { id: toastId }); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
     };
 
     const handleRateChange = async (id: string, category: string, newRate: string) => {
         const rate = parseFloat(newRate) || 0;
         const res = (await updateEstimationQuantity(id, projectId, rate, category)) as ActionResponse;
-        if (res?.success === false) {
-            toast.error("Lỗi lưu tỷ lệ: " + res.error);
-        } else {
-            toast.success(`Đã cập nhật tỉ lệ ${category} thành ${rate}%`);
-        }
-        await loadData();
-        if (onUpdate) onUpdate();
-        router.refresh();
-    };
-
-    const handleMaterialSelect = async (itemId: string, mat: any) => {
-        const { error } = await supabase.from('estimation_items').update({
-            is_mapped: true, material_code: mat.code, material_name: mat.name, unit: mat.unit, unit_price: mat.ref_price || 0
-        }).eq('id', itemId);
-
-        if (!error) {
-            await loadData();
-            if (onUpdate) onUpdate();
-            router.refresh();
-        } else { toast.error("Lỗi cập nhật: " + error.message); }
+        if (res?.success === false) toast.error("Lỗi lưu tỷ lệ: " + res.error);
+        else toast.success(`Đã cập nhật tỉ lệ ${category} thành ${rate}%`);
+        await loadData(); if (onUpdate) onUpdate(); router.refresh();
     };
 
     const handleCreateManual = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -158,13 +179,8 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         const formData = new FormData(e.currentTarget);
         const data = { name: formData.get("name"), unit: formData.get("unit"), quantity: formData.get("quantity"), unit_price: formData.get("unit_price") };
         const res = (await createManualEstimationItem(projectId, data)) as ActionResponse;
-        if (res.success) {
-            toast.success(res.message);
-            setOpenManualDialog(false);
-            await loadData();
-            if (onUpdate) onUpdate();
-            router.refresh();
-        } else { toast.error(res.error); }
+        if (res.success) { toast.success(res.message); setOpenManualDialog(false); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
+        else { toast.error(res.error); }
         setNewItemLoading(false);
     };
 
@@ -181,12 +197,8 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         setIsImporting(true); const formData = new FormData(); formData.append("file", file);
         try {
             const res = (await importBOQFromExcel(projectId, formData)) as ActionResponse;
-            if (res.success) {
-                toast.success(res.message);
-                await loadData();
-                if (onUpdate) onUpdate();
-                router.refresh();
-            } else { toast.error(res.error); }
+            if (res.success) { toast.success(res.message); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
+            else { toast.error(res.error); }
         } catch (error) { toast.error("Lỗi hệ thống."); } finally { setIsImporting(false); e.target.value = ""; }
     };
 
@@ -201,34 +213,40 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         return (len !== 0 ? len : 1) * (wid !== 0 ? wid : 1) * (hei !== 0 ? hei : 1) * (fac !== 0 ? fac : 1);
     };
 
-    // =====================================================================
-    // 🧠 BỘ NÃO XỬ LÝ ĐƠN GIÁ ĐỘNG (THEO CÔNG THỨC CHUẨN KẾ TOÁN)
-    // =====================================================================
     const normalItems = estItems.filter(i => !['GT', 'LN', 'VAT'].includes(i.category));
     const globalParams = estItems.filter(i => ['GT', 'LN', 'VAT'].includes(i.category));
     const gtParam = globalParams.find(i => i.category === 'GT') || { quantity: 10, id: 'temp-gt' };
     const lnParam = globalParams.find(i => i.category === 'LN') || { quantity: 12, id: 'temp-ln' };
     const vatParam = globalParams.find(i => i.category === 'VAT') || { quantity: 10, id: 'temp-vat' };
-    const standaloneItems = normalItems.filter(i => !i.qto_item_id);
     const sections = qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
 
-    // Tính toán TỔNG LƯỢNG GỐC toàn dự án và ĐƠN GIÁ ĐÃ QUY ĐỔI CHO TỪNG VẬT TƯ
     const aggregatedSummaries = useMemo(() => {
         const map = new Map();
 
-        // Sum hao phí gốc
         normalItems.forEach(item => {
             const key = item.material_name;
             if (!map.has(key)) {
                 const dim = item.dimensions || {};
-                const rate = Number(dim.conversion_rate) || 1;
-                const pUnit = dim.purchase_unit || item.unit;
-                const pPrice = dim.purchase_price !== undefined ? Number(dim.purchase_price) : (Number(item.unit_price || 0) * rate);
+
+                const mMat = masterMaterials.find(m =>
+                    (item.material_code && m.code === item.material_code) ||
+                    (m.name.trim().toLowerCase() === item.material_name.trim().toLowerCase())
+                );
+
+                const rate = Number(dim.conversion_rate) || Number(mMat?.conversion_rate) || 1;
+                const pUnit = dim.purchase_unit || mMat?.purchase_unit || item.unit;
+
+                let pPrice = 0;
+                if (dim.purchase_price !== undefined && dim.purchase_price !== null) {
+                    pPrice = Number(dim.purchase_price);
+                } else {
+                    pPrice = Number(item.unit_price || 0) * rate;
+                }
 
                 map.set(key, {
                     ...item,
                     display_unit: pUnit,
-                    display_price: pPrice, // Giá 1 Bao/Cây
+                    display_price: pPrice,
                     conversion_rate: rate,
                     total_quantity: 0,
                     total_cost_sum: 0,
@@ -241,7 +259,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             exist.total_quantity += rawQty;
         });
 
-        // Áp dụng công thức tính Đơn giá sau quy đổi
         const summaries = Array.from(map.values()).map((exist: any) => {
             if (exist.conversion_rate > 1 && exist.total_quantity > 0) {
                 exist.display_quantity = Math.ceil(exist.total_quantity / exist.conversion_rate);
@@ -249,20 +266,117 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 exist.effective_price = exist.total_cost_sum / exist.total_quantity;
             } else {
                 exist.display_quantity = exist.total_quantity;
-                exist.total_cost_sum = exist.total_quantity * (exist.display_price / exist.conversion_rate);
-                exist.effective_price = exist.display_price / exist.conversion_rate;
+                exist.total_cost_sum = exist.total_quantity * exist.display_price;
+                exist.effective_price = exist.display_price;
             }
             return exist;
         }).sort((a, b) => a.material_name.localeCompare(b.material_name));
 
         return summaries;
-    }, [normalItems]);
+    }, [normalItems, masterMaterials]);
+
+    const handleAutoMapMaterials = async () => {
+        const confirmSync = window.confirm("Hệ thống sẽ tự động quét và gắn mã chuẩn cho các vật tư có tên khớp với Danh mục. Tiếp tục?");
+        if (!confirmSync) return;
+
+        setIsSyncing(true);
+        const toastId = toast.loading("Đang quét và đồng bộ mã vật tư...");
+
+        try {
+            if (!masterMaterials || masterMaterials.length === 0) {
+                toast.error("Danh mục vật tư trống!", { id: toastId });
+                setIsSyncing(false); return;
+            }
+
+            let mappedCount = 0;
+            const unmappedItems = aggregatedSummaries.filter(s => !s.material_code && ['VL', 'M', 'NC'].includes(s.category));
+
+            for (const item of unmappedItems) {
+                const match = masterMaterials.find(m =>
+                    m.name.trim().toLowerCase() === item.material_name.trim().toLowerCase() ||
+                    m.code.trim().toUpperCase() === item.material_name.trim().toUpperCase()
+                );
+                if (match) {
+                    await updateEstimationMaterialByGroup(projectId, item.material_name, item.category, match);
+                    mappedCount++;
+                }
+            }
+
+            if (mappedCount > 0) {
+                toast.success(`Đã đồng bộ mã thành công cho ${mappedCount} vật tư!`, { id: toastId });
+                await loadData(); if (onUpdate) onUpdate(); router.refresh();
+            } else {
+                toast.info("Tất cả vật tư đã có mã, hoặc không có tên khớp.", { id: toastId });
+            }
+        } catch (error: any) { toast.error("Lỗi đồng bộ: " + error.message, { id: toastId }); }
+        finally { setIsSyncing(false); }
+    };
+
+    // =====================================================================
+    // 🔔 ENGINE DÒ TÌM GIÁ: ĐỐI CHIẾU 3 LỚP (MÃ CHUẨN -> TÊN CHUẨN -> TÊN GỐC)
+    // =====================================================================
+    const checkPriceDiffs = (needs: any[], summaries: any[], showToastIfEmpty = false) => {
+        const newDiffs: any[] = [];
+
+        needs.forEach(need => {
+            const summary = summaries.find(s => {
+                const codeMatch = need.material_code && s.material_code && s.material_code.trim().toUpperCase() === need.material_code.trim().toUpperCase();
+                const nameMatch = s.material_name && need.material_name && s.material_name.trim().toLowerCase() === need.material_name.trim().toLowerCase();
+                const originalNameMatch = s.original_name && need.material_name && s.original_name.trim().toLowerCase() === need.material_name.trim().toLowerCase();
+
+                return codeMatch || nameMatch || originalNameMatch; // Bắt bằng mọi giá!
+            });
+
+            if (summary) {
+                const currentPrice = Number(summary.display_price || 0);
+                const newPrice = Number(need.awarded_price || 0);
+
+                if (newPrice > 0 && Math.abs(currentPrice - newPrice) > 1) {
+                    newDiffs.push({
+                        material_name: summary.material_name,
+                        material_code: summary.material_code,
+                        category: summary.category,
+                        conversion_rate: summary.conversion_rate || 1,
+                        old_price: currentPrice,
+                        new_price: newPrice
+                    });
+                }
+            }
+        });
+
+        setDiffs(newDiffs);
+
+        if (newDiffs.length > 0) setShowSyncPopup(true);
+        else if (showToastIfEmpty) {
+            if (needs.length === 0) toast.info("Chưa có gói thầu nào được chốt cho dự án này.");
+            else toast.success("Dữ liệu khớp 100%! Đơn giá dự toán đã trùng khớp với giá thu mua.", { icon: "✅" });
+        }
+    };
+
+    useEffect(() => {
+        if (!initLoaded || awardedNeeds.length === 0 || aggregatedSummaries.length === 0 || hasShownPopup) return;
+        checkPriceDiffs(awardedNeeds, aggregatedSummaries, false);
+        setHasShownPopup(true);
+    }, [initLoaded, awardedNeeds, aggregatedSummaries, hasShownPopup]);
+
+    const handleSyncPrices = async () => {
+        setIsSyncing(true);
+        let successCount = 0;
+
+        for (const diff of diffs) {
+            const res = (await updateEstimationPriceByGroup(projectId, diff.material_name, diff.category, diff.new_price)) as ActionResponse;
+            if (res.success) successCount++;
+        }
+
+        toast.success(`Đã cập nhật giá mới cho ${successCount} mặt hàng!`);
+        setIsSyncing(false); setShowSyncPopup(false);
+        await loadData(); if (onUpdate) onUpdate(); router.refresh();
+    };
 
     const getSummaryByCategory = (category: string) => {
         return aggregatedSummaries.filter(s => s.category === category);
     };
 
-    // Tính Tài chính dự án dựa trên Đơn giá sau quy đổi (Đã cõng hao hụt)
     const T = normalItems.reduce((sum, item) => {
         const summary = aggregatedSummaries.find(s => s.material_name === item.material_name);
         const effPrice = summary?.effective_price || Number(item.unit_price || 0);
@@ -281,7 +395,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const totalM = getSummaryByCategory('M').reduce((sum, item) => sum + item.total_cost_sum, 0);
     const totalKhac = TotalProject - totalVL - totalNC - totalM;
 
-    // ✅ TÍNH NĂNG XUẤT EXCEL THEO ĐÚNG LAYOUT BẢNG PHÂN TÍCH ĐƠN GIÁ CŨ
     const handleExportDetailExcel = () => {
         const allData: any[] = [];
         let stt = 1;
@@ -295,7 +408,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             const taskTotalCost = taskHaoPhi.reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
             const taskUnitPrice = taskVol > 0 ? taskTotalCost / taskVol : 0;
 
-            // Dòng Công tác chính
             allData.push({
                 "STT": stt++,
                 "Mã / Thành phần công tác": `[${task.norm_code}] ${task.item_name}`,
@@ -306,7 +418,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 "Thành tiền": Number(taskTotalCost.toFixed(0))
             });
 
-            // Lặp qua 3 loại hao phí
             ['VL', 'NC', 'M'].forEach(cat => {
                 const items = taskHaoPhi.filter(e => e.category === cat);
                 if (items.length === 0) return;
@@ -335,7 +446,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 });
             });
 
-            // Dòng trống cách các công tác
             allData.push({
                 "STT": "", "Mã / Thành phần công tác": "", "ĐVT": "",
                 "Khối lượng": "", "Định mức": "", "Đơn giá": "", "Thành tiền": ""
@@ -356,10 +466,8 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         const toastId = "push-procurement";
         toast.loading("Đang tổng hợp và đẩy dữ liệu sang Thu Mua...", { id: toastId });
 
-        // Lọc ra các vật tư cần mua (Bỏ Nhân Công - NC và các chi phí khác)
-        // Và chỉ đẩy những mã đã được chuẩn hóa (is_mapped = true)
         const itemsToProcurement = aggregatedSummaries
-            .filter(item => (item.category === 'VL' || item.category === 'M') && item.is_mapped)
+            .filter(item => (item.category === 'VL' || item.category === 'M') && item.material_code)
             .map(item => ({
                 project_id: projectId,
                 material_code: item.material_code,
@@ -385,6 +493,58 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 transition-colors">
+            {/* THÔNG BÁO POPUP ĐỒNG BỘ GIÁ */}
+            <Dialog open={showSyncPopup} onOpenChange={setShowSyncPopup}>
+                <DialogContent className="max-w-3xl dark:bg-slate-900 dark:border-slate-800 shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold text-emerald-700 dark:text-emerald-500 flex items-center gap-2">
+                            <CheckCircle2 className="w-6 h-6" /> Có cập nhật giá mới từ Phòng Thu Mua!
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2 text-slate-700 dark:text-slate-300">
+                        <p className="mb-4">Hệ thống ghi nhận <strong>{diffs.length} vật tư</strong> đã được chốt giá thành công ở các gói thầu. Bạn có muốn cập nhật bảng dự toán theo giá trị thực tế này không?</p>
+
+                        <div className="max-h-[50vh] overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-md custom-scrollbar">
+                            <Table>
+                                <TableHeader className="bg-slate-100 dark:bg-slate-800 sticky top-0 shadow-sm z-10">
+                                    <TableRow>
+                                        <TableHead className="font-bold text-slate-700 dark:text-slate-300">Tên / Mã Vật tư</TableHead>
+                                        <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Giá cũ (Dự toán)</TableHead>
+                                        <TableHead className="text-right font-bold text-emerald-700 dark:text-emerald-400">Giá mới (Đã chốt)</TableHead>
+                                        <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Chênh lệch</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {diffs.map((d, i) => {
+                                        const diffVal = d.new_price - d.old_price;
+                                        const isCheaper = diffVal < 0;
+                                        return (
+                                            <TableRow key={i} className="dark:border-slate-800">
+                                                <TableCell>
+                                                    <div className="font-semibold text-slate-800 dark:text-slate-200">{d.material_name}</div>
+                                                    {d.material_code && <div className="text-xs text-slate-500">{d.material_code}</div>}
+                                                </TableCell>
+                                                <TableCell className="text-right line-through text-slate-400 dark:text-slate-500">{formatCurrency(d.old_price)}</TableCell>
+                                                <TableCell className="text-right font-bold text-emerald-600 dark:text-emerald-500">{formatCurrency(d.new_price)}</TableCell>
+                                                <TableCell className={`text-right font-medium ${isCheaper ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                    {isCheaper ? 'Giảm ' : 'Tăng '} {formatCurrency(Math.abs(diffVal))}
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                    <DialogFooter className="mt-2 border-t pt-4 dark:border-slate-800">
+                        <Button variant="outline" onClick={() => setShowSyncPopup(false)} className="dark:text-slate-300 dark:border-slate-700">Bỏ qua (Giữ giá cũ)</Button>
+                        <Button onClick={handleSyncPrices} disabled={isSyncing} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[150px]">
+                            {isSyncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                            Cập nhật Giá Mới
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* HEADER TOOLBAR */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
@@ -414,15 +574,36 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                     </Dialog>
 
                     <Button variant="outline" onClick={handleDownloadTemplate} className="h-9 border-green-200 text-green-700 hover:bg-green-50 dark:border-green-900/50 dark:text-green-400 dark:hover:bg-green-500/10"><FileSpreadsheet className="w-4 h-4 mr-2" /> Template</Button>
+
                     <div className="relative">
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                         <Button variant="outline" disabled={isImporting} className="h-9 border-slate-200 dark:border-slate-800 dark:text-slate-300">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
                     </div>
+
+                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                    <Button
+                        variant="outline"
+                        onClick={handleAutoMapMaterials}
+                        disabled={isSyncing}
+                        className="h-9 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-400 font-bold shadow-sm"
+                    >
+                        <Link2 className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} /> Đồng Bộ Mã Hàng Loạt
+                    </Button>
+
+                    <Button
+                        variant="outline"
+                        onClick={() => checkPriceDiffs(awardedNeeds, aggregatedSummaries, true)}
+                        className="h-9 border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400 font-bold shadow-sm"
+                    >
+                        <Radar className="w-4 h-4 mr-2" /> Dò Giá Thu Mua
+                    </Button>
+
                     <Button
                         onClick={handlePushToProcurement}
-                        className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold ml-4"
+                        className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold ml-1 shadow-sm"
                     >
-                        <Tractor className="w-4 h-4 mr-2" /> Chốt dự toán & Gửi Thu Mua
+                        <Tractor className="w-4 h-4 mr-2" /> Chốt dự toán & Gửi
                     </Button>
                 </div>
             </div>
@@ -432,7 +613,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 <div className="bg-blue-50 dark:bg-blue-500/10 border-b border-blue-100 dark:border-blue-900/30 p-3 flex items-center gap-2">
                     <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     <h4 className="font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wide text-sm">Bảng Tính Toán Thông Số Kinh Phí</h4>
-                    {/* ✅ NÚT XUẤT EXCEL CHUYỂN TỚI CUỐI CÙNG BÊN PHẢI */}
                     <Button onClick={handleExportDetailExcel} className="h-9 border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:border-indigo-800 dark:text-indigo-400 dark:bg-indigo-900/20 font-bold ml-auto">
                         <Download className="w-4 h-4 mr-2" /> Xuất Excel Phân Tích Giá
                     </Button>
@@ -598,16 +778,27 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                                         {isTaskExpanded && children.map(child => {
                                                             const savedNorm = child.dimensions?.norm || 0;
                                                             const factor = child.dimensions?.factor || 1;
+
                                                             return (
-                                                                <TableRow key={child.id} className={`${child.is_mapped ? "hover:bg-green-50/50 dark:hover:bg-green-900/10" : "hover:bg-muted/30 dark:hover:bg-slate-800/30"} dark:border-slate-800 transition-colors`}>
+                                                                <TableRow key={child.id} className={`${child.material_code ? "hover:bg-green-50/50 dark:hover:bg-green-900/10" : "hover:bg-muted/30 dark:hover:bg-slate-800/30"} dark:border-slate-800 transition-colors`}>
                                                                     <TableCell className="border-r border-slate-200 dark:border-slate-800"></TableCell>
                                                                     <TableCell className="border-r border-slate-200 dark:border-slate-800"></TableCell>
+
                                                                     <TableCell className="text-center font-medium border-r border-slate-200 dark:border-slate-800">
-                                                                        {child.is_mapped ? <Badge className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 border-none px-1 text-[10px]">{child.material_code}</Badge> : (child.category || "Khác")}
+                                                                        {child.material_code
+                                                                            ? <Badge className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 border-none px-1 text-[10px] uppercase tracking-wider">{child.material_code}</Badge>
+                                                                            : (child.category || "Khác")
+                                                                        }
                                                                     </TableCell>
+
                                                                     <TableCell className="border-r border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-400 pl-8">
-                                                                        <div className="flex justify-between items-center group relative">
-                                                                            <span className={child.is_mapped ? "text-green-800 dark:text-green-400 font-medium" : ""}>- {child.original_name || child.material_name}</span>
+                                                                        <div className="flex flex-col gap-0.5 relative py-1">
+                                                                            <span className={child.material_code ? "text-green-800 dark:text-green-400 font-semibold" : ""}>
+                                                                                - {child.material_name}
+                                                                            </span>
+                                                                            {child.original_name && child.original_name !== child.material_name && (
+                                                                                <span className="text-[10px] text-slate-400 italic ml-2">(Gốc: {child.original_name})</span>
+                                                                            )}
                                                                         </div>
                                                                     </TableCell>
 
@@ -639,6 +830,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                     </TableBody>
                 </Table>
             </Card>
+
             {/* MODAL TỔNG HỢP VẬT TƯ */}
             <Dialog open={activeModal !== null} onOpenChange={(open) => !open && setActiveModal(null)}>
                 <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto dark:bg-slate-900 dark:border-slate-800">
@@ -668,7 +860,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                         <TableHead className="min-w-[200px] font-bold dark:text-slate-200">Tên Vật tư / Nhân công / Máy</TableHead>
                                         <TableHead className="w-[80px] text-center font-bold dark:text-slate-200">ĐVT</TableHead>
                                         <TableHead className="w-[100px] text-right font-bold dark:text-slate-200">Tổng Mua</TableHead>
-                                        <TableHead className="w-[150px] text-right font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30">Giá NCC (Theo ĐVT)</TableHead>
+                                        <TableHead className="w-[150px] text-right font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30">Giá NCC (Theo ĐVT Mua)</TableHead>
                                         <TableHead className="w-[150px] text-right font-bold dark:text-slate-200">Thành tiền</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -680,10 +872,9 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                                 <div className="flex justify-between items-center group relative pr-2">
                                                     <div className="flex flex-col gap-0.5">
                                                         <span>{mat.material_name}</span>
-                                                        {mat.is_mapped && <Badge className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 border-none px-1 text-[10px] w-fit">{mat.material_code}</Badge>}
+                                                        {mat.material_code && <Badge className="bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 border-none px-1 text-[10px] w-fit">{mat.material_code}</Badge>}
                                                     </div>
                                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {/* ✅ FIX TÌM KIẾM MÃ: THÊM KEY ĐỘC NHẤT */}
                                                         <MaterialSelector
                                                             key={`selector_${mat.material_name}`}
                                                             onSelect={(newMat) => handleBulkMaterialSelect(mat.material_name, mat.category, newMat)}

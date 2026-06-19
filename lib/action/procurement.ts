@@ -248,7 +248,9 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
         if (toIssueItems.length === 0 && toPurchaseItems.length === 0) {
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         } else {
+            // ==========================================
             // A. XUẤT KHO
+            // ==========================================
             if (toIssueItems.length > 0) {
                 if (!warehouseId) throw new Error("Dự án chưa được gán kho vật tư.");
                 const issueCode = `PXK-${Date.now().toString().slice(-6)}`;
@@ -281,43 +283,122 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 }
             }
 
-            // B. MUA HÀNG PO
+            // ==========================================
+            // B. MUA HÀNG PO & XỬ LÝ HÀNG MỒ CÔI
+            // ==========================================
             if (toPurchaseItems.length > 0) {
-                const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
-                    project_id: projectId, code: `PO-AUTO-${Date.now().toString().slice(-6)}`, status: 'draft',
-                    order_date: new Date().toISOString(), notes: `Tự động tạo từ Đề xuất`, reference_id: requestId,
-                    created_by: employeeId, warehouse_id: warehouseId
-                }).select().single();
+                // 1. Quét dữ liệu từ Giỏ nhu cầu (Để bắt các món Thu mua vừa chốt thầu)
+                const { data: awardedNeeds } = await supabase
+                    .from('procurement_needs')
+                    .select('material_code, material_name, awarded_supplier_id, awarded_price')
+                    .eq('project_id', projectId)
+                    .in('status', ['awarded', 'AWARDED']);
 
-                if (poErr) throw new Error("Lỗi tạo PO: " + poErr.message);
+                const groupedItems = new Map<string, any[]>();
+                const orphanItems: any[] = [];
 
-                const poDetails = toPurchaseItems.map(item => {
-                    const rate = Number(item.conversion_rate) || 1;
-                    const purchaseUnit = item.purchase_unit || item.base_unit || item.unit;
+                toPurchaseItems.forEach(item => {
+                    const itemNameToCheck = (item.material_name || item.item_name || "").trim().toLowerCase();
+                    const itemCodeToCheck = (item.material_code || "").trim().toUpperCase();
 
-                    let purchaseQtyConverted = item.action_purchase;
-                    const unitPrice = Number(item.purchase_price || 0);
+                    const matchedNeed = awardedNeeds?.find(need =>
+                        (itemCodeToCheck && need.material_code && need.material_code.trim().toUpperCase() === itemCodeToCheck) ||
+                        (need.material_name && need.material_name.trim().toLowerCase() === itemNameToCheck)
+                    );
 
-                    if (item.unit?.toLowerCase().trim() !== purchaseUnit?.toLowerCase().trim() && rate > 1) {
-                        purchaseQtyConverted = Math.ceil(item.action_purchase / rate);
+                    // ĐÃ FIX: Ưu tiên Database, nếu ko có thì bắt buộc lấy ID từ Frontend gửi lên
+                    const payloadSupplierId = item.awarded_supplier_id || item.supplier_id;
+                    const actualSupplierId = matchedNeed?.awarded_supplier_id || payloadSupplierId || null;
+
+                    const payloadPrice = Number(item.awarded_price || item.purchase_price || item.unit_price || 0);
+                    const actualPrice = matchedNeed?.awarded_price || payloadPrice;
+
+                    // Nếu có ID Nhà cung cấp (Bất kể từ DB hay từ Giao diện) -> Đưa vào Map để tạo PO
+                    if (actualSupplierId && actualSupplierId !== 'null' && actualSupplierId !== 'undefined') {
+                        if (!groupedItems.has(actualSupplierId)) groupedItems.set(actualSupplierId, []);
+                        groupedItems.get(actualSupplierId)!.push({
+                            ...item,
+                            final_unit_price: actualPrice
+                        });
+                    } else {
+                        // Không có ID NCC -> Đưa vào Hàng mồ côi
+                        orphanItems.push(item);
                     }
-
-                    return {
-                        po_id: po.id,
-                        item_name: item.item_name,
-                        unit: purchaseUnit,
-                        quantity: purchaseQtyConverted,
-                        unit_price: unitPrice
-                    };
                 });
 
-                const { error: poItemsErr } = await supabase.from('purchase_order_items').insert(poDetails);
-                if (poItemsErr) throw new Error("Lỗi thêm chi tiết PO: " + poItemsErr.message);
+                // 2. Tự động sinh PO Tách Rời cho từng Nhà Cung Cấp
+                for (const [supplierId, itemsForSupplier] of Array.from(groupedItems.entries())) {
+                    const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                    const poCode = `PO-${Date.now().toString().slice(-6)}-${randomSuffix}`;
+
+                    const { data: po, error: poErr } = await supabase.from('purchase_orders').insert({
+                        project_id: projectId,
+                        supplier_id: supplierId,
+                        code: poCode,
+                        status: 'draft',
+                        order_date: new Date().toISOString(),
+                        notes: `Tự động tạo từ Đề xuất vật tư`,
+                        reference_id: requestId,
+                        created_by: employeeId,
+                        warehouse_id: warehouseId
+                    }).select().single();
+
+                    if (poErr) throw new Error(`Lỗi tạo PO cho NCC ${supplierId}: ` + poErr.message);
+
+                    const poDetails = itemsForSupplier.map(item => {
+                        const rate = Number(item.conversion_rate) || 1;
+                        const purchaseUnit = item.purchase_unit || item.base_unit || item.unit;
+                        let purchaseQtyConverted = item.action_purchase;
+
+                        if (item.unit?.toLowerCase().trim() !== purchaseUnit?.toLowerCase().trim() && rate > 1) {
+                            purchaseQtyConverted = Math.ceil(item.action_purchase / rate);
+                        }
+
+                        return {
+                            po_id: po.id,
+                            item_name: item.item_name || item.material_name,
+                            unit: purchaseUnit,
+                            quantity: purchaseQtyConverted,
+                            unit_price: item.final_unit_price
+                        };
+                    });
+
+                    const { error: poItemsErr } = await supabase.from('purchase_order_items').insert(poDetails);
+                    if (poItemsErr) throw new Error("Lỗi thêm chi tiết PO: " + poItemsErr.message);
+                }
+
+                // 3. Xử lý Hàng Mồ Côi: Đẩy vào Giỏ Nhu Cầu của Phòng Thu Mua
+                if (orphanItems.length > 0) {
+                    const needsDetails = orphanItems.map(item => {
+                        const rate = Number(item.conversion_rate) || 1;
+                        const purchaseUnit = item.purchase_unit || item.base_unit || item.unit;
+                        let purchaseQtyConverted = item.action_purchase;
+
+                        if (item.unit?.toLowerCase().trim() !== purchaseUnit?.toLowerCase().trim() && rate > 1) {
+                            purchaseQtyConverted = Math.ceil(item.action_purchase / rate);
+                        }
+
+                        return {
+                            project_id: projectId,
+                            material_code: item.material_code || "",
+                            material_name: item.item_name || item.material_name,
+                            purchase_unit: purchaseUnit,
+                            purchase_quantity: purchaseQtyConverted,
+                            status: 'pending'
+                        };
+                    });
+
+                    const { error: needsErr } = await supabase.from('procurement_needs').insert(needsDetails);
+                    if (needsErr) throw new Error("Lỗi đẩy vật tư vào Giỏ nhu cầu: " + needsErr.message);
+                }
             }
 
             await supabase.from('material_requests').update({ status: 'approved' }).eq('id', requestId);
         }
 
+        // ==========================================
+        // C. BẮN TÍN HIỆU THÔNG BÁO
+        // ==========================================
         if (originalReq) {
             try {
                 await sendSystemNotification(supabase, {
@@ -330,7 +411,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
                 await sendSystemNotification(supabase, {
                     targetRole: 'procurement',
                     title: "Đề xuất cần tiến hành mua sắm",
-                    message: `Phiếu yêu cầu ${originalReq.code} đã được duyệt. Vui lòng tiến hành tìm kiếm NCC và báo giá.`,
+                    message: `Phiếu yêu cầu ${originalReq.code} đã được duyệt. Vui lòng kiểm tra Đơn hàng và Giỏ nhu cầu.`,
                     link: `/procurement/orders`
                 });
             } catch (notifyErr) {
@@ -339,7 +420,7 @@ export async function approveAndProcessRequest(requestId: string, projectId: str
         }
 
         revalidatePath(`/projects/${projectId}`);
-        return { success: true, message: "Đã duyệt và thực thi thành công!" };
+        return { success: true, message: "Đã duyệt và tự động điều phối PO thành công!" };
 
     } catch (e: any) {
         return { success: false, error: e.message };
@@ -866,7 +947,7 @@ export async function getBidTabulation(rfqId: string) {
             name: Array.isArray(s.supplier) ? s.supplier[0]?.name : s.supplier?.name
         }));
 
-        const { data: matrix, error: matrixError } = await supabase.from('rfq_bids').select('supplier_id, rfq_item_id, unit_price').eq('rfq_id', rfqId);
+        const { data: matrix, error: matrixError } = await supabase.from('rfq_bids').select('supplier_id, rfq_item_id, unit_price, is_selected').eq('rfq_id', rfqId);
         if (matrixError) console.error("Lỗi kéo giá:", matrixError);
 
         return { suppliers, matrix: matrix || [] };
@@ -1047,11 +1128,41 @@ export async function deleteRFQAction(rfqId: string) {
 export async function awardRfqAction(rfqId: string, winningSupplierId: string) {
     try {
         const supabase = await createClient();
-        const { error: rfqError } = await supabase.from('rfqs').update({ status: 'completed' }).eq('id', rfqId);
-        if (rfqError) throw rfqError;
 
+        // Cập nhật trạng thái Gói thầu và Báo giá
+        await supabase.from('rfqs').update({ status: 'completed' }).eq('id', rfqId);
+        await supabase.from('rfq_bids').update({ is_selected: false }).eq('rfq_id', rfqId);
+        await supabase.from('rfq_bids').update({ is_selected: true }).eq('rfq_id', rfqId).eq('supplier_id', winningSupplierId);
         await supabase.from('rfq_suppliers').update({ status: 'won' }).eq('rfq_id', rfqId).eq('supplier_id', winningSupplierId);
         await supabase.from('rfq_suppliers').update({ status: 'lost' }).eq('rfq_id', rfqId).neq('supplier_id', winningSupplierId);
+
+        // BƯỚC QUAN TRỌNG: CẬP NHẬT GIÁ VÀO GIỎ NHU CẦU ĐỂ DỰ TOÁN LẤY DỮ LIỆU
+        const { data: rfq } = await supabase.from('rfqs').select('project_id, title, code').eq('id', rfqId).single();
+        const { data: items } = await supabase.from('rfq_items').select('id, procurement_need_id').eq('rfq_id', rfqId);
+        const { data: bids } = await supabase.from('rfq_bids').select('rfq_item_id, unit_price').eq('rfq_id', rfqId).eq('supplier_id', winningSupplierId);
+
+        if (items && bids) {
+            for (const item of items) {
+                const bid = bids.find(b => b.rfq_item_id === item.id);
+                if (bid && item.procurement_need_id) {
+                    await supabase.from('procurement_needs').update({
+                        status: 'awarded', // Chuyển trạng thái để Dự toán biết là đã chốt xong
+                        awarded_supplier_id: winningSupplierId,
+                        awarded_price: bid.unit_price // Lưu giá thực tế chốt được
+                    }).eq('id', item.procurement_need_id);
+                }
+            }
+        }
+
+        // BẮN TÍN HIỆU (THÔNG BÁO) CHO BỘ PHẬN DỰ TOÁN
+        if (rfq) {
+            await sendSystemNotification(supabase, {
+                targetRole: 'qs', // Gửi cho những ai có role là qs hoặc estimator
+                title: "Đã chốt giá vật tư thi công",
+                message: `Phòng Thu mua đã chốt xong giá cho Gói thầu ${rfq.code} - ${rfq.title}. Vui lòng cập nhật dự toán để làm báo giá.`,
+                link: `/estimation/projects/${rfq.project_id}/review` // Dẫn Kỹ sư QS chui thẳng vào trang review của dự án đó
+            });
+        }
 
         revalidatePath(`/procurement/rfq/${rfqId}`);
         return { success: true };
@@ -1096,6 +1207,148 @@ export async function extendRfqDeadlineAction(rfqId: string, newDeadline: string
         return { success: true, message: "Đã gia hạn gói thầu thành công!" };
     } catch (error: any) {
         console.error("Lỗi gia hạn RFQ:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Chuẩn hóa vật tư phát sinh từ công trường vào Master Data
+export async function standardizeProcurementNeedAction(payload: {
+    needId: string;
+    materialCode: string;
+    materialName: string;
+    unit: string;
+    groupId?: string | null;
+}) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Kiểm tra mã vật tư này đã có trong danh mục chuẩn (materials) chưa
+        const { data: existingMat } = await supabase
+            .from('materials')
+            .select('code')
+            .eq('code', payload.materialCode)
+            .single();
+
+        // 2. Nếu chưa có, TỰ ĐỘNG TẠO MỚI vật tư vào danh mục
+        if (!existingMat) {
+            const { error: insertMatError } = await supabase
+                .from('materials')
+                .insert({
+                    code: payload.materialCode,
+                    name: payload.materialName,
+                    unit: payload.unit,
+                    purchase_unit: payload.unit,
+                    group_id: payload.groupId || null,
+                    conversion_rate: 1
+                });
+            if (insertMatError) throw new Error("Lỗi tạo mã vật tư mới vào danh mục: " + insertMatError.message);
+        }
+
+        // 3. Cập nhật lại thông tin chuẩn xác cho món hàng trong Giỏ nhu cầu
+        const { error: updateNeedError } = await supabase
+            .from('procurement_needs')
+            .update({
+                material_code: payload.materialCode,
+                material_name: payload.materialName, // Cập nhật lại tên chuẩn
+                purchase_unit: payload.unit
+            })
+            .eq('id', payload.needId);
+
+        if (updateNeedError) throw new Error("Lỗi cập nhật Giỏ nhu cầu: " + updateNeedError.message);
+
+        revalidatePath('/procurement/rfq');
+        return { success: true, message: "Đã chuẩn hóa vật tư thành công!" };
+    } catch (error: any) {
+        console.error("Lỗi chuẩn hóa vật tư:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Chốt thầu từng phần (Split Award): Ghi nhận chi tiết từng món hàng thuộc về NCC nào
+export async function awardSplitRfqAction(rfqId: string, selections: Record<string, string>) {
+    try {
+        const supabase = await createClient();
+
+        await supabase.from('rfq_bids').update({ is_selected: false }).eq('rfq_id', rfqId);
+
+        for (const [itemId, suppId] of Object.entries(selections)) {
+            if (suppId) {
+                await supabase.from('rfq_bids').update({ is_selected: true }).match({ rfq_item_id: itemId, supplier_id: suppId });
+            }
+        }
+
+        const winningSuppliers = [...new Set(Object.values(selections).filter(Boolean))];
+        await supabase.from('rfq_suppliers').update({ status: 'lost' }).eq('rfq_id', rfqId);
+
+        if (winningSuppliers.length > 0) {
+            await supabase.from('rfq_suppliers').update({ status: 'won' }).eq('rfq_id', rfqId).in('supplier_id', winningSuppliers);
+        }
+        await supabase.from('rfqs').update({ status: 'completed' }).eq('id', rfqId);
+
+        // BƯỚC QUAN TRỌNG: CẬP NHẬT TỪNG MÓN VÀO GIỎ NHU CẦU
+        const { data: rfq } = await supabase.from('rfqs').select('project_id, title, code').eq('id', rfqId).single();
+        const { data: items } = await supabase.from('rfq_items').select('id, procurement_need_id').eq('rfq_id', rfqId);
+
+        if (items) {
+            for (const item of items) {
+                const suppId = selections[item.id];
+                if (suppId) {
+                    const { data: bid } = await supabase.from('rfq_bids').select('unit_price').eq('rfq_item_id', item.id).eq('supplier_id', suppId).single();
+                    if (bid && item.procurement_need_id) {
+                        await supabase.from('procurement_needs').update({
+                            status: 'awarded',
+                            awarded_supplier_id: suppId,
+                            awarded_price: bid.unit_price
+                        }).eq('id', item.procurement_need_id);
+                    }
+                }
+            }
+        }
+
+        // BẮN TÍN HIỆU
+        if (rfq) {
+            await sendSystemNotification(supabase, {
+                targetRole: 'qs',
+                title: "Đã chốt giá vật tư (Bóc tách từng phần)",
+                message: `Phòng Thu mua đã chốt xong các mặt hàng tốt nhất cho Gói thầu ${rfq.code} - ${rfq.title}. Vui lòng kiểm tra lại.`,
+                link: `/estimation/projects/${rfq.project_id}/review`
+            });
+        }
+
+        revalidatePath(`/procurement/rfq/${rfqId}`);
+        return { success: true };
+    } catch (error: any) {
+        console.error("Lỗi awardSplitRfqAction:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Hủy chốt thầu (Revert Award)
+export async function unawardRfqAction(rfqId: string) {
+    try {
+        const supabase = await createClient();
+
+        await supabase.from('rfq_bids').update({ is_selected: false }).eq('rfq_id', rfqId);
+        await supabase.from('rfq_suppliers').update({ status: 'submitted' }).eq('rfq_id', rfqId);
+        await supabase.from('rfqs').update({ status: 'closed' }).eq('id', rfqId);
+
+        // XÓA DỮ LIỆU ĐÃ CHỐT TRONG GIỎ NHU CẦU ĐỂ DỰ TOÁN KHÔNG BỊ NHẦM LẪN
+        const { data: items } = await supabase.from('rfq_items').select('procurement_need_id').eq('rfq_id', rfqId);
+        if (items) {
+            const needIds = items.map(i => i.procurement_need_id).filter(Boolean);
+            if (needIds.length > 0) {
+                await supabase.from('procurement_needs').update({
+                    status: 'rfq_created', // Trả về trạng thái đang chạy thầu
+                    awarded_supplier_id: null,
+                    awarded_price: null
+                }).in('id', needIds);
+            }
+        }
+
+        revalidatePath(`/procurement/rfq/${rfqId}`);
+        return { success: true, message: "Đã hủy chốt thầu và thu hồi thông báo!" };
+    } catch (error: any) {
+        console.error("Lỗi unawardRfqAction:", error);
         return { success: false, error: error.message };
     }
 }

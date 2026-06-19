@@ -258,69 +258,100 @@ export async function recalculateProjectEffectivePrices(projectId: string) {
 }
 
 // ✅ LOGIC CỦA ANH ÁP DỤNG KHI NGƯỜI DÙNG NHẬP GIÁ TRỰC TIẾP Ở TAB 4
-export async function updateEstimationPriceByGroup(projectId: string, materialName: string, category: string, inputPurchasePrice: number) {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = await createClient();
-    const { data: items } = await supabase.from('estimation_items').select('*').eq('project_id', projectId).eq('material_name', materialName).eq('category', category);
-    if (!items || items.length === 0) return { success: true };
+export async function updateEstimationPriceByGroup(projectId: string, materialName: string, category: string, newPurchasePrice: number) {
+    try {
+        const { createClient } = await import("@/lib/supabase/server");
+        const supabase = await createClient();
 
-    const rate = Number(items[0].dimensions?.conversion_rate) || 1;
-    let totalRawQty = 0;
-    items.forEach(i => totalRawQty += (i.dimensions?.raw_quantity !== undefined ? Number(i.dimensions.raw_quantity) : Number(i.quantity)));
+        const { data: items } = await supabase.from('estimation_items').select('*').eq('project_id', projectId).eq('material_name', materialName).eq('category', category);
+        if (!items || items.length === 0) return { success: true };
 
-    let effectivePrice = inputPurchasePrice / rate;
-    if (rate > 1 && totalRawQty > 0) {
-        const convertedQuantity = Math.ceil(totalRawQty / rate);
-        const totalCost = convertedQuantity * inputPurchasePrice;
-        effectivePrice = totalCost / totalRawQty;
+        let totalRawQty = 0;
+        let rate = 1;
+
+        items.forEach(i => {
+            totalRawQty += (i.dimensions?.raw_quantity !== undefined ? Number(i.dimensions.raw_quantity) : Number(i.quantity));
+            if (i.dimensions?.conversion_rate) rate = Number(i.dimensions.conversion_rate);
+        });
+        rate = rate || 1;
+
+        // BÀI TOÁN QUY ĐỔI GIÁ BÌNH QUÂN KHI CHỐT THẦU
+        let effectivePrice = newPurchasePrice / rate;
+        if (rate > 1 && totalRawQty > 0) {
+            const convertedQuantity = Math.ceil(totalRawQty / rate); // Làm tròn số lượng theo Bao/Tấm
+            const totalCost = convertedQuantity * newPurchasePrice; // Tổng tiền = Số Bao * Giá 1 Bao
+            effectivePrice = totalCost / totalRawQty; // Phân bổ ngược lại ra giá Kg/m2 cho từng công tác
+        }
+
+        for (const item of items) {
+            const newDimensions = {
+                ...(item.dimensions || {}),
+                purchase_price: newPurchasePrice // Lưu giá mua chẵn
+            };
+            await supabase.from('estimation_items').update({
+                unit_price: effectivePrice, // Giá phân bổ
+                dimensions: newDimensions
+            }).eq('id', item.id);
+        }
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
     }
-
-    for (const item of items) {
-        // ✅ ĐÃ THÊM: Lưu lại giá người dùng mới gõ vào hệ thống
-        const newDim = { ...(item.dimensions || {}), purchase_price: inputPurchasePrice };
-        await supabase.from('estimation_items').update({ unit_price: effectivePrice, dimensions: newDim }).eq('id', item.id);
-    }
-    return { success: true };
 }
 
 // ✅ 2. KHI NGƯỜI DÙNG ĐỔI MÃ VẬT TƯ
 export async function updateEstimationMaterialByGroup(projectId: string, oldMaterialName: string, category: string, newMaterialFromClient: any) {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = await createClient();
-    const { data: masterMat } = await supabase.from('materials').select('*').eq('code', newMaterialFromClient.code).single();
-    if (!masterMat) return { success: false, error: "Không tìm thấy vật tư chuẩn." };
+    try {
+        const { createClient } = await import("@/lib/supabase/server");
+        const supabase = await createClient();
 
-    const { data: items } = await supabase.from('estimation_items').select('*').eq('project_id', projectId).eq('material_name', oldMaterialName).eq('category', category);
-    if (!items || items.length === 0) return { success: true };
+        const { data: masterMat } = await supabase.from('materials').select('*').eq('code', newMaterialFromClient.code).single();
+        if (!masterMat) return { success: false, error: "Không tìm thấy vật tư chuẩn." };
 
-    let totalRawQty = 0;
-    items.forEach(i => totalRawQty += (i.dimensions?.raw_quantity !== undefined ? Number(i.dimensions.raw_quantity) : Number(i.quantity)));
+        const { data: items } = await supabase.from('estimation_items').select('*').eq('project_id', projectId).eq('material_name', oldMaterialName).eq('category', category);
+        if (!items || items.length === 0) return { success: true };
 
-    const rate = Number(masterMat.conversion_rate) || 1;
-    const minUnitPrice = Number(masterMat.ref_price) || 0;
-    const purchasePrice = minUnitPrice * rate;
+        let totalRawQty = 0;
+        let currentPurchasePrice = 0; // Lưu lại giá Mua hiện tại đang nhập trên Dự toán
 
-    let effectivePrice = minUnitPrice;
-    if (rate > 1 && totalRawQty > 0) {
-        const convertedQuantity = Math.ceil(totalRawQty / rate);
-        const totalCost = convertedQuantity * purchasePrice;
-        effectivePrice = totalCost / totalRawQty;
+        items.forEach(i => {
+            totalRawQty += (i.dimensions?.raw_quantity !== undefined ? Number(i.dimensions.raw_quantity) : Number(i.quantity));
+            // Lấy giá hiện tại làm gốc để không bị đè mất
+            if (!currentPurchasePrice) {
+                currentPurchasePrice = Number(i.dimensions?.purchase_price) || (Number(i.unit_price) * (Number(i.dimensions?.conversion_rate) || 1));
+            }
+        });
+
+        const rate = Number(masterMat.conversion_rate) || 1;
+
+        // BÀI TOÁN QUY ĐỔI GIÁ BÌNH QUÂN (TÍNH CẢ HAO HỤT MUA CHẴN)
+        let effectivePrice = currentPurchasePrice / rate;
+        if (rate > 1 && totalRawQty > 0) {
+            const convertedQuantity = Math.ceil(totalRawQty / rate); // Làm tròn lên số lượng mua
+            const totalCost = convertedQuantity * currentPurchasePrice; // Tổng tiền
+            effectivePrice = totalCost / totalRawQty; // Giá bình quân
+        }
+
+        for (const item of items) {
+            const newDimensions = {
+                ...(item.dimensions || {}),
+                conversion_rate: rate,
+                purchase_unit: masterMat.purchase_unit || masterMat.unit,
+                purchase_price: currentPurchasePrice // Giữ nguyên giá đang tính, KHÔNG lấy masterMat.ref_price
+            };
+            await supabase.from('estimation_items').update({
+                is_mapped: true,
+                material_code: masterMat.code,
+                material_name: masterMat.name,
+                original_name: item.original_name || item.material_name,
+                dimensions: newDimensions,
+                unit_price: effectivePrice
+            }).eq('id', item.id);
+        }
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
     }
-
-    for (const item of items) {
-        // ✅ ĐÃ THÊM: Lưu purchase_price vào dimensions để backend có thể giữ giá khi xóa công tác
-        const newDimensions = {
-            ...(item.dimensions || {}),
-            conversion_rate: rate,
-            purchase_unit: masterMat.purchase_unit || masterMat.unit,
-            purchase_price: purchasePrice
-        };
-        await supabase.from('estimation_items').update({
-            is_mapped: true, material_code: masterMat.code, material_name: masterMat.name,
-            unit: masterMat.unit, unit_price: effectivePrice, dimensions: newDimensions
-        }).eq('id', item.id);
-    }
-    return { success: true };
 }
 
 export async function syncCostToWBS(projectId: string) {
