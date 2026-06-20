@@ -69,7 +69,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         // ==============================================================================
         let rawAwarded: any[] = [];
 
-        // NGUỒN 1: QUÉT TỪ GIỎ NHU CẦU
+        // NGUỒN 1: TỪ GIỎ NHU CẦU
         const { data: needsData } = await supabase
             .from('procurement_needs')
             .select('material_code, material_name, awarded_price')
@@ -80,7 +80,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             rawAwarded = [...rawAwarded, ...needsData];
         }
 
-        // NGUỒN 2: QUÉT TRỰC TIẾP TỪ GÓI THẦU (DỰ PHÒNG CHỐNG TRƯỢT DỮ LIỆU)
+        // NGUỒN 2: QUÉT TRỰC TIẾP VÀO LÕI GÓI THẦU (Giải quyết triệt để lỗi ảnh màn hình)
         const { data: completedRfqs } = await supabase
             .from('rfqs')
             .select('id')
@@ -90,15 +90,13 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         if (completedRfqs && completedRfqs.length > 0) {
             const rfqIds = completedRfqs.map(r => r.id);
 
-            // Lấy tất cả Item trong các gói thầu này
             const { data: rfqItems } = await supabase.from('rfq_items').select('*').in('rfq_id', rfqIds);
 
-            // Lấy TẤT CẢ các báo giá ĐÃ TRÚNG THẦU thuộc các gói thầu này
+            // Lấy Báo giá có is_selected = true
             const { data: winningBids } = await supabase.from('rfq_bids').select('*').in('rfq_id', rfqIds).eq('is_selected', true);
 
             if (rfqItems && winningBids) {
                 winningBids.forEach(bid => {
-                    // Dò tìm ID của item (Đề phòng database đặt tên cột là rfq_item_id hoặc item_id)
                     const rItem = rfqItems.find(i => i.id === bid.rfq_item_id || i.id === bid.item_id);
                     if (rItem) {
                         rawAwarded.push({
@@ -111,10 +109,9 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             }
         }
 
-        // BƯỚC 3: GỘP TRÙNG LẶP (DEDUP) ĐỂ KHÔNG BÁO CÁO NHIỀU LẦN
+        // Gộp trùng lặp (Dedup)
         const dedupedAwarded = Object.values(rawAwarded.reduce((acc, curr) => {
             if (curr.material_name && curr.awarded_price > 0) {
-                // Ưu tiên gom nhóm bằng mã, nếu ko có thì dùng tên
                 const key = curr.material_code ? curr.material_code.trim().toUpperCase() : curr.material_name.trim().toLowerCase();
                 acc[key] = curr;
             }
@@ -134,8 +131,10 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const handleToggleAllSections = () => {
         const sections = qtoTasks.filter(i => i.item_type === 'section' || (!i.parent_id && !i.item_type));
         const isAnyCollapsed = sections.some(s => expandedSections[s.id] === false);
-        if (isAnyCollapsed) setExpandedSections({});
-        else {
+
+        if (isAnyCollapsed) {
+            setExpandedSections({});
+        } else {
             const newState: Record<string, boolean> = {};
             sections.forEach(s => newState[s.id] = false);
             newState['standalone'] = false;
@@ -146,31 +145,61 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const handleDelete = async (id: string, name: string) => {
         if (!confirm(`Xóa mục này?`)) return;
         const res = (await deleteEstimationItem(id, projectId)) as ActionResponse;
-        if (res.success) { toast.success(res.message); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
-        else { toast.error(res.error); }
+        if (res.success) {
+            toast.success(res.message);
+            await loadData();
+            if (onUpdate) onUpdate();
+            router.refresh();
+        } else { toast.error(res.error); }
+    };
+
+    const handlePriceChange = async (id: string, newPrice: string) => {
+        const price = parseFloat(newPrice) || 0;
+        const res = (await updateEstimationPrice(id, projectId, price)) as ActionResponse;
+        if (!res.success) toast.error("Lỗi lưu giá: " + res.error);
+        else {
+            await loadData();
+            if (onUpdate) onUpdate();
+            router.refresh();
+        }
     };
 
     const handleBulkPriceChange = async (materialName: string, category: string, newPrice: string) => {
-        const inputPrice = parseFloat(newPrice) || 0;
-        const res = (await updateEstimationPriceByGroup(projectId, materialName, category, inputPrice)) as ActionResponse;
+        const price = parseFloat(newPrice) || 0;
+        const res = (await updateEstimationPriceByGroup(projectId, materialName, category, price)) as ActionResponse;
         if (!res.success) toast.error("Lỗi áp giá: " + res.error);
-        else { await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
+        else {
+            await loadData();
+            if (onUpdate) onUpdate();
+            router.refresh();
+        }
     };
 
     const handleBulkMaterialSelect = async (oldMaterialName: string, category: string, mat: any) => {
         const toastId = `toast-bulk-${oldMaterialName}`;
-        toast.loading("Đang gắn mã vật tư...", { id: toastId });
+        toast.loading("Đang tính toán hệ số quy đổi và đổi mã...", { id: toastId });
         const res = (await updateEstimationMaterialByGroup(projectId, oldMaterialName, category, mat)) as ActionResponse;
-        if (!res.success) { toast.error("Lỗi đổi mã: " + res.error, { id: toastId }); }
-        else { toast.success(`Đã đổi mã: ${mat.name}`, { id: toastId }); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
+        if (!res.success) {
+            toast.error("Lỗi đổi mã vật tư: " + res.error, { id: toastId });
+        } else {
+            toast.success(`Đã đổi mã và cập nhật hệ số: ${mat.name}`, { id: toastId });
+            await loadData();
+            if (onUpdate) onUpdate();
+            router.refresh();
+        }
     };
 
     const handleRateChange = async (id: string, category: string, newRate: string) => {
         const rate = parseFloat(newRate) || 0;
         const res = (await updateEstimationQuantity(id, projectId, rate, category)) as ActionResponse;
-        if (res?.success === false) toast.error("Lỗi lưu tỷ lệ: " + res.error);
-        else toast.success(`Đã cập nhật tỉ lệ ${category} thành ${rate}%`);
-        await loadData(); if (onUpdate) onUpdate(); router.refresh();
+        if (res?.success === false) {
+            toast.error("Lỗi lưu tỷ lệ: " + res.error);
+        } else {
+            toast.success(`Đã cập nhật tỉ lệ ${category} thành ${rate}%`);
+        }
+        await loadData();
+        if (onUpdate) onUpdate();
+        router.refresh();
     };
 
     const handleCreateManual = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -179,8 +208,13 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         const formData = new FormData(e.currentTarget);
         const data = { name: formData.get("name"), unit: formData.get("unit"), quantity: formData.get("quantity"), unit_price: formData.get("unit_price") };
         const res = (await createManualEstimationItem(projectId, data)) as ActionResponse;
-        if (res.success) { toast.success(res.message); setOpenManualDialog(false); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
-        else { toast.error(res.error); }
+        if (res.success) {
+            toast.success(res.message);
+            setOpenManualDialog(false);
+            await loadData();
+            if (onUpdate) onUpdate();
+            router.refresh();
+        } else { toast.error(res.error); }
         setNewItemLoading(false);
     };
 
@@ -197,8 +231,12 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         setIsImporting(true); const formData = new FormData(); formData.append("file", file);
         try {
             const res = (await importBOQFromExcel(projectId, formData)) as ActionResponse;
-            if (res.success) { toast.success(res.message); await loadData(); if (onUpdate) onUpdate(); router.refresh(); }
-            else { toast.error(res.error); }
+            if (res.success) {
+                toast.success(res.message);
+                await loadData();
+                if (onUpdate) onUpdate();
+                router.refresh();
+            } else { toast.error(res.error); }
         } catch (error) { toast.error("Lỗi hệ thống."); } finally { setIsImporting(false); e.target.value = ""; }
     };
 
@@ -276,7 +314,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     }, [normalItems, masterMaterials]);
 
     const handleAutoMapMaterials = async () => {
-        const confirmSync = window.confirm("Hệ thống sẽ tự động quét và gắn mã chuẩn cho các vật tư có tên khớp với Danh mục. Tiếp tục?");
+        const confirmSync = window.confirm("Hệ thống sẽ tự động quét và gắn mã chuẩn cho các vật tư có tên khớp với Danh mục hệ thống. Bạn có muốn tiếp tục?");
         if (!confirmSync) return;
 
         setIsSyncing(true);
@@ -284,8 +322,9 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
 
         try {
             if (!masterMaterials || masterMaterials.length === 0) {
-                toast.error("Danh mục vật tư trống!", { id: toastId });
-                setIsSyncing(false); return;
+                toast.error("Danh mục vật tư hệ thống trống!", { id: toastId });
+                setIsSyncing(false);
+                return;
             }
 
             let mappedCount = 0;
@@ -296,6 +335,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                     m.name.trim().toLowerCase() === item.material_name.trim().toLowerCase() ||
                     m.code.trim().toUpperCase() === item.material_name.trim().toUpperCase()
                 );
+
                 if (match) {
                     await updateEstimationMaterialByGroup(projectId, item.material_name, item.category, match);
                     mappedCount++;
@@ -303,17 +343,22 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             }
 
             if (mappedCount > 0) {
-                toast.success(`Đã đồng bộ mã thành công cho ${mappedCount} vật tư!`, { id: toastId });
-                await loadData(); if (onUpdate) onUpdate(); router.refresh();
+                toast.success(`Đã tự động đồng bộ mã thành công cho ${mappedCount} vật tư!`, { id: toastId });
+                await loadData();
+                if (onUpdate) onUpdate();
+                router.refresh();
             } else {
-                toast.info("Tất cả vật tư đã có mã, hoặc không có tên khớp.", { id: toastId });
+                toast.info("Tất cả vật tư đã có mã, hoặc không tìm thấy tên nào khớp với Danh mục hệ thống.", { id: toastId });
             }
-        } catch (error: any) { toast.error("Lỗi đồng bộ: " + error.message, { id: toastId }); }
-        finally { setIsSyncing(false); }
+        } catch (error: any) {
+            toast.error("Lỗi đồng bộ: " + error.message, { id: toastId });
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     // =====================================================================
-    // 🔔 ENGINE DÒ TÌM GIÁ: ĐỐI CHIẾU 3 LỚP (MÃ CHUẨN -> TÊN CHUẨN -> TÊN GỐC)
+    // 🔔 ENGINE DÒ TÌM GIÁ TỪ THU MUA
     // =====================================================================
     const checkPriceDiffs = (needs: any[], summaries: any[], showToastIfEmpty = false) => {
         const newDiffs: any[] = [];
@@ -324,7 +369,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 const nameMatch = s.material_name && need.material_name && s.material_name.trim().toLowerCase() === need.material_name.trim().toLowerCase();
                 const originalNameMatch = s.original_name && need.material_name && s.original_name.trim().toLowerCase() === need.material_name.trim().toLowerCase();
 
-                return codeMatch || nameMatch || originalNameMatch; // Bắt bằng mọi giá!
+                return codeMatch || nameMatch || originalNameMatch;
             });
 
             if (summary) {
@@ -349,7 +394,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         if (newDiffs.length > 0) setShowSyncPopup(true);
         else if (showToastIfEmpty) {
             if (needs.length === 0) toast.info("Chưa có gói thầu nào được chốt cho dự án này.");
-            else toast.success("Dữ liệu khớp 100%! Đơn giá dự toán đã trùng khớp với giá thu mua.", { icon: "✅" });
+            else toast.success("Dữ liệu khớp 100%! Không có chênh lệch giữa giá thầu và dự toán.", { icon: "✅" });
         }
     };
 
@@ -467,7 +512,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         toast.loading("Đang tổng hợp và đẩy dữ liệu sang Thu Mua...", { id: toastId });
 
         const itemsToProcurement = aggregatedSummaries
-            .filter(item => (item.category === 'VL' || item.category === 'M') && item.material_code)
+            .filter(item => (item.category === 'VL' || item.category === 'M') && item.is_mapped)
             .map(item => ({
                 project_id: projectId,
                 material_code: item.material_code,
@@ -493,7 +538,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 transition-colors">
-            {/* THÔNG BÁO POPUP ĐỒNG BỘ GIÁ */}
+            {/* THÔNG BÁO POPUP ĐỒNG BỘ GIÁ (CẬP NHẬT ĐẦY ĐỦ DARK MODE) */}
             <Dialog open={showSyncPopup} onOpenChange={setShowSyncPopup}>
                 <DialogContent className="max-w-3xl dark:bg-slate-900 dark:border-slate-800 shadow-2xl">
                     <DialogHeader>
@@ -509,7 +554,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                 <TableHeader className="bg-slate-100 dark:bg-slate-800 sticky top-0 shadow-sm z-10">
                                     <TableRow>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Tên / Mã Vật tư</TableHead>
-                                        <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Giá cũ (Dự toán)</TableHead>
+                                        <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Giá cũ (Giá Mua)</TableHead>
                                         <TableHead className="text-right font-bold text-emerald-700 dark:text-emerald-400">Giá mới (Đã chốt)</TableHead>
                                         <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Chênh lệch</TableHead>
                                     </TableRow>
@@ -522,11 +567,11 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                             <TableRow key={i} className="dark:border-slate-800">
                                                 <TableCell>
                                                     <div className="font-semibold text-slate-800 dark:text-slate-200">{d.material_name}</div>
-                                                    {d.material_code && <div className="text-xs text-slate-500">{d.material_code}</div>}
+                                                    {d.material_code && <div className="text-xs text-slate-500 dark:text-slate-400">{d.material_code}</div>}
                                                 </TableCell>
                                                 <TableCell className="text-right line-through text-slate-400 dark:text-slate-500">{formatCurrency(d.old_price)}</TableCell>
                                                 <TableCell className="text-right font-bold text-emerald-600 dark:text-emerald-500">{formatCurrency(d.new_price)}</TableCell>
-                                                <TableCell className={`text-right font-medium ${isCheaper ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                <TableCell className={`text-right font-medium ${isCheaper ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
                                                     {isCheaper ? 'Giảm ' : 'Tăng '} {formatCurrency(Math.abs(diffVal))}
                                                 </TableCell>
                                             </TableRow>
@@ -537,7 +582,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                         </div>
                     </div>
                     <DialogFooter className="mt-2 border-t pt-4 dark:border-slate-800">
-                        <Button variant="outline" onClick={() => setShowSyncPopup(false)} className="dark:text-slate-300 dark:border-slate-700">Bỏ qua (Giữ giá cũ)</Button>
+                        <Button variant="outline" onClick={() => setShowSyncPopup(false)} className="dark:text-slate-300 dark:border-slate-700 hover:dark:bg-slate-800">Bỏ qua (Giữ giá cũ)</Button>
                         <Button onClick={handleSyncPrices} disabled={isSyncing} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[150px]">
                             {isSyncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                             Cập nhật Giá Mới
@@ -562,13 +607,13 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                         <DialogContent className="dark:bg-slate-900 dark:border-slate-800">
                             <DialogHeader><DialogTitle className="dark:text-slate-100">Thêm mục chi phí bổ sung</DialogTitle></DialogHeader>
                             <form onSubmit={handleCreateManual} className="space-y-4 py-2">
-                                <div><Label className="dark:text-slate-300">Tên công việc / Vật tư <span className="text-red-500">*</span></Label><Input name="name" required placeholder="VD: Cát xây tô" className="dark:bg-slate-950 dark:border-slate-800" /></div>
+                                <div><Label className="dark:text-slate-300">Tên công việc / Vật tư <span className="text-red-500">*</span></Label><Input name="name" required placeholder="VD: Cát xây tô" className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><Label className="dark:text-slate-300">Đơn vị tính</Label><Input name="unit" placeholder="m3, kg..." className="dark:bg-slate-950 dark:border-slate-800" /></div>
-                                    <div><Label className="dark:text-slate-300">Khối lượng <span className="text-red-500">*</span></Label><Input name="quantity" type="number" step="0.01" required placeholder="0" className="dark:bg-slate-950 dark:border-slate-800" /></div>
+                                    <div><Label className="dark:text-slate-300">Đơn vị tính</Label><Input name="unit" placeholder="m3, kg..." className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
+                                    <div><Label className="dark:text-slate-300">Khối lượng <span className="text-red-500">*</span></Label><Input name="quantity" type="number" step="0.01" required placeholder="0" className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
                                 </div>
-                                <div><Label className="dark:text-slate-300">Đơn giá tạm tính</Label><Input name="unit_price" type="number" placeholder="0" className="dark:bg-slate-950 dark:border-slate-800" /></div>
-                                <DialogFooter><Button type="button" variant="outline" onClick={() => setOpenManualDialog(false)} className="dark:border-slate-800 dark:text-slate-300">Hủy</Button><Button type="submit" disabled={newItemLoading}>{newItemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu lại"}</Button></DialogFooter>
+                                <div><Label className="dark:text-slate-300">Đơn giá tạm tính</Label><Input name="unit_price" type="number" placeholder="0" className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
+                                <DialogFooter><Button type="button" variant="outline" onClick={() => setOpenManualDialog(false)} className="dark:border-slate-800 dark:text-slate-300 hover:dark:bg-slate-800">Hủy</Button><Button type="submit" disabled={newItemLoading}>{newItemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu lại"}</Button></DialogFooter>
                             </form>
                         </DialogContent>
                     </Dialog>
@@ -577,7 +622,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
 
                     <div className="relative">
                         <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                        <Button variant="outline" disabled={isImporting} className="h-9 border-slate-200 dark:border-slate-800 dark:text-slate-300">{isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel</Button>
+                        <Button variant="outline" disabled={isImporting} className="h-9 border-slate-200 dark:border-slate-800 dark:text-slate-300 hover:dark:bg-slate-800"><Upload className="w-4 h-4 mr-2" /> Import Excel</Button>
                     </div>
 
                     <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
@@ -640,7 +685,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Chi phí chung (Quản lý, lán trại...)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">GT = T x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="..." defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, 'GT', e.target.value)} />
+                                <Input type="number" className="h-8 text-center font-bold text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950" defaultValue={gtParam.quantity} onBlur={(e) => handleRateChange(gtParam.id, 'GT', e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(GT)}</TableCell>
                         </TableRow>
@@ -649,7 +694,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Thu nhập chịu thuế tính trước (Lợi nhuận)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">TL = (T+GT) x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="..." defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, 'LN', e.target.value)} />
+                                <Input type="number" className="h-8 text-center font-bold text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950" defaultValue={lnParam.quantity} onBlur={(e) => handleRateChange(lnParam.id, 'LN', e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(TL)}</TableCell>
                         </TableRow>
@@ -665,7 +710,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                             <TableCell className="font-medium text-slate-600 dark:text-slate-400">Thuế giá trị gia tăng (VAT)</TableCell>
                             <TableCell className="text-center font-medium text-slate-500">VAT = G x %</TableCell>
                             <TableCell className="p-1">
-                                <Input type="number" className="..." defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, 'VAT', e.target.value)} />
+                                <Input type="number" className="h-8 text-center font-bold text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950" defaultValue={vatParam.quantity} onBlur={(e) => handleRateChange(vatParam.id, 'VAT', e.target.value)} />
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-300">{formatCurrency(VAT)}</TableCell>
                         </TableRow>
@@ -714,7 +759,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                     </TableHeader>
                     <TableBody>
                         {!initLoaded ? (
-                            <TableRow><TableCell colSpan={11} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={11} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground dark:text-slate-400" /></TableCell></TableRow>
                         ) : (
                             <>
                                 {sections.map((section, secIdx) => {
