@@ -379,45 +379,46 @@ export async function syncCostToWBS(projectId: string) {
 // 
 export async function pushEstimationToProcurementAction(projectId: string, items: any[]) {
     try {
+        const { createClient } = await import("@/lib/supabase/server");
         const supabase = await createClient();
 
-        // 1. Xóa các nhu cầu thu mua cũ của dự án này đang ở trạng thái 'pending'
-        // Việc này đảm bảo nếu QS chỉnh sửa dự toán và bấm gửi lại, Thu mua luôn nhận bản mới nhất
-        const { error: deleteError } = await supabase
+        // 1. Kéo toàn bộ Mã vật tư HIỆN ĐANG CÓ trong Giỏ nhu cầu của Dự án này
+        const { data: existingNeeds, error: fetchErr } = await supabase
             .from('procurement_needs')
-            .delete()
-            .eq('project_id', projectId)
-            .eq('status', 'pending');
+            .select('material_code')
+            .eq('project_id', projectId);
 
-        if (deleteError) throw deleteError;
+        if (fetchErr) throw new Error("Không thể kiểm tra dữ liệu Thu mua hiện tại.");
 
-        // 2. Insert danh sách vật tư mới vào "Giỏ hàng" của Thu mua
-        if (items.length > 0) {
-            const { error: insertError } = await supabase
-                .from('procurement_needs')
-                .insert(items);
+        // Tạo một Set chứa các Mã đã tồn tại (để quét tốc độ cao)
+        const existingCodes = new Set((existingNeeds || []).map(n => n.material_code?.trim().toUpperCase()));
 
-            if (insertError) throw insertError;
-        }
-
-        // 3. Tự động gửi thông báo (Notification) cho phòng Thu mua
-        const { data: project } = await supabase
-            .from('projects')
-            .select('name')
-            .eq('id', projectId)
-            .single();
-
-        await supabase.from('notifications').insert({
-            user_role: 'PROCUREMENT',
-            title: 'Nhu cầu vật tư mới từ công trường',
-            message: `Dự án ${project?.name || 'không xác định'} vừa chốt tiên lượng. Mời phòng Thu mua vào tạo RFQ lấy giá.`,
-            link: '/procurement/rfq',
-            status: 'unread'
+        // 2. Lọc ra NHỮNG MÃ MỚI TINH (Chưa từng được đẩy sang Thu Mua)
+        const newItemsToInsert = items.filter(item => {
+            const code = item.material_code?.trim().toUpperCase();
+            return !existingCodes.has(code); // Chỉ giữ lại nếu chưa tồn tại
         });
 
-        return { success: true, message: "Đã chuyển danh sách vật tư sang Thu mua thành công!" };
+        if (newItemsToInsert.length === 0) {
+            return {
+                success: true,
+                message: "Tất cả vật tư đã có sẵn ở Phòng Thu Mua. Không có mã mới nào được bổ sung."
+            };
+        }
+
+        // 3. Tiến hành Insert các mã mới vào Giỏ nhu cầu
+        const { error: insertErr } = await supabase
+            .from('procurement_needs')
+            .insert(newItemsToInsert);
+
+        if (insertErr) throw new Error("Lỗi lưu vào Giỏ Nhu Cầu: " + insertErr.message);
+
+        return {
+            success: true,
+            message: `Đã đẩy thành công ${newItemsToInsert.length} vật tư mới bổ sung sang Thu Mua.`
+        };
+
     } catch (error: any) {
-        console.error("[pushEstimationToProcurementAction] Lỗi:", error);
         return { success: false, error: error.message };
     }
 }

@@ -163,6 +163,23 @@ export default function RFQDashboardClient({ userProfile }: { userProfile: any }
         else { toast.success("Đã xóa gói thầu!"); fetchData(); }
     };
 
+    // Hàm Xóa Vật tư khỏi Giỏ nhu cầu
+    const handleDeleteNeed = async (id: string, name: string) => {
+        if (!window.confirm(`Bạn có chắc chắn muốn xóa "${name}" khỏi Giỏ Nhu Cầu không? Hành động này không thể hoàn tác.`)) return;
+
+        const toastId = toast.loading("Đang xóa vật tư...");
+        const { error } = await supabase.from('procurement_needs').delete().eq('id', id);
+
+        if (error) {
+            toast.error("Lỗi xóa: " + error.message, { id: toastId });
+        } else {
+            // Xóa ID khỏi mảng đang select nếu người dùng lỡ tick chọn trước khi xóa
+            setSelectedNeeds(prev => prev.filter(item => item !== id));
+            toast.success("Đã xóa vật tư thành công!", { id: toastId });
+            fetchData();
+        }
+    };
+
     // Mở Modal Chuẩn hóa vật tư
     const openStandardizeModal = (need: any) => {
         setSelectedNeedForStd(need);
@@ -313,9 +330,20 @@ export default function RFQDashboardClient({ userProfile }: { userProfile: any }
                                         <TableCell className="text-center text-slate-600 dark:text-slate-400 font-medium">{need.purchase_unit}</TableCell>
                                         <TableCell className="text-center text-sm text-slate-500 dark:text-slate-400">{need.material_group?.name || '-'}</TableCell>
                                         <TableCell className="text-center" onClick={e => e.stopPropagation()}>
-                                            <Button variant="ghost" size="sm" onClick={() => openStandardizeModal(need)} className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-950/50">
-                                                <Settings2 className="w-4 h-4 mr-1" /> Chuẩn hóa
-                                            </Button>
+                                            <div className="flex items-center justify-center gap-1">
+                                                <Button variant="ghost" size="sm" onClick={() => openStandardizeModal(need)} className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-950/50">
+                                                    <Settings2 className="w-4 h-4 mr-1" /> Chuẩn hóa
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                                                    onClick={() => handleDeleteNeed(need.id, need.material_name || need.item_name)}
+                                                    title="Xóa khỏi Giỏ nhu cầu"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}

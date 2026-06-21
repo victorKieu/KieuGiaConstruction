@@ -506,21 +506,36 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     };
 
     const handlePushToProcurement = async () => {
-        if (!confirm("Hệ thống sẽ tổng hợp vật tư và gửi sang Phòng Thu Mua. Bạn có chắc chắn?")) return;
+        if (!confirm("Hệ thống sẽ tổng hợp vật tư và đẩy sang Phòng Thu Mua. Bạn có chắc chắn?")) return;
 
         const toastId = "push-procurement";
-        toast.loading("Đang tổng hợp và đẩy dữ liệu sang Thu Mua...", { id: toastId });
+        toast.loading("Đang đối chiếu và đẩy dữ liệu sang Thu Mua...", { id: toastId });
 
-        const itemsToProcurement = aggregatedSummaries
-            .filter(item => (item.category === 'VL' || item.category === 'M') && item.is_mapped)
-            .map(item => ({
-                project_id: projectId,
-                material_code: item.material_code,
-                material_name: item.material_name,
-                purchase_unit: item.display_unit,
-                purchase_quantity: item.display_quantity,
-                current_supplier_id: item.preferred_supplier_id_1 || null
-            }));
+        // DÙNG MAP ĐỂ GỘP CÁC VẬT TƯ BỊ TRÙNG MÃ CHUẨN (Nhưng khác tên gõ tay)
+        const groupedByCode = new Map<string, any>();
+
+        aggregatedSummaries
+            .filter(item => (item.category === 'VL' || item.category === 'M') && item.material_code)
+            .forEach(item => {
+                const code = item.material_code.trim().toUpperCase();
+                if (groupedByCode.has(code)) {
+                    // Nếu trùng mã, cộng dồn khối lượng mua
+                    const existing = groupedByCode.get(code);
+                    existing.purchase_quantity += item.display_quantity;
+                } else {
+                    groupedByCode.set(code, {
+                        project_id: projectId,
+                        material_code: code,
+                        material_name: item.material_name, // Lấy tên đại diện
+                        purchase_unit: item.display_unit,
+                        purchase_quantity: item.display_quantity,
+                        current_supplier_id: item.preferred_supplier_id_1 || null,
+                        status: 'pending'
+                    });
+                }
+            });
+
+        const itemsToProcurement = Array.from(groupedByCode.values());
 
         if (itemsToProcurement.length === 0) {
             toast.error("Không có vật tư nào được chuẩn hóa mã để gửi đi!", { id: toastId });

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
     Plus, Trash2, FileText, Calendar, User, ShoppingCart, Package,
-    CheckSquare, Truck, Loader2, Lock, Edit, Store, FileQuestion
+    CheckSquare, Truck, Loader2, Lock, Edit, Store, FileQuestion, X
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -172,7 +172,17 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
         });
     };
 
+    // ✅ Thêm hàm xóa item khỏi danh sách duyệt
+    const handleRemoveApprovalItem = (indexToRemove: number) => {
+        setApprovalItems(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
     const handleApprove = async () => {
+        if (approvalItems.length === 0) {
+            toast.warning("Không có vật tư nào để duyệt!");
+            return;
+        }
+
         setProcessing(true);
         const res = await approveAndProcessRequest(selectedRequest.id, projectId, approvalItems, warehouseId);
         if (res.success) {
@@ -305,10 +315,11 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                         <TableRow className="dark:border-slate-800">
                                             <TableHead className="font-bold text-indigo-900 dark:text-indigo-300 w-[20%]">Vật tư / Tài sản</TableHead>
                                             <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[8%]">ĐVT</TableHead>
-                                            <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[12%]">Tồn kho</TableHead>
+                                            <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[10%]">Tồn kho</TableHead>
                                             <TableHead className="text-center font-bold text-indigo-900 dark:text-indigo-300 w-[15%]">Duyệt SL</TableHead>
-                                            <TableHead className="font-bold text-indigo-900 dark:text-indigo-300 w-[25%]">Chỉ định NCC</TableHead>
+                                            <TableHead className="font-bold text-indigo-900 dark:text-indigo-300 w-[22%]">Chỉ định NCC</TableHead>
                                             <TableHead className="text-right font-bold text-indigo-900 dark:text-indigo-300 w-[20%]">Giải pháp</TableHead>
+                                            <TableHead className="w-[5%]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -362,17 +373,28 @@ export default function MaterialRequestManager({ projectId, requests: initialReq
                                                         )}
                                                     </div>
                                                 </TableCell>
+                                                <TableCell className="text-center p-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                                        onClick={() => handleRemoveApprovalItem(idx)}
+                                                        title="Xóa khỏi danh sách duyệt"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
                                 </Table>
                             </div>
 
-                            <Button onClick={handleApprove} disabled={processing} className="w-full bg-green-600 hover:bg-green-700 h-10 text-white dark:bg-green-600 dark:hover:bg-green-700 border-none">
+                            <Button onClick={handleApprove} disabled={processing || approvalItems.length === 0} className="w-full bg-green-600 hover:bg-green-700 h-10 text-white dark:bg-green-600 dark:hover:bg-green-700 border-none">
                                 {processing ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Đang xử lý...</> : "✅ Xác nhận Duyệt & Tự động tạo PO"}
                             </Button>
                         </div>
-                    ) : <div className="text-red-500 dark:text-red-400 py-4 text-center">Lỗi không tải được dữ liệu.</div>}
+                    ) : <div className="text-slate-500 dark:text-slate-400 py-4 text-center">Không có vật tư nào để duyệt.</div>}
                 </DialogContent>
             </Dialog>
         </div>
