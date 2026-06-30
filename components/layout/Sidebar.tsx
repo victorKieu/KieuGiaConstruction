@@ -49,14 +49,19 @@ const navItems = [
         ],
     },
     {
-        title: "Tài chính",
+        title: "Tài chính - Kế toán",
         href: "/finance",
         icon: DollarSign,
         permission: "finance:view",
         children: [
-            { title: "Thu/ Chi", href: "/finance/accounting" },
-            { title: "QL Thanh Toán NCC", href: "/finance/payables" },
-        ],
+            { title: "Tổng quan", href: "/finance/dashboard", roles: ["ADMIN", "DIRECTOR", "CHIEF_ACCOUNTANT"] },
+            { title: "Sổ Quỹ Thu / Chi", href: "/finance/cashbook", roles: ["ADMIN", "DIRECTOR", "CHIEF_ACCOUNTANT", "CASHIER", "PAYMENT_ACCOUNTANT"] },
+            { title: "Phải trả NCC (AP)", href: "/finance/payables", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "AP_ACCOUNTANT"] },
+            { title: "Phải thu KH (AR)", href: "/finance/receivables", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "AR_ACCOUNTANT"] },
+            { title: "Sổ Nhật ký chung", href: "/finance/journals", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "GENERAL_ACCOUNTANT"] },
+            { title: "Kế toán Thuế", href: "/finance/tax", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "TAX_ACCOUNTANT"] }, // <-- BỔ SUNG Ở ĐÂY
+            { title: "Báo cáo (P&L)", href: "/finance/reports", roles: ["ADMIN", "DIRECTOR", "CHIEF_ACCOUNTANT"] },
+        ]
     },
     {
         title: "Quản lý kho",

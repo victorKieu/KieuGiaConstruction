@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
@@ -16,9 +17,10 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, CreditCard, Plus, Loader2, ArrowRight } from "lucide-react";
+import { FileText, CreditCard, Plus, Loader2, ArrowRight, Send } from "lucide-react";
 
-import { createSupplierInvoiceAction, createPaymentToSupplierAction } from "@/lib/action/finance";
+// Thay đổi API import: Dùng createPaymentRequestAction thay vì thanh toán trực tiếp
+import { createSupplierInvoiceAction, createPaymentRequestAction } from "@/lib/action/finance";
 import { formatCurrency } from "@/lib/utils/utils";
 
 interface Props {
@@ -31,19 +33,21 @@ export default function AccountsPayableManager({ pendingPOs, invoices }: Props) 
         <Tabs defaultValue="invoices" className="space-y-4 transition-colors">
             <TabsList className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
                 <TabsTrigger value="invoices" className="gap-2 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-slate-100 transition-colors"><FileText className="w-4 h-4" /> Hóa đơn & Công nợ</TabsTrigger>
-                <TabsTrigger value="pending" className="gap-2 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-slate-100 transition-colors"><Plus className="w-4 h-4" /> Chờ ghi nhận ({pendingPOs.length})</TabsTrigger>
+                <TabsTrigger value="pending" className="gap-2 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-slate-100 transition-colors"><Plus className="w-4 h-4" /> Chờ ghi nhận ({(pendingPOs || []).length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="invoices">
                 <Card className="border-slate-200 dark:border-slate-800 shadow-sm dark:bg-slate-950 transition-colors">
-                    <CardHeader className="border-b dark:border-slate-800 transition-colors">
-                        <CardTitle className="dark:text-slate-100">Danh sách Hóa đơn đầu vào (Phải trả NCC)</CardTitle>
+                    <CardHeader className="border-b dark:border-slate-800 transition-colors bg-slate-50 dark:bg-slate-900/50">
+                        <CardTitle className="dark:text-slate-100 flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-indigo-500" /> Danh sách Hóa đơn đầu vào (Phải trả NCC)
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-0 sm:p-6 transition-colors">
-                        <div className="overflow-x-auto rounded-md sm:border dark:border-slate-800">
+                    <CardContent className="p-0 transition-colors">
+                        <div className="overflow-x-auto">
                             <Table className="bg-white dark:bg-slate-950 transition-colors">
                                 <TableHeader>
-                                    <TableRow className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
+                                    <TableRow className="bg-slate-50 dark:bg-slate-900 border-b dark:border-slate-800 transition-colors">
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Số HĐ / Ngày</TableHead>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Nhà Cung Cấp</TableHead>
                                         <TableHead className="font-bold text-slate-700 dark:text-slate-300">Theo đơn (PO)</TableHead>
@@ -55,14 +59,14 @@ export default function AccountsPayableManager({ pendingPOs, invoices }: Props) 
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
-                                    {invoices.length === 0 ? (
+                                    {(invoices || []).length === 0 ? (
                                         <TableRow><TableCell colSpan={8} className="text-center py-8 text-slate-500 dark:text-slate-400 italic">Chưa có dữ liệu công nợ</TableCell></TableRow>
-                                    ) : invoices.map((inv) => {
+                                    ) : (invoices || []).map((inv) => {
                                         const total = Number(inv.total_amount) || 0;
                                         const paid = Number(inv.paid_amount) || 0;
                                         const debt = total - paid;
                                         // @ts-ignore
-                                        const supplierName = inv.supplier?.supplier?.name || "N/A";
+                                        const supplierName = inv.po?.supplier?.name || "N/A";
 
                                         return (
                                             <TableRow key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors border-none">
@@ -89,11 +93,11 @@ export default function AccountsPayableManager({ pendingPOs, invoices }: Props) 
                                                 </TableCell>
                                                 <TableCell className="align-top py-4 text-center">
                                                     {inv.payment_status === 'paid' && <Badge className="bg-green-600 hover:bg-green-700 dark:bg-green-500/20 dark:text-green-400 border-none transition-colors">Đã xong</Badge>}
-                                                    {inv.payment_status === 'partial' && <Badge className="bg-yellow-600 hover:bg-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400 border-none transition-colors">1 Phần</Badge>}
+                                                    {inv.payment_status === 'partial' && <Badge className="bg-amber-500 hover:bg-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border-none transition-colors">1 Phần</Badge>}
                                                     {inv.payment_status === 'pending' && <Badge variant="secondary" className="dark:bg-slate-800 dark:text-slate-300 border-none transition-colors">Chưa trả</Badge>}
                                                 </TableCell>
                                                 <TableCell className="align-top py-4 text-right">
-                                                    {debt > 0 && <PaymentDialog invoice={inv} debtAmount={debt} supplierName={supplierName} />}
+                                                    {debt > 0 && <PaymentRequestDialog invoice={inv} debtAmount={debt} supplierName={supplierName} />}
                                                 </TableCell>
                                             </TableRow>
                                         )
@@ -107,12 +111,12 @@ export default function AccountsPayableManager({ pendingPOs, invoices }: Props) 
 
             <TabsContent value="pending">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {pendingPOs.length === 0 && (
+                    {(pendingPOs || []).length === 0 && (
                         <div className="col-span-full text-center py-12 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors italic">
                             Tất cả đơn đặt hàng (PO) nhập kho đều đã có hóa đơn.
                         </div>
                     )}
-                    {pendingPOs.map((po) => (
+                    {(pendingPOs || []).map((po) => (
                         <Card key={po.id} className="border-l-4 border-l-blue-500 dark:border-l-blue-600 shadow-sm hover:shadow-md dark:bg-slate-950 dark:border-y-slate-800 dark:border-r-slate-800 transition-all">
                             <CardHeader className="pb-2 border-b border-slate-100 dark:border-slate-800/50">
                                 <div className="flex justify-between items-start mb-1">
@@ -146,6 +150,7 @@ const formatInputMoney = (val: number | string) => {
 
 // --- DIALOG 1: GHI NHẬN HÓA ĐƠN TỪ PO ---
 function CreateInvoiceDialog({ po }: { po: any }) {
+    const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -189,8 +194,8 @@ function CreateInvoiceDialog({ po }: { po: any }) {
         if (res.success) {
             toast.success(res.message);
             setOpen(false);
+            router.refresh();
         } else {
-            console.error("Lỗi:", res.error);
             toast.error("Lỗi: " + res.error);
         }
     };
@@ -205,7 +210,7 @@ function CreateInvoiceDialog({ po }: { po: any }) {
             <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800 transition-colors">
                 <DialogHeader>
                     <DialogTitle className="dark:text-slate-100 flex items-center gap-2"><FileText className="w-5 h-5 text-blue-500" /> Ghi nhận Hóa đơn NCC</DialogTitle>
-                    <DialogDescription className="dark:text-slate-400">Nhập thông tin hóa đơn thực tế nhận được từ Nhà cung cấp.</DialogDescription>
+                    <DialogDescription className="dark:text-slate-400">Hệ thống sẽ tự động hạch toán tăng Công nợ (Có 331) và tăng Chi phí (Nợ 154).</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-5 pt-2">
                     <div className="grid grid-cols-2 gap-4">
@@ -249,7 +254,7 @@ function CreateInvoiceDialog({ po }: { po: any }) {
                     <DialogFooter className="pt-2 border-t dark:border-slate-800">
                         <Button type="button" variant="outline" onClick={() => setOpen(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors">Hủy</Button>
                         <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px] transition-colors">
-                            {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : "Lưu hóa đơn"}
+                            {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : "Lưu hóa đơn & Ghi sổ"}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -258,41 +263,44 @@ function CreateInvoiceDialog({ po }: { po: any }) {
     )
 }
 
-// --- DIALOG 2: THANH TOÁN ---
-function PaymentDialog({ invoice, debtAmount, supplierName }: { invoice: any, debtAmount: number, supplierName: string }) {
+// --- DIALOG 2: LẬP ĐỀ NGHỊ THANH TOÁN (THAY VÌ CHI TIỀN TRỰC TIẾP) ---
+function PaymentRequestDialog({ invoice, debtAmount, supplierName }: { invoice: any, debtAmount: number, supplierName: string }) {
+    const router = useRouter();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const [amountRaw, setAmountRaw] = useState(debtAmount);
     const [amountDisplay, setAmountDisplay] = useState(formatInputMoney(debtAmount));
-
-    const [method, setMethod] = useState("transfer");
-    const [note, setNote] = useState("");
+    const [note, setNote] = useState(`Thanh toán công nợ HĐ ${invoice.invoice_number}`);
 
     const handleMoneyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const rawValue = e.target.value.replace(/\D/g, "");
         if (Number(rawValue) > debtAmount) {
-            toast.warning("Không thể nhập quá số tiền nợ!");
+            toast.warning("Không thể lập đề nghị vượt quá số tiền nợ!");
         }
         setAmountDisplay(formatInputMoney(rawValue));
         setAmountRaw(Number(rawValue));
     };
 
-    const handlePay = async () => {
+    const handleCreateRequest = async () => {
         if (amountRaw <= 0 || amountRaw > debtAmount) return toast.error("Số tiền không hợp lệ");
 
         setLoading(true);
-        const res = await createPaymentToSupplierAction({
-            invoice_id: invoice.id,
+        // GỌI API LẬP ĐỀ NGHỊ (Sẽ đẩy qua màn hình Sổ Quỹ)
+        const res = await createPaymentRequestAction({
+            type: 'payment', // Loại: Chi tiền
             amount: amountRaw,
-            payment_method: method,
-            payment_date: new Date(),
-            notes: note
+            description: note,
+            partner_name: supplierName,
+            project_id: invoice.po?.project_id || null
         });
+
         setLoading(false);
-        if (res.success) { toast.success(res.message); setOpen(false); }
-        else {
-            console.error("Lỗi:", res.error);
+        if (res.success) {
+            toast.success("Đã gửi Đề nghị thanh toán sang Kế toán trưởng!");
+            setOpen(false);
+            router.refresh();
+        } else {
             toast.error("Lỗi: " + res.error);
         }
     }
@@ -300,14 +308,14 @@ function PaymentDialog({ invoice, debtAmount, supplierName }: { invoice: any, de
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="text-green-600 dark:text-green-500 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors shadow-sm">
-                    <CreditCard className="w-4 h-4 mr-1.5" /> Chi tiền
+                <Button size="sm" className="bg-amber-100 text-amber-700 hover:bg-amber-200 border-none dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50 transition-colors shadow-sm font-semibold">
+                    <Send className="w-3 h-3 mr-1.5" /> Lập Đề nghị chi
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800 transition-colors">
                 <DialogHeader>
-                    <DialogTitle className="dark:text-slate-100 flex items-center gap-2"><CreditCard className="w-5 h-5 text-green-600 dark:text-green-500" /> Thanh toán cho Nhà Cung Cấp</DialogTitle>
-                    <DialogDescription className="dark:text-slate-400">Tạo phiếu chi để thanh toán công nợ theo hóa đơn.</DialogDescription>
+                    <DialogTitle className="dark:text-slate-100 flex items-center gap-2"><Send className="w-5 h-5 text-amber-500" /> Lập Đề nghị Thanh toán</DialogTitle>
+                    <DialogDescription className="dark:text-slate-400">Phiếu đề nghị sẽ được chuyển sang Sổ Quỹ để Kế toán trưởng duyệt và Thủ quỹ chi tiền.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-5 py-2">
                     <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl text-sm space-y-2.5 border border-slate-200 dark:border-slate-800 transition-colors">
@@ -326,39 +334,27 @@ function PaymentDialog({ invoice, debtAmount, supplierName }: { invoice: any, de
                     </div>
 
                     <div className="space-y-2">
-                        <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Số tiền chi trả (VND) <span className="text-red-500">*</span></Label>
+                        <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Số tiền đề nghị chi (VND) <span className="text-red-500">*</span></Label>
                         <div className="relative">
                             <Input
                                 type="text"
                                 value={amountDisplay}
                                 onChange={handleMoneyChange}
-                                className="font-black text-green-700 dark:text-green-400 text-xl pr-8 h-12 bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900/50 focus-visible:ring-green-500 transition-colors"
+                                className="font-black text-amber-700 dark:text-amber-400 text-xl pr-8 h-12 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 focus-visible:ring-amber-500 transition-colors"
                             />
                             <span className="absolute right-4 top-3.5 text-slate-400 font-bold">đ</span>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Hình thức</Label>
-                            <Select value={method} onValueChange={setMethod}>
-                                <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors h-10"><SelectValue /></SelectTrigger>
-                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                    <SelectItem value="transfer" className="dark:text-slate-200 font-medium">Chuyển khoản</SelectItem>
-                                    <SelectItem value="cash" className="dark:text-slate-200 font-medium">Tiền mặt</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Nội dung chi</Label>
-                            <Input value={note} onChange={e => setNote(e.target.value)} placeholder="VD: TT HĐ 001..." className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors h-10" />
-                        </div>
+                    <div className="space-y-2">
+                        <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Nội dung chi</Label>
+                        <Input value={note} onChange={e => setNote(e.target.value)} placeholder="VD: TT HĐ 001..." className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 transition-colors h-10" />
                     </div>
                 </div>
                 <DialogFooter className="pt-2 border-t dark:border-slate-800 mt-2">
                     <Button variant="outline" onClick={() => setOpen(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors">Hủy</Button>
-                    <Button onClick={handlePay} disabled={loading || amountRaw <= 0} className="bg-green-600 hover:bg-green-700 text-white min-w-[130px] transition-colors shadow-md">
-                        {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : "Xác nhận Chi tiền"}
+                    <Button onClick={handleCreateRequest} disabled={loading || amountRaw <= 0} className="bg-amber-600 hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500 text-white min-w-[150px] transition-colors shadow-md">
+                        {loading ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : "Gửi Đề nghị chi"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

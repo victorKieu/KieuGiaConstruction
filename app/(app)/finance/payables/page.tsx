@@ -18,12 +18,11 @@ export default async function PayablesPage() {
                         Công nợ Phải trả (AP)
                     </h2>
                     <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 mt-1 transition-colors">
-                        Theo dõi hóa đơn đầu vào, công nợ và thanh toán cho Nhà cung cấp.
+                        Quản lý hóa đơn đầu vào từ nhà cung cấp và lập đề nghị chi tiền.
                     </p>
                 </div>
             </div>
 
-            {/* Component chính */}
             <AccountsPayableManager pendingPOs={pendingPOs} invoices={invoices} />
         </div>
     );
