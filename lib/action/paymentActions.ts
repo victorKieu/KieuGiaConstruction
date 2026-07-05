@@ -181,3 +181,23 @@ export async function receiveContractPayment(data: {
         return { success: false, error: e.message };
     }
 }
+
+// Thêm hàm này vào file paymentActions.ts
+export async function updatePaymentMilestone(id: string, payload: any, projectId: string) {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+        .from("payment_milestones")
+        .update(payload)
+        .eq("id", id);
+
+    if (error) {
+        return { success: false, error: error.message };
+    }
+
+    if (projectId) {
+        revalidatePath(`/projects/${projectId}`);
+    }
+
+    return { success: true };
+}

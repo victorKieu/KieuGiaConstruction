@@ -1,28 +1,26 @@
 import { getVatInvoices } from "@/lib/action/finance";
-import TaxManager from "@/components/finance/TaxManager";
+import TaxReportDashboard from "@/components/finance/TaxReportDashboard"; // Đổi tên Component
 
 export const dynamic = "force-dynamic";
 
 export default async function TaxPage() {
-    // 1. Kéo dữ liệu từ Database
+    // Kéo toàn bộ dữ liệu Hóa đơn đã được AP và AR nhập liệu/đồng bộ
     const { inputVat, outputVat } = await getVatInvoices();
 
-    // 2. Truyền dữ liệu vào Component con
     return (
         <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 transition-colors">
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100 transition-colors">
-                        Kế Toán Thuế & Hóa Đơn (VAT)
+                        Báo Cáo Thuế GTGT
                     </h2>
                     <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 mt-1 transition-colors">
-                        Quản lý Bảng kê Hóa đơn GTGT Mua vào / Bán ra và tính toán thuế khấu trừ.
+                        Tự động tổng hợp dữ liệu từ phân hệ Công nợ (AP/AR). Tính toán cấn trừ thuế đầu vào và đầu ra.
                     </p>
                 </div>
             </div>
 
-            {/* Gọi Component hiển thị ở đây */}
-            <TaxManager inputVat={inputVat} outputVat={outputVat} />
+            <TaxReportDashboard inputVat={inputVat} outputVat={outputVat} />
         </div>
     );
 }

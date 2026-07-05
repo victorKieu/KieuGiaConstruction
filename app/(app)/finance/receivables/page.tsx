@@ -1,10 +1,14 @@
-import { getAllReceivables } from "@/lib/action/finance";
-import ReceivablesManager from "@/components/finance/receivables-manager";
+import { getAllReceivables, getProjectsForSelect } from "@/lib/action/finance";
+import ReceivablesManager from "@/components/finance/ReceivablesManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReceivablesPage() {
-    const receivables = await getAllReceivables();
+    // Kéo dữ liệu song song từ Backend (Bổ sung lấy danh sách Dự án)
+    const [receivables, projects] = await Promise.all([
+        getAllReceivables(),
+        getProjectsForSelect()
+    ]);
 
     return (
         <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 transition-colors">
@@ -19,7 +23,8 @@ export default async function ReceivablesPage() {
                 </div>
             </div>
 
-            <ReceivablesManager milestones={receivables} />
+            {/* Đã truyền thêm danh sách projects vào Component để gắn hóa đơn */}
+            <ReceivablesManager milestones={receivables} projects={projects} />
         </div>
     );
 }

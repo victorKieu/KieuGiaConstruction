@@ -1,14 +1,29 @@
 import { getPaymentRequests, getProjectsForSelect, getAccountingAccounts } from "@/lib/action/finance";
 import CashbookManager from "@/components/finance/CashbookManager";
+import { createClient } from "@/lib/supabase/server";
+// Đổi đường dẫn import sao cho khớp với thư mục thực tế của anh
+import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
 export const dynamic = "force-dynamic";
 
 export default async function CashbookPage() {
-    // Tải dữ liệu song song từ Backend
+    const supabase = await createClient();
+
+    // 1. Dùng ngay hàm xịn sò đã được Cache của hệ thống
+    const userProfile = await getUserProfile();
+
+    // 2. Kéo thông tin cấu hình công ty
+    const { data: companySettings } = await supabase
+        .from('company_settings')
+        .select('name, address')
+        .eq('id', 'DEFAULT')
+        .single();
+
+    // 3. Tải dữ liệu song song từ Backend
     const [requests, projects, accounts] = await Promise.all([
         getPaymentRequests(),
         getProjectsForSelect(),
-        getAccountingAccounts() // Lấy danh sách tài khoản 111, 112, 154...
+        getAccountingAccounts()
     ]);
 
     return (
@@ -24,11 +39,13 @@ export default async function CashbookPage() {
                 </div>
             </div>
 
-            {/* Truyền dữ liệu thật vào Component giao diện */}
+            {/* Truyền thẳng userProfile, bên trong đã có sẵn thuộc tính .role */}
             <CashbookManager
                 initialRequests={requests}
                 projects={projects}
                 accounts={accounts}
+                companySettings={companySettings}
+                userProfile={userProfile}
             />
         </div>
     );

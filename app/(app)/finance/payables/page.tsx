@@ -1,13 +1,14 @@
-import { getPOsPendingInvoice, getPayableInvoices } from "@/lib/action/finance";
+import { getPOsPendingInvoice, getPayableInvoices, getProjectsForSelect } from "@/lib/action/finance";
 import AccountsPayableManager from "@/components/finance/AccountsPayableManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function PayablesPage() {
-    // Load dữ liệu song song
-    const [pendingPOs, invoices] = await Promise.all([
+    // Load dữ liệu song song (Đã bổ sung lấy danh sách Dự án)
+    const [pendingPOs, invoices, projects] = await Promise.all([
         getPOsPendingInvoice(),
-        getPayableInvoices()
+        getPayableInvoices(),
+        getProjectsForSelect()
     ]);
 
     return (
@@ -23,7 +24,12 @@ export default async function PayablesPage() {
                 </div>
             </div>
 
-            <AccountsPayableManager pendingPOs={pendingPOs} invoices={invoices} />
+            {/* Đã truyền thêm projects vào Component */}
+            <AccountsPayableManager
+                pendingPOs={pendingPOs}
+                invoices={invoices}
+                projects={projects}
+            />
         </div>
     );
 }

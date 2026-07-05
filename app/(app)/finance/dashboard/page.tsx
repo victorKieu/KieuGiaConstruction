@@ -1,16 +1,20 @@
-import { getFinanceDashboardData, getMonthlyStats } from "@/lib/action/finance";
+import { getFinanceDashboardData } from "@/lib/action/finance";
 import FinanceDashboard from "@/components/finance/FinanceDashboard";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-    // Tải song song: Số dư hiện tại & Biểu đồ dòng tiền 6 tháng
-    const [dashboardRes, monthlyStats] = await Promise.all([
-        getFinanceDashboardData(),
-        getMonthlyStats() // Hàm cũ anh đã có sẵn từ ban đầu
-    ]);
+    // Chỉ cần gọi 1 hàm duy nhất (Đã bao gồm cả Số dư & Biểu đồ)
+    const dashboardRes = await getFinanceDashboardData();
 
-    const stats = dashboardRes.success ? dashboardRes.data : { totalCash: 0, totalAR: 0, totalAP: 0 };
+    // Bóc tách dữ liệu an toàn
+    const stats = dashboardRes.success && dashboardRes.data
+        ? dashboardRes.data.stats
+        : { totalCash: 0, totalAR: 0, totalAP: 0 };
+
+    const monthlyStats = dashboardRes.success && dashboardRes.data
+        ? dashboardRes.data.monthlyStats
+        : [];
 
     return (
         <div className="flex-1 space-y-6 p-4 md:p-8 pt-6 transition-colors">

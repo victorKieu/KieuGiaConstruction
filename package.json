@@ -60,6 +60,7 @@
     "embla-carousel-react": "8.5.1",
     "express": "^5.2.1",
     "face-api.js": "^0.22.2",
+    "fast-xml-parser": "^5.9.3",
     "html2pdf.js": "^0.14.0",
     "i18next": "^25.2.1",
     "input-otp": "1.4.1",
