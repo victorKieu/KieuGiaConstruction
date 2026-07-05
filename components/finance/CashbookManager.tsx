@@ -11,13 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-// Đã thêm AlertCircle vào import
-import { Loader2, Plus, FileSignature, CheckCircle, Wallet, Ban, ArrowRightLeft, Building2, User, FileText, Pencil, Save, Filter, CalendarDays, X, AlertCircle } from "lucide-react";
+import { Loader2, Plus, FileSignature, CheckCircle, Wallet, Ban, ArrowRightLeft, Building2, User, FileText, Pencil, Save, Filter, CalendarDays, X, AlertCircle, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import VoucherActions from "./VoucherActions";
-import { createPaymentRequestAction, processPaymentRequestAction, executePaymentRequestAction, updatePaymentRequestAction } from "@/lib/action/finance";
+import { createPaymentRequestAction, processPaymentRequestAction, executePaymentRequestAction, updatePaymentRequestAction, getExecutedAccountsAction, updateExecutedAccountingAction } from "@/lib/action/finance";
 
 interface Props {
     initialRequests: any[];
@@ -27,7 +26,6 @@ interface Props {
     userProfile?: any;
 }
 
-// Hàm format tiền tệ gõ tay
 const formatInputMoney = (val: number | string) => {
     if (!val) return "";
     return new Intl.NumberFormat("vi-VN").format(Number(val));
@@ -38,58 +36,46 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
     const [requests, setRequests] = useState(initialRequests || []);
     const [activeTab, setActiveTab] = useState("my_requests");
 
-    // --- BỘ LỌC (FILTERS) ---
     const [filterProject, setFilterProject] = useState("all");
     const [filterStartDate, setFilterStartDate] = useState("");
     const [filterEndDate, setFilterEndDate] = useState("");
 
-    // Check quyền Admin
     const isAdmin = userProfile?.role?.toUpperCase() === 'ADMIN' || userProfile?.role?.toUpperCase() === 'DIRECTOR';
 
-    // Hàm lấy ngày hôm nay (YYYY-MM-DD) theo local timezone để làm mặc định
     const getTodayLocal = () => {
         const d = new Date();
         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
         return d.toISOString().split('T')[0];
     }
 
-    // States cho Modal TẠO MỚI
     const [openNewRequest, setOpenNewRequest] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newReq, setNewReq] = useState({
-        type: 'payment',
-        amount: '',
-        description: '',
-        partner_name: '',
-        project_id: 'none',
-        created_at: getTodayLocal() // Thêm ngày lập phiếu
+        type: 'payment', amount: '', description: '', partner_name: '', project_id: 'none', created_at: getTodayLocal()
     });
 
-    // States cho Modal CHỈNH SỬA
     const [openEditRequest, setOpenEditRequest] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
     const [editReqData, setEditReqData] = useState({
-        id: '',
-        type: 'payment',
-        amount: '',
-        description: '',
-        partner_name: '',
-        project_id: 'none',
-        created_at: '' // Thêm ngày lập phiếu
+        id: '', type: 'payment', amount: '', description: '', partner_name: '', project_id: 'none', created_at: ''
     });
 
     const [openExecute, setOpenExecute] = useState(false);
     const [selectedReq, setSelectedReq] = useState<any>(null);
     const [isExecuting, setIsExecuting] = useState(false);
-
-    // CẬP NHẬT: Thêm amount vào state lưu dữ liệu thực thi
     const [executionData, setExecutionData] = useState({ debitAcc: '', creditAcc: '', amount: 0 });
+
+    // STATES CHO CHỨC NĂNG SỬA ĐỊNH KHOẢN SỔ CÁI
+    const [openEditAccounting, setOpenEditAccounting] = useState(false);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+    const [isSavingAccounting, setIsSavingAccounting] = useState(false);
+    const [selectedReqForAcc, setSelectedReqForAcc] = useState<any>(null);
+    const [accountingForm, setAccountingForm] = useState({ debitAcc: '', creditAcc: '' });
 
     useEffect(() => {
         setRequests(initialRequests || []);
     }, [initialRequests]);
 
-    // --- LOGIC LỌC DỮ LIỆU ---
     const filteredRequests = useMemo(() => {
         return requests.filter(req => {
             if (filterProject !== "all") {
@@ -112,9 +98,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         setFilterEndDate("");
     };
 
-    // -------------------------------------------------------------
-    // HÀM 1: LẬP ĐỀ NGHỊ THU / CHI
-    // -------------------------------------------------------------
     const handleCreateRequest = async () => {
         if (!newReq.amount || Number(newReq.amount) <= 0) return toast.warning("Vui lòng nhập số tiền hợp lệ!");
         if (!newReq.description) return toast.warning("Vui lòng nhập diễn giải!");
@@ -123,7 +106,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         const payload = {
             ...newReq,
             project_id: newReq.project_id === 'none' ? null : newReq.project_id,
-            // Ép kiểu Date chuẩn ISO gửi xuống DB
             created_at: newReq.created_at ? new Date(newReq.created_at).toISOString() : new Date().toISOString()
         };
 
@@ -139,9 +121,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         setIsSubmitting(false);
     };
 
-    // -------------------------------------------------------------
-    // HÀM: SỬA ĐỀ NGHỊ (Quyền Admin)
-    // -------------------------------------------------------------
     const handleEditClick = (req: any) => {
         setEditReqData({
             id: req.id,
@@ -150,7 +129,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
             description: req.description || '',
             partner_name: req.partner_name || '',
             project_id: req.project_id || 'none',
-            // Cắt lấy đoạn YYYY-MM-DD từ DB để hiển thị lên form
             created_at: req.created_at ? req.created_at.split('T')[0] : getTodayLocal()
         });
         setOpenEditRequest(true);
@@ -198,43 +176,18 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
     const openExecutionModal = (req: any) => {
         setSelectedReq(req);
-
         let suggestDebit = "";
         let suggestCredit = "";
 
-        // 1. Tự động định khoản nguồn tiền (Ghi Có)
         if (req.request_type === 'payment') {
-            suggestCredit = accounts.find(a => a.code === '111')?.id || ""; // Mặc định chi tiền mặt
+            suggestCredit = accounts.find(a => a.code === '111')?.id || "";
+            suggestDebit = accounts.find(a => a.code === '331')?.id || "";
         } else if (req.request_type === 'receipt') {
-            suggestDebit = accounts.find(a => a.code === '111')?.id || "";  // Mặc định thu tiền mặt
+            suggestDebit = accounts.find(a => a.code === '111')?.id || "";
+            suggestCredit = accounts.find(a => a.code === '131')?.id || "";
         }
 
-        // 2. TỰ ĐỘNG THÔNG MINH: Định khoản đối ứng (Ghi Nợ)
-        if (req.request_type === 'payment') {
-            if (req.invoice_id) {
-                // NẾU PHIẾU CHI NÀY ĐƯỢC SINH RA TỪ HÓA ĐƠN XML -> ÉP BUỘC VÀO 331
-                suggestDebit = accounts.find(a => a.code === '331')?.id || "";
-            } else if (req.project_id) {
-                // NẾU CHI TRỰC TIẾP CHO CÔNG TRÌNH (KHÔNG QUA HÓA ĐƠN) -> GỢI Ý VÀO 154
-                suggestDebit = accounts.find(a => a.code === '154')?.id || "";
-            } else {
-                // NẾU CHI QUẢN LÝ CHUNG VĂN PHÒNG -> GỢI Ý VÀO 642
-                suggestDebit = accounts.find(a => a.code === '642')?.id || "";
-            }
-        } else if (req.request_type === 'receipt') {
-            // Tương tự cho luồng thu tiền
-            if (req.project_id) {
-                suggestCredit = accounts.find(a => a.code === '131')?.id || ""; // Thu tiền tiến độ công trình
-            } else {
-                suggestCredit = accounts.find(a => a.code === '511')?.id || ""; // Thu doanh nghiệp khác
-            }
-        }
-
-        setExecutionData({
-            debitAcc: suggestDebit,
-            creditAcc: suggestCredit,
-            amount: Number(req.amount)
-        });
+        setExecutionData({ debitAcc: suggestDebit, creditAcc: suggestCredit, amount: Number(req.amount) });
         setOpenExecute(true);
     };
 
@@ -247,7 +200,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         }
 
         setIsExecuting(true);
-        // CẬP NHẬT: Gửi thêm executionData.amount xuống Backend
         const res = await executePaymentRequestAction(selectedReq.id, executionData.debitAcc, executionData.creditAcc, executionData.amount);
 
         if (res.success) {
@@ -258,6 +210,44 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
             toast.error("Lỗi: " + res.error);
         }
         setIsExecuting(false);
+    };
+
+    // HÀM KÉO ĐỊNH KHOẢN CŨ LÊN ĐỂ SỬA
+    const handleEditAccountingClick = async (req: any) => {
+        setSelectedReqForAcc(req);
+        setOpenEditAccounting(true);
+        setIsHistoryLoading(true);
+
+        const res = await getExecutedAccountsAction(req.id);
+        if (res.success) {
+            setAccountingForm({
+                debitAcc: res.debitAccId || "",
+                creditAcc: res.creditAccId || ""
+            });
+        } else {
+            toast.error(res.error);
+            setOpenEditAccounting(false);
+        }
+        setIsHistoryLoading(false);
+    };
+
+    // HÀM LƯU ĐIỀU CHỈNH ĐỊNH KHOẢN SỔ CÁI
+    const handleSaveAccounting = async () => {
+        if (!accountingForm.debitAcc || !accountingForm.creditAcc) {
+            return toast.warning("Vui lòng nhập đầy đủ cặp tài khoản đối ứng!");
+        }
+
+        setIsSavingAccounting(true);
+        const res = await updateExecutedAccountingAction(selectedReqForAcc.id, accountingForm.debitAcc, accountingForm.creditAcc);
+
+        if (res.success) {
+            toast.success(res.message);
+            setOpenEditAccounting(false);
+            router.refresh();
+        } else {
+            toast.error(res.error);
+        }
+        setIsSavingAccounting(false);
     };
 
     const getStatusBadge = (status: string) => {
@@ -386,19 +376,32 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                                 <div className="text-xs font-normal text-slate-400 mt-1">{format(new Date(req.created_at), 'dd/MM/yyyy')}</div>
                                             </TableCell>
                                             <TableCell>{getTypeLabel(req.request_type)}</TableCell>
-                                            <TableCell className="text-slate-600 dark:text-slate-300">
+                                            <TableCell className="text-slate-600 dark:text-slate-300 min-w-[200px] max-w-[300px] whitespace-normal break-words">
                                                 {req.description}
                                                 <div className="text-xs text-slate-400 mt-1">Lập bởi: {req.requester?.name}</div>
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-slate-800 dark:text-slate-100">{formatCurrency(req.amount)}</TableCell>
-                                            <TableCell className="text-slate-600 dark:text-slate-400 text-sm">
-                                                <div className="flex items-center gap-1 mb-1"><User className="w-3 h-3" /> {req.partner_name || "N/A"}</div>
-                                                {req.project && <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400"><Building2 className="w-3 h-3" /> {req.project.name}</div>}
+                                            <TableCell className="text-slate-600 dark:text-slate-400 text-sm min-w-[200px] max-w-[300px] whitespace-normal break-words">
+                                                <div className="flex items-center gap-1 mb-1"><User className="w-3 h-3 shrink-0" /> <span className="line-clamp-2">{req.partner_name || "N/A"}</span></div>
+                                                {req.project && <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400"><Building2 className="w-3 h-3 shrink-0" /> <span className="line-clamp-2">{req.project.name}</span></div>}
                                             </TableCell>
                                             <TableCell className="text-center">{getStatusBadge(req.status)}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end items-center gap-2">
                                                     <VoucherActions request={req} companySettings={companySettings} />
+
+                                                    {/* NÚT ĐIỀU CHỈNH ĐỊNH KHOẢN SỔ CÁI DÀNH CHO PHIẾU ĐÃ CHI */}
+                                                    {isLocked && isAdmin && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleEditAccountingClick(req)}
+                                                            className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                                                            title="Sửa định khoản Kế toán (Sổ cái)"
+                                                        >
+                                                            <RefreshCw className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
 
                                                     {(isAdmin || !isLocked) && (
                                                         <Button
@@ -406,7 +409,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                                             size="icon"
                                                             onClick={() => handleEditClick(req)}
                                                             className={`h-8 w-8 ${isAdmin && isLocked ? 'text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20' : 'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20'}`}
-                                                            title={isAdmin && isLocked ? "Quyền Admin: Sửa phiếu đã chốt" : "Chỉnh sửa"}
+                                                            title={isAdmin && isLocked ? "Quyền Admin: Sửa thông tin phiếu" : "Chỉnh sửa"}
                                                         >
                                                             <Pencil className="w-4 h-4" />
                                                         </Button>
@@ -444,7 +447,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                             <div className="text-xs font-normal text-amber-600/70 mt-1">{format(new Date(req.created_at), 'dd/MM/yyyy')}</div>
                                         </TableCell>
                                         <TableCell>{getTypeLabel(req.request_type)}</TableCell>
-                                        <TableCell className="text-slate-700 dark:text-slate-300">
+                                        <TableCell className="text-slate-700 dark:text-slate-300 min-w-[200px] max-w-[300px] whitespace-normal break-words">
                                             {req.description}
                                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Lập bởi: {req.requester?.name}</div>
                                         </TableCell>
@@ -485,7 +488,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                             <div className="text-xs font-normal text-blue-600/70 mt-1">{format(new Date(req.created_at), 'dd/MM/yyyy')}</div>
                                         </TableCell>
                                         <TableCell>{getTypeLabel(req.request_type)}</TableCell>
-                                        <TableCell className="text-slate-700 dark:text-slate-300">
+                                        <TableCell className="text-slate-700 dark:text-slate-300 min-w-[200px] max-w-[300px] whitespace-normal break-words">
                                             {req.description}
                                             <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium flex items-center"><CheckCircle className="w-3 h-3 mr-1" />Đã duyệt: {format(new Date(req.approved_at), 'dd/MM/yyyy HH:mm')}</div>
                                         </TableCell>
@@ -564,7 +567,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                 <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle className="text-xl flex items-center gap-2 dark:text-slate-100">
-                            <Pencil className="w-5 h-5 text-indigo-500" /> Cập nhật Thông tin Chứng từ Thu/Chi
+                            <Pencil className="w-5 h-5 text-indigo-500" /> Cập nhật Thông tin Phiếu
                         </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
@@ -657,7 +660,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                             </div>
                         </div>
 
-                        {/* KHU VỰC NHẬP SỐ TIỀN THỰC TẾ Ở ĐÂY */}
                         <div className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-4 mt-2">
                             <Label className="font-bold text-xs uppercase text-slate-500 dark:text-slate-400">Số tiền giải ngân thực tế (VNĐ)</Label>
                             <div className="relative">
@@ -673,7 +675,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                 <span className="absolute right-4 top-3.5 font-bold text-slate-400">đ</span>
                             </div>
 
-                            {/* Cảnh báo nếu sửa lệch so với đề nghị gốc */}
                             {selectedReq && executionData.amount !== Number(selectedReq.amount) && (
                                 <div className="text-xs font-medium text-amber-600 dark:text-amber-500 flex items-center gap-1 mt-1">
                                     <AlertCircle className="w-3 h-3" />
@@ -695,6 +696,72 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                         <Button variant="outline" onClick={() => setOpenExecute(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
                         <Button onClick={handleExecuteRequest} disabled={isExecuting} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[150px] dark:bg-blue-600 dark:hover:bg-blue-500">
                             {isExecuting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />} Thực thi & Ghi Sổ
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* MODAL 3: ĐIỀU CHỈNH ĐỊNH KHOẢN KẾ TOÁN SỔ CÁI (MỚI BỔ SUNG) */}
+            <Dialog open={openEditAccounting} onOpenChange={setOpenEditAccounting}>
+                <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                            <RefreshCw className="w-5 h-5 animate-spin-once" /> Điều chỉnh định khoản Sổ cái
+                        </DialogTitle>
+                        <DialogDescription className="dark:text-slate-400">
+                            Thay đổi tài khoản đối ứng cho phiếu <strong className="text-slate-800 dark:text-slate-200">{selectedReqForAcc?.request_code}</strong> để số liệu phân bổ chính xác vào báo cáo P&L.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {isHistoryLoading ? (
+                        <div className="py-12 flex flex-col items-center justify-center gap-3 text-sm text-slate-500">
+                            <Loader2 className="w-6 h-6 animate-spin text-orange-500" /> Đang tải thông tin hạch toán hiện tại...
+                        </div>
+                    ) : (
+                        <div className="space-y-4 py-2">
+                            <div className="bg-orange-50/50 dark:bg-orange-950/10 p-3 border border-orange-200/50 rounded-lg text-xs text-orange-800 dark:text-orange-400">
+                                <AlertCircle className="w-4 h-4 inline mr-1.5 shrink-0 align-text-bottom" />
+                                <strong>Lưu ý:</strong> Đổi tài khoản Nợ sang nhóm **154** hoặc **642** nếu muốn ghi nhận chi phí vào P&L. Đổi sang nhóm **331** nếu đây là khoản trả nợ nhà cung cấp.
+                            </div>
+
+                            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="font-bold text-xs uppercase text-slate-500">Tài khoản Ghi Nợ mới</Label>
+                                        <Select value={accountingForm.debitAcc} onValueChange={(v) => setAccountingForm({ ...accountingForm, debitAcc: v })}>
+                                            <SelectTrigger className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 font-medium border-orange-500/30">
+                                                <SelectValue placeholder="Chọn TK Nợ..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800 max-h-[200px]">
+                                                {(accounts || []).map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="font-bold text-xs uppercase text-slate-500">Tài khoản Ghi Có mới</Label>
+                                        <Select value={accountingForm.creditAcc} onValueChange={(v) => setAccountingForm({ ...accountingForm, creditAcc: v })}>
+                                            <SelectTrigger className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100 font-medium border-orange-500/30">
+                                                <SelectValue placeholder="Chọn TK Có..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800 max-h-[200px]">
+                                                {(accounts || []).map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="text-xs p-3 bg-white dark:bg-slate-900 rounded-md border text-slate-500 flex justify-between">
+                                    <span>Số tiền giao dịch điều chỉnh:</span>
+                                    <span className="font-bold text-slate-800 dark:text-slate-200">{selectedReqForAcc ? formatCurrency(selectedReqForAcc.amount) : "0đ"}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setOpenEditAccounting(false)} className="dark:border-slate-700">Hủy</Button>
+                        <Button onClick={handleSaveAccounting} disabled={isSavingAccounting || isHistoryLoading} className="bg-orange-600 hover:bg-orange-700 text-white min-w-[140px]">
+                            {isSavingAccounting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />} Cập nhật Sổ cái
                         </Button>
                     </DialogFooter>
                 </DialogContent>

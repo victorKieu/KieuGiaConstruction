@@ -1468,3 +1468,75 @@ export async function deleteSupplierInvoiceAction(invoiceId: string) {
         return { success: false, error: error.message };
     }
 }
+
+// 1. LẤY TÀI KHOẢN ĐANG HẠCH TOÁN HIỆN TẠI CỦA PHIẾU ĐÃ CHI
+export async function getExecutedAccountsAction(requestId: string) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    try {
+        const { data: je } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('reference_id', requestId)
+            .eq('reference_type', 'payment_request')
+            .maybeSingle();
+
+        if (!je) return { success: false, error: "Giao dịch này chưa được thực thi ghi sổ cái!" };
+
+        const { data: lines } = await supabase
+            .from('journal_entry_lines')
+            .select('account_id, debit, credit')
+            .eq('journal_entry_id', je.id);
+
+        const debitLine = lines?.find(l => Number(l.debit) > 0);
+        const creditLine = lines?.find(l => Number(l.credit) > 0);
+
+        return {
+            success: true,
+            debitAccId: debitLine?.account_id || "",
+            creditAccId: creditLine?.account_id || ""
+        };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+// 2. CẬP NHẬT ĐỊNH KHOẢN MỚI VÀO SỔ CÁI
+export async function updateExecutedAccountingAction(requestId: string, newDebitAccId: string, newCreditAccId: string) {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    try {
+        const { data: je } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('reference_id', requestId)
+            .eq('reference_type', 'payment_request')
+            .maybeSingle();
+
+        if (!je) throw new Error("Không tìm thấy bút toán Sổ cái tương ứng!");
+
+        // Cập nhật dòng Nợ (Dòng có tiền debit > 0)
+        const { error: debitErr } = await supabase
+            .from('journal_entry_lines')
+            .update({ account_id: newDebitAccId })
+            .eq('journal_entry_id', je.id)
+            .gt('debit', 0);
+
+        if (debitErr) throw new Error("Lỗi sửa tài khoản Nợ: " + debitErr.message);
+
+        // Cập nhật dòng Có (Dòng có tiền credit > 0)
+        const { error: creditErr } = await supabase
+            .from('journal_entry_lines')
+            .update({ account_id: newCreditAccId })
+            .eq('journal_entry_id', je.id)
+            .gt('credit', 0);
+
+        if (creditErr) throw new Error("Lỗi sửa tài khoản Có: " + creditErr.message);
+
+        return { success: true, message: "Điều chỉnh định khoản thành công! Dữ liệu P&L đã được cập nhật lại tự động." };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
