@@ -462,6 +462,103 @@ export default function ProjectBOQTab({ projectId }: Props) {
         setExpandedSections(newExpandedSecs); setExpandedRows(newExpandedRows);
     };
 
+    // ==========================================
+    // CẬP NHẬT: HÀM XUẤT EXCEL TIẾN ĐỘ THI CÔNG
+    // ==========================================
+    const handleExportScheduleExcel = () => {
+        if (!taskSchedules || Object.keys(taskSchedules).length === 0 || schedulingData.length === 0) {
+            return toast.error("Không có dữ liệu tiến độ để xuất!");
+        }
+
+        const toastId = toast.loading("Đang xuất file Excel Tiến độ...");
+
+        try {
+            const aoaData: any[][] = [];
+
+            // 1. Header dự án
+            aoaData.push([`BẢNG PHÂN TÍCH TIẾN ĐỘ VÀ NGUỒN LỰC DỰ ÁN`]);
+            aoaData.push([`Công trình: ${projectInfo?.name || projectId}`]);
+            aoaData.push([`Ngày khởi công dự kiến: ${formatDate(projectStartDate)}`]);
+            aoaData.push([""]); // Dòng trống
+
+            // 2. Dòng Tiêu đề bảng (Header)
+            aoaData.push([
+                "STT",
+                "Danh mục Công việc",
+                "Tỷ trọng (%)",
+                "Khối lượng",
+                "ĐVT",
+                "Hao phí (Ca)",
+                "Thợ bố trí",
+                "Ngày làm",
+                "Công việc đi trước",
+                "Ngày Bắt Đầu",
+                "Ngày Kết Thúc"
+            ]);
+
+            // 3. Xử lý Dữ liệu các dòng
+            const totalDirectCost = estItems.filter(e => !['GT', 'LN', 'VAT'].includes(e.category)).reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
+
+            const sortedTasks = [...schedulingData].sort((a, b) => {
+                const sDatesA = taskSchedules[a.id]; const sDatesB = taskSchedules[b.id];
+                if (!sDatesA && !sDatesB) return 0; if (!sDatesA) return 1; if (!sDatesB) return -1;
+                const timeA = new Date(sDatesA.startDate).getTime(); const timeB = new Date(sDatesB.startDate).getTime();
+                if (timeA !== timeB) return timeA - timeB; return a.stt - b.stt;
+            });
+
+            sortedTasks.forEach((task: any) => {
+                const sDates = taskSchedules[task.id];
+                if (!sDates) return;
+
+                const taskCost = estItems.filter(e => e.qto_item_id === task.id).reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
+                const weight = totalDirectCost > 0 ? (taskCost / totalDirectCost) * 100 : 0;
+                const currentWorkers = Number(task.assigned_workers) || 1;
+                const computedDuration = task.manDays > 0 ? Math.ceil(task.manDays / currentWorkers) : 1;
+
+                aoaData.push([
+                    task.stt,
+                    `[${task.sectionName}] - ${task.item_name}`, // Nối tên Hạng mục và Tên công tác
+                    weight.toFixed(2),
+                    task.totalVol,
+                    task.unit,
+                    task.manDays.toFixed(1),
+                    currentWorkers,
+                    computedDuration,
+                    task.predecessors || "",
+                    formatDate(sDates.startDate),
+                    formatDate(sDates.endDate)
+                ]);
+            });
+
+            // 4. Tạo Sheet và định dạng
+            const ws = XLSX.utils.aoa_to_sheet(aoaData);
+
+            // Chỉnh độ rộng cột cho đẹp
+            ws['!cols'] = [
+                { wch: 6 },   // STT
+                { wch: 60 },  // Danh mục Công việc
+                { wch: 12 },  // Tỷ trọng
+                { wch: 15 },  // Khối lượng
+                { wch: 8 },   // ĐVT
+                { wch: 15 },  // Hao phí
+                { wch: 12 },  // Thợ
+                { wch: 12 },  // Ngày làm
+                { wch: 20 },  // CV trước
+                { wch: 15 },  // Bắt đầu
+                { wch: 15 }   // Kết thúc
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Tien_Do_Thi_Cong");
+
+            XLSX.writeFile(wb, `Tien_Do_Thi_Cong_${projectInfo?.code || projectId}.xlsx`);
+            toast.success("Xuất file Excel Tiến độ thành công!", { id: toastId });
+
+        } catch (error: any) {
+            toast.error("Lỗi xuất Excel: " + error.message, { id: toastId });
+        }
+    };
+
     const handleAddSection = async () => {
         const name = prompt("Nhập tên Hạng mục mới (Ví dụ: Phần Móng, Phần Thân...):");
         if (!name || !name.trim()) return;
@@ -1261,8 +1358,15 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng hao phí nhân công</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{estItems.filter(e => e.category === 'NC').reduce((sum, e) => sum + e.quantity, 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} <span className="text-sm font-medium text-slate-500">Ca</span></p></div>
                                 <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Ngày kết thúc dự kiến</p><p className="text-xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-2">{formatDate(projectEndDate)}</p></div>
                                 <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center">
-                                    <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="bg-white text-teal-700 hover:bg-teal-50 shadow-sm w-full font-bold">{isSyncing5D ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />} Chốt Thông Số (Gantt)</Button>
+                                    <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center gap-2">
+                                        <Button onClick={handleExportScheduleExcel} className="bg-green-500 hover:bg-green-600 text-white shadow-sm w-full font-bold h-8 text-xs">
+                                            <Download className="w-3.5 h-3.5 mr-2" /> Xuất Excel Tiến độ
+                                        </Button>
+                                        <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="bg-white text-teal-700 hover:bg-teal-50 shadow-sm w-full font-bold h-8 text-xs">
+                                            {isSyncing5D ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Send className="w-3.5 h-3.5 mr-2" />} Chốt Thông Số (Gantt)
+                                        </Button>
                                 </div>
+                            </div>
                             </div>
                         </div>
                         <div className="overflow-auto custom-scrollbar max-h-[650px] relative">

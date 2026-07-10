@@ -6,189 +6,15 @@ import { transactionSchema, TransactionFormValues } from "@/lib/schemas/finance"
 import { startOfMonth, subMonths, format } from "date-fns";
 import { getUserProfile } from "@/lib/supabase/getUserProfile";
 
-// 1. Lấy danh sách danh mục
-export async function getFinanceCategories() {
-    const supabase = await createClient();
-    const { data } = await supabase.from("finance_categories").select("*").order("name");
-    return data || [];
-}
 
-// 2. TẠO GIAO DỊCH THU/CHI (Chung cho cả Nội bộ & Dự án)
-export async function createTransactionAction(data: TransactionFormValues) {
-    const supabase = await createClient();
-    const validated = transactionSchema.safeParse(data);
-    if (!validated.success) return { success: false, error: "Dữ liệu không hợp lệ." };
-    const payload = validated.data;
-
-    try {
-        const { error } = await supabase.from("finance_transactions").insert({
-            amount: payload.amount,
-            type: payload.type, // 'income' hoặc 'expense'
-            category_id: payload.category_id,
-            transaction_date: payload.transaction_date.toISOString(),
-            description: payload.description,
-            project_id: payload.project_id || null,
-            // customer_id: payload.customer_id || null, // Nếu có quản lý KH
-            payment_method: "cash", // Mặc định hoặc thêm field chọn
-            created_at: new Date().toISOString(),
-        });
-
-        if (error) throw new Error(error.message);
-
-        revalidatePath("/finance");
-        if (payload.project_id) revalidatePath(`/projects/${payload.project_id}`);
-        return { success: true, message: "Đã tạo phiếu thành công!" };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
-
-// 3. LẤY DANH SÁCH GIAO DỊCH (Đã hợp nhất)
-export async function getTransactions() {
-    const supabase = await createClient();
-
-    // Join: transactions -> projects -> customers
-    const { data, error } = await supabase
-        .from("finance_transactions")
-        .select(`
-            *, 
-            category:finance_categories (id, name, color, type), 
-            
-            project:projects (
-                id, name, code, address,
-                customer:customers (name, contact_person, address) 
-            ),
-            
-            invoice:procurement_invoices (
-                invoice_number, 
-                po:purchase_orders (
-                    supplier:suppliers (name, address, contact_person)
-                )
-            )
-        `)
-        .order("transaction_date", { ascending: false })
-        .limit(50);
-
-    if (error) {
-        console.error("Lỗi getTransactions:", JSON.stringify(error, null, 2));
-        return [];
-    }
-    return data || [];
-}
-
-// 4. Lấy thống kê Thu/Chi 6 tháng
-export async function getMonthlyStats() {
-    const supabase = await createClient();
-    const startDate = startOfMonth(subMonths(new Date(), 5)).toISOString();
-
-    const { data } = await supabase
-        .from("finance_transactions")
-        .select("amount, type, transaction_date")
-        .gte("transaction_date", startDate)
-        .order("transaction_date", { ascending: true });
-
-    const monthlyData: Record<string, { name: string; income: number; expense: number }> = {};
-    for (let i = 0; i < 6; i++) {
-        const date = subMonths(new Date(), i);
-        const key = format(date, "MM/yyyy");
-        monthlyData[key] = { name: `T${format(date, "MM")}`, income: 0, expense: 0 };
-    }
-
-    data?.forEach((item) => {
-        const key = format(new Date(item.transaction_date), "MM/yyyy");
-        if (monthlyData[key]) {
-            item.type === 'income' ? monthlyData[key].income += Number(item.amount) : monthlyData[key].expense += Number(item.amount);
-        }
-    });
-
-    return Object.values(monthlyData).reverse();
-}
-
-// 5. Lấy danh sách dự án cho dropdown
+// 1. Lấy danh sách dự án cho dropdown
 export async function getProjectsForSelect() {
     const supabase = await createClient();
     const { data } = await supabase.from("projects").select("id, name, code, status_id").order("created_at", { ascending: false });
     return data || [];
 }
 
-// 6. Lấy thống kê tài chính dự án (CẬP NHẬT ĐỂ DÙNG BẢNG ĐÚNG)
-export async function getProjectFinanceStats(projectId: string) {
-    const supabase = await createClient();
-
-    // 1. Doanh thu (Hợp đồng) - Giữ nguyên
-    const { data: contracts } = await supabase
-        .from('contracts')
-        .select('value')
-        .eq('project_id', projectId)
-        .neq('status', 'cancelled');
-
-    // 2. Thực thu (CẬP NHẬT: Lấy từ finance_transactions type='income')
-    const { data: incomes } = await supabase
-        .from('finance_transactions')
-        .select('amount')
-        .eq('project_id', projectId)
-        .eq('type', 'income'); // ✅ Chỉ lấy khoản THU thực tế
-
-    // 3. Thực chi (Lấy từ finance_transactions type='expense')
-    const { data: expenses } = await supabase
-        .from('finance_transactions')
-        .select('amount')
-        .eq('project_id', projectId)
-        .eq('type', 'expense');
-
-    // 4. Lấy thông tin nợ đọng (Milestones quá hạn)
-    const today = new Date().toISOString();
-    const { count: overdueCount } = await supabase
-        .from('payment_milestones')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending') // Chưa thanh toán
-        .lt('due_date', today)   // Quá hạn
-        .not('due_date', 'is', null);
-
-    // 5. Tính toán
-    const totalRevenue = contracts?.reduce((sum, item) => sum + (Number(item.value) || 0), 0) || 0;
-
-    // ✅ Tính tổng thu từ bảng giao dịch
-    const actualReceived = incomes?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
-
-    // ✅ Tính tổng chi từ bảng giao dịch
-    const cashCost = expenses?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
-
-    const profit = actualReceived - cashCost;
-    const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
-    const remainingDebt = totalRevenue - actualReceived;
-
-    return {
-        totalRevenue,
-        actualReceived,
-        totalCost: cashCost,
-        profit,
-        profitMargin: parseFloat(profitMargin.toFixed(2)),
-        remainingDebt,
-        overdueCount: overdueCount || 0,
-        contractValue: totalRevenue
-    };
-}
-
-// 7. Thanh toán nhanh đơn PO
-export async function createPaymentForPO(poId: string, amount: number, paymentMethod: string, notes: string) {
-    const supabase = await createClient();
-    const { data: po } = await supabase.from('purchase_orders').select('id, code, project_id').eq('id', poId).single();
-    if (!po) return { success: false, error: "Không tìm thấy đơn hàng" };
-
-    const { error } = await supabase.from('finance_transactions').insert({
-        amount, type: 'expense', transaction_date: new Date().toISOString(),
-        description: `Thanh toán đơn hàng ${po.code}. ${notes}`,
-        project_id: po.project_id, po_id: po.id, payment_method: paymentMethod, created_at: new Date().toISOString()
-    });
-
-    if (error) return { success: false, error: error.message };
-    revalidatePath(`/procurement/orders/${poId}`);
-    revalidatePath('/finance');
-    return { success: true, message: "Đã thanh toán thành công!" };
-}
-
-// 8. Lấy danh sách PO chờ hóa đơn
+// 2. Lấy danh sách PO chờ hóa đơn
 export async function getPOsPendingInvoice() {
     const supabase = await createClient();
     const { data: pos } = await supabase
@@ -204,7 +30,7 @@ export async function getPOsPendingInvoice() {
     });
 }
 
-// 9. Lấy danh sách Hóa đơn công nợ
+// 3. Lấy danh sách Hóa đơn công nợ
 export async function getPayableInvoices() {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
@@ -237,7 +63,7 @@ export async function getPayableInvoices() {
     }
 }
 
-// 10. Tạo hóa đơn đầu vào
+// 4. Tạo hóa đơn đầu vào
 export async function createSupplierInvoiceAction(payload: any) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
@@ -322,7 +148,7 @@ export async function createSupplierInvoiceAction(payload: any) {
     }
 }
 
-// 11. Thanh toán hóa đơn
+// 5. Thanh toán hóa đơn
 export async function createPaymentToSupplierAction(payload: any) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
@@ -403,7 +229,7 @@ export async function createPaymentToSupplierAction(payload: any) {
 // PHẦN BỔ SUNG: QUẢN LÝ TIẾN ĐỘ THANH TOÁN (ĐÃ FIX: DÙNG CONTRACT_PAYMENT_MILESTONES)
 // =========================================================
 
-// 12. Lấy Danh sách Hợp đồng & Milestones
+// 6. Lấy Danh sách Hợp đồng & Milestones
 export async function getProjectContracts(projectId: string) {
     const supabase = await createClient();
 
@@ -440,7 +266,7 @@ export async function getProjectContracts(projectId: string) {
     return contracts || [];
 }
 
-// 13. Upsert Milestone (Vào bảng payment_milestones)
+// 7. Upsert Milestone (Vào bảng payment_milestones)
 export async function upsertPaymentMilestone(data: any, projectId: string) {
     const supabase = await createClient();
 
@@ -463,7 +289,7 @@ export async function upsertPaymentMilestone(data: any, projectId: string) {
     return { success: true };
 }
 
-// 14. Xóa Milestone
+// 8. Xóa Milestone
 export async function deletePaymentMilestone(id: string, projectId: string) {
     const supabase = await createClient();
     const { error } = await supabase.from('payment_milestones').delete().eq('id', id);
@@ -474,7 +300,7 @@ export async function deletePaymentMilestone(id: string, projectId: string) {
     return { success: true };
 }
 
-// 15. Đổi trạng thái thanh toán (Toggle status string)
+// 9. Đổi trạng thái thanh toán (Toggle status string)
 export async function toggleMilestoneStatus(id: string, projectId: string, newStatus: string) {
     const supabase = await createClient();
 
@@ -492,7 +318,7 @@ export async function toggleMilestoneStatus(id: string, projectId: string, newSt
     return { success: true };
 }
 
-// 16. Lấy tất cả các khoản phải thu (Pending Milestones) cho trang Tài chính
+// 10. Lấy tất cả các khoản phải thu (Pending Milestones) cho trang Tài chính
     export async function getAllReceivables() {
         const supabase = await createClient();
 
