@@ -53,7 +53,13 @@ export function FinanceChart({ data }: { data: ChartData[] }) {
                             <Tooltip
                                 formatter={(value: number) => new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(value)}
                                 cursor={{ fill: 'transparent' }}
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                contentStyle={{
+                                    backgroundColor: 'hsl(var(--card))', // Tự động đổi màu theo Sáng/Tối
+                                    color: 'hsl(var(--card-foreground))',
+                                    borderRadius: '8px',
+                                    border: '1px solid hsl(var(--border))',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                                }}
                             />
                             <Legend />
 

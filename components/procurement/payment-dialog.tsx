@@ -99,7 +99,7 @@ export function PaymentDialog({ poId, poCode, projectId, remainingAmount }: Paym
                     Thanh toán
                 </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md dark:bg-slate-900 dark:border-slate-800 transition-colors">
+            <DialogContent className="max-w-md bg-background dark:border-slate-800 transition-colors">
                 <DialogHeader>
                     <DialogTitle className="dark:text-slate-100 flex items-center gap-2">
                         <Banknote className="w-5 h-5 text-blue-500" /> Lập phiếu chi - Đơn {poCode}
@@ -126,35 +126,35 @@ export function PaymentDialog({ poId, poCode, projectId, remainingAmount }: Paym
                                 type="number"
                                 value={amount}
                                 onChange={(e) => setAmount(Number(e.target.value))}
-                                className="font-bold text-lg h-12 pr-8 bg-white dark:bg-slate-950 dark:border-slate-700 dark:text-slate-100 focus-visible:ring-blue-500 transition-colors"
+                                className="font-bold text-lg h-12 pr-8 bg-white bg-background dark:border-slate-700 dark:text-slate-100 focus-visible:ring-blue-500 transition-colors"
                             />
                             <span className="absolute right-4 top-3.5 text-slate-400 font-bold">đ</span>
                         </div>
                     </div>
 
                     {/* 2. Ngày & Hạng mục */}
-                    <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 transition-colors">
+                    <div className="grid grid-cols-2 gap-4 bg-slate-50 bg-background/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 transition-colors">
                         <div className="space-y-2 flex flex-col">
                             <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Ngày chi</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
-                                    <Button variant={"outline"} className={cn("pl-3 text-left font-normal h-10 bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors", !date && "text-muted-foreground dark:text-slate-500")}>
+                                    <Button variant={"outline"} className={cn("pl-3 text-left font-normal h-10 bg-white bg-background dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors", !date && "text-muted-foreground dark:text-slate-500")}>
                                         {date ? format(date, "dd/MM/yyyy") : <span>Chọn ngày</span>}
                                         <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                     </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0 dark:bg-slate-900 dark:border-slate-800" align="start">
-                                    <Calendar mode="single" selected={date} onSelect={(d) => d && setDate(d)} initialFocus className="dark:bg-slate-900 dark:text-slate-200" />
+                                <PopoverContent className="w-auto p-0 bg-background dark:border-slate-800" align="start">
+                                    <Calendar mode="single" selected={date} onSelect={(d) => d && setDate(d)} initialFocus className="bg-background dark:text-slate-200" />
                                 </PopoverContent>
                             </Popover>
                         </div>
                         <div className="space-y-2">
                             <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Hạng mục chi <span className="text-red-500">*</span></Label>
                             <Select value={categoryId} onValueChange={setCategoryId}>
-                                <SelectTrigger className="h-10 bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 transition-colors">
+                                <SelectTrigger className="h-10 bg-white bg-background dark:border-slate-700 dark:text-slate-200 transition-colors">
                                     <SelectValue placeholder="Chọn..." />
                                 </SelectTrigger>
-                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                <SelectContent className="bg-background dark:border-slate-800">
                                     {categories.map(c => <SelectItem key={c.id} value={c.id} className="dark:text-slate-200">{c.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
@@ -166,10 +166,10 @@ export function PaymentDialog({ poId, poCode, projectId, remainingAmount }: Paym
                         <div className="space-y-2">
                             <Label className="dark:text-slate-300 font-bold text-xs uppercase tracking-wider">Hình thức thanh toán</Label>
                             <Select value={method} onValueChange={setMethod}>
-                                <SelectTrigger className="h-10 bg-white dark:bg-slate-950 dark:border-slate-700 dark:text-slate-100 transition-colors">
+                                <SelectTrigger className="h-10 bg-white bg-background dark:border-slate-700 dark:text-slate-100 transition-colors">
                                     <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                <SelectContent className="bg-background dark:border-slate-800">
                                     <SelectItem value="transfer" className="dark:text-slate-200 font-medium">Chuyển khoản</SelectItem>
                                     <SelectItem value="cash" className="dark:text-slate-200 font-medium">Tiền mặt</SelectItem>
                                 </SelectContent>
@@ -181,7 +181,7 @@ export function PaymentDialog({ poId, poCode, projectId, remainingAmount }: Paym
                             <Input
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
-                                className="h-10 bg-white dark:bg-slate-950 dark:border-slate-700 dark:text-slate-100 transition-colors"
+                                className="h-10 bg-white bg-background dark:border-slate-700 dark:text-slate-100 transition-colors"
                             />
                         </div>
                     </div>

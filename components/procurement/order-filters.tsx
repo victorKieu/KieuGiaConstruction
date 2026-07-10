@@ -77,13 +77,13 @@ export function OrderFilters({ projects, suppliers }: OrderFiltersProps) {
                     value={currentSupplierId}
                     onValueChange={(val) => onFilterChange("supplierId", val)}
                 >
-                    <SelectTrigger className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 dark:text-slate-200 shadow-sm transition-colors">
+                    <SelectTrigger className="bg-background border-border text-foreground shadow-sm transition-colors">
                         <SelectValue placeholder="Tất cả NCC" />
                     </SelectTrigger>
-                    <SelectContent className="dark:bg-slate-900 dark:border-slate-800 transition-colors">
-                        <SelectItem value="all" className="dark:text-slate-300 font-medium">-- Tất cả NCC --</SelectItem>
+                    <SelectContent className="bg-background border-border transition-colors">
+                        <SelectItem value="all" className="font-medium text-foreground">-- Tất cả NCC --</SelectItem>
                         {suppliers.map((s) => (
-                            <SelectItem key={s.id} value={s.id} className="dark:text-slate-200">
+                            <SelectItem key={s.id} value={s.id} className="text-foreground">
                                 {s.name}
                             </SelectItem>
                         ))}

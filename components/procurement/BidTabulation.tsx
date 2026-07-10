@@ -128,7 +128,6 @@ export default function BidTabulation({ data, rfqId: propRfqId }: { data: BidDat
         return winner;
     }, [supplierStats, localIsAwarded, awardMode, selections]);
 
-    // LẤY TÊN NHÀ CUNG CẤP TRÚNG THẦU ĐỂ HIỂN THỊ LÊN BANNER
     const winningSupplierName = useMemo(() => {
         if (awardMode === 'full' && winningSupplierId) {
             const supp = suppliers.find(s => (s.supplier_id || s.id) === winningSupplierId);
@@ -616,7 +615,7 @@ export default function BidTabulation({ data, rfqId: propRfqId }: { data: BidDat
                     </div>
 
                     {!localIsAwarded && awardMode === 'split' && (
-                        <div className="bg-white dark:bg-slate-900 p-4 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div className="bg-background p-4 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
                             <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-6 w-full md:w-auto">
                                 <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
                                     Đang chọn <strong className="text-amber-600 dark:text-amber-500 text-lg mx-1">{Object.keys(selections).length}/{items.length}</strong> mặt hàng.
@@ -643,8 +642,8 @@ export default function BidTabulation({ data, rfqId: propRfqId }: { data: BidDat
             </div>
 
             <Dialog open={showPrintPreview} onOpenChange={setShowPrintPreview}>
-                <DialogContent className="max-w-[95vw] w-[297mm] h-[90vh] flex flex-col p-0 dark:bg-slate-900 border-none overflow-hidden print:hidden">
-                    <div className="flex justify-between items-center p-4 border-b dark:border-slate-800 bg-white dark:bg-slate-900 z-10 shrink-0">
+                <DialogContent className="max-w-[95vw] w-[297mm] h-[90vh] flex flex-col p-0 bg-background border-none overflow-hidden print:hidden">
+                    <div className="flex justify-between items-center p-4 border-b border-border bg-background z-10 shrink-0">
                         <DialogTitle className="text-lg font-bold flex items-center gap-2">
                             <Printer className="w-5 h-5 text-indigo-600" /> Xem trước bản in (A4 Ngang)
                         </DialogTitle>
@@ -656,7 +655,7 @@ export default function BidTabulation({ data, rfqId: propRfqId }: { data: BidDat
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto bg-slate-300 dark:bg-slate-800 p-4 sm:p-8 flex justify-center custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto bg-muted p-4 sm:p-8 flex justify-center custom-scrollbar">
                         <div className="w-[297mm] min-h-[210mm] bg-white shadow-2xl p-[15mm] text-black shrink-0">
                             {a4Content}
                         </div>

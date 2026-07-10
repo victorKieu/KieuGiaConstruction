@@ -3,19 +3,15 @@
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-    MoreHorizontal, FileText, PiggyBank, Wallet, Coins, X, Trash2, Eye, Edit, Building2
-} from "lucide-react"
-
+import { MoreHorizontal, FileText, PiggyBank, Wallet, Coins, X, Trash2, Eye, Edit, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator
-} from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "@/components/ui/select"
 import { deleteProject } from "@/lib/action/projectActions"
 import { formatCurrency, formatDate } from "@/lib/utils/utils"
 import type { ProjectWithExtras } from "@/types/project";
@@ -287,34 +283,41 @@ export default function ProjectList({ projects, currentUserRole, dictionaries }:
             <div className="flex flex-col md:flex-row justify-between items-center bg-card p-3 rounded shadow-sm gap-4 border border-border">
                 <h1 className="text-xl font-bold text-foreground">Danh sách dự án</h1>
                 <div className="flex flex-wrap gap-2 items-center">
-                    {/* ✅ FIX: Select dark mode */}
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="h-9 px-3 text-sm border border-input rounded bg-background text-foreground cursor-pointer hover:border-blue-500 min-w-[150px]"
-                    >
-                        <option value="active">⚡ Đang thực hiện</option>
-                        <option value="all">Tất cả trạng thái</option>
-                        <option disabled>──────</option>
-                        {statusOptions.map((s) => (
-                            <option key={s.id} value={s.code.toLowerCase()}>{s.name}</option>
-                        ))}
-                    </select>
+                    {/* Bộ lọc Trạng thái */}
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="w-[200px] h-9 bg-background text-sm">
+                            <SelectValue placeholder="Chọn trạng thái" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="active">⚡ Đang thực hiện</SelectItem>
+                            <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                            {statusOptions.map((s) => (
+                                <SelectItem key={s.id} value={s.code.toLowerCase()}>
+                                    {s.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                    <select
-                        value={filterYear}
-                        onChange={(e) => setFilterYear(e.target.value)}
-                        className="h-9 px-3 text-sm border border-input rounded bg-background text-foreground cursor-pointer hover:border-blue-500"
-                    >
-                        <option value="all">Tất cả năm</option>
-                        {years.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
+                    {/* Bộ lọc Năm */}
+                    <Select value={filterYear} onValueChange={setFilterYear}>
+                        <SelectTrigger className="w-[120px] h-9 bg-background text-sm">
+                            <SelectValue placeholder="Chọn năm" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Tất cả năm</SelectItem>
+                            {years.map(y => (
+                                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
                     {(filterStatus !== 'active' || filterYear !== currentYear) && (
                         <Button variant="ghost" size="icon" onClick={() => { setFilterStatus("active"); setFilterYear(currentYear) }} title="Xóa bộ lọc">
                             <X className="w-4 h-4 text-red-500" />
                         </Button>
                     )}
+
                     <Button className="bg-[#4caf50] hover:bg-[#43a047] text-white ml-2 shadow-sm font-bold" size="sm" asChild>
                         <Link href="/projects/new"><Building2 className="w-4 h-4 mr-1" /> Khởi Tạo Dự Án</Link>
                     </Button>

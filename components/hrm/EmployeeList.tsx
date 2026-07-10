@@ -1,61 +1,67 @@
 import React from "react";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCustomerList } from "@/lib/action/crmActions";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
-import { Pagination } from "@/components/ui/pagination";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 
 export interface Employee {
-  id: string;
-  name: string;
-  code: string;
-  department: string;
-  position: string;
-  status: "active" | "inactive";
+    id: string;
+    name: string;
+    code: string;
+    department: string;
+    position: string;
+    status: "active" | "inactive";
 }
 
 interface EmployeeListProps {
-  employees: Employee[];
-  onSelect: (employee: Employee) => void;
+    employees: Employee[];
+    onSelect: (employee: Employee) => void;
 }
 
 export const EmployeeList: React.FC<EmployeeListProps> = ({ employees, onSelect }) => (
-  <div className="bg-white rounded-lg shadow p-4">
-    <h2 className="text-xl font-bold mb-4">Danh sách nhân viên</h2>
-    <table className="w-full table-auto">
-      <thead>
-        <tr>
-          <th>Mã NV</th>
-          <th>Họ tên</th>
-          <th>Phòng ban</th>
-          <th>Chức vụ</th>
-          <th>Trạng thái</th>
-        </tr>
-      </thead>
-      <tbody>
-        {employees.map(emp => (
-          <tr key={emp.id} onClick={() => onSelect(emp)} className="hover:bg-gray-100 cursor-pointer">
-            <td>{emp.code}</td>
-            <td>{emp.name}</td>
-            <td>{emp.department}</td>
-            <td>{emp.position}</td>
-            <td>
-              {emp.status === "active" ? (
-                <span className="text-green-600">Đang làm</span>
-              ) : (
-                <span className="text-gray-500">Nghỉ việc</span>
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-    </div>
-
+    <Card className="p-4 border-none shadow-sm bg-card text-card-foreground">
+        <h2 className="text-xl font-bold mb-4 text-foreground">Danh sách nhân viên</h2>
+        <div className="rounded-md border border-border">
+            <Table>
+                <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50 border-border">
+                        <TableHead className="font-bold text-foreground">Mã NV</TableHead>
+                        <TableHead className="font-bold text-foreground">Họ tên</TableHead>
+                        <TableHead className="font-bold text-foreground">Phòng ban</TableHead>
+                        <TableHead className="font-bold text-foreground">Chức vụ</TableHead>
+                        <TableHead className="font-bold text-foreground text-center">Trạng thái</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {employees.map(emp => (
+                        <TableRow
+                            key={emp.id}
+                            onClick={() => onSelect(emp)}
+                            className="cursor-pointer hover:bg-muted/80 border-border transition-colors"
+                        >
+                            <TableCell className="font-mono text-xs font-medium text-muted-foreground">{emp.code}</TableCell>
+                            <TableCell className="font-bold text-foreground">{emp.name}</TableCell>
+                            <TableCell className="text-foreground">{emp.department}</TableCell>
+                            <TableCell className="text-foreground">{emp.position}</TableCell>
+                            <TableCell className="text-center">
+                                {emp.status === "active" ? (
+                                    <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 border-none">Đang làm</Badge>
+                                ) : (
+                                    <Badge variant="secondary" className="text-muted-foreground">Nghỉ việc</Badge>
+                                )}
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </div>
+    </Card>
 );
 
 export default EmployeeList;

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, ShoppingCart, Send, CalendarClock, ExternalLink, PackageSearch, Filter, ArrowRight, Trash2, Settings2, BookCheck } from "lucide-react";
@@ -244,30 +245,37 @@ export default function RFQDashboardClient({ userProfile }: { userProfile: any }
                     <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col md:flex-row gap-4 items-end shadow-sm">
                         <div className="flex-1 w-full space-y-1.5">
                             <Label className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase flex items-center gap-1"><Filter className="w-3 h-3" /> Dự án đang có nhu cầu</Label>
-                            <select
-                                className="w-full h-10 px-3 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm focus:ring-2 focus:ring-blue-500 font-semibold text-slate-700 dark:text-slate-300"
+                            <Select
                                 value={filterProject}
-                                onChange={(e) => {
-                                    setFilterProject(e.target.value);
+                                onValueChange={(val) => {
+                                    setFilterProject(val);
                                     setFilterMaterialGroup("all");
                                     setSelectedNeeds([]);
                                 }}
                             >
-                                <option value="" disabled>-- Vui lòng chọn 1 Dự án để lấy danh sách --</option>
-                                {projectsFromNeeds.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
+                                <SelectTrigger className="w-full h-10 bg-background font-semibold text-foreground">
+                                    <SelectValue placeholder="-- Vui lòng chọn 1 Dự án để lấy danh sách --" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {projectsFromNeeds.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="flex-1 w-full space-y-1.5">
                             <Label className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase flex items-center gap-1"><Filter className="w-3 h-3" /> Nhóm vật tư</Label>
-                            <select
-                                className="w-full h-10 px-3 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm focus:ring-2 focus:ring-blue-500 disabled:opacity-50 font-semibold text-slate-700 dark:text-slate-300"
+                            <Select
                                 value={filterMaterialGroup}
-                                onChange={(e) => { setFilterMaterialGroup(e.target.value); setSelectedNeeds([]); }}
+                                onValueChange={(val) => { setFilterMaterialGroup(val); setSelectedNeeds([]); }}
                                 disabled={!filterProject}
                             >
-                                <option value="all">-- Tất cả Nhóm vật tư --</option>
-                                {activeMaterialGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                            </select>
+                                <SelectTrigger className="w-full h-10 bg-background font-semibold disabled:opacity-50 text-foreground">
+                                    <SelectValue placeholder="-- Tất cả Nhóm vật tư --" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">-- Tất cả Nhóm vật tư --</SelectItem>
+                                    {activeMaterialGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </Card>
 
@@ -471,14 +479,18 @@ export default function RFQDashboardClient({ userProfile }: { userProfile: any }
                             </div>
                             <div className="space-y-2">
                                 <Label className="dark:text-slate-300">Nhóm vật tư</Label>
-                                <select
-                                    className="w-full h-10 px-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm focus:ring-2 focus:ring-blue-500 text-slate-800 dark:text-slate-200"
-                                    value={stdData.groupId}
-                                    onChange={e => setStdData({ ...stdData, groupId: e.target.value })}
+                                <Select
+                                    value={stdData.groupId || "none"}
+                                    onValueChange={val => setStdData({ ...stdData, groupId: val === "none" ? "" : val })}
                                 >
-                                    <option value="">-- Chưa phân nhóm --</option>
-                                    {allMaterialGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                                </select>
+                                    <SelectTrigger className="w-full h-10 bg-background text-foreground">
+                                        <SelectValue placeholder="-- Chưa phân nhóm --" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">-- Chưa phân nhóm --</SelectItem>
+                                        {allMaterialGroups.map(g => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 

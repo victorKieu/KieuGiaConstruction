@@ -177,11 +177,8 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
     const handleCancel = () => router.push("/crm/customers");
     const onSubmit = (data: CustomerFormData) => startTransition(() => dispatch(data));
 
-    // Helper class cho input để đồng bộ Dark Mode
-    const inputClass = "bg-background border-input text-foreground dark:bg-slate-950 dark:border-slate-800 transition-colors";
-
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 transition-colors">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {initialData?.id && <input type="hidden" {...register("id")} />}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -189,19 +186,19 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                 <div className="space-y-4">
                     <div className="grid grid-cols-1 gap-4">
                         <div>
-                            <Label htmlFor="name" className="dark:text-slate-300">Tên Khách Hàng <span className="text-red-500">*</span></Label>
-                            <Input id="name" {...register("name")} placeholder="Nhập tên khách hàng" className={inputClass} />
+                            <Label htmlFor="name">Tên Khách Hàng <span className="text-red-500">*</span></Label>
+                            <Input id="name" {...register("name")} placeholder="Nhập tên khách hàng" />
                             {errors.name?.message && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
                         </div>
 
                         {!isCustomerProfileEdit && (
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <Label className="dark:text-slate-300">Mã KH</Label>
-                                    <Input {...register("code")} readOnly placeholder="Tự động" className="bg-muted dark:bg-slate-900 text-muted-foreground dark:text-slate-500 border-slate-200 dark:border-slate-800 cursor-not-allowed transition-colors" />
+                                    <Label>Mã KH</Label>
+                                    <Input {...register("code")} readOnly placeholder="Tự động" className="bg-muted text-muted-foreground cursor-not-allowed" />
                                 </div>
                                 <div>
-                                    <Label className="dark:text-slate-300">Loại KH</Label>
+                                    <Label>Loại KH</Label>
                                     <DictionarySelect
                                         category="CRM_CUSTOMER_TYPE"
                                         placeholder="Chọn loại"
@@ -216,28 +213,28 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <Label className="dark:text-slate-300">CMND/CCCD (Cá nhân)</Label>
-                            <Input {...register("idNumber")} placeholder="Số giấy tờ" className={inputClass} />
+                            <Label>CMND/CCCD (Cá nhân)</Label>
+                            <Input {...register("idNumber")} placeholder="Số giấy tờ" />
                         </div>
                         <div>
-                            <Label className="dark:text-slate-300">Mã Số Thuế (DN)</Label>
-                            <Input {...register("taxCode")} placeholder="MST" className={inputClass} />
+                            <Label>Mã Số Thuế (DN)</Label>
+                            <Input {...register("taxCode")} placeholder="MST" />
                         </div>
                     </div>
 
                     <div>
-                        <Label className="dark:text-slate-300">Lĩnh vực / Ngành nghề</Label>
-                        <Input {...register("businessType")} placeholder="VD: Xây dựng, Thương mại..." className={inputClass} />
+                        <Label>Lĩnh vực / Ngành nghề</Label>
+                        <Input {...register("businessType")} placeholder="VD: Xây dựng, Thương mại..." />
                     </div>
 
-                    <div className="space-y-3 p-3 bg-muted/50 dark:bg-slate-900/50 rounded-md border border-border dark:border-slate-800 transition-colors">
-                        <Label className="font-semibold text-foreground dark:text-slate-200">Địa chỉ & Khu vực</Label>
+                    <div className="space-y-3 p-3 bg-muted/50 rounded-md border border-border">
+                        <Label className="font-semibold text-foreground">Địa chỉ & Khu vực</Label>
                         <div>
-                            <Input {...register("address")} placeholder="Số nhà, Tên đường" className={`mb-2 ${inputClass}`} />
+                            <Input {...register("address")} placeholder="Số nhà, Tên đường" className="mb-2" />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                            <Input {...register("ward")} placeholder="Phường/ Xã" className={inputClass} />
-                            <Input {...register("province")} placeholder="Tỉnh/ Thành phố" className={inputClass} />
+                            <Input {...register("ward")} placeholder="Phường/ Xã" />
+                            <Input {...register("province")} placeholder="Tỉnh/ Thành phố" />
                         </div>
                     </div>
                 </div>
@@ -246,23 +243,23 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <Label className="dark:text-slate-300">Email</Label>
-                            <Input type="email" {...register("email")} placeholder="email@example.com" className={inputClass} />
+                            <Label>Email</Label>
+                            <Input type="email" {...register("email")} placeholder="email@example.com" />
                             {errors.email?.message && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                         </div>
                         <div>
-                            <Label className="dark:text-slate-300">Điện thoại</Label>
-                            <Input {...register("phone")} placeholder="0909..." className={inputClass} />
+                            <Label>Điện thoại</Label>
+                            <Input {...register("phone")} placeholder="0909..." />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <Label className="dark:text-slate-300">Người liên hệ</Label>
-                            <Input {...register("contactPerson")} className={inputClass} />
+                            <Label>Người liên hệ</Label>
+                            <Input {...register("contactPerson")} />
                         </div>
                         <div>
-                            <Label className="dark:text-slate-300">Chức vụ</Label>
+                            <Label>Chức vụ</Label>
                             <DictionarySelect
                                 category="CRM_CONTACT_TITLE"
                                 placeholder="VD: Giám đốc"
@@ -274,21 +271,21 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <Label className="dark:text-slate-300">Website</Label>
-                            <Input {...register("website")} placeholder="www.website.com" className={inputClass} />
+                            <Label>Website</Label>
+                            <Input {...register("website")} placeholder="www.website.com" />
                         </div>
                         <div>
-                            <Label className="dark:text-slate-300">Tài khoản NH</Label>
-                            <Input {...register("bankAccount")} placeholder="Số TK ngân hàng" className={inputClass} />
+                            <Label>Tài khoản NH</Label>
+                            <Input {...register("bankAccount")} placeholder="Số TK ngân hàng" />
                         </div>
                     </div>
 
                     {!isCustomerProfileEdit && (
-                        <div className="space-y-3 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-100 dark:border-blue-900/30 transition-colors">
+                        <div className="space-y-3 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-md border border-blue-100 dark:border-blue-900/30">
                             <Label className="font-semibold text-blue-800 dark:text-blue-400">Thông tin quản lý</Label>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <Label className="text-xs dark:text-slate-400">Nguồn</Label>
+                                    <Label className="text-xs text-muted-foreground">Nguồn</Label>
                                     <DictionarySelect
                                         category="CRM_SOURCE"
                                         placeholder="Chọn nguồn"
@@ -297,31 +294,31 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
                                     />
                                 </div>
                                 <div>
-                                    <Label className="text-xs dark:text-slate-400">Phụ trách</Label>
+                                    <Label className="text-xs text-muted-foreground">Phụ trách</Label>
                                     <Select value={watchedOwnerId || ""} onValueChange={(v) => setValue("ownerId", v)}>
-                                        <SelectTrigger className="h-9 bg-background border-input dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors">
+                                        <SelectTrigger className="h-9 bg-background">
                                             <SelectValue placeholder="Chọn NV" />
                                         </SelectTrigger>
-                                        <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                            <SelectItem value="none" className="dark:text-slate-300">-- Không --</SelectItem>
-                                            {users.map(u => <SelectItem key={u.id} value={u.id} className="dark:text-slate-200">{u.name}</SelectItem>)}
+                                        <SelectContent>
+                                            <SelectItem value="none">-- Không --</SelectItem>
+                                            {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div>
-                                    <Label className="text-xs dark:text-slate-400">Nhãn (Tag)</Label>
+                                    <Label className="text-xs text-muted-foreground">Nhãn (Tag)</Label>
                                     <Select value={watchedTag || ""} onValueChange={(v) => setValue("tag", v)}>
-                                        <SelectTrigger className="h-9 bg-background border-input dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors">
+                                        <SelectTrigger className="h-9 bg-background">
                                             <SelectValue placeholder="Gắn thẻ" />
                                         </SelectTrigger>
-                                        <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                            <SelectItem value="none" className="dark:text-slate-300">-- Không --</SelectItem>
-                                            {tags.map(t => <SelectItem key={t.id} value={t.id} className="dark:text-slate-200">{t.name}</SelectItem>)}
+                                        <SelectContent>
+                                            <SelectItem value="none">-- Không --</SelectItem>
+                                            {tags.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <div>
-                                    <Label className="text-xs dark:text-slate-400">Trạng thái</Label>
+                                    <Label className="text-xs text-muted-foreground">Trạng thái</Label>
                                     <DictionarySelect
                                         category="CRM_CUSTOMER_STATUS"
                                         value={watchedStatus}
@@ -336,24 +333,24 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                 <div className="md:col-span-2">
-                    <Label className="dark:text-slate-300">Ghi chú</Label>
-                    <Textarea rows={2} {...register("notes")} className={inputClass} />
+                    <Label>Ghi chú</Label>
+                    <Textarea rows={2} {...register("notes")} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                     <div>
-                        <Label className="dark:text-slate-300">Ngày sinh/TL</Label>
-                        <Input type="date" {...register("birthday")} className={inputClass} />
+                        <Label>Ngày sinh/TL</Label>
+                        <Input type="date" {...register("birthday")} />
                     </div>
                     <div>
-                        <Label className="dark:text-slate-300">Giới tính</Label>
+                        <Label>Giới tính</Label>
                         <Select value={watchedGender} onValueChange={(v: any) => setValue("gender", v)}>
-                            <SelectTrigger className="bg-background border-input dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200 transition-colors">
+                            <SelectTrigger className="bg-background">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                <SelectItem value="male" className="dark:text-slate-200">Nam</SelectItem>
-                                <SelectItem value="female" className="dark:text-slate-200">Nữ</SelectItem>
-                                <SelectItem value="other" className="dark:text-slate-200">Khác</SelectItem>
+                            <SelectContent>
+                                <SelectItem value="male">Nam</SelectItem>
+                                <SelectItem value="female">Nữ</SelectItem>
+                                <SelectItem value="other">Khác</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -361,14 +358,14 @@ export function CustomerForm({ onSubmitAction, initialData, tags, users, isCusto
             </div>
 
             {errors.root?.message && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded text-center text-sm border border-red-100 dark:border-red-900/50 transition-colors">
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded text-center text-sm border border-red-100 dark:border-red-900/50">
                     {errors.root.message}
                 </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-border dark:border-slate-800 transition-colors">
-                <Button type="button" variant="outline" onClick={handleCancel} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors">Hủy</Button>
-                <Button type="submit" disabled={pendingAction} className="min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+            <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                <Button type="button" variant="outline" onClick={handleCancel}>Hủy</Button>
+                <Button type="submit" disabled={pendingAction} className="min-w-[120px] bg-blue-600 hover:bg-blue-700 text-white">
                     {pendingAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : initialData ? "Cập Nhật" : "Tạo Mới"}
                 </Button>
             </div>

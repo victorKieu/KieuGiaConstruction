@@ -1,17 +1,11 @@
 "use client";
 
-//import React from "react";
 import { format } from "date-fns";
-//import { vi } from "date-fns/locale";
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Truck, AlertCircle, PackageSearch } from "lucide-react";
-
-// Import Dialog nhập kho
 import GoodsReceiptDialog from "@/components/inventory/GoodsReceiptDialog";
 
 interface Props {

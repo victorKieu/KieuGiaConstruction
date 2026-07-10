@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { LocateFixed, Loader2 } from "lucide-react";
 import { createProject, updateProject } from "@/lib/action/projectActions";
 import { toast } from "sonner";
@@ -78,7 +85,7 @@ export default function ProjectForm({
         }
     }, [initialData]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setForm(f => ({ ...f, [name]: value }));
     };
@@ -128,7 +135,6 @@ export default function ProjectForm({
                 throw new Error(result.error || "Có lỗi xảy ra");
             }
 
-            // ✅ ĐÃ FIX: Gọi thông báo toast báo thành công tại đây!
             toast.success(result.message || (form.id ? "Cập nhật dự án thành công!" : "Tạo dự án mới thành công!"));
 
             if (onSuccess) onSuccess();
@@ -159,19 +165,21 @@ export default function ProjectForm({
                         <Input id="address" name="address" value={form.address} onChange={handleChange} placeholder="Số nhà, đường, quận/huyện..." className="bg-background" />
                     </div>
                     <div>
-                        <Label htmlFor="project_manager">Quản lý dự án</Label>
-                        <select
-                            id="project_manager"
-                            name="project_manager"
-                            value={form.project_manager}
-                            onChange={handleChange}
-                            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        <Label htmlFor="project_manager" className="mb-2 block">Quản lý dự án</Label>
+                        <Select
+                            value={form.project_manager || "none"}
+                            onValueChange={(val) => setForm(f => ({ ...f, project_manager: val === "none" ? "" : val }))}
                         >
-                            <option value="">-- Chọn quản lý --</option>
-                            {managers.map(m => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                        </select>
+                            <SelectTrigger id="project_manager" className="w-full bg-background">
+                                <SelectValue placeholder="-- Chọn quản lý --" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">-- Chọn quản lý --</SelectItem>
+                                {managers.map(m => (
+                                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div>
                         <Label htmlFor="start_date">Ngày bắt đầu</Label>
@@ -194,23 +202,25 @@ export default function ProjectForm({
                     </div>
 
                     <div>
-                        <Label htmlFor="construction_type_id">Loại hình xây dựng</Label>
-                        <select
-                            id="construction_type_id"
-                            name="construction_type_id"
-                            value={form.construction_type_id}
-                            onChange={handleChange}
-                            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        <Label htmlFor="construction_type_id" className="mb-2 block">Loại hình xây dựng</Label>
+                        <Select
+                            value={form.construction_type_id || "none"}
+                            onValueChange={(val) => setForm(f => ({ ...f, construction_type_id: val === "none" ? "" : val }))}
                         >
-                            <option value="">-- Chọn loại hình --</option>
-                            {constructionTypes.length > 0 ? (
-                                constructionTypes.map(type => (
-                                    <option key={type.id} value={type.id}>{type.name}</option>
-                                ))
-                            ) : (
-                                <option disabled>Không có dữ liệu</option>
-                            )}
-                        </select>
+                            <SelectTrigger id="construction_type_id" className="w-full bg-background">
+                                <SelectValue placeholder="-- Chọn loại hình --" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">-- Chọn loại hình --</SelectItem>
+                                {constructionTypes.length > 0 ? (
+                                    constructionTypes.map(type => (
+                                        <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
+                                    ))
+                                ) : (
+                                    <SelectItem value="no-data" disabled>Không có dữ liệu</SelectItem>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
 
@@ -230,19 +240,21 @@ export default function ProjectForm({
                         </div>
                     </div>
                     <div>
-                        <Label htmlFor="customer_id">Chủ đầu tư</Label>
-                        <select
-                            id="customer_id"
-                            name="customer_id"
-                            value={form.customer_id}
-                            onChange={handleChange}
-                            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        <Label htmlFor="customer_id" className="mb-2 block">Chủ đầu tư</Label>
+                        <Select
+                            value={form.customer_id || "none"}
+                            onValueChange={(val) => setForm(f => ({ ...f, customer_id: val === "none" ? "" : val }))}
                         >
-                            <option value="">-- Chọn chủ đầu tư --</option>
-                            {customers.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
+                            <SelectTrigger id="customer_id" className="w-full bg-background">
+                                <SelectValue placeholder="-- Chọn chủ đầu tư --" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">-- Chọn chủ đầu tư --</SelectItem>
+                                {customers.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                     <div>
                         <Label htmlFor="end_date">Ngày kết thúc</Label>
@@ -250,23 +262,25 @@ export default function ProjectForm({
                     </div>
 
                     <div>
-                        <Label htmlFor="type_id">Loại dự án</Label>
-                        <select
-                            id="type_id"
-                            name="type_id"
-                            value={form.type_id}
-                            onChange={handleChange}
-                            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        <Label htmlFor="type_id" className="mb-2 block">Loại dự án</Label>
+                        <Select
+                            value={form.type_id || "none"}
+                            onValueChange={(val) => setForm(f => ({ ...f, type_id: val === "none" ? "" : val }))}
                         >
-                            <option value="">-- Chọn loại dự án --</option>
-                            {projectTypes.length > 0 ? (
-                                projectTypes.map(type => (
-                                    <option key={type.id} value={type.id}>{type.name}</option>
-                                ))
-                            ) : (
-                                <option disabled>Không có dữ liệu</option>
-                            )}
-                        </select>
+                            <SelectTrigger id="type_id" className="w-full bg-background">
+                                <SelectValue placeholder="-- Chọn loại dự án --" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">-- Chọn loại dự án --</SelectItem>
+                                {projectTypes.length > 0 ? (
+                                    projectTypes.map(type => (
+                                        <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>
+                                    ))
+                                ) : (
+                                    <SelectItem value="no-data" disabled>Không có dữ liệu</SelectItem>
+                                )}
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
             </div>

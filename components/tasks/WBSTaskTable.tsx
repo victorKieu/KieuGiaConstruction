@@ -22,7 +22,6 @@ import { deleteTask } from "@/lib/action/taskActions";
 import TaskCreateModal from "@/components/tasks/TaskCreateModal";
 import { formatCurrency } from "@/lib/utils/utils";
 
-// ... (Giữ nguyên các Interface Task, WBSTaskTableProps) ...
 interface Task {
     id: string; name: string; parent_id: string | null; start_date: string | null; due_date: string | null;
     progress: number; weight: number; wbs_code?: string; unit?: string; planned_quantity?: number;
