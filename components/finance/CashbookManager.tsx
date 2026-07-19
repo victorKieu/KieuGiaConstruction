@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Loader2, Plus, FileSignature, CheckCircle, Wallet, Ban, ArrowRightLeft, Building2, User, FileText, Pencil, Save, Filter, CalendarDays, X, AlertCircle, RefreshCw } from "lucide-react";
+import { Loader2, Plus, FileSignature, CheckCircle, Wallet, Ban, ArrowRightLeft, Building2, User, FileText, Pencil, Save, Filter, CalendarDays, X, AlertCircle, RefreshCw, Paperclip } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -31,8 +32,24 @@ const formatInputMoney = (val: number | string) => {
     return new Intl.NumberFormat("vi-VN").format(Number(val));
 };
 
+// MA TRẬN PHÂN LOẠI NGHIỆP VỤ & TỰ ĐỘNG ĐỊNH KHOẢN
+const CATEGORIES = [
+    { value: "advance_internal", label: "Tạm ứng nội bộ (NV đi công tác, mua sắm)", type: "advance", defaultDebit: "141", defaultCredit: "111" },
+    { value: "advance_subcontractor", label: "Tạm ứng Thầu phụ / Nhà cung cấp", type: "advance", defaultDebit: "331", defaultCredit: "111" },
+    { value: "invoice_payment", label: "Chi trả nợ / Quyết toán NCC", type: "payment", defaultDebit: "331", defaultCredit: "111" },
+    { value: "direct_material", label: "Chi phí trực tiếp (Mua lẻ tại dự án)", type: "payment", defaultDebit: "154", defaultCredit: "111" },
+    { value: "overhead_cost", label: "Chi phí quản lý (Điện, nước, Lương VP)", type: "payment", defaultDebit: "642", defaultCredit: "111" },
+    { value: "receipt_advance", label: "Thu tiền CĐT tạm ứng / Đặt cọc", type: "receipt", defaultDebit: "112", defaultCredit: "131" },
+    { value: "receipt_settlement", label: "Thu tiền CĐT thanh quyết toán", type: "receipt", defaultDebit: "112", defaultCredit: "131" },
+    { value: "other_receipt", label: "Thu nhập khác (Thanh lý, bán phế liệu)", type: "receipt", defaultDebit: "111", defaultCredit: "711" },
+];
+
 export default function CashbookManager({ initialRequests, projects, accounts, companySettings, userProfile }: Props) {
     const router = useRouter();
+
+    // FIX HYDRATION MISMATCH: CHỈ RENDER SAU KHI ĐÃ MOUNT LÊN BROWSER
+    const [isMounted, setIsMounted] = useState(false);
+
     const [requests, setRequests] = useState(initialRequests || []);
     const [activeTab, setActiveTab] = useState("my_requests");
 
@@ -48,29 +65,44 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         return d.toISOString().split('T')[0];
     }
 
+    const getAccId = (codePrefix: string) => accounts.find(a => a.code.startsWith(codePrefix))?.id || "";
+
     const [openNewRequest, setOpenNewRequest] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [newReq, setNewReq] = useState({
-        type: 'payment', amount: '', description: '', partner_name: '', project_id: 'none', created_at: getTodayLocal()
+        type: 'payment',
+        category_type: 'direct_material',
+        amount: '',
+        description: '',
+        partner_name: '',
+        department_name: '',
+        project_id: 'none',
+        debit_account_id: '',
+        credit_account_id: '',
+        has_original_vouchers: false,
+        voucher_count: 1,
+        created_at: getTodayLocal()
     });
 
     const [openEditRequest, setOpenEditRequest] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
-    const [editReqData, setEditReqData] = useState({
-        id: '', type: 'payment', amount: '', description: '', partner_name: '', project_id: 'none', created_at: ''
-    });
+    const [editReqData, setEditReqData] = useState<any>({});
 
     const [openExecute, setOpenExecute] = useState(false);
     const [selectedReq, setSelectedReq] = useState<any>(null);
     const [isExecuting, setIsExecuting] = useState(false);
     const [executionData, setExecutionData] = useState({ debitAcc: '', creditAcc: '', amount: 0 });
 
-    // STATES CHO CHỨC NĂNG SỬA ĐỊNH KHOẢN SỔ CÁI
     const [openEditAccounting, setOpenEditAccounting] = useState(false);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [isSavingAccounting, setIsSavingAccounting] = useState(false);
     const [selectedReqForAcc, setSelectedReqForAcc] = useState<any>(null);
     const [accountingForm, setAccountingForm] = useState({ debitAcc: '', creditAcc: '' });
+
+    // Cấp phép render sau khi Load xong để chống Hydration Mismatch
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     useEffect(() => {
         setRequests(initialRequests || []);
@@ -98,13 +130,58 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         setFilterEndDate("");
     };
 
+    const handleOpenNewRequest = () => {
+        const defaultCat = CATEGORIES.find(c => c.value === 'direct_material')!;
+        setNewReq({
+            type: defaultCat.type,
+            category_type: defaultCat.value,
+            amount: '',
+            description: '',
+            partner_name: '',
+            department_name: '',
+            project_id: 'none',
+            debit_account_id: getAccId(defaultCat.defaultDebit),
+            credit_account_id: getAccId(defaultCat.defaultCredit),
+            has_original_vouchers: false,
+            voucher_count: 1,
+            created_at: getTodayLocal()
+        });
+        setOpenNewRequest(true);
+    };
+
+    const handleCategoryChange = (val: string, isEdit: boolean = false) => {
+        const cat = CATEGORIES.find(c => c.value === val);
+        if (!cat) return;
+
+        if (isEdit) {
+            setEditReqData({
+                ...editReqData,
+                category_type: val,
+                type: cat.type,
+                debit_account_id: getAccId(cat.defaultDebit),
+                credit_account_id: getAccId(cat.defaultCredit)
+            });
+        } else {
+            setNewReq({
+                ...newReq,
+                category_type: val,
+                type: cat.type,
+                debit_account_id: getAccId(cat.defaultDebit),
+                credit_account_id: getAccId(cat.defaultCredit)
+            });
+        }
+    };
+
     const handleCreateRequest = async () => {
         if (!newReq.amount || Number(newReq.amount) <= 0) return toast.warning("Vui lòng nhập số tiền hợp lệ!");
         if (!newReq.description) return toast.warning("Vui lòng nhập diễn giải!");
+        if (!newReq.debit_account_id || !newReq.credit_account_id) return toast.warning("Chưa xác định được tài khoản định khoản!");
 
         setIsSubmitting(true);
         const payload = {
             ...newReq,
+            type: newReq.type as "payment" | "receipt" | "advance",
+            amount: Number(newReq.amount),
             project_id: newReq.project_id === 'none' ? null : newReq.project_id,
             created_at: newReq.created_at ? new Date(newReq.created_at).toISOString() : new Date().toISOString()
         };
@@ -113,7 +190,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         if (res.success) {
             toast.success(res.message);
             setOpenNewRequest(false);
-            setNewReq({ type: 'payment', amount: '', description: '', partner_name: '', project_id: 'none', created_at: getTodayLocal() });
             router.refresh();
         } else {
             toast.error("Lỗi: " + res.error);
@@ -125,10 +201,16 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         setEditReqData({
             id: req.id,
             type: req.request_type || 'payment',
+            category_type: req.category_type || 'direct_material',
             amount: req.amount || '',
             description: req.description || '',
             partner_name: req.partner_name || '',
+            department_name: req.department_name || '',
             project_id: req.project_id || 'none',
+            debit_account_id: req.debit_account_id || '',
+            credit_account_id: req.credit_account_id || '',
+            has_original_vouchers: req.has_original_vouchers || false,
+            voucher_count: req.voucher_count || 1,
             created_at: req.created_at ? req.created_at.split('T')[0] : getTodayLocal()
         });
         setOpenEditRequest(true);
@@ -140,10 +222,16 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
         setIsUpdating(true);
         const payload = {
-            request_type: editReqData.type,
+            request_type: editReqData.type as "payment" | "receipt" | "advance",
+            category_type: editReqData.category_type,
             amount: Number(editReqData.amount),
             description: editReqData.description,
             partner_name: editReqData.partner_name,
+            department_name: editReqData.department_name,
+            debit_account_id: editReqData.debit_account_id,
+            credit_account_id: editReqData.credit_account_id,
+            has_original_vouchers: editReqData.has_original_vouchers,
+            voucher_count: editReqData.voucher_count,
             project_id: editReqData.project_id === 'none' ? null : editReqData.project_id,
             created_at: editReqData.created_at ? new Date(editReqData.created_at).toISOString() : undefined
         };
@@ -176,18 +264,11 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
     const openExecutionModal = (req: any) => {
         setSelectedReq(req);
-        let suggestDebit = "";
-        let suggestCredit = "";
-
-        if (req.request_type === 'payment') {
-            suggestCredit = accounts.find(a => a.code === '111')?.id || "";
-            suggestDebit = accounts.find(a => a.code === '331')?.id || "";
-        } else if (req.request_type === 'receipt') {
-            suggestDebit = accounts.find(a => a.code === '111')?.id || "";
-            suggestCredit = accounts.find(a => a.code === '131')?.id || "";
-        }
-
-        setExecutionData({ debitAcc: suggestDebit, creditAcc: suggestCredit, amount: Number(req.amount) });
+        setExecutionData({
+            debitAcc: req.debit_account_id || "",
+            creditAcc: req.credit_account_id || "",
+            amount: Number(req.amount)
+        });
         setOpenExecute(true);
     };
 
@@ -200,7 +281,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         }
 
         setIsExecuting(true);
-        const res = await executePaymentRequestAction(selectedReq.id, executionData.debitAcc, executionData.creditAcc, executionData.amount);
+        const res = await executePaymentRequestAction(selectedReq.id, executionData.amount);
 
         if (res.success) {
             toast.success(res.message);
@@ -212,7 +293,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         setIsExecuting(false);
     };
 
-    // HÀM KÉO ĐỊNH KHOẢN CŨ LÊN ĐỂ SỬA
     const handleEditAccountingClick = async (req: any) => {
         setSelectedReqForAcc(req);
         setOpenEditAccounting(true);
@@ -231,7 +311,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
         setIsHistoryLoading(false);
     };
 
-    // HÀM LƯU ĐIỀU CHỈNH ĐỊNH KHOẢN SỔ CÁI
     const handleSaveAccounting = async () => {
         if (!accountingForm.debitAcc || !accountingForm.creditAcc) {
             return toast.warning("Vui lòng nhập đầy đủ cặp tài khoản đối ứng!");
@@ -270,6 +349,22 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
     const isFilterActive = filterProject !== "all" || filterStartDate !== "" || filterEndDate !== "";
 
+    const activeNewCat = CATEGORIES.find(c => c.value === newReq.category_type);
+    const partnerLabelNew = activeNewCat?.value === 'advance_internal' ? 'Tên nhân viên tạm ứng' : (activeNewCat?.value.includes('receipt') ? 'Khách hàng / CĐT' : 'Nhà cung cấp / Thầu phụ');
+
+    const activeEditCat = CATEGORIES.find(c => c.value === editReqData.category_type);
+    const partnerLabelEdit = activeEditCat?.value === 'advance_internal' ? 'Tên nhân viên tạm ứng' : (activeEditCat?.value.includes('receipt') ? 'Khách hàng / CĐT' : 'Nhà cung cấp / Thầu phụ');
+
+    // MÀN HÌNH CHỜ TRƯỚC KHI RENDER ĐỂ BYPASS HYDRATION MISMATCH
+    if (!isMounted) {
+        return (
+            <div className="flex h-[50vh] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
+                <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+                <p className="text-sm font-medium text-slate-500">Đang đồng bộ dữ liệu Sổ quỹ...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
@@ -277,9 +372,9 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                     <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <ArrowRightLeft className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Sổ Quỹ & Duyệt Chi
                     </h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Quy trình: Lập đề nghị &rarr; Kế toán trưởng duyệt &rarr; Giải ngân & Ghi sổ cái</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Quy trình: Lập đề nghị (Kèm định khoản) &rarr; Kế toán trưởng duyệt &rarr; Giải ngân Sổ cái</p>
                 </div>
-                <Button onClick={() => setOpenNewRequest(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm dark:bg-indigo-600 dark:hover:bg-indigo-500">
+                <Button onClick={handleOpenNewRequest} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm dark:bg-indigo-600 dark:hover:bg-indigo-500">
                     <Plus className="w-4 h-4 mr-2" /> Lập Đề nghị Thu/Chi
                 </Button>
             </div>
@@ -348,7 +443,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                     </TabsTrigger>
                 </TabsList>
 
-                {/* TAB 1: DANH SÁCH ĐỀ NGHỊ */}
                 <TabsContent value="my_requests" className="mt-4">
                     <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm overflow-hidden">
                         <Table>
@@ -356,9 +450,9 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                 <TableRow className="dark:border-slate-800">
                                     <TableHead className="font-bold text-slate-700 dark:text-slate-300">Mã Phiếu</TableHead>
                                     <TableHead className="font-bold text-slate-700 dark:text-slate-300">Loại</TableHead>
-                                    <TableHead className="font-bold text-slate-700 dark:text-slate-300 min-w-[250px]">Nội dung đề nghị</TableHead>
+                                    <TableHead className="font-bold text-slate-700 dark:text-slate-300 min-w-[250px]">Nội dung & Đối tượng</TableHead>
                                     <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Số tiền (VNĐ)</TableHead>
-                                    <TableHead className="font-bold text-slate-700 dark:text-slate-300">Đối tác / Dự án</TableHead>
+                                    <TableHead className="text-center font-bold text-slate-700 dark:text-slate-300">Hồ sơ</TableHead>
                                     <TableHead className="text-center font-bold text-slate-700 dark:text-slate-300">Trạng thái</TableHead>
                                     <TableHead className="text-right font-bold text-slate-700 dark:text-slate-300">Thao tác</TableHead>
                                 </TableRow>
@@ -368,6 +462,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                     <TableRow className="dark:border-slate-800"><TableCell colSpan={7} className="text-center py-12 text-slate-500 dark:text-slate-400">Không tìm thấy phiếu nào phù hợp với bộ lọc.</TableCell></TableRow>
                                 ) : filteredRequests.map(req => {
                                     const isLocked = ['executed', 'approved', 'paid', 'completed'].includes(req.status?.toLowerCase());
+                                    const catLabel = CATEGORIES.find(c => c.value === req.category_type)?.label || 'Khác';
 
                                     return (
                                         <TableRow key={req.id} className="dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -375,42 +470,39 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                                 {req.request_code}
                                                 <div className="text-xs font-normal text-slate-400 mt-1">{format(new Date(req.created_at), 'dd/MM/yyyy')}</div>
                                             </TableCell>
-                                            <TableCell>{getTypeLabel(req.request_type)}</TableCell>
+                                            <TableCell>
+                                                {getTypeLabel(req.request_type)}
+                                                <div className="text-[10px] text-slate-500 mt-1 truncate max-w-[120px]" title={catLabel}>{catLabel}</div>
+                                            </TableCell>
                                             <TableCell className="text-slate-600 dark:text-slate-300 min-w-[200px] max-w-[300px] whitespace-normal break-words">
-                                                {req.description}
-                                                <div className="text-xs text-slate-400 mt-1">Lập bởi: {req.requester?.name}</div>
+                                                <div className="font-medium text-slate-800 dark:text-slate-200">{req.description}</div>
+                                                <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                                    <User className="w-3 h-3 shrink-0" /> {req.partner_name || "N/A"}
+                                                    {req.department_name && <span className="italic text-slate-400">({req.department_name})</span>}
+                                                </div>
+                                                {req.project && <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mt-0.5"><Building2 className="w-3 h-3 shrink-0" /> {req.project.name}</div>}
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-slate-800 dark:text-slate-100">{formatCurrency(req.amount)}</TableCell>
-                                            <TableCell className="text-slate-600 dark:text-slate-400 text-sm min-w-[200px] max-w-[300px] whitespace-normal break-words">
-                                                <div className="flex items-center gap-1 mb-1"><User className="w-3 h-3 shrink-0" /> <span className="line-clamp-2">{req.partner_name || "N/A"}</span></div>
-                                                {req.project && <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400"><Building2 className="w-3 h-3 shrink-0" /> <span className="line-clamp-2">{req.project.name}</span></div>}
+                                            <TableCell className="text-center">
+                                                {req.has_original_vouchers ? (
+                                                    <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800">
+                                                        <Paperclip className="w-3 h-3 mr-1" /> {req.voucher_count} Chứng từ
+                                                    </Badge>
+                                                ) : <span className="text-xs text-slate-400 italic">Không có</span>}
                                             </TableCell>
                                             <TableCell className="text-center">{getStatusBadge(req.status)}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end items-center gap-2">
                                                     <VoucherActions request={req} companySettings={companySettings} />
 
-                                                    {/* NÚT ĐIỀU CHỈNH ĐỊNH KHOẢN SỔ CÁI DÀNH CHO PHIẾU ĐÃ CHI */}
                                                     {isLocked && isAdmin && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => handleEditAccountingClick(req)}
-                                                            className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/20"
-                                                            title="Sửa định khoản Kế toán (Sổ cái)"
-                                                        >
+                                                        <Button variant="ghost" size="icon" onClick={() => handleEditAccountingClick(req)} className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/20" title="Sửa định khoản Kế toán">
                                                             <RefreshCw className="w-4 h-4" />
                                                         </Button>
                                                     )}
 
                                                     {(isAdmin || !isLocked) && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => handleEditClick(req)}
-                                                            className={`h-8 w-8 ${isAdmin && isLocked ? 'text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20' : 'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20'}`}
-                                                            title={isAdmin && isLocked ? "Quyền Admin: Sửa thông tin phiếu" : "Chỉnh sửa"}
-                                                        >
+                                                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(req)} className={`h-8 w-8 ${isAdmin && isLocked ? 'text-amber-500' : 'text-blue-600'}`} title="Sửa thông tin phiếu">
                                                             <Pencil className="w-4 h-4" />
                                                         </Button>
                                                     )}
@@ -424,15 +516,14 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                     </Card>
                 </TabsContent>
 
-                {/* TAB 2: CHỜ DUYỆT */}
                 <TabsContent value="approvals" className="mt-4">
                     <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm overflow-hidden border-t-4 border-t-amber-500">
                         <Table>
                             <TableHeader className="bg-amber-50/50 dark:bg-amber-900/10">
                                 <TableRow className="dark:border-slate-800">
                                     <TableHead className="font-bold text-amber-900 dark:text-amber-500">Mã Phiếu</TableHead>
-                                    <TableHead className="font-bold text-amber-900 dark:text-amber-500">Loại</TableHead>
-                                    <TableHead className="font-bold text-amber-900 dark:text-amber-500 min-w-[250px]">Nội dung đề nghị</TableHead>
+                                    <TableHead className="font-bold text-amber-900 dark:text-amber-500">Nội dung đề nghị</TableHead>
+                                    <TableHead className="text-center font-bold text-amber-900 dark:text-amber-500">Định khoản dự kiến</TableHead>
                                     <TableHead className="text-right font-bold text-amber-900 dark:text-amber-500">Số tiền (VNĐ)</TableHead>
                                     <TableHead className="text-right font-bold text-amber-900 dark:text-amber-500">Quyết định</TableHead>
                                 </TableRow>
@@ -446,10 +537,15 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                             {req.request_code}
                                             <div className="text-xs font-normal text-amber-600/70 mt-1">{format(new Date(req.created_at), 'dd/MM/yyyy')}</div>
                                         </TableCell>
-                                        <TableCell>{getTypeLabel(req.request_type)}</TableCell>
                                         <TableCell className="text-slate-700 dark:text-slate-300 min-w-[200px] max-w-[300px] whitespace-normal break-words">
-                                            {req.description}
-                                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Lập bởi: {req.requester?.name}</div>
+                                            <div className="font-bold">{req.description}</div>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1"><User className="w-3 h-3" /> {req.partner_name} {req.has_original_vouchers && <span className="text-indigo-500 ml-2 font-medium">(Kèm {req.voucher_count} chứng từ)</span>}</div>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <div className="inline-flex flex-col text-[10px] font-mono bg-white dark:bg-slate-950 p-1.5 rounded border border-amber-200 dark:border-amber-800/50">
+                                                <span className="text-blue-600 dark:text-blue-400">NỢ {accounts.find(a => a.id === req.debit_account_id)?.code || '---'}</span>
+                                                <span className="text-amber-600 dark:text-amber-400">CÓ {accounts.find(a => a.id === req.credit_account_id)?.code || '---'}</span>
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-right font-black text-lg text-slate-800 dark:text-slate-100">{formatCurrency(req.amount)}</TableCell>
                                         <TableCell className="text-right">
@@ -465,17 +561,16 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                     </Card>
                 </TabsContent>
 
-                {/* TAB 3: THỰC THI & GHI SỔ CÁI */}
                 <TabsContent value="execution" className="mt-4">
                     <Card className="dark:bg-slate-900 dark:border-slate-800 shadow-sm overflow-hidden border-t-4 border-t-blue-500">
                         <Table>
                             <TableHeader className="bg-blue-50/50 dark:bg-blue-900/10">
                                 <TableRow className="dark:border-slate-800">
                                     <TableHead className="font-bold text-blue-900 dark:text-blue-400">Mã Phiếu</TableHead>
-                                    <TableHead className="font-bold text-blue-900 dark:text-blue-400">Loại</TableHead>
                                     <TableHead className="font-bold text-blue-900 dark:text-blue-400 min-w-[250px]">Nội dung</TableHead>
+                                    <TableHead className="text-center font-bold text-blue-900 dark:text-blue-400">Định khoản đã duyệt</TableHead>
                                     <TableHead className="text-right font-bold text-blue-900 dark:text-blue-400">Số tiền (VNĐ)</TableHead>
-                                    <TableHead className="text-right font-bold text-blue-900 dark:text-blue-400">Thao tác Kế toán</TableHead>
+                                    <TableHead className="text-right font-bold text-blue-900 dark:text-blue-400">Thao tác</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -487,15 +582,20 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                             {req.request_code}
                                             <div className="text-xs font-normal text-blue-600/70 mt-1">{format(new Date(req.created_at), 'dd/MM/yyyy')}</div>
                                         </TableCell>
-                                        <TableCell>{getTypeLabel(req.request_type)}</TableCell>
                                         <TableCell className="text-slate-700 dark:text-slate-300 min-w-[200px] max-w-[300px] whitespace-normal break-words">
                                             {req.description}
                                             <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium flex items-center"><CheckCircle className="w-3 h-3 mr-1" />Đã duyệt: {format(new Date(req.approved_at), 'dd/MM/yyyy HH:mm')}</div>
                                         </TableCell>
+                                        <TableCell className="text-center">
+                                            <div className="inline-flex flex-col text-[10px] font-mono bg-white dark:bg-slate-900 p-1.5 rounded border border-blue-200 dark:border-blue-800/50">
+                                                <span className="text-blue-600 dark:text-blue-400">NỢ {accounts.find(a => a.id === req.debit_account_id)?.code || '---'}</span>
+                                                <span className="text-amber-600 dark:text-amber-400">CÓ {accounts.find(a => a.id === req.credit_account_id)?.code || '---'}</span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-right font-black text-lg text-slate-800 dark:text-slate-100">{formatCurrency(req.amount)}</TableCell>
                                         <TableCell className="text-right">
                                             <Button onClick={() => openExecutionModal(req)} className="bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-500 shadow-sm">
-                                                <Wallet className="w-4 h-4 mr-2" /> Giải ngân & Vào Sổ
+                                                <Wallet className="w-4 h-4 mr-2" /> Giải ngân
                                             </Button>
                                         </TableCell>
                                     </TableRow>
@@ -508,55 +608,100 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
             {/* MODAL 1: LẬP ĐỀ NGHỊ MỚI */}
             <Dialog open={openNewRequest} onOpenChange={setOpenNewRequest}>
-                <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-xl">
+                <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-3xl">
                     <DialogHeader>
-                        <DialogTitle className="text-xl flex items-center gap-2 dark:text-slate-100"><FileText className="w-5 h-5 text-indigo-500" /> Lập Đề Nghị Mới</DialogTitle>
+                        <DialogTitle className="text-xl flex items-center gap-2 dark:text-slate-100"><FileText className="w-5 h-5 text-indigo-500" /> Lập Đề Nghị Mới (Tích hợp Định khoản)</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+                        {/* Cột 1: Thông tin nghiệp vụ */}
+                        <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label className="dark:text-slate-300">Ngày lập phiếu <span className="text-red-500">*</span></Label>
-                                <Input type="date" value={newReq.created_at} onChange={e => setNewReq({ ...newReq, created_at: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:[color-scheme:dark]" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="dark:text-slate-300">Loại đề nghị</Label>
-                                <Select value={newReq.type} onValueChange={(v) => setNewReq({ ...newReq, type: v })}>
-                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 font-bold"><SelectValue /></SelectTrigger>
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase text-indigo-600">Nhóm nghiệp vụ <span className="text-red-500">*</span></Label>
+                                <Select value={newReq.category_type} onValueChange={(v) => handleCategoryChange(v, false)}>
+                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 font-bold border-indigo-200 bg-indigo-50"><SelectValue /></SelectTrigger>
                                     <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                        <SelectItem value="payment" className="text-red-600 dark:text-red-400 font-bold">CHI TIỀN</SelectItem>
-                                        <SelectItem value="receipt" className="text-green-600 dark:text-green-400 font-bold">THU TIỀN</SelectItem>
-                                        <SelectItem value="advance" className="text-blue-600 dark:text-blue-400 font-bold">TẠM ỨNG</SelectItem>
+                                        {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase font-bold text-blue-700 dark:text-blue-400">Tài khoản Nợ (Debit)</Label>
+                                    <Select value={newReq.debit_account_id} onValueChange={v => setNewReq({ ...newReq, debit_account_id: v })}>
+                                        <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-blue-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">Tài khoản Có (Credit)</Label>
+                                    <Select value={newReq.credit_account_id} onValueChange={v => setNewReq({ ...newReq, credit_account_id: v })}>
+                                        <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
-                                <Label className="dark:text-slate-300">Số tiền (VNĐ) <span className="text-red-500">*</span></Label>
-                                <Input type="number" placeholder="0" value={newReq.amount} onChange={e => setNewReq({ ...newReq, amount: e.target.value })} className="text-right font-bold text-lg dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase">{partnerLabelNew} <span className="text-red-500">*</span></Label>
+                                <Input placeholder={`Nhập ${partnerLabelNew.toLowerCase()}...`} value={newReq.partner_name} onChange={e => setNewReq({ ...newReq, partner_name: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                            </div>
+
+                            {activeNewCat?.value === 'advance_internal' && (
+                                <div className="space-y-2">
+                                    <Label className="dark:text-slate-300 font-bold text-xs uppercase">Phòng ban / Bộ phận</Label>
+                                    <Input placeholder="Vd: Phòng Kỹ thuật..." value={newReq.department_name} onChange={e => setNewReq({ ...newReq, department_name: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Cột 2: Tiền và Chứng từ */}
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="dark:text-slate-300 font-bold text-xs uppercase">Ngày lập phiếu <span className="text-red-500">*</span></Label>
+                                    <Input type="date" value={newReq.created_at} onChange={e => setNewReq({ ...newReq, created_at: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:[color-scheme:dark]" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="dark:text-slate-300 font-bold text-xs uppercase">Số tiền (VNĐ) <span className="text-red-500">*</span></Label>
+                                    <Input type="number" placeholder="0" value={newReq.amount} onChange={e => setNewReq({ ...newReq, amount: e.target.value })} className="text-right font-black text-lg dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 text-emerald-600" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase">Lý do / Nội dung chi tiết <span className="text-red-500">*</span></Label>
+                                <Input placeholder="Mô tả rõ ràng nghiệp vụ..." value={newReq.description} onChange={e => setNewReq({ ...newReq, description: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase flex items-center gap-1"><Building2 className="w-3 h-3" /> Dự án liên quan</Label>
+                                <Select value={newReq.project_id} onValueChange={(v) => setNewReq({ ...newReq, project_id: v })}>
+                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"><SelectValue placeholder="-- Không gắn dự án --" /></SelectTrigger>
+                                    <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                        <SelectItem value="none" className="italic dark:text-slate-400">-- Chi phí chung / Không gắn dự án --</SelectItem>
+                                        {projects?.map((p: any) => <SelectItem key={p.id} value={p.id} className="dark:text-slate-200">[{p.code}] {p.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border dark:border-slate-800 flex items-center justify-between mt-2">
+                                <div className="flex items-center gap-2">
+                                    <Switch checked={newReq.has_original_vouchers} onCheckedChange={(v) => setNewReq({ ...newReq, has_original_vouchers: v })} />
+                                    <Label className="font-bold text-slate-700 dark:text-slate-300">Có chứng từ gốc kèm theo</Label>
+                                </div>
+                                {newReq.has_original_vouchers && (
+                                    <div className="flex items-center gap-2">
+                                        <Label className="text-xs text-slate-500">Số bản:</Label>
+                                        <Input type="number" min="1" value={newReq.voucher_count} onChange={e => setNewReq({ ...newReq, voucher_count: Number(e.target.value) })} className="w-16 h-8 text-center" />
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300">Lý do / Nội dung chi tiết <span className="text-red-500">*</span></Label>
-                            <Input placeholder="Nhập lý do thu chi..." value={newReq.description} onChange={e => setNewReq({ ...newReq, description: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300">Đối tác / Thụ hưởng (Nếu có)</Label>
-                            <Input placeholder="Tên người nhận tiền..." value={newReq.partner_name} onChange={e => setNewReq({ ...newReq, partner_name: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300 flex items-center gap-1"><Building2 className="w-3 h-3" /> Dự án liên quan</Label>
-                            <Select value={newReq.project_id} onValueChange={(v) => setNewReq({ ...newReq, project_id: v })}>
-                                <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"><SelectValue placeholder="-- Không gắn dự án --" /></SelectTrigger>
-                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                    <SelectItem value="none" className="italic dark:text-slate-400">-- Chi phí chung / Không gắn dự án --</SelectItem>
-                                    {projects?.map((p: any) => <SelectItem key={p.id} value={p.id} className="dark:text-slate-200">[{p.code}] {p.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
-                    <DialogFooter className="mt-2">
+                    <DialogFooter className="mt-4 pt-4 border-t dark:border-slate-800">
                         <Button variant="outline" onClick={() => setOpenNewRequest(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
-                        <Button onClick={handleCreateRequest} disabled={isSubmitting} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[130px] dark:bg-indigo-600 dark:hover:bg-indigo-500">
-                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null} Gửi Trình Duyệt
+                        <Button onClick={handleCreateRequest} disabled={isSubmitting} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[150px] dark:bg-indigo-600 dark:hover:bg-indigo-500">
+                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />} Lưu & Trình Duyệt
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -564,54 +709,97 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
             {/* MODAL EDIT: CHỈNH SỬA PHIẾU */}
             <Dialog open={openEditRequest} onOpenChange={setOpenEditRequest}>
-                <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-xl">
+                <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-xl flex items-center gap-2 dark:text-slate-100">
                             <Pencil className="w-5 h-5 text-indigo-500" /> Cập nhật Thông tin Phiếu
                         </DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+                        <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label className="dark:text-slate-300">Ngày lập phiếu <span className="text-red-500">*</span></Label>
-                                <Input type="date" value={editReqData.created_at} onChange={e => setEditReqData({ ...editReqData, created_at: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:[color-scheme:dark]" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="dark:text-slate-300">Loại đề nghị</Label>
-                                <Select value={editReqData.type} onValueChange={(v) => setEditReqData({ ...editReqData, type: v })}>
-                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 font-bold"><SelectValue /></SelectTrigger>
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase text-indigo-600">Nhóm nghiệp vụ <span className="text-red-500">*</span></Label>
+                                <Select value={editReqData.category_type} onValueChange={(v) => handleCategoryChange(v, true)}>
+                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 font-bold border-indigo-200 bg-indigo-50"><SelectValue /></SelectTrigger>
                                     <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                        <SelectItem value="payment" className="text-red-600 dark:text-red-400 font-bold">CHI TIỀN</SelectItem>
-                                        <SelectItem value="receipt" className="text-green-600 dark:text-green-400 font-bold">THU TIỀN</SelectItem>
-                                        <SelectItem value="advance" className="text-blue-600 dark:text-blue-400 font-bold">TẠM ỨNG</SelectItem>
+                                        {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase font-bold text-blue-700 dark:text-blue-400">Tài khoản Nợ (Debit)</Label>
+                                    <Select value={editReqData.debit_account_id} onValueChange={v => setEditReqData({ ...editReqData, debit_account_id: v })}>
+                                        <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-blue-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">Tài khoản Có (Credit)</Label>
+                                    <Select value={editReqData.credit_account_id} onValueChange={v => setEditReqData({ ...editReqData, credit_account_id: v })}>
+                                        <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
                             <div className="space-y-2">
-                                <Label className="dark:text-slate-300">Số tiền (VNĐ) <span className="text-red-500">*</span></Label>
-                                <Input type="number" placeholder="0" value={editReqData.amount} onChange={e => setEditReqData({ ...editReqData, amount: e.target.value })} className="text-right font-bold text-lg dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase">{partnerLabelEdit} <span className="text-red-500">*</span></Label>
+                                <Input value={editReqData.partner_name} onChange={e => setEditReqData({ ...editReqData, partner_name: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                            </div>
+
+                            {activeEditCat?.value === 'advance_internal' && (
+                                <div className="space-y-2">
+                                    <Label className="dark:text-slate-300 font-bold text-xs uppercase">Phòng ban / Bộ phận</Label>
+                                    <Input value={editReqData.department_name} onChange={e => setEditReqData({ ...editReqData, department_name: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="dark:text-slate-300 font-bold text-xs uppercase">Ngày lập phiếu <span className="text-red-500">*</span></Label>
+                                    <Input type="date" value={editReqData.created_at} onChange={e => setEditReqData({ ...editReqData, created_at: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 dark:[color-scheme:dark]" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="dark:text-slate-300 font-bold text-xs uppercase">Số tiền (VNĐ) <span className="text-red-500">*</span></Label>
+                                    <Input type="number" value={editReqData.amount} onChange={e => setEditReqData({ ...editReqData, amount: e.target.value })} className="text-right font-black text-lg dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100 text-emerald-600" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase">Lý do / Nội dung chi tiết <span className="text-red-500">*</span></Label>
+                                <Input value={editReqData.description} onChange={e => setEditReqData({ ...editReqData, description: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="dark:text-slate-300 font-bold text-xs uppercase flex items-center gap-1"><Building2 className="w-3 h-3" /> Dự án liên quan</Label>
+                                <Select value={editReqData.project_id} onValueChange={(v) => setEditReqData({ ...editReqData, project_id: v })}>
+                                    <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"><SelectValue placeholder="-- Không gắn dự án --" /></SelectTrigger>
+                                    <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                        <SelectItem value="none" className="italic dark:text-slate-400">-- Chi phí chung / Không gắn dự án --</SelectItem>
+                                        {projects?.map((p: any) => <SelectItem key={p.id} value={p.id} className="dark:text-slate-200">[{p.code}] {p.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border dark:border-slate-800 flex items-center justify-between mt-2">
+                                <div className="flex items-center gap-2">
+                                    <Switch checked={editReqData.has_original_vouchers} onCheckedChange={(v) => setEditReqData({ ...editReqData, has_original_vouchers: v })} />
+                                    <Label className="font-bold text-slate-700 dark:text-slate-300">Có chứng từ gốc kèm theo</Label>
+                                </div>
+                                {editReqData.has_original_vouchers && (
+                                    <div className="flex items-center gap-2">
+                                        <Label className="text-xs text-slate-500">Số bản:</Label>
+                                        <Input type="number" min="1" value={editReqData.voucher_count} onChange={e => setEditReqData({ ...editReqData, voucher_count: Number(e.target.value) })} className="w-16 h-8 text-center" />
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300">Lý do / Nội dung chi tiết <span className="text-red-500">*</span></Label>
-                            <Input placeholder="Nhập lý do thu chi..." value={editReqData.description} onChange={e => setEditReqData({ ...editReqData, description: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300">Đối tác / Thụ hưởng (Nếu có)</Label>
-                            <Input placeholder="Tên người nhận tiền..." value={editReqData.partner_name} onChange={e => setEditReqData({ ...editReqData, partner_name: e.target.value })} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="dark:text-slate-300 flex items-center gap-1"><Building2 className="w-3 h-3" /> Dự án liên quan</Label>
-                            <Select value={editReqData.project_id} onValueChange={(v) => setEditReqData({ ...editReqData, project_id: v })}>
-                                <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-100"><SelectValue placeholder="-- Không gắn dự án --" /></SelectTrigger>
-                                <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
-                                    <SelectItem value="none" className="italic dark:text-slate-400">-- Chi phí chung / Không gắn dự án --</SelectItem>
-                                    {projects?.map((p: any) => <SelectItem key={p.id} value={p.id} className="dark:text-slate-200">[{p.code}] {p.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
-                    <DialogFooter className="mt-2">
+                    <DialogFooter className="mt-4 pt-4 border-t dark:border-slate-800">
                         <Button variant="outline" onClick={() => setOpenEditRequest(false)} className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
                         <Button onClick={handleUpdateRequest} disabled={isUpdating} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[130px] dark:bg-blue-600 dark:hover:bg-blue-500">
                             {isUpdating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />} Lưu Thay Đổi
@@ -632,7 +820,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
 
                     <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800 space-y-4">
                         <div className="p-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/50 rounded-md text-sm text-blue-800 dark:text-blue-300">
-                            Xác nhận nguồn tiền và định khoản để Hệ thống tự động ghi vào Sổ Nhật ký chung (Sổ cái).
+                            Định khoản đã được thiết lập tự động từ bước lập đề nghị. Bạn có thể kiểm tra lại trước khi ghi sổ.
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -682,14 +870,6 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                                 </div>
                             )}
                         </div>
-
-                        <div className="grid grid-cols-2 gap-2 mt-4 text-xs p-3 bg-white dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
-                            <div className="col-span-2 text-slate-500 dark:text-slate-400 font-bold uppercase text-center mb-1">Mô phỏng Bút toán Nợ/Có</div>
-                            <div className="text-right pr-4 font-semibold text-slate-600 dark:text-slate-400">NỢ (Debit):</div>
-                            <div className="font-bold text-blue-700 dark:text-blue-400">{formatCurrency(executionData.amount)}</div>
-                            <div className="text-right pr-4 font-semibold text-slate-600 dark:text-slate-400">CÓ (Credit):</div>
-                            <div className="font-bold text-amber-700 dark:text-amber-500">{formatCurrency(executionData.amount)}</div>
-                        </div>
                     </div>
 
                     <DialogFooter>
@@ -701,7 +881,7 @@ export default function CashbookManager({ initialRequests, projects, accounts, c
                 </DialogContent>
             </Dialog>
 
-            {/* MODAL 3: ĐIỀU CHỈNH ĐỊNH KHOẢN KẾ TOÁN SỔ CÁI (MỚI BỔ SUNG) */}
+            {/* MODAL 3: ĐIỀU CHỈNH ĐỊNH KHOẢN KẾ TOÁN SỔ CÁI */}
             <Dialog open={openEditAccounting} onOpenChange={setOpenEditAccounting}>
                 <DialogContent className="dark:bg-slate-900 dark:border-slate-800 sm:max-w-md">
                     <DialogHeader>

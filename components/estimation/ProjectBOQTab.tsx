@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -13,11 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
-    Loader2, Trash2, Layers, HardHat, Tractor,
-    ChevronDown, ChevronRight, FoldVertical,
-    ListOrdered, FileText, FileBarChart, FilePlus2, PlusCircle,
-    FolderKanban, Hammer, Settings2, Percent,
-    Send, Upload, Plus, ClipboardList, Download, Printer, CalendarClock
+    Loader2, Trash2, Layers, HardHat, Tractor, ChevronDown, ChevronRight, FoldVertical, ListOrdered, FileText, FileBarChart, FilePlus2, PlusCircle,
+    FolderKanban, Hammer, Settings2, Percent, Send, Upload, Plus, ClipboardList, Download, Printer, CalendarClock, FileSpreadsheet, LineChart, Users
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
@@ -31,7 +28,7 @@ import { getNorms } from "@/lib/action/normActions";
 import { calculateTaskDates, shiftWorkingDays, Holiday } from "@/lib/utils/scheduleEngine";
 import ProjectEstimationTab from "./ProjectEstimationTab";
 import AutoEstimateWizard from "@/components/projects/qto/AutoEstimateWizard";
-import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { PieChart as RechartsPie, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ComposedChart, Line } from 'recharts';
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
@@ -44,10 +41,10 @@ function toRoman(num: number): string {
 
 function renderItemTypeBadge(type: string) {
     switch (type) {
-        case 'task': return <span className="bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Công tác</span>;
-        case 'material': return <span className="bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Vật tư</span>;
-        case 'labor': return <span className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Nhân công</span>;
-        case 'equipment': return <span className="bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 mt-1">Máy TC</span>;
+        case 'task': return <span className="mt-1 shrink-0 rounded bg-blue-100 px-2 py-0.5 font-bold text-blue-700 text-[10px] uppercase dark:bg-blue-500/20 dark:text-blue-400">Công tác</span>;
+        case 'material': return <span className="mt-1 shrink-0 rounded bg-orange-100 px-2 py-0.5 font-bold text-orange-700 text-[10px] uppercase dark:bg-orange-500/20 dark:text-orange-400">Vật tư</span>;
+        case 'labor': return <span className="mt-1 shrink-0 rounded bg-green-100 px-2 py-0.5 font-bold text-green-700 text-[10px] uppercase dark:bg-green-500/20 dark:text-green-400">Nhân công</span>;
+        case 'equipment': return <span className="mt-1 shrink-0 rounded bg-purple-100 px-2 py-0.5 font-bold text-purple-700 text-[10px] uppercase dark:bg-purple-500/20 dark:text-purple-400">Máy TC</span>;
         default: return null;
     }
 }
@@ -121,14 +118,14 @@ function AsyncNormSelector({ taskId, projectId, defaultCode, onUpdate }: { taskI
                     onBlur={() => setTimeout(() => setIsOpen(false), 200)}
                     className="h-8 border-orange-300 dark:border-orange-800 bg-orange-50/30 dark:bg-orange-900/20 text-xs focus-visible:ring-orange-500 font-bold"
                 />
-                {isSearching && <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2.5 text-orange-500" />}
+                {isSearching && <Loader2 className="absolute top-2.5 right-2 h-3 w-3 animate-spin text-orange-500" />}
             </div>
             {isOpen && results.length > 0 && (
-                <div className="absolute z-50 w-[450px] right-0 mt-1 max-h-[350px] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
+                <div className="absolute right-0 z-50 mt-1 max-h-[350px] w-[450px] overflow-y-auto rounded-md border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
                     {results.map((r) => (
                         <div key={r.id} onMouseDown={() => handleSelect(r)} className="px-3 py-3 text-xs hover:bg-orange-50 dark:hover:bg-orange-900/30 cursor-pointer border-b dark:border-slate-800 flex flex-col gap-1">
-                            <span className="font-bold text-blue-700 dark:text-blue-400 text-sm">{r.code}</span>
-                            <span className="text-slate-600 dark:text-slate-300 whitespace-normal break-words leading-snug">{r.name}</span>
+                            <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{r.code}</span>
+                            <span className="leading-snug break-words whitespace-normal text-slate-600 dark:text-slate-300">{r.name}</span>
                         </div>
                     ))}
                 </div>
@@ -160,14 +157,14 @@ function PredecessorDialog({ task, schedData, onUpdate }: { task: any, schedData
     return (
         <Dialog>
             <DialogTrigger asChild>
-                <Button variant="outline" className="h-8 w-full font-bold text-indigo-700 bg-indigo-50/30 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400 truncate">
+                <Button variant="outline" className="h-8 w-full truncate border-indigo-200 bg-indigo-50/30 font-bold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-400">
                     {task.predecessors || "Chọn CV"}
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] dark:bg-slate-900 dark:border-slate-800">
+            <DialogContent className="sm:max-w-[600px] dark:border-slate-800 dark:bg-slate-900">
                 <DialogHeader><DialogTitle>Thiết lập công việc đi trước</DialogTitle></DialogHeader>
-                <div className="py-4 space-y-4">
-                    <div className="text-sm border-l-4 border-teal-500 pl-3 py-1 bg-slate-50 dark:bg-slate-800/50">
+                <div className="space-y-4 py-4">
+                    <div className="border-l-4 border-teal-500 bg-slate-50 py-1 pl-3 text-sm dark:bg-slate-800/50">
                         <span className="text-slate-500">Công tác hiện tại:</span> <br />
                         <strong>{task.stt}. {task.item_name}</strong>
                     </div>
@@ -176,13 +173,13 @@ function PredecessorDialog({ task, schedData, onUpdate }: { task: any, schedData
                         <Input value={preds} onChange={(e) => { setPreds(e.target.value); onUpdate(e.target.value); }} placeholder="VD: 1FS, 2SS+1" className="uppercase font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10" />
                         <p className="text-xs text-slate-500">Bạn có thể gõ trực tiếp hoặc sử dụng công cụ bên dưới.</p>
                     </div>
-                    <Card className="p-3 bg-slate-50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-700 space-y-3">
-                        <Label className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Thêm liên kết bằng công cụ</Label>
-                        <div className="grid grid-cols-12 gap-2 items-end">
+                    <Card className="space-y-3 border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/30">
+                        <Label className="text-xs font-bold tracking-wider text-blue-600 uppercase dark:text-blue-400">Thêm liên kết bằng công cụ</Label>
+                        <div className="grid grid-cols-12 items-end gap-2">
                             <div className="col-span-6 space-y-1">
                                 <Label className="text-[10px] uppercase">Chọn công tác</Label>
                                 <Select value={selTask} onValueChange={setSelTask}>
-                                    <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-950"><SelectValue placeholder="Chọn..." /></SelectTrigger>
+                                    <SelectTrigger className="h-8 bg-white text-xs dark:bg-slate-950"><SelectValue placeholder="Chọn..." /></SelectTrigger>
                                     <SelectContent className="max-h-[200px]">
                                         {schedData.filter(t => t.stt !== task.stt).map(t => (
                                             <SelectItem key={t.id} value={t.stt.toString()} className="text-xs">{t.stt}. {t.item_name}</SelectItem>
@@ -193,7 +190,7 @@ function PredecessorDialog({ task, schedData, onUpdate }: { task: any, schedData
                             <div className="col-span-3 space-y-1">
                                 <Label className="text-[10px] uppercase">Kiểu liên kết</Label>
                                 <Select value={selType} onValueChange={setSelType}>
-                                    <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-950"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="h-8 bg-white text-xs dark:bg-slate-950"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="FS">Nối tiếp (FS)</SelectItem>
                                         <SelectItem value="SS">Song song (SS)</SelectItem>
@@ -207,7 +204,7 @@ function PredecessorDialog({ task, schedData, onUpdate }: { task: any, schedData
                                 <Input type="number" value={lag} onChange={e => setLag(e.target.value)} className="h-8 text-xs bg-white dark:bg-slate-950 text-center" />
                             </div>
                             <div className="col-span-1">
-                                <Button size="sm" className="h-8 w-full p-0 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleAdd}><Plus className="w-4 h-4" /></Button>
+                                <Button size="sm" className="h-8 w-full bg-blue-600 p-0 text-white hover:bg-blue-700" onClick={handleAdd}><Plus className="h-4 w-4" /></Button>
                             </div>
                         </div>
                     </Card>
@@ -246,18 +243,24 @@ function SectionRowGroup({
 
     return (
         <Fragment>
-            <TableRow className="bg-slate-200 border-b-2 border-slate-300 font-bold group dark:bg-slate-800/80 dark:border-slate-700">
-                <TableCell className="text-center align-top pt-3 text-slate-800 dark:text-slate-200">{toRoman(secIdx + 1)}</TableCell>
+            <TableRow className="group border-b-2 border-slate-300 bg-slate-200 font-bold dark:border-slate-700 dark:bg-slate-800/80">
+                <TableCell className="pt-3 text-center align-top text-slate-800 dark:text-slate-200">{toRoman(secIdx + 1)}</TableCell>
                 <TableCell className="p-1 uppercase" colSpan={4}>
-                    <div className="flex items-start gap-1 w-full pt-1">
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0 mt-1" onClick={() => toggleSection(section.id)}>
-                            {isSectionExpanded ? <ChevronDown className="w-4 h-4 text-slate-600 dark:text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />}
+                    <div className="flex w-full items-start gap-1 pt-1">
+                        <Button variant="ghost" size="sm" className="mt-1 h-6 w-6 shrink-0 p-0" onClick={() => toggleSection(section.id)}>
+                            {isSectionExpanded ? <ChevronDown className="h-4 w-4 text-slate-600 dark:text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-600 dark:text-slate-400" />}
                         </Button>
-                        <FolderKanban className="w-4 h-4 mr-1 text-blue-600 dark:text-blue-400 shrink-0 mt-1.5" />
+                        <FolderKanban className="mt-1.5 mr-1 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
                         <AutoResizeTextarea
-                            key={`sec_name_${section.id}_${section.item_name}`}
+                            // ĐÃ SỬA: Bỏ _${section.item_name} ra khỏi key
+                            key={`sec_name_${section.id}`}
                             defaultValue={section.item_name}
-                            onBlur={(e) => handleUpdateQTOField(section.id, 'item_name', e.target.value)}
+                            onBlur={(e) => {
+                                // ĐÃ SỬA: Thêm điều kiện kiểm tra, chỉ lưu khi thực sự có thay đổi
+                                if (e.target.value !== section.item_name) {
+                                    handleUpdateQTOField(section.id, 'item_name', e.target.value);
+                                }
+                            }}
                             className="font-bold text-slate-800 uppercase tracking-wide h-auto min-h-[32px] py-1 border-transparent hover:border-slate-400 bg-transparent shadow-none flex-1 dark:text-slate-200 resize-none overflow-hidden outline-none focus:border-slate-400 focus:bg-white dark:focus:bg-slate-900 rounded-md transition-colors leading-tight whitespace-normal break-words"
                         />
                         <Button
@@ -268,16 +271,16 @@ function SectionRowGroup({
                             }}
                             className="h-6 text-[10px] ml-2 px-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white border-slate-300 dark:bg-slate-900 dark:border-slate-600 mt-1"
                         >
-                            <FoldVertical className="w-3 h-3 mr-1" /> Thu/Mở diễn giải
+                            <FoldVertical className="mr-1 h-3 w-3" /> Thu/Mở diễn giải
                         </Button>
                         <Button variant="outline" size="sm" onClick={() => { setManualSectionId(section.id); setIsManualAddModalOpen(true); }} className="h-6 text-[10px] ml-2 px-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-1">
-                            <PlusCircle className="w-3 h-3 mr-1 text-teal-600 dark:text-teal-400" /> Công tác
+                            <PlusCircle className="mr-1 h-3 w-3 text-teal-600 dark:text-teal-400" /> Công tác
                         </Button>
                     </div>
                 </TableCell>
-                <TableCell className="text-center align-top pt-3">
+                <TableCell className="pt-3 text-center align-top">
                     <Button variant="ghost" size="sm" onClick={() => handleDeleteQTO(section.id)} className="h-6 w-6 p-0 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                 </TableCell>
             </TableRow>
@@ -288,30 +291,36 @@ function SectionRowGroup({
 
                 return (
                     <Fragment key={task.id}>
-                        <TableRow className="hover:bg-slate-50 border-b border-slate-100 group dark:hover:bg-slate-900/50 dark:border-slate-800">
-                            <TableCell className="text-center align-top pt-3 text-slate-500">{taskIdx + 1}</TableCell>
+                        <TableRow className="group border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/50">
+                            <TableCell className="pt-3 text-center align-top text-slate-500">{taskIdx + 1}</TableCell>
                             <TableCell className="p-1">
-                                <div className="flex items-start gap-1 w-full pl-4 pt-1">
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600 shrink-0 mt-1" onClick={() => toggleRow(task.id)}>
-                                        {isTaskExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                <div className="flex w-full items-start gap-1 pt-1 pl-4">
+                                    <Button variant="ghost" size="sm" className="mt-1 h-6 w-6 shrink-0 p-0 text-blue-600" onClick={() => toggleRow(task.id)}>
+                                        {isTaskExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                     </Button>
-                                    <Hammer className="w-3.5 h-3.5 mr-1 text-slate-500 dark:text-slate-400 shrink-0 mt-2" />
+                                    <Hammer className="mt-2 mr-1 h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
                                     <AutoResizeTextarea
-                                        key={`name_${task.id}_${task.item_name}`}
+                                        // ĐÃ SỬA: Bỏ _${task.item_name} ra khỏi key
+                                        key={`name_${task.id}`}
                                         defaultValue={task.item_name}
-                                        onBlur={(e) => handleUpdateQTOField(task.id, 'item_name', e.target.value)}
+                                        onBlur={(e) => {
+                                            // ĐÃ SỬA: Thêm điều kiện kiểm tra, chỉ lưu khi thực sự có thay đổi
+                                            if (e.target.value !== task.item_name) {
+                                                handleUpdateQTOField(task.id, 'item_name', e.target.value);
+                                            }
+                                        }}
                                         className="flex-1 font-medium text-slate-800 h-auto min-h-[32px] py-1 border-transparent hover:border-slate-300 bg-transparent shadow-none px-2 dark:text-slate-200 resize-none overflow-hidden outline-none focus:border-slate-300 focus:bg-white dark:focus:bg-slate-900 rounded-md transition-colors leading-tight whitespace-normal break-words"
                                     />
                                     {renderItemTypeBadge(task.item_type)}
                                 </div>
                             </TableCell>
-                            <TableCell className="p-1 text-center align-top pt-2">
+                            <TableCell className="p-1 pt-2 text-center align-top">
                                 <Input key={`unit_${task.id}_${task.unit}`} defaultValue={task.unit} onBlur={(e) => handleUpdateQTOField(task.id, 'unit', e.target.value)} className="h-8 w-16 mx-auto text-center border-transparent hover:border-slate-300 bg-transparent shadow-none px-1" />
                             </TableCell>
-                            <TableCell className="text-right font-bold text-blue-700 text-base pr-4 dark:text-blue-400 align-top pt-3">
+                            <TableCell className="pt-3 pr-4 text-right align-top text-base font-bold text-blue-700 dark:text-blue-400">
                                 {totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="border-r border-slate-200 dark:border-slate-800 align-top p-1">
+                            <TableCell className="border-r border-slate-200 p-1 align-top dark:border-slate-800">
                                 <AsyncNormSelector
                                     taskId={task.id}
                                     projectId={projectId}
@@ -322,47 +331,47 @@ function SectionRowGroup({
                                     }}
                                 />
                             </TableCell>
-                            <TableCell className="text-center align-top pt-3">
+                            <TableCell className="pt-3 text-center align-top">
                                 <Button variant="ghost" size="sm" onClick={() => handleDeleteQTO(task.id)} className="h-6 w-6 p-0 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                             </TableCell>
                         </TableRow>
 
                         {isTaskExpanded && (
-                            <TableRow className="bg-white border-b-0 dark:bg-transparent">
-                                <TableCell colSpan={6} className="p-0 border-b-0">
-                                    <div className="pl-[5.5rem] pr-4 py-3 border-b bg-slate-50/80 shadow-inner dark:border-slate-800 dark:bg-slate-900/50">
+                            <TableRow className="border-b-0 bg-white dark:bg-transparent">
+                                <TableCell colSpan={6} className="border-b-0 p-0">
+                                    <div className="border-b bg-slate-50/80 py-3 pr-4 pl-[5.5rem] shadow-inner dark:border-slate-800 dark:bg-slate-900/50">
                                         <table className="w-full text-sm">
-                                            <thead className="text-xs text-slate-500 font-semibold border-b border-slate-200 dark:text-slate-400 dark:border-slate-700">
+                                            <thead className="border-b border-slate-200 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
                                                 <tr>
-                                                    <th className="text-left py-2">Diễn giải cấu kiện (Sắp xếp thời gian thực)</th>
-                                                    <th className="text-center w-[80px]">Số lượng</th>
-                                                    <th className="text-center w-[80px]">Dài</th>
-                                                    <th className="text-center w-[80px]">Rộng</th>
-                                                    <th className="text-center w-[80px]">Cao</th>
-                                                    <th className="text-right w-[100px] pr-2">Khối Lượng</th>
+                                                    <th className="py-2 text-left">Diễn giải cấu kiện (Sắp xếp thời gian thực)</th>
+                                                    <th className="w-[80px] text-center">Số lượng</th>
+                                                    <th className="w-[80px] text-center">Dài</th>
+                                                    <th className="w-[80px] text-center">Rộng</th>
+                                                    <th className="w-[80px] text-center">Cao</th>
+                                                    <th className="w-[100px] pr-2 text-right">Khối Lượng</th>
                                                     <th className="w-[40px]"></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {task.details?.map((detail: any) => (
-                                                    <tr key={detail.id} className="border-b border-dashed border-slate-200 hover:bg-white group dark:border-slate-700 dark:hover:bg-slate-800/50">
+                                                    <tr key={detail.id} className="group border-b border-dashed border-slate-200 hover:bg-white dark:border-slate-700 dark:hover:bg-slate-800/50">
                                                         <td className="py-1"><Input defaultValue={detail.explanation} onBlur={(e) => handleUpdateDetailField(detail.id, 'explanation', e.target.value)} className="h-8 border-transparent hover:border-slate-300 bg-transparent px-2 w-full text-sm font-medium" /></td>
                                                         <td className="px-1"><Input type="number" defaultValue={detail.quantity_factor} onBlur={(e) => handleUpdateDetailField(detail.id, 'quantity_factor', e.target.value)} className="h-8 text-center border-transparent hover:border-slate-300 bg-transparent font-semibold" /></td>
                                                         <td className="px-1"><Input type="number" defaultValue={detail.length} onBlur={(e) => handleUpdateDetailField(detail.id, 'length', e.target.value)} className="h-8 text-center border-transparent hover:border-slate-300 bg-transparent" /></td>
                                                         <td className="px-1"><Input type="number" defaultValue={detail.width} onBlur={(e) => handleUpdateDetailField(detail.id, 'width', e.target.value)} className="h-8 text-center border-transparent hover:border-slate-300 bg-transparent" /></td>
                                                         <td className="px-1"><Input type="number" defaultValue={detail.height} onBlur={(e) => handleUpdateDetailField(detail.id, 'height', e.target.value)} className="h-8 text-center border-transparent hover:border-slate-300 bg-transparent" /></td>
-                                                        <td className="text-right font-bold text-slate-700 pr-2 dark:text-slate-300">{calculateDisplayVol(detail.length, detail.width, detail.height, detail.quantity_factor).toFixed(2)}</td>
+                                                        <td className="pr-2 text-right font-bold text-slate-700 dark:text-slate-300">{calculateDisplayVol(detail.length, detail.width, detail.height, detail.quantity_factor).toFixed(2)}</td>
                                                         <td className="text-right">
-                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100" onClick={() => handleDeleteQTO(detail.id, true)}><Trash2 className="w-3 h-3" /></Button>
+                                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500" onClick={() => handleDeleteQTO(detail.id, true)}><Trash2 className="h-3 w-3" /></Button>
                                                         </td>
                                                     </tr>
                                                 ))}
                                                 <tr>
                                                     <td colSpan={7} className="pt-2">
-                                                        <Button variant="outline" size="sm" className="h-7 text-xs border-dashed text-blue-600 hover:bg-blue-50 shadow-sm font-bold dark:text-blue-400 dark:hover:bg-blue-900/20" onClick={() => handleAddDetail(task.id)}>
-                                                            <PlusCircle className="w-3 h-3 mr-1" /> Thêm dòng diễn giải
+                                                        <Button variant="outline" size="sm" className="h-7 border-dashed text-xs font-bold text-blue-600 shadow-sm hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20" onClick={() => handleAddDetail(task.id)}>
+                                                            <PlusCircle className="mr-1 h-3 w-3" /> Thêm dòng diễn giải
                                                         </Button>
                                                     </td>
                                                 </tr>
@@ -418,6 +427,45 @@ export default function ProjectBOQTab({ projectId }: Props) {
     const holidays: Holiday[] = [
         { date: '2024-01-01', isYearly: true }, { date: '2024-04-30', isYearly: true }, { date: '2024-05-01', isYearly: true }, { date: '2024-09-02', isYearly: true }
     ];
+    // State lưu tên Nguồn lực đang được chọn xem ở Tab 7
+    const [selectedResourceName, setSelectedResourceName] = useState<string>("");
+
+    // THÊM MỚI: State lưu chế độ xem thời gian (Tuần hoặc Tháng)
+    const [timePhaseUnit, setTimePhaseUnit] = useState<"week" | "month">("week");
+
+    // State (khu vực khai báo useState)
+    const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
+
+    // Tự động fetch dữ liệu ngầm để làm cơ sở quy đổi làm tròn cho Dòng tiền
+    useEffect(() => {
+        const fetchMasterMaterials = async () => {
+            const { data } = await supabase.from('materials').select('*');
+            if (data) setMasterMaterials(data);
+        };
+        fetchMasterMaterials();
+    }, []);
+
+    // Lọc danh sách Nguồn lực độc nhất (Unique) từ estItems
+    const uniqueResources = useMemo(() => {
+        const map = new Map();
+        estItems.forEach(e => {
+            if (['VL', 'NC', 'M'].includes(e.category) && e.material_name) {
+                if (!map.has(e.material_name)) {
+                    map.set(e.material_name, e.unit || "");
+                }
+            }
+        });
+        return Array.from(map.entries())
+            .map(([name, unit]) => ({ name, unit }))
+            .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    }, [estItems]);
+
+    // Tự động chọn vật tư đầu tiên trong danh sách khi load xong dữ liệu
+    useEffect(() => {
+        if (!selectedResourceName && uniqueResources.length > 0) {
+            setSelectedResourceName(uniqueResources[0].name || "Chưa có tên");
+        }
+    }, [uniqueResources, selectedResourceName]);
 
     useEffect(() => { loadData(); }, []);
 
@@ -425,6 +473,8 @@ export default function ProjectBOQTab({ projectId }: Props) {
         const { data: projData } = await supabase.from('projects').select('*').eq('id', projectId).single();
         const { data: qtoData } = await supabase.from('qto_items').select('*, details:qto_item_details(*)').eq('project_id', projectId).order('created_at', { ascending: true });
         const { data: estData } = await supabase.from('estimation_items').select('*').eq('project_id', projectId);
+        const { data: mData } = await supabase.from('materials').select('*');
+        setMasterMaterials(mData || []);
 
         if (projData) {
             setProjectInfo(projData);
@@ -618,9 +668,17 @@ export default function ProjectBOQTab({ projectId }: Props) {
     };
 
     const handleUpdateQTOField = async (itemId: string, field: string, value: string) => {
+        // 1. Optimistic Update: Cập nhật giao diện ngay lập tức để không bị giật chữ
         setQtoTasks(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item));
+
+        // 2. Gọi API lưu ngầm xuống Database
         const res = await updateQTOItem(itemId, field, value);
-        if (!res?.success) { toast.error("Lỗi lưu dữ liệu!"); loadData(); } else { loadData(); }
+
+        // 3. CHỈ gọi loadData() nếu lỗi để khôi phục lại dữ liệu. Thành công thì KHÔNG gọi.
+        if (!res?.success) {
+            toast.error("Lỗi lưu dữ liệu!");
+            loadData();
+        }
     };
 
     const handleAddDetail = async (itemId: string) => {
@@ -737,22 +795,21 @@ export default function ProjectBOQTab({ projectId }: Props) {
             // Giá mua: Nội suy ngược từ Tổng tiền để luôn khớp
             exist.display_purchase_price = exist.display_quantity > 0 ? exist.total_cost_sum / exist.display_quantity : 0;
             return exist;
-        }).sort((a: any, b: any) => a.material_name.localeCompare(b.material_name));
+        }).sort((a: any, b: any) => (a.material_name || "").localeCompare(b.material_name || ""));
     }, [estItems]);
 
-    const handleExportExcel = () => {
-        const allData: any[] = []; let stt = 1;
-        ['VL', 'NC', 'M'].forEach(cat => {
-            const data = getSummaryByCategory(cat);
-            data.forEach(item => {
-                allData.push({
-                    "STT": stt++, "Loại": cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công',
-                    "Tên nguồn lực / Vật tư": item.material_name, "Đơn vị tính": item.display_unit || item.unit,
-                    "Tổng Khối lượng": item.display_quantity || item.total_quantity, "Đơn giá chào (VNĐ)": "", "Thành tiền (VNĐ)": "", "Ghi chú": ""
-                });
-            });
-        });
-        if (allData.length > 0) { exportToExcel(allData, `YeuCauBaoGia_${projectInfo?.code || 'KGC'}`, 'BaoGia'); toast.success("Đã xuất file Excel chào giá thành công!"); } else { toast.error("Không có dữ liệu để xuất!"); }
+    const handleDownloadTemplate = () => {
+        const header = ["STT", "Mã hiệu (Bắt buộc)", "Tên công việc / Vật tư (Bắt buộc)", "ĐVT", "Dài", "Rộng", "Cao", "Khối lượng", "Đơn giá", "Thành tiền", "Ghi chú"];
+        const sampleData = [
+            ["", "", "I. PHẦN MÓNG", "", "", "", "", "", "", "", "Hạng mục"],
+            [1, "BT-LOT", "Bê tông lót móng đá 4x6", "m3", "", "", "", 10, 1200000, "", ""]
+        ];
+        const ws = XLSX.utils.aoa_to_sheet([header, ...sampleData]);
+        ws['!cols'] = [{ wch: 5 }, { wch: 15 }, { wch: 40 }, { wch: 10 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Template_Du_Toan");
+        XLSX.writeFile(wb, "Mau_Nhap_Du_Toan_KieuGia.xlsx");
+        toast.success("Đã tải file mẫu!");
     };
 
     const calculateDisplayVol = (l: any, w: any, h: any, f: any) => {
@@ -820,89 +877,242 @@ export default function ProjectBOQTab({ projectId }: Props) {
         return { taskSchedules: scheds, projectEndDate: pEnd };
     }, [schedulingData, projectStartDate, allowWeekendWork]);
 
-    // ✅ HÀM XUẤT PDF CHẤT LƯỢNG CAO
-    const handleExportPDF = async () => {
-        setIsPdfModalOpen(false);
-        const toastId = toast.loading("Đang tạo file PDF độ phân giải cao...");
-        try {
-            const element = document.getElementById('pdf-export-content');
-            if (!element) throw new Error("Không tìm thấy nội dung để in");
+    // =====================================================================
+    // ⚙️ ENGINE PHÂN BỔ DÒNG TIỀN THEO THỜI GIAN (TAB 6)
+    // =====================================================================
+    const cashFlowData = useMemo(() => {
+        if (!taskSchedules || Object.keys(taskSchedules).length === 0 || schedulingData.length === 0) return null;
 
-            // html2canvas config với scale = 3 để tăng độ phân giải cực nét
-            const canvas = await html2canvas(element, {
-                scale: 3,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
+        let minDate = new Date(projectStartDate);
+        let maxDate = new Date(projectEndDate);
+        const periods: { label: string; start: Date; end: Date; totalCost: number }[] = [];
+        let currentStart = new Date(minDate);
+        let periodCount = 1;
 
-            const imgData = canvas.toDataURL('image/jpeg', 1.0);
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
+        while (currentStart <= maxDate) {
+            const currentEnd = new Date(currentStart);
+            if (timePhaseUnit === 'week') {
+                currentEnd.setDate(currentEnd.getDate() + 6);
+            } else {
+                currentEnd.setMonth(currentEnd.getMonth() + 1);
+                currentEnd.setDate(currentEnd.getDate() - 1);
+            }
+            currentEnd.setHours(23, 59, 59, 999);
 
-            // Tính toán tỷ lệ ảnh để fit vừa trang A4
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-            // Nếu nội dung dài hơn 1 trang A4, jsPDF mặc định sẽ cắt trang, 
-            // nhưng với báo cáo tổng hợp thường fit trong 1 trang dài.
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`BaoGia_HaoPhi_${projectId}.pdf`);
-
-            toast.success("Xuất PDF thành công!", { id: toastId });
-        } catch (error: any) {
-            toast.error("Lỗi xuất PDF: " + error.message, { id: toastId });
+            periods.push({ label: timePhaseUnit === 'week' ? `Tuần ${periodCount}` : `Tháng ${periodCount}`, start: new Date(currentStart), end: new Date(currentEnd), totalCost: 0 });
+            currentStart = new Date(currentEnd);
+            currentStart.setDate(currentStart.getDate() + 1);
+            currentStart.setHours(0, 0, 0, 0);
+            periodCount++;
         }
-    };
+
+        const normalItems = estItems.filter(i => !['GT', 'LN', 'VAT'].includes(i.category));
+        const materialSummaries = new Map();
+
+        normalItems.forEach(item => {
+            const key = item.material_name;
+            if (!materialSummaries.has(key)) {
+                const dim = item.dimensions || {};
+                const mMat = (masterMaterials || []).find(m =>
+                    (item.material_code && m.code === item.material_code) ||
+                    (m.name.trim().toLowerCase() === item.material_name.trim().toLowerCase())
+                );
+                const rate = Number(dim.conversion_rate) || Number(mMat?.conversion_rate) || 1;
+                const pPrice = dim.purchase_price !== undefined && dim.purchase_price !== null ? Number(dim.purchase_price) : Number(item.unit_price || 0) * rate;
+                materialSummaries.set(key, { display_price: pPrice, conversion_rate: rate, total_quantity: 0, effective_price: 0 });
+            }
+            const exist = materialSummaries.get(key);
+            const rawQty = item.dimensions?.raw_quantity !== undefined ? Number(item.dimensions.raw_quantity) : Number(item.quantity);
+            exist.total_quantity += rawQty;
+        });
+
+        materialSummaries.forEach((exist) => {
+            if (exist.conversion_rate > 1 && exist.total_quantity > 0) {
+                const display_quantity = Math.ceil(exist.total_quantity / exist.conversion_rate);
+                const total_cost = display_quantity * exist.display_price;
+                exist.effective_price = total_cost / exist.total_quantity;
+            } else {
+                exist.effective_price = exist.display_price;
+            }
+        });
+
+        let scheduledTotalCost = 0;
+
+        const taskAllocations = schedulingData.map(task => {
+            const sDates = taskSchedules[task.id];
+            if (!sDates) return null;
+            const tStart = sDates.startDate.getTime();
+            let tEnd = sDates.endDate.getTime();
+
+            // 🚨 ĐÃ FIX LỖI: Xử lý công tác 1 ngày (Bắt đầu và Kết thúc trùng nhau)
+            if (tEnd <= tStart) {
+                tEnd = tStart + 86400000 - 1; // Mặc định kéo dài tEnd đến hết ngày (23:59:59)
+            }
+            const tDurationMs = tEnd - tStart;
+
+            const taskEstItems = normalItems.filter(e => e.qto_item_id === task.id);
+            const cost = taskEstItems.reduce((sum, item) => {
+                const rawQty = item.dimensions?.raw_quantity !== undefined ? Number(item.dimensions.raw_quantity) : Number(item.quantity);
+                const summary = materialSummaries.get(item.material_name);
+                const effPrice = summary?.effective_price || Number(item.unit_price || 0);
+                return sum + (rawQty * effPrice);
+            }, 0);
+
+            const allocatedPerPeriod: number[] = [];
+            periods.forEach((period, idx) => {
+                const pStart = period.start.getTime();
+                const pEnd = period.end.getTime();
+                const overlapStart = Math.max(tStart, pStart);
+                const overlapEnd = Math.min(tEnd, pEnd);
+
+                if (overlapStart <= overlapEnd) {
+                    const overlapMs = overlapEnd - overlapStart;
+                    const weight = overlapMs / tDurationMs;
+                    const allocatedCost = cost * weight;
+                    allocatedPerPeriod.push(allocatedCost);
+                    periods[idx].totalCost += allocatedCost;
+                } else {
+                    allocatedPerPeriod.push(0);
+                }
+            });
+
+            scheduledTotalCost += cost;
+            return { ...task, taskTotalCost: cost, allocatedPerPeriod };
+        }).filter(Boolean);
+
+        const totalProjectDirectCost = normalItems.reduce((sum, item) => {
+            const rawQty = item.dimensions?.raw_quantity !== undefined ? Number(item.dimensions.raw_quantity) : Number(item.quantity);
+            const summary = materialSummaries.get(item.material_name);
+            const effPrice = summary?.effective_price || Number(item.unit_price || 0);
+            return sum + (rawQty * effPrice);
+        }, 0);
+
+        const unallocatedCost = totalProjectDirectCost - scheduledTotalCost;
+
+        let cumulative = 0;
+        const cumulativeCosts = periods.map(p => { cumulative += p.totalCost; return cumulative; });
+
+        return { periods, taskAllocations, cumulativeCosts, totalProjectDirectCost, unallocatedCost };
+    }, [taskSchedules, schedulingData, projectStartDate, projectEndDate, timePhaseUnit, estItems, masterMaterials]);
+
+    // =====================================================================
+    // ⚙️ ENGINE PHÂN BỔ NGUỒN LỰC (TAB 7)
+    // =====================================================================
+    const resourceAllocationData = useMemo(() => {
+        if (!taskSchedules || Object.keys(taskSchedules).length === 0 || schedulingData.length === 0 || !selectedResourceName) return null;
+
+        let minDate = new Date(projectStartDate);
+        let maxDate = new Date(projectEndDate);
+        const periods: { label: string; start: Date; end: Date; totalQty: number }[] = [];
+        let currentStart = new Date(minDate);
+        let periodCount = 1;
+
+        while (currentStart <= maxDate) {
+            const currentEnd = new Date(currentStart);
+            if (timePhaseUnit === 'week') {
+                currentEnd.setDate(currentEnd.getDate() + 6);
+            } else {
+                currentEnd.setMonth(currentEnd.getMonth() + 1);
+                currentEnd.setDate(currentEnd.getDate() - 1);
+            }
+            currentEnd.setHours(23, 59, 59, 999);
+
+            periods.push({ label: timePhaseUnit === 'week' ? `Tuần ${periodCount}` : `Tháng ${periodCount}`, start: new Date(currentStart), end: new Date(currentEnd), totalQty: 0 });
+            currentStart = new Date(currentEnd);
+            currentStart.setDate(currentStart.getDate() + 1);
+            currentStart.setHours(0, 0, 0, 0);
+            periodCount++;
+        }
+
+        const targetEstItems = estItems.filter(e => (e.material_name || "Chưa có tên") === selectedResourceName);
+        if (targetEstItems.length === 0) return { periods, taskAllocations: [], unit: "" };
+        const unit = targetEstItems[0].unit || "";
+
+        const taskAllocations = targetEstItems.map(est => {
+            const task = schedulingData.find(t => t.id === est.qto_item_id);
+            if (!task) return null;
+            const sDates = taskSchedules[task.id];
+            if (!sDates) return null;
+
+            const tStart = sDates.startDate.getTime();
+            let tEnd = sDates.endDate.getTime();
+
+            // 🚨 ĐÃ FIX LỖI: Xử lý công tác 1 ngày cho phân bổ Vật tư/Nhân công
+            if (tEnd <= tStart) {
+                tEnd = tStart + 86400000 - 1;
+            }
+            const tDurationMs = tEnd - tStart;
+
+            const qty = Number(est.quantity) || 0;
+            const allocatedPerPeriod: number[] = [];
+
+            periods.forEach((period, idx) => {
+                const pStart = period.start.getTime();
+                const pEnd = period.end.getTime();
+                const overlapStart = Math.max(tStart, pStart);
+                const overlapEnd = Math.min(tEnd, pEnd);
+
+                if (overlapStart <= overlapEnd) {
+                    const overlapMs = overlapEnd - overlapStart;
+                    const weight = overlapMs / tDurationMs;
+                    const allocatedQty = qty * weight;
+                    allocatedPerPeriod.push(allocatedQty);
+                    periods[idx].totalQty += allocatedQty;
+                } else {
+                    allocatedPerPeriod.push(0);
+                }
+            });
+            return { ...task, estQuantity: qty, allocatedPerPeriod };
+        }).filter(Boolean);
+
+        return { periods, taskAllocations, unit };
+    }, [taskSchedules, schedulingData, projectStartDate, projectEndDate, selectedResourceName, estItems, timePhaseUnit]);
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-lg border dark:border-slate-800 shadow-sm gap-3 transition-colors">
+            <div className="flex flex-col justify-between gap-3 rounded-lg border bg-white p-3 shadow-sm transition-colors sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex flex-wrap items-center gap-2">
                     <Dialog open={isManualAddModalOpen} onOpenChange={setIsManualAddModalOpen}>
-                        <DialogContent className="sm:max-w-[500px] dark:bg-slate-900 dark:border-slate-800">
-                            <DialogHeader><DialogTitle className="text-teal-700 dark:text-teal-400 flex items-center gap-2"><FilePlus2 className="w-5 h-5" /> Bổ sung công tác thủ công</DialogTitle></DialogHeader>
+                        <DialogContent className="sm:max-w-[500px] dark:border-slate-800 dark:bg-slate-900">
+                            <DialogHeader><DialogTitle className="flex items-center gap-2 text-teal-700 dark:text-teal-400"><FilePlus2 className="h-5 w-5" /> Bổ sung công tác thủ công</DialogTitle></DialogHeader>
                             <div className="grid gap-4 py-4">
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Hạng mục (Section)</Label>
+                                    <Label className="text-xs font-bold tracking-wider text-slate-500 uppercase dark:text-slate-400">Hạng mục (Section)</Label>
                                     <Select value={manualSectionId} onValueChange={setManualSectionId}>
-                                        <SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"><SelectValue placeholder="Chọn hạng mục..." /></SelectTrigger>
-                                        <SelectContent className="dark:bg-slate-900 dark:border-slate-800">
+                                        <SelectTrigger className="dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"><SelectValue placeholder="Chọn hạng mục..." /></SelectTrigger>
+                                        <SelectContent className="dark:border-slate-800 dark:bg-slate-900">
                                             <SelectGroup><SelectItem value="NEW" className="font-bold text-teal-600 dark:text-teal-400">+ Tạo Hạng Mục Mới</SelectItem>{sections.map((sec: any) => <SelectItem key={sec.id} value={sec.id} className="dark:text-slate-200">{sec.item_name}</SelectItem>)}</SelectGroup>
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                {manualSectionId === "NEW" && (<div className="space-y-2"><Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tên hạng mục mới</Label><Input placeholder="Vd: Công tác thi công..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>)}
+                                {manualSectionId === "NEW" && (<div className="space-y-2"><Label className="text-xs font-bold tracking-wider text-slate-500 uppercase dark:text-slate-400">Tên hạng mục mới</Label><Input placeholder="Vd: Công tác thi công..." value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>)}
 
-                                <div className="space-y-2 relative bg-blue-50 dark:bg-blue-900/10 p-3 rounded-md border border-blue-100 dark:border-blue-900/30">
-                                    <Label className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1">🔍 Gọi mã định mức (Tùy chọn)</Label>
+                                <div className="relative space-y-2 rounded-md border border-blue-100 bg-blue-50 p-3 dark:border-blue-900/30 dark:bg-blue-900/10">
+                                    <Label className="flex items-center gap-1 text-xs font-bold tracking-wider text-blue-700 uppercase dark:text-blue-400">🔍 Gọi mã định mức (Tùy chọn)</Label>
                                     <Input placeholder="Nhập mã hoặc tên công tác + Nhấn Enter..." value={manualNormQuery} onChange={(e) => setManualNormQuery(e.target.value)} onKeyDown={async (e) => { if (e.key === 'Enter') { e.preventDefault(); if (manualNormQuery.trim().length < 2) return toast.error("Nhập ít nhất 2 ký tự!"); setIsSearchingManualNorm(true); setIsManualNormOpen(false); const res = await getNorms(manualNormQuery, 1, 20); setManualNormResults(res.data || []); setIsManualNormOpen(true); setIsSearchingManualNorm(false); } }} onBlur={() => setTimeout(() => setIsManualNormOpen(false), 200)} className="border-blue-300 dark:border-blue-800 focus-visible:ring-blue-500 bg-white dark:bg-slate-950 dark:text-slate-200" />
-                                    {isSearchingManualNorm && <Loader2 className="w-4 h-4 animate-spin absolute right-5 bottom-5 text-blue-600" />}
-                                    {isManualNormOpen && manualNormResults.length > 0 && (<div className="absolute z-50 w-full mt-1 max-h-[200px] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl left-0 top-full">{manualNormResults.map((r) => (<div key={r.id} onClick={() => { setManualNormCode(r.code); setManualItemName(r.name); setManualUnit(r.unit || "Lần"); setManualItemType('task'); setManualNormQuery(r.code); setIsManualNormOpen(false); toast.success(`Đã chọn mã: ${r.code}`); }} className="px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer border-b dark:border-slate-800 flex flex-col gap-1"><span className="font-bold text-blue-700 dark:text-blue-400">{r.code}</span><span className="text-slate-600 dark:text-slate-400 line-clamp-2">{r.name}</span></div>))}</div>)}
+                                    {isSearchingManualNorm && <Loader2 className="absolute right-5 bottom-5 h-4 w-4 animate-spin text-blue-600" />}
+                                    {isManualNormOpen && manualNormResults.length > 0 && (<div className="absolute top-full left-0 z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">{manualNormResults.map((r) => (<div key={r.id} onClick={() => { setManualNormCode(r.code); setManualItemName(r.name); setManualUnit(r.unit || "Lần"); setManualItemType('task'); setManualNormQuery(r.code); setIsManualNormOpen(false); toast.success(`Đã chọn mã: ${r.code}`); }} className="px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer border-b dark:border-slate-800 flex flex-col gap-1"><span className="font-bold text-blue-700 dark:text-blue-400">{r.code}</span><span className="line-clamp-2 text-slate-600 dark:text-slate-400">{r.name}</span></div>))}</div>)}
                                 </div>
-                                <div className="space-y-2 mt-2"><Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tên công tác chi tiết <span className="text-red-500">*</span></Label><Input placeholder="Vd: Trát tường trong nhà..." value={manualItemName} onChange={e => setManualItemName(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
+                                <div className="mt-2 space-y-2"><Label className="text-xs font-bold tracking-wider text-slate-500 uppercase dark:text-slate-400">Tên công tác chi tiết <span className="text-red-500">*</span></Label><Input placeholder="Vd: Trát tường trong nhà..." value={manualItemName} onChange={e => setManualItemName(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2"><Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Đơn vị tính <span className="text-red-500">*</span></Label><Input placeholder="Vd: m2, m3..." value={manualUnit} onChange={e => setManualUnit(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
+                                    <div className="space-y-2"><Label className="text-xs font-bold tracking-wider text-slate-500 uppercase dark:text-slate-400">Đơn vị tính <span className="text-red-500">*</span></Label><Input placeholder="Vd: m2, m3..." value={manualUnit} onChange={e => setManualUnit(e.target.value)} className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200" /></div>
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Phân loại</Label>
-                                        <Select value={manualItemType} onValueChange={setManualItemType}><SelectTrigger className="dark:bg-slate-950 dark:border-slate-800 dark:text-slate-200"><SelectValue placeholder="Phân loại..." /></SelectTrigger><SelectContent className="dark:bg-slate-900 dark:border-slate-800"><SelectGroup><SelectItem value="task" className="dark:text-slate-200">Công tác (Task)</SelectItem><SelectItem value="material" className="dark:text-slate-200">Vật tư (Material)</SelectItem></SelectGroup></SelectContent></Select>
+                                        <Label className="text-xs font-bold tracking-wider text-slate-500 uppercase dark:text-slate-400">Phân loại</Label>
+                                        <Select value={manualItemType} onValueChange={setManualItemType}><SelectTrigger className="dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"><SelectValue placeholder="Phân loại..." /></SelectTrigger><SelectContent className="dark:border-slate-800 dark:bg-slate-900"><SelectGroup><SelectItem value="task" className="dark:text-slate-200">Công tác (Task)</SelectItem><SelectItem value="material" className="dark:text-slate-200">Vật tư (Material)</SelectItem></SelectGroup></SelectContent></Select>
                                     </div>
                                 </div>
                             </div>
-                            <DialogFooter><Button variant="outline" onClick={() => setIsManualAddModalOpen(false)}>Hủy</Button><Button onClick={handleSaveManualItem} disabled={isAddingManual} className="bg-teal-600 hover:bg-teal-700 text-white">Lưu công tác</Button></DialogFooter>
+                            <DialogFooter><Button variant="outline" onClick={() => setIsManualAddModalOpen(false)}>Hủy</Button><Button onClick={handleSaveManualItem} disabled={isAddingManual} className="bg-teal-600 text-white hover:bg-teal-700">Lưu công tác</Button></DialogFooter>
                         </DialogContent>
                     </Dialog>
 
                     <Dialog open={openManualDialog} onOpenChange={setOpenManualDialog}>
                         <DialogTrigger asChild>
-                            <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
-                                <Plus className="w-4 h-4 mr-1" /> Chi phí phụ
+                            <Button variant="outline" className="h-9 border-slate-300 bg-slate-900 font-bold text-white hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                                <Plus className="mr-1 h-4 w-4" /> Chi phí phụ
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="dark:bg-slate-900 dark:border-slate-800">
+                        <DialogContent className="dark:border-slate-800 dark:bg-slate-900">
                             <DialogHeader><DialogTitle>Thêm hạng mục chi phí phụ trợ</DialogTitle></DialogHeader>
                             <form onSubmit={handleCreateManualItem} className="space-y-4 py-2">
                                 <div><Label>Tên công việc / Chi phí</Label><Input name="name" required placeholder="VD: Chi phí vận chuyển máy" /></div>
@@ -914,9 +1124,9 @@ export default function ProjectBOQTab({ projectId }: Props) {
                     </Dialog>
 
                     <div className="relative">
-                        <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                        <Button variant="outline" className="h-9 border-slate-300 dark:border-slate-700 dark:text-slate-200 font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
-                            {isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />} Import Excel
+                        <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} disabled={isImporting} className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0" />
+                        <Button variant="outline" className="h-9 border-slate-300 bg-slate-900 font-bold text-white hover:bg-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                            {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />} Import Excel
                         </Button>
                     </div>
                 </div>
@@ -927,64 +1137,98 @@ export default function ProjectBOQTab({ projectId }: Props) {
             </div>
 
             <Tabs defaultValue="qto_sheet" className="w-full">
-                <TabsList className="bg-slate-100 p-1.5 rounded-md border w-full justify-start gap-1 flex-wrap h-auto dark:bg-slate-900 dark:border-slate-800 shadow-sm mb-4">
-                    <TabsTrigger value="cover_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><FileText className="w-4 h-4 mr-1.5" /> 1. Tổng Hợp</TabsTrigger>
-                    <TabsTrigger value="qto_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-blue-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ListOrdered className="w-4 h-4 mr-1.5 text-blue-500" /> 2. Tiên lượng (QTO)</TabsTrigger>
-                    <TabsTrigger value="summary_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-emerald-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><Percent className="w-4 h-4 mr-1.5 text-emerald-500" /> 3. Tài chính dự án</TabsTrigger>
-                    <TabsTrigger value="consumption_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><ClipboardList className="w-4 h-4 mr-1.5 text-indigo-500" /> 4. Tổng hợp Hao phí</TabsTrigger>
-                    <TabsTrigger value="schedule_sheet" className="font-bold text-xs py-2 px-3 data-[state=active]:bg-white data-[state=active]:text-teal-700 dark:data-[state=active]:bg-slate-800 dark:text-slate-400 shadow-sm transition-all"><CalendarClock className="w-4 h-4 mr-1.5 text-teal-500" /> 5. Lập Tiến độ</TabsTrigger>
+                <TabsList className="mb-4 h-auto w-full flex-wrap justify-start gap-1 rounded-md border bg-slate-100 p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <TabsTrigger value="cover_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800"><FileText className="mr-1.5 h-4 w-4" /> 1. Tổng Hợp</TabsTrigger>
+                    <TabsTrigger value="qto_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-blue-700 dark:data-[state=active]:bg-slate-800"><ListOrdered className="mr-1.5 h-4 w-4 text-blue-500" /> 2. Tiên lượng (QTO)</TabsTrigger>
+                    <TabsTrigger value="summary_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-emerald-700 dark:data-[state=active]:bg-slate-800"><Percent className="mr-1.5 h-4 w-4 text-emerald-500" /> 3. Tài chính dự án</TabsTrigger>
+                    <TabsTrigger value="consumption_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-slate-800"><ClipboardList className="mr-1.5 h-4 w-4 text-indigo-500" /> 4. Tổng hợp Hao phí</TabsTrigger>
+                    <TabsTrigger value="schedule_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-teal-700 dark:data-[state=active]:bg-slate-800"><CalendarClock className="mr-1.5 h-4 w-4 text-teal-500" /> 5. Lập Tiến độ</TabsTrigger>
+                    <TabsTrigger value="cost_allocation_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-rose-700 dark:data-[state=active]:bg-slate-800">
+                        <LineChart className="mr-1.5 h-4 w-4 text-rose-500" /> 6. Kế hoạch dòng tiền
+                    </TabsTrigger>
+                    <TabsTrigger value="resource_plan_sheet" className="px-3 py-2 text-xs font-bold shadow-sm transition-all dark:text-slate-400 data-[state=active]:bg-white data-[state=active]:text-amber-700 dark:data-[state=active]:bg-slate-800">
+                        <Users className="mr-1.5 h-4 w-4 text-amber-500" /> 7. Kế hoạch Nguồn lực
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="ai_extract" className="mt-3">
-                    <Card className="p-10 text-center border-dashed border-2 border-slate-300 dark:border-slate-800">
+                    <Card className="border-2 border-dashed border-slate-300 p-10 text-center dark:border-slate-800">
                         <h3 className="text-xl font-bold text-slate-500 dark:text-slate-400">Không gian bóc tách AI</h3>
-                        <p className="text-slate-400 mt-2">Tính năng đang được phát triển...</p>
+                        <p className="mt-2 text-slate-400">Tính năng đang được phát triển...</p>
                     </Card>
                 </TabsContent>
 
+                {/* TAB 1: TH */}
                 <TabsContent value="cover_sheet" className="mt-3">
-                    <Card className="border shadow-sm bg-white overflow-hidden p-10 min-h-[500px] flex flex-col items-center justify-center relative dark:border-slate-800 dark:bg-slate-950">
-                        <div className="text-center z-10 space-y-6">
-                            <h2 className="text-xl font-bold text-slate-500 uppercase tracking-widest dark:text-slate-400">CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</h2>
-                            <div className="w-24 h-1 bg-blue-600 mx-auto rounded-full dark:bg-blue-500"></div>
-                            <h1 className="text-4xl font-black text-slate-900 uppercase mt-8 dark:text-slate-100">HỒ SƠ DỰ TOÁN CHI PHÍ XÂY DỰNG</h1>
-                            <div className="mt-16 text-left max-w-xl mx-auto space-y-4 bg-slate-50 p-8 rounded-xl border border-slate-200 shadow-sm dark:bg-slate-900/50 dark:border-slate-800">
-                                <div className="grid grid-cols-3 gap-4 border-b dark:border-slate-800 pb-3">
-                                    <span className="font-bold text-slate-500 col-span-1 dark:text-slate-400">Công trình:</span>
-                                    <span className="font-bold text-slate-900 col-span-2 dark:text-slate-100">{projectInfo?.name || "---"}</span>
+                    <Card className="relative flex min-h-[500px] flex-col items-center justify-center overflow-hidden border bg-white p-10 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                        <div className="z-10 space-y-6 text-center">
+                            <h2 className="text-xl font-bold tracking-widest text-slate-500 uppercase dark:text-slate-400">CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA</h2>
+                            <div className="mx-auto h-1 w-24 rounded-full bg-blue-600 dark:bg-blue-500"></div>
+                            <h1 className="mt-8 text-4xl font-black text-slate-900 uppercase dark:text-slate-100">HỒ SƠ DỰ TOÁN CHI PHÍ XÂY DỰNG</h1>
+                            <div className="mx-auto mt-16 max-w-xl space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-8 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+                                <div className="grid grid-cols-3 gap-4 border-b pb-3 dark:border-slate-800">
+                                    <span className="col-span-1 font-bold text-slate-500 dark:text-slate-400">Công trình:</span>
+                                    <span className="col-span-2 font-bold text-slate-900 dark:text-slate-100">{projectInfo?.name || "---"}</span>
                                 </div>
-                                <div className="grid grid-cols-3 gap-4 border-b dark:border-slate-800 pb-3">
-                                    <span className="font-bold text-slate-500 col-span-1 dark:text-slate-400">Mã dự án:</span>
-                                    <span className="font-bold text-slate-900 col-span-2 dark:text-slate-100">{projectInfo?.code || "---"}</span>
+                                <div className="grid grid-cols-3 gap-4 border-b pb-3 dark:border-slate-800">
+                                    <span className="col-span-1 font-bold text-slate-500 dark:text-slate-400">Mã dự án:</span>
+                                    <span className="col-span-2 font-bold text-slate-900 dark:text-slate-100">{projectInfo?.code || "---"}</span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
-                                    <span className="font-bold text-slate-500 col-span-1 dark:text-slate-400">Tổng cộng sau thuế:</span>
-                                    <span className="font-black text-blue-700 text-xl col-span-2 dark:text-blue-400">{formatCurrency(TotalProject)}</span>
+                                    <span className="col-span-1 font-bold text-slate-500 dark:text-slate-400">Tổng cộng sau thuế:</span>
+                                    <span className="col-span-2 text-xl font-black text-blue-700 dark:text-blue-400">{formatCurrency(TotalProject)}</span>
                                 </div>
                             </div>
                         </div>
                     </Card>
                 </TabsContent>
 
+                {/* TAB 2: DỰ TOÁN (TIÊN LƯỢNG HÌNH HỌC) */}
                 <TabsContent value="qto_sheet" className="mt-3">
-                    <Card className="border border-slate-200 shadow-sm bg-white overflow-hidden dark:border-slate-800 dark:bg-slate-950">
-                        <div className="bg-slate-50 border-b border-slate-200 p-2 flex items-center justify-between dark:bg-slate-900 dark:border-slate-800">
-                            <h4 className="font-bold text-slate-700 uppercase text-xs ml-2 dark:text-slate-300">Bảng tính toán Tiên lượng hình học</h4>
-                            <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={handleAddSection} className="h-7 text-xs bg-white text-blue-600 border-blue-200 hover:bg-blue-50 font-bold dark:bg-slate-800 dark:border-slate-700 dark:text-blue-400">
-                                    <PlusCircle className="w-3 h-3 mr-1" /> Hạng mục
+                    <Card className="overflow-hidden border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
+                            <h4 className="ml-2 text-xs font-bold text-slate-700 uppercase dark:text-slate-300">Bảng tính toán Tiên lượng hình học</h4>
+                            <div className="flex items-center gap-2">
+
+                                {/* NÚT THÊM HẠNG MỤC THỦ CÔNG */}
+                                <Button variant="outline" size="sm" onClick={handleAddSection} className="h-7 border-blue-200 bg-white text-xs font-bold text-blue-600 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400">
+                                    <PlusCircle className="mr-1 h-3 w-3" /> Hạng mục
                                 </Button>
-                                <Button variant="outline" size="sm" onClick={handleToggleAllSections} className="h-7 text-xs bg-white font-bold dark:bg-slate-800 dark:border-slate-700">
-                                    <FoldVertical className="w-3 h-3 mr-1" /> {isAllExpanded ? "Thu gọn" : "Mở rộng"} tất cả
+
+                                {/* NÚT TẢI TEMPLATE MẪU ĐÃ ĐƯỢC BỔ SUNG */}
+                                <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="h-7 border-indigo-200 bg-white text-xs font-bold text-indigo-700 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:text-indigo-400 dark:hover:bg-indigo-900/30">
+                                    <FileSpreadsheet className="mr-1 h-3 w-3" /> Tải Template
+                                </Button>
+
+                                {/* NÚT IMPORT EXCEL */}
+                                <div className="relative">
+                                    <input
+                                        type="file"
+                                        accept=".xlsx, .xls"
+                                        onChange={handleFileUpload}
+                                        disabled={isImporting}
+                                        title="Nhập dữ liệu bóc tách từ Excel"
+                                        className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                                    />
+                                    <Button variant="outline" size="sm" disabled={isImporting} className="h-7 border-emerald-200 bg-white text-xs font-bold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-900/30">
+                                        {isImporting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Upload className="mr-1 h-3 w-3" />} Import Excel
+                                    </Button>
+                                </div>
+
+                                <div className="mx-1 h-4 w-px bg-slate-300 dark:bg-slate-700"></div>
+
+                                {/* NÚT THU GỌN / MỞ RỘNG */}
+                                <Button variant="outline" size="sm" onClick={handleToggleAllSections} className="h-7 bg-white text-xs font-bold dark:border-slate-700 dark:bg-slate-800">
+                                    <FoldVertical className="mr-1 h-3 w-3" /> {isAllExpanded ? "Thu gọn" : "Mở rộng"} tất cả
                                 </Button>
                             </div>
                         </div>
-                        <div className="overflow-auto custom-scrollbar max-h-[650px] relative pb-6">
-                            <table className="w-full text-sm bg-white min-w-[1200px] dark:bg-slate-950">
-                                <TableHeader className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
+                        <div className="custom-scrollbar relative max-h-[650px] overflow-auto pb-6">
+                            <table className="w-full min-w-[1200px] bg-white text-sm dark:bg-slate-950">
+                                <TableHeader className="sticky top-0 z-30 bg-slate-100 shadow-sm outline outline-1 outline-slate-200 dark:bg-slate-900 dark:outline-slate-800">
                                     <TableRow className="border-none">
                                         <TableHead className="w-[60px] text-center font-bold text-slate-700 dark:text-slate-300">STT</TableHead>
-                                        <TableHead className="font-bold min-w-[500px] text-slate-700 dark:text-slate-300">Danh mục công tác bóc tách</TableHead>
+                                        <TableHead className="min-w-[500px] font-bold text-slate-700 dark:text-slate-300">Danh mục công tác bóc tách</TableHead>
                                         <TableHead className="w-[70px] text-center font-bold text-slate-700 dark:text-slate-300">ĐVT</TableHead>
                                         <TableHead className="w-[100px] text-right font-bold text-slate-700 dark:text-slate-300">Khối lượng</TableHead>
                                         <TableHead className="w-[200px] text-center font-bold text-slate-700 dark:text-slate-300">Mã Định Mức</TableHead>
@@ -993,7 +1237,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                 </TableHeader>
                                 <TableBody>
                                     {sections.length === 0 ? (
-                                        <TableRow><TableCell colSpan={6} className="text-center py-8 text-slate-500 font-medium">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
+                                        <TableRow><TableCell colSpan={6} className="py-8 text-center font-medium text-slate-500">Chưa có dữ liệu bóc tách. Sử dụng Bóc tách AI hoặc Thêm thủ công để bắt đầu.</TableCell></TableRow>
                                     ) : (
                                         sections.map((section: any, secIdx: number) => (
                                             <SectionRowGroup
@@ -1149,7 +1393,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
                         let topMaterials = summaryVL.filter((item: any) => (Number(item.total_cost_sum) || 0) > 0)
                             .sort((a: any, b: any) => (Number(b.total_cost_sum) || 0) - (Number(a.total_cost_sum) || 0))
-                            .slice(0, 5).map((item: any) => ({ name: item.material_name.substring(0, 20), value: Number(item.total_cost_sum) || 0 }));
+                            .slice(0, 5).map((item: any) => ({ name: (item.material_name || "Chưa có tên").substring(0, 20), value: Number(item.total_cost_sum) || 0 }));
 
                         if (topMaterials.length === 0) topMaterials = [{ name: 'Chưa có dữ liệu', value: 0 }];
 
@@ -1160,24 +1404,24 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         // ==========================================
                         return (
                             <>
-                                <Card className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950 mb-4 p-3 flex flex-col sm:flex-row justify-between items-center gap-3">
+                                <Card className="mb-4 flex flex-col items-center justify-between gap-3 overflow-hidden border bg-white p-3 shadow-sm sm:flex-row dark:border-slate-800 dark:bg-slate-950">
                                     <div>
-                                        <h4 className="font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wide flex items-center gap-2">
-                                            <ClipboardList className="w-5 h-5" /> Bảng Tổng hợp Hao phí (Yêu cầu chào giá)
+                                        <h4 className="flex items-center gap-2 font-bold tracking-wide text-indigo-700 uppercase dark:text-indigo-400">
+                                            <ClipboardList className="h-5 w-5" /> Bảng Tổng hợp Hao phí (Yêu cầu chào giá)
                                         </h4>
-                                        <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Xuất file PDF/Excel sẽ tự động tạo thư mời thầu trắng giá để gửi Nhà cung cấp.</p>
+                                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Xuất file PDF/Excel sẽ tự động tạo thư mời thầu trắng giá để gửi Nhà cung cấp.</p>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <Button variant="outline" className="h-8 text-xs border-green-500 text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/30 font-bold" onClick={handleExportQuotationExcel}>
-                                            <Download className="w-3.5 h-3.5 mr-1" /> Xuất Excel
+                                        <Button variant="outline" className="h-8 border-green-500 text-xs font-bold text-green-700 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/30" onClick={handleExportQuotationExcel}>
+                                            <Download className="mr-1 h-3.5 w-3.5" /> Xuất Excel
                                         </Button>
                                         <Dialog open={isPdfModalOpen} onOpenChange={setIsPdfModalOpen}>
                                             <DialogTrigger asChild>
-                                                <Button variant="outline" className="h-8 text-xs border-rose-500 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/30 font-bold">
-                                                    <Printer className="w-3.5 h-3.5 mr-1" /> Xuất PDF
+                                                <Button variant="outline" className="h-8 border-rose-500 text-xs font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/30">
+                                                    <Printer className="mr-1 h-3.5 w-3.5" /> Xuất PDF
                                                 </Button>
                                             </DialogTrigger>
-                                            <DialogContent className="sm:max-w-[400px] dark:bg-slate-900 dark:border-slate-800">
+                                            <DialogContent className="sm:max-w-[400px] dark:border-slate-800 dark:bg-slate-900">
                                                 <DialogHeader><DialogTitle>Tuỳ chọn Xuất PDF Chào Giá</DialogTitle></DialogHeader>
                                                 <div className="space-y-4 py-4">
                                                     <div className="space-y-2">
@@ -1193,42 +1437,42 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                         </Select>
                                                     </div>
                                                 </div>
-                                                <DialogFooter><Button variant="outline" onClick={() => setIsPdfModalOpen(false)}>Huỷ</Button><Button className="bg-rose-600 hover:bg-rose-700 text-white" onClick={handleExportPDF}>Tạo File PDF</Button></DialogFooter>
+                                                <DialogFooter><Button variant="outline" onClick={() => setIsPdfModalOpen(false)}>Huỷ</Button><Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={handleExportPDF}>Tạo File PDF</Button></DialogFooter>
                                             </DialogContent>
                                         </Dialog>
                                     </div>
                                 </Card>
 
                                 {/* KHU VỰC BIỂU ĐỒ (HIỂN THỊ WEB) */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                    <Card className="p-4 border shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                                        <h5 className="text-xs font-bold text-slate-500 uppercase text-center mb-2">Cơ cấu Chi phí</h5>
+                                <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <Card className="border p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                        <h5 className="mb-2 text-center text-xs font-bold text-slate-500 uppercase">Cơ cấu Chi phí</h5>
                                         <div className="h-[200px] w-full"><ResponsiveContainer><RechartsPie><Pie data={costDistributionData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" stroke="none">{costDistributionData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Tooltip formatter={formatTooltipCurrency} /><Legend wrapperStyle={{ fontSize: '10px' }} /></RechartsPie></ResponsiveContainer></div>
                                     </Card>
-                                    <Card className="p-4 border shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                                        <h5 className="text-xs font-bold text-slate-500 uppercase text-center mb-2">Hao hụt mua chẵn (Vật liệu)</h5>
+                                    <Card className="border p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                        <h5 className="mb-2 text-center text-xs font-bold text-slate-500 uppercase">Hao hụt mua chẵn (Vật liệu)</h5>
                                         <div className="h-[200px] w-full"><ResponsiveContainer><RechartsPie><Pie data={wasteData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" stroke="none">{wasteData.map((e, i) => <Cell key={i} fill={e.color} />)}</Pie><Tooltip formatter={formatTooltipCurrency} /><Legend wrapperStyle={{ fontSize: '10px' }} /></RechartsPie></ResponsiveContainer></div>
                                     </Card>
-                                    <Card className="p-4 border shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                                        <h5 className="text-xs font-bold text-slate-500 uppercase text-center mb-2">Top 5 Vật tư giá trị cao</h5>
+                                    <Card className="border p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                        <h5 className="mb-2 text-center text-xs font-bold text-slate-500 uppercase">Top 5 Vật tư giá trị cao</h5>
                                         <div className="h-[200px] w-full"><ResponsiveContainer><BarChart data={topMaterials} layout="vertical" margin={{ top: 5, right: 10, left: 30, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.3} /><XAxis type="number" hide /><YAxis dataKey="name" type="category" axisLine={false} tickLine={false} style={{ fontSize: '9px', fill: '#64748b' }} width={80} /><Tooltip formatter={formatTooltipCurrency} cursor={{ fill: 'transparent' }} /><Bar dataKey="value" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={15} /></BarChart></ResponsiveContainer></div>
                                     </Card>
                                 </div>
 
                                 {/* KHU VỰC BẢNG VIEW (HIỂN THỊ WEB) */}
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                                     {['VL', 'NC', 'M'].map((cat) => {
                                         const catTitle = cat === 'VL' ? 'Vật Liệu' : cat === 'NC' ? 'Nhân Công' : 'Máy Thi Công';
                                         const listSummary = getSummaryByCategory(cat);
                                         return (
-                                            <Card key={cat} className="border shadow-sm overflow-hidden bg-white dark:border-slate-800 dark:bg-slate-950">
-                                                <div className="bg-slate-50 border-b p-2.5 flex items-center gap-1.5 dark:bg-slate-900 dark:border-slate-800">
-                                                    {cat === 'VL' ? <Layers className="w-4 h-4 text-orange-500" /> : cat === 'NC' ? <HardHat className="w-4 h-4 text-green-500" /> : <Tractor className="w-4 h-4 text-purple-500" />}
-                                                    <h4 className="font-bold text-slate-700 text-xs uppercase dark:text-slate-300">Tổng hao phí {catTitle}</h4>
+                                            <Card key={cat} className="overflow-hidden border bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                                                <div className="flex items-center gap-1.5 border-b bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-900">
+                                                    {cat === 'VL' ? <Layers className="h-4 w-4 text-orange-500" /> : cat === 'NC' ? <HardHat className="h-4 w-4 text-green-500" /> : <Tractor className="h-4 w-4 text-purple-500" />}
+                                                    <h4 className="text-xs font-bold text-slate-700 uppercase dark:text-slate-300">Tổng hao phí {catTitle}</h4>
                                                 </div>
-                                                <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                                                <div className="custom-scrollbar max-h-[500px] overflow-y-auto">
                                                     <Table>
-                                                        <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm border-b dark:bg-slate-900 dark:border-slate-800">
+                                                        <TableHeader className="sticky top-0 z-10 border-b bg-slate-50 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                                                             <TableRow>
                                                                 <TableHead className="font-bold text-[11px]">Tên nguồn lực / Vật tư</TableHead>
                                                                 <TableHead className="w-[80px] text-center font-bold text-[11px]">ĐVT</TableHead>
@@ -1237,12 +1481,12 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                         </TableHeader>
                                                         <TableBody>
                                                             {listSummary.length === 0 ? (
-                                                                <TableRow><TableCell colSpan={3} className="text-center py-6 text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
+                                                                <TableRow><TableCell colSpan={3} className="py-6 text-center text-xs text-slate-400 italic">Chưa phát hiện hao phí thuộc nhóm này.</TableCell></TableRow>
                                                             ) : listSummary.map((mat: any, idx: number) => (
-                                                                <TableRow key={idx} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                                                                <TableRow key={idx} className="border-b hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/40">
                                                                     <TableCell className="p-2 text-xs font-medium text-slate-800 dark:text-slate-200">{mat.material_name}</TableCell>
                                                                     <TableCell className="text-center text-xs font-bold text-orange-600 dark:text-orange-400">{mat.display_unit}</TableCell>
-                                                                    <TableCell className="text-right text-xs font-bold text-indigo-700 dark:text-indigo-400 pr-4">{(mat.display_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
+                                                                    <TableCell className="pr-4 text-right text-xs font-bold text-indigo-700 dark:text-indigo-400">{(mat.display_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</TableCell>
                                                                 </TableRow>
                                                             ))}
                                                         </TableBody>
@@ -1255,34 +1499,34 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
                                 {/* KHU VỰC ẨN: TEMPLATE MẪU A4 DÙNG ĐỂ CHỤP PDF THƯ CHÀO GIÁ */}
                                 <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-                                    <div id="pdf-quotation-template" className="bg-white text-black p-10 w-[800px]" style={{ fontFamily: 'Arial, sans-serif' }}>
-                                        <div className="flex justify-between items-start mb-8">
+                                    <div id="pdf-quotation-template" className="w-[800px] bg-white p-10 text-black" style={{ fontFamily: 'Arial, sans-serif' }}>
+                                        <div className="mb-8 flex items-start justify-between">
                                             <div className="text-left">
-                                                <h2 className="font-bold text-lg uppercase text-blue-800">CÔNG TY TNHH XD KIỀU GIA</h2>
-                                                <p className="text-sm text-slate-600 mt-1">Hồ sơ dự án: {projectId}</p>
+                                                <h2 className="text-lg font-bold text-blue-800 uppercase">CÔNG TY TNHH XD KIỀU GIA</h2>
+                                                <p className="mt-1 text-sm text-slate-600">Hồ sơ dự án: {projectId}</p>
                                             </div>
-                                            <div className="text-right text-sm italic text-slate-600">
+                                            <div className="text-right text-sm text-slate-600 italic">
                                                 Ngày ..... tháng ..... năm 202...
                                             </div>
                                         </div>
 
-                                        <div className="text-center mb-8">
-                                            <h1 className="text-2xl font-bold uppercase mb-1 text-slate-800">THƯ YÊU CẦU CHÀO GIÁ</h1>
-                                            <p className="text-sm italic text-slate-500">
+                                        <div className="mb-8 text-center">
+                                            <h1 className="mb-1 text-2xl font-bold text-slate-800 uppercase">THƯ YÊU CẦU CHÀO GIÁ</h1>
+                                            <p className="text-sm text-slate-500 italic">
                                                 (Hạng mục: {pdfExportType === 'ALL' ? 'Vật liệu, Nhân công, Máy thi công' : pdfExportType === 'VL' ? 'Vật tư' : pdfExportType === 'NC' ? 'Nhân công' : 'Máy thi công'})
                                             </p>
                                         </div>
 
-                                        <table className="w-full border-collapse border border-slate-800 text-[13px] mb-8">
+                                        <table className="mb-8 w-full border-collapse border border-slate-800 text-[13px]">
                                             <thead>
                                                 <tr className="bg-slate-100">
-                                                    <th className="border border-slate-800 p-2 text-center w-12">STT</th>
+                                                    <th className="w-12 border border-slate-800 p-2 text-center">STT</th>
                                                     <th className="border border-slate-800 p-2 text-center">Tên vật tư / Nguồn lực</th>
-                                                    <th className="border border-slate-800 p-2 text-center w-20">ĐVT</th>
-                                                    <th className="border border-slate-800 p-2 text-center w-24">Số lượng</th>
-                                                    <th className="border border-slate-800 p-2 text-center w-28">Đơn giá báo</th>
-                                                    <th className="border border-slate-800 p-2 text-center w-32">Thành tiền</th>
-                                                    <th className="border border-slate-800 p-2 text-center w-20">Ghi chú</th>
+                                                    <th className="w-20 border border-slate-800 p-2 text-center">ĐVT</th>
+                                                    <th className="w-24 border border-slate-800 p-2 text-center">Số lượng</th>
+                                                    <th className="w-28 border border-slate-800 p-2 text-center">Đơn giá báo</th>
+                                                    <th className="w-32 border border-slate-800 p-2 text-center">Thành tiền</th>
+                                                    <th className="w-20 border border-slate-800 p-2 text-center">Ghi chú</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1294,7 +1538,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                         return (
                                                             <React.Fragment key={`pdf_${cat}`}>
                                                                 <tr>
-                                                                    <td colSpan={7} className="border border-slate-800 p-2 font-bold bg-slate-50 uppercase text-blue-800">
+                                                                    <td colSpan={7} className="border border-slate-800 bg-slate-50 p-2 font-bold text-blue-800 uppercase">
                                                                         {cat === 'VL' ? 'I. VẬT LIỆU' : cat === 'NC' ? 'II. NHÂN CÔNG' : 'III. MÁY THI CÔNG'}
                                                                     </td>
                                                                 </tr>
@@ -1304,7 +1548,7 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                                         <td className="border border-slate-800 p-2 font-medium">{item.material_name}</td>
                                                                         <td className="border border-slate-800 p-2 text-center">{item.display_unit}</td>
                                                                         <td className="border border-slate-800 p-2 text-right font-bold">{(item.display_quantity || 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
-                                                                        <td className="border border-slate-800 p-2 text-slate-300 italic text-center"></td>
+                                                                        <td className="border border-slate-800 p-2 text-center text-slate-300 italic"></td>
                                                                         <td className="border border-slate-800 p-2"></td>
                                                                         <td className="border border-slate-800 p-2"></td>
                                                                     </tr>
@@ -1315,14 +1559,14 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             </tbody>
                                         </table>
 
-                                        <div className="flex justify-between mt-12 px-10">
+                                        <div className="mt-12 flex justify-between px-10">
                                             <div className="text-center">
-                                                <p className="font-bold text-sm">ĐẠI DIỆN BÊN YÊU CẦU</p>
-                                                <p className="text-xs italic text-slate-500 mt-1">(Ký, ghi rõ họ tên)</p>
+                                                <p className="text-sm font-bold">ĐẠI DIỆN BÊN YÊU CẦU</p>
+                                                <p className="mt-1 text-xs text-slate-500 italic">(Ký, ghi rõ họ tên)</p>
                                             </div>
                                             <div className="text-center">
-                                                <p className="font-bold text-sm">ĐẠI DIỆN NHÀ CUNG CẤP</p>
-                                                <p className="text-xs italic text-slate-500 mt-1">(Ký, đóng dấu)</p>
+                                                <p className="text-sm font-bold">ĐẠI DIỆN NHÀ CUNG CẤP</p>
+                                                <p className="mt-1 text-xs text-slate-500 italic">(Ký, đóng dấu)</p>
                                             </div>
                                         </div>
                                     </div>
@@ -1334,55 +1578,55 @@ export default function ProjectBOQTab({ projectId }: Props) {
 
                 {/* TAB 5: LẬP TIẾN ĐỘ THI CÔNG */}
                 <TabsContent value="schedule_sheet" className="mt-3">
-                    <Card className="border border-teal-200 dark:border-teal-900/50 shadow-md bg-white overflow-hidden dark:bg-slate-950">
-                        <div className="bg-teal-50/50 dark:bg-teal-900/10 border-b border-teal-100 dark:border-teal-900/30 p-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <Card className="overflow-hidden border border-teal-200 bg-white shadow-md dark:border-teal-900/50 dark:bg-slate-950">
+                        <div className="border-b border-teal-100 bg-teal-50/50 p-4 dark:border-teal-900/30 dark:bg-teal-900/10">
+                            <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                                 <div className="flex items-center gap-2">
-                                    <CalendarClock className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                                    <h4 className="font-black text-teal-800 dark:text-teal-300 uppercase tracking-wide">Bảng phân tích Tiến độ & Nguồn lực</h4>
+                                    <CalendarClock className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                                    <h4 className="font-black tracking-wide text-teal-800 uppercase dark:text-teal-300">Bảng phân tích Tiến độ & Nguồn lực</h4>
                                 </div>
-                                <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-lg border border-teal-100 dark:border-teal-900/30 shadow-sm">
+                                <div className="flex items-center gap-4 rounded-lg border border-teal-100 bg-white p-2 shadow-sm dark:border-teal-900/30 dark:bg-slate-900">
                                     <div className="flex items-center gap-2">
-                                        <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Ngày khởi công:</Label>
+                                        <Label className="text-xs font-bold whitespace-nowrap text-slate-600 dark:text-slate-400">Ngày khởi công:</Label>
                                         <Input type="date" value={projectStartDate} onChange={(e) => { setProjectStartDate(e.target.value); updateProjectSettings('start_date', e.target.value); }} className="h-8 text-xs font-bold w-[130px]" />
                                     </div>
-                                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700"></div>
+                                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700"></div>
                                     <div className="flex items-center gap-2">
                                         <Switch checked={allowWeekendWork} onCheckedChange={(val) => { setAllowWeekendWork(val); updateProjectSettings('allow_weekend', val); }} className="data-[state=checked]:bg-teal-600" />
-                                        <Label className="text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
+                                        <Label className="cursor-pointer text-xs font-bold text-slate-600 dark:text-slate-400" onClick={() => setAllowWeekendWork(!allowWeekendWork)}>Làm Chủ Nhật</Label>
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng quy mô dự án</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{formatCurrency(TotalProject)}</p></div>
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Tổng hao phí nhân công</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{estItems.filter(e => e.category === 'NC').reduce((sum, e) => sum + e.quantity, 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} <span className="text-sm font-medium text-slate-500">Ca</span></p></div>
-                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30"><p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase mb-1">Ngày kết thúc dự kiến</p><p className="text-xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-2">{formatDate(projectEndDate)}</p></div>
-                                <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center">
-                                    <div className="bg-teal-600 dark:bg-teal-700 p-3 rounded-lg shadow-inner text-white flex flex-col justify-center gap-2">
-                                        <Button onClick={handleExportScheduleExcel} className="bg-green-500 hover:bg-green-600 text-white shadow-sm w-full font-bold h-8 text-xs">
-                                            <Download className="w-3.5 h-3.5 mr-2" /> Xuất Excel Tiến độ
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                                <div className="rounded-lg border border-teal-100 bg-white p-3 dark:border-teal-900/30 dark:bg-slate-900"><p className="mb-1 text-xs font-bold text-slate-500 uppercase dark:text-slate-400">Tổng quy mô dự án</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{formatCurrency(TotalProject)}</p></div>
+                                <div className="rounded-lg border border-teal-100 bg-white p-3 dark:border-teal-900/30 dark:bg-slate-900"><p className="mb-1 text-xs font-bold text-slate-500 uppercase dark:text-slate-400">Tổng hao phí nhân công</p><p className="text-xl font-black text-slate-800 dark:text-slate-100">{estItems.filter(e => e.category === 'NC').reduce((sum, e) => sum + e.quantity, 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} <span className="text-sm font-medium text-slate-500">Ca</span></p></div>
+                                <div className="rounded-lg border border-teal-100 bg-white p-3 dark:border-teal-900/30 dark:bg-slate-900"><p className="mb-1 text-xs font-bold text-slate-500 uppercase dark:text-slate-400">Ngày kết thúc dự kiến</p><p className="flex items-center gap-2 text-xl font-black text-indigo-700 dark:text-indigo-400">{formatDate(projectEndDate)}</p></div>
+                                <div className="flex flex-col justify-center rounded-lg bg-teal-600 p-3 text-white shadow-inner dark:bg-teal-700">
+                                    <div className="flex flex-col justify-center gap-2 rounded-lg bg-teal-600 p-3 text-white shadow-inner dark:bg-teal-700">
+                                        <Button onClick={handleExportScheduleExcel} className="h-8 w-full bg-green-500 text-xs font-bold text-white shadow-sm hover:bg-green-600">
+                                            <Download className="mr-2 h-3.5 w-3.5" /> Xuất Excel Tiến độ
                                         </Button>
-                                        <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="bg-white text-teal-700 hover:bg-teal-50 shadow-sm w-full font-bold h-8 text-xs">
-                                            {isSyncing5D ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <Send className="w-3.5 h-3.5 mr-2" />} Chốt Thông Số (Gantt)
+                                        <Button onClick={handlePushToGantt} disabled={isSyncing5D} className="h-8 w-full bg-white text-xs font-bold text-teal-700 shadow-sm hover:bg-teal-50">
+                                            {isSyncing5D ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-2 h-3.5 w-3.5" />} Chốt Thông Số (Gantt)
                                         </Button>
                                 </div>
                             </div>
                             </div>
                         </div>
-                        <div className="overflow-auto custom-scrollbar max-h-[650px] relative">
-                            <table className="w-full text-sm bg-white min-w-[1000px] table-fixed dark:bg-slate-950">
-                                <TableHeader className="sticky top-0 z-30 bg-slate-50 dark:bg-slate-900 outline outline-1 outline-slate-200 dark:outline-slate-800 shadow-sm">
-                                    <TableRow className="bg-slate-50 border-none dark:bg-slate-900">
+                        <div className="custom-scrollbar relative max-h-[650px] overflow-auto">
+                            <table className="w-full min-w-[1000px] table-fixed bg-white text-sm dark:bg-slate-950">
+                                <TableHeader className="sticky top-0 z-30 bg-slate-50 shadow-sm outline outline-1 outline-slate-200 dark:bg-slate-900 dark:outline-slate-800">
+                                    <TableRow className="border-none bg-slate-50 dark:bg-slate-900">
                                         <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
-                                        <TableHead className="font-bold min-w-[400px]">Danh mục Công việc</TableHead>
+                                        <TableHead className="min-w-[400px] font-bold">Danh mục Công việc</TableHead>
                                         <TableHead className="w-[90px] text-right font-bold">Tỷ trọng (%)</TableHead>
                                         <TableHead className="w-[100px] text-right font-bold">Khối lượng</TableHead>
                                         <TableHead className="w-[100px] text-center font-bold text-rose-600 dark:text-rose-400">Hao phí (Ca)</TableHead>
                                         <TableHead className="w-[90px] text-center font-bold text-blue-600 dark:text-blue-400">Thợ bố trí</TableHead>
                                         <TableHead className="w-[90px] text-center font-bold text-emerald-600 dark:text-emerald-400">Ngày làm</TableHead>
                                         <TableHead className="w-[180px] text-center font-bold text-indigo-600 dark:text-indigo-400">Công việc trước</TableHead>
-                                        <TableHead className="w-[120px] text-center font-bold bg-teal-50 dark:bg-teal-900/20">Ngày Bắt Đầu</TableHead>
-                                        <TableHead className="w-[120px] text-center font-bold bg-teal-50 dark:bg-teal-900/20">Ngày Kết Thúc</TableHead>
+                                        <TableHead className="w-[120px] bg-teal-50 text-center font-bold dark:bg-teal-900/20">Ngày Bắt Đầu</TableHead>
+                                        <TableHead className="w-[120px] bg-teal-50 text-center font-bold dark:bg-teal-900/20">Ngày Kết Thúc</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -1402,21 +1646,21 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                             const weight = totalDirectCost > 0 ? (taskCost / totalDirectCost) * 100 : 0;
 
                                             return (
-                                                <TableRow key={`sched_${task.id}`} className="hover:bg-slate-50 border-b dark:hover:bg-slate-900/50 dark:border-slate-800">
-                                                    <TableCell className="text-center font-bold text-slate-500 align-top pt-2">{task.stt}</TableCell>
-                                                    <TableCell className="font-medium text-slate-800 dark:text-slate-200 whitespace-normal break-words py-2">
-                                                        <div className="text-[10px] font-bold text-teal-700 dark:text-teal-400 mb-1 uppercase bg-teal-50 dark:bg-teal-900/30 inline-block px-1.5 py-0.5 rounded border border-teal-100 dark:border-teal-800">📍 {task.sectionName}</div>
+                                                <TableRow key={`sched_${task.id}`} className="border-b hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/50">
+                                                    <TableCell className="pt-2 text-center align-top font-bold text-slate-500">{task.stt}</TableCell>
+                                                    <TableCell className="py-2 font-medium break-words whitespace-normal text-slate-800 dark:text-slate-200">
+                                                        <div className="mb-1 inline-block rounded border border-teal-100 bg-teal-50 px-1.5 py-0.5 font-bold text-[10px] text-teal-700 uppercase dark:border-teal-800 dark:bg-teal-900/30 dark:text-teal-400">📍 {task.sectionName}</div>
                                                         <div className="leading-snug">{task.item_name}</div>
                                                     </TableCell>
-                                                    <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 align-top pt-2">{weight.toFixed(2)}%</TableCell>
-                                                    <TableCell className="text-right font-semibold align-top pt-2">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
-                                                    <TableCell className="text-center font-bold text-rose-600 dark:text-rose-400 bg-rose-50/20 align-top pt-2">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
+                                                    <TableCell className="pt-2 text-right align-top font-bold text-blue-600 dark:text-blue-400">{weight.toFixed(2)}%</TableCell>
+                                                    <TableCell className="pt-2 text-right align-top font-semibold">{task.totalVol.toLocaleString('en-US', { maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">{task.unit}</span></TableCell>
+                                                    <TableCell className="bg-rose-50/20 pt-2 text-center align-top font-bold text-rose-600 dark:text-rose-400">{task.manDays.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
                                                     {(() => {
                                                         const currentWorkers = Number(task.assigned_workers) || 1;
                                                         const computedDuration = task.manDays > 0 ? Math.ceil(task.manDays / currentWorkers) : 1;
                                                         return (
                                                             <>
-                                                                <TableCell className="p-1 align-top pt-2">
+                                                                <TableCell className="p-1 pt-2 align-top">
                                                                     <Input type="number" min="1" defaultValue={currentWorkers} onBlur={async (e) => {
                                                                         const newWorkers = Number(e.target.value) || 1;
                                                                         const newDuration = task.manDays > 0 ? Math.ceil(task.manDays / newWorkers) : 1;
@@ -1425,19 +1669,299 @@ export default function ProjectBOQTab({ projectId }: Props) {
                                                                         loadData();
                                                                     }} className="h-8 text-center text-blue-700 bg-blue-50/50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400 shadow-none font-bold" />
                                                                 </TableCell>
-                                                                <TableCell className="text-center font-black text-emerald-700 bg-emerald-50/30 dark:bg-emerald-900/20 dark:text-emerald-400 align-top pt-3">{computedDuration}</TableCell>
+                                                                <TableCell className="bg-emerald-50/30 pt-3 text-center align-top font-black text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">{computedDuration}</TableCell>
                                                             </>
                                                         );
                                                     })()}
-                                                    <TableCell className="p-1 align-top pt-2">
+                                                    <TableCell className="p-1 pt-2 align-top">
                                                         <PredecessorDialog task={task} schedData={schedulingData} onUpdate={(val) => { updateLocalQTO(task.id, { predecessors: val }); handleUpdateQTOField(task.id, 'predecessors', val); }} />
                                                     </TableCell>
-                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 border-l dark:border-slate-800 align-top pt-3">{formatDate(sDates.startDate)}</TableCell>
-                                                    <TableCell className="text-center font-bold text-teal-800 bg-teal-50/50 dark:text-teal-300 dark:bg-teal-900/10 align-top pt-3">{formatDate(sDates.endDate)}</TableCell>
+                                                    <TableCell className="border-l bg-teal-50/50 pt-3 text-center align-top font-bold text-teal-800 dark:border-slate-800 dark:bg-teal-900/10 dark:text-teal-300">{formatDate(sDates.startDate)}</TableCell>
+                                                    <TableCell className="bg-teal-50/50 pt-3 text-center align-top font-bold text-teal-800 dark:bg-teal-900/10 dark:text-teal-300">{formatDate(sDates.endDate)}</TableCell>
                                                 </TableRow>
                                             );
                                         });
                                     })()}
+                                </TableBody>
+                            </table>
+                        </div>
+                    </Card>
+                </TabsContent>
+                {/* TAB 6: KẾ HOẠCH PHÂN BỔ CHI PHÍ (CASH FLOW / S-CURVE) */}
+                <TabsContent value="cost_allocation_sheet" className="mt-3">
+                    <Card className="overflow-hidden border border-rose-200 bg-white shadow-sm dark:border-rose-900/50 dark:bg-slate-950">
+                        <div className="flex flex-col justify-between gap-4 border-b border-rose-100 bg-rose-50/50 p-4 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-rose-900/10">
+                            <div className="flex items-center gap-2">
+                                <LineChart className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+                                <div>
+                                    <h3 className="font-black tracking-wide text-rose-800 uppercase dark:text-rose-300">Đường cong S-Curve & Ma trận dòng tiền</h3>
+                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Ngân sách dự kiến giải ngân được nội suy từ tiến độ Gantt.</p>
+                                </div>
+                            </div>
+
+                            {/* THÊM CỤM NÚT BẤM CHỌN TUẦN/THÁNG VÀO ĐÂY */}
+                            <div className="flex items-center rounded-md border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setTimePhaseUnit("week")}
+                                    className={`h-7 px-3 text-xs font-bold ${timePhaseUnit === 'week' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Theo Tuần
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setTimePhaseUnit("month")}
+                                    className={`h-7 px-3 text-xs font-bold ${timePhaseUnit === 'month' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Theo Tháng
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* KHU VỰC 1: BIỂU ĐỒ S-CURVE TỔNG QUAN */}
+                        {cashFlowData && cashFlowData.periods.length > 0 && (
+                            <div className="border-b-4 border-slate-100 bg-white p-6 dark:border-slate-800/80 dark:bg-slate-950">
+                                <div className="h-[350px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart
+                                            data={cashFlowData.periods.map((p, i) => ({
+                                                name: p.label,
+                                                chiPhiTuan: p.totalCost,
+                                                luyKe: cashFlowData.cumulativeCosts[i]
+                                            }))}
+                                            margin={{ top: 20, right: 20, bottom: 0, left: 20 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+
+                                            {/* Trục Y trái: Dành cho cột Chi phí từng kỳ */}
+                                            <YAxis
+                                                yAxisId="left"
+                                                tickFormatter={(val) => `${(val / 1000000).toLocaleString('en-US')} Tr`}
+                                                tick={{ fontSize: 11, fill: '#64748b' }}
+                                                axisLine={false}
+                                                tickLine={false}
+                                            />
+
+                                            {/* Trục Y phải: Dành cho đường Line Lũy kế S-Curve */}
+                                            <YAxis
+                                                yAxisId="right"
+                                                orientation="right"
+                                                tickFormatter={(val) => `${(val / 1000000).toLocaleString('en-US')} Tr`}
+                                                tick={{ fontSize: 11, fill: '#64748b' }}
+                                                axisLine={false}
+                                                tickLine={false}
+                                            />
+
+                                            <Tooltip
+                                                formatter={(value: number, name: string) => [formatCurrency(value), name === 'chiPhiTuan' ? 'Nhu cầu vốn trong kỳ' : 'Lũy kế giải ngân (S-Curve)']}
+                                                labelStyle={{ fontWeight: 'bold', color: '#334155' }}
+                                                contentStyle={{ borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            />
+                                            <Legend wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '20px' }} />
+
+                                            <Bar yAxisId="left" dataKey="chiPhiTuan" name="Nhu cầu vốn trong kỳ" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={60} />
+                                            <Line yAxisId="right" type="monotone" dataKey="luyKe" name="Lũy kế giải ngân (S-Curve)" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 4, fill: '#0ea5e9', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* KHU VỰC 2: MA TRẬN DỮ LIỆU CHI TIẾT */}
+                        <div className="custom-scrollbar relative max-h-[500px] overflow-auto bg-slate-50/30 dark:bg-slate-900/20">
+                            <table className="w-full table-fixed bg-white text-sm dark:bg-slate-950">
+                                <TableHeader className="sticky top-0 z-30 bg-slate-100 shadow-sm outline outline-1 outline-slate-200 dark:bg-slate-900 dark:outline-slate-800">
+                                    <TableRow className="border-none">
+                                        <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
+                                        <TableHead className="w-[300px] font-bold">Tên công việc</TableHead>
+                                        <TableHead className="w-[130px] border-r text-right font-bold text-rose-600 dark:border-slate-800 dark:text-rose-400">Tổng Ngân Sách</TableHead>
+                                        {cashFlowData?.periods.map((p, idx) => (
+                                            <TableHead key={idx} className="w-[120px] border-r text-right font-bold dark:border-slate-700">
+                                                {p.label} <br />
+                                                <span className="font-normal text-[10px] text-slate-500">
+                                                    ({p.start.getDate()}/{p.start.getMonth() + 1})
+                                                </span>
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow className="border-b-2 border-rose-200 bg-rose-50 font-black dark:border-rose-900 dark:bg-rose-900/20">
+                                        <TableCell colSpan={2} className="text-right text-rose-800 uppercase dark:text-rose-300">Tổng nhu cầu vốn (Theo kỳ)</TableCell>
+                                        <TableCell className="border-r border-rose-200 text-right text-rose-700 dark:border-rose-900/50 dark:text-rose-400">
+                                            {formatCurrency(cashFlowData?.periods.reduce((s, p) => s + p.totalCost, 0) || 0)}
+                                        </TableCell>
+                                        {cashFlowData?.periods.map((p, idx) => (
+                                            <TableCell key={idx} className="border-r border-rose-200 text-right text-rose-700 dark:border-rose-900/50 dark:text-rose-400">
+                                                {p.totalCost > 0 ? formatCurrency(p.totalCost) : '-'}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+
+                                    {/* DÒNG CẢNH BÁO: CHỈ HIỆN KHI CÓ CHI PHÍ BỊ RỚT LẠI */}
+                                    {cashFlowData && cashFlowData.unallocatedCost > 100 && (
+                                        <TableRow className="bg-orange-50 font-medium dark:bg-orange-900/20">
+                                            <TableCell className="text-center">⚠️</TableCell>
+                                            <TableCell className="text-orange-700 italic dark:text-orange-400">
+                                                Chi phí chưa phân bổ (Bị bỏ quên chưa lên lịch Gantt hoặc thêm thủ công)
+                                            </TableCell>
+                                            <TableCell className="border-r text-right font-bold text-orange-700 dark:border-slate-800 dark:text-orange-400">
+                                                {formatCurrency(cashFlowData.unallocatedCost)}
+                                            </TableCell>
+                                            <TableCell colSpan={cashFlowData.periods.length} className="text-center text-xs text-orange-600/50 dark:text-orange-400/50">
+                                                (Vui lòng qua Tab 5 gán ngày thi công cho các công tác đang trống)
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+
+                                    {cashFlowData?.taskAllocations.map((task: any) => (
+                                        <TableRow key={task.id} className="hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/50">
+                                            {/* ... Phần render công tác như cũ ... */}
+                                            <TableCell className="text-center font-bold text-slate-500">{task.stt}</TableCell>
+                                            <TableCell className="truncate font-medium" title={task.item_name}>{task.item_name}</TableCell>
+                                            <TableCell className="border-r text-right font-bold text-slate-700 dark:border-slate-800 dark:text-slate-300">
+                                                {formatCurrency(task.taskTotalCost)}
+                                            </TableCell>
+                                            {task.allocatedPerPeriod.map((cost: number, idx: number) => (
+                                                <TableCell key={idx} className={`text-right border-r dark:border-slate-800 ${cost > 0 ? 'bg-rose-50/30 dark:bg-rose-500/5 font-bold text-rose-700 dark:text-rose-400' : 'text-slate-300 dark:text-slate-700'}`}>
+                                                    {cost > 0 ? formatCurrency(cost) : '-'}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </table>
+                        </div>
+                    </Card>
+                </TabsContent>
+
+                {/* TAB 7: KẾ HOẠCH SỬ DỤNG VẬT TƯ, NHÂN CÔNG, MÁY */}
+                <TabsContent value="resource_plan_sheet" className="mt-3">
+                    <Card className="overflow-hidden border border-amber-200 bg-white shadow-sm dark:border-amber-900/50 dark:bg-slate-950">
+                        <div className="flex flex-col justify-between gap-4 border-b border-amber-100 bg-amber-50/50 p-4 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-amber-900/10">
+                            <div className="flex items-center gap-2">
+                                <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                <div>
+                                    <h3 className="font-black tracking-wide text-amber-800 uppercase dark:text-amber-300">Biểu đồ Nguồn lực (Resource Histogram)</h3>
+                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Theo dõi tiến độ cung ứng của từng loại Vật tư, Nhân công, Máy thi công.</p>
+                                </div>
+                            </div>
+
+                            {/* BỘ LỌC CHỌN NGUỒN LỰC & CHỌN VIEW */}
+                            <div className="flex items-center gap-4">
+                                <div className="flex min-w-[300px] items-center gap-2 rounded-md border border-amber-200 bg-white p-1.5 shadow-sm dark:border-amber-800/50 dark:bg-slate-900">
+                                    <Label className="ml-1 text-xs font-bold whitespace-nowrap text-amber-700 dark:text-amber-400">Chọn Nguồn Lực:</Label>
+                                    <Select value={selectedResourceName} onValueChange={setSelectedResourceName}>
+                                        <SelectTrigger className="h-8 border-none bg-transparent font-bold text-slate-800 shadow-none dark:text-slate-200">
+                                            <SelectValue placeholder="Chọn vật tư/nhân công..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px] dark:border-slate-800 dark:bg-slate-900">
+                                            {uniqueResources.map((res: any, idx: number) => (
+                                                <SelectItem key={idx} value={res.name || "Chưa có tên"}>
+                                                    {res.name || "Chưa có tên"} <span className="text-slate-400 text-[10px]">({res.unit})</span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* THÊM CỤM NÚT BẤM CHỌN TUẦN/THÁNG VÀO ĐÂY */}
+                                <div className="flex hidden items-center rounded-md border border-slate-200 bg-white p-1 shadow-sm sm:flex dark:border-slate-700 dark:bg-slate-900">
+                                    <Button
+                                        variant="ghost" size="sm" onClick={() => setTimePhaseUnit("week")}
+                                        className={`h-8 px-3 text-xs font-bold ${timePhaseUnit === 'week' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        Theo Tuần
+                                    </Button>
+                                    <Button
+                                        variant="ghost" size="sm" onClick={() => setTimePhaseUnit("month")}
+                                        className={`h-8 px-3 text-xs font-bold ${timePhaseUnit === 'month' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        Theo Tháng
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* KHU VỰC 1: BIỂU ĐỒ HISTOGRAM */}
+                        {resourceAllocationData && resourceAllocationData.periods.length > 0 && (
+                            <div className="border-b-4 border-slate-100 bg-white p-6 dark:border-slate-800/80 dark:bg-slate-950">
+                                <div className="h-[250px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                            data={resourceAllocationData.periods.map((p) => ({
+                                                name: p.label,
+                                                nhuCau: p.totalQty
+                                            }))}
+                                            margin={{ top: 20, right: 20, bottom: 0, left: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                            <YAxis
+                                                tickFormatter={(val) => val.toLocaleString('en-US', { maximumFractionDigits: 1 })}
+                                                tick={{ fontSize: 11, fill: '#64748b' }}
+                                                axisLine={false}
+                                                tickLine={false}
+                                            />
+                                            <Tooltip
+                                                formatter={(value: number) => [`${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${resourceAllocationData.unit}`, 'Nhu cầu']}
+                                                labelStyle={{ fontWeight: 'bold', color: '#334155' }}
+                                                contentStyle={{ borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            />
+                                            <Bar dataKey="nhuCau" name={`Nhu cầu ${selectedResourceName}`} fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* KHU VỰC 2: MA TRẬN DỮ LIỆU ĐIỀU PHỐI VẬT TƯ */}
+                        <div className="custom-scrollbar relative max-h-[400px] overflow-auto bg-slate-50/30 dark:bg-slate-900/20">
+                            <table className="w-full table-fixed bg-white text-sm dark:bg-slate-950">
+                                <TableHeader className="sticky top-0 z-30 bg-slate-100 shadow-sm outline outline-1 outline-slate-200 dark:bg-slate-900 dark:outline-slate-800">
+                                    <TableRow className="border-none">
+                                        <TableHead className="w-[50px] text-center font-bold">STT</TableHead>
+                                        <TableHead className="w-[300px] font-bold">Tên công việc</TableHead>
+                                        <TableHead className="w-[120px] border-r text-right font-bold text-amber-600 dark:border-slate-800 dark:text-amber-400">
+                                            Tổng KL <br /><span className="text-[10px] text-slate-500">({resourceAllocationData?.unit})</span>
+                                        </TableHead>
+                                        {resourceAllocationData?.periods.map((p, idx) => (
+                                            <TableHead key={idx} className="w-[100px] border-r text-right font-bold dark:border-slate-700">
+                                                {p.label}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow className="border-b-2 border-amber-200 bg-amber-50 font-black dark:border-amber-900 dark:bg-amber-900/20">
+                                        <TableCell colSpan={2} className="text-right text-amber-800 uppercase dark:text-amber-300">Tổng nhu cầu theo Tuần</TableCell>
+                                        <TableCell className="border-r border-amber-200 text-right text-amber-700 dark:border-amber-900/50 dark:text-amber-400">
+                                            {resourceAllocationData?.periods.reduce((s, p) => s + p.totalQty, 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                                        </TableCell>
+                                        {resourceAllocationData?.periods.map((p, idx) => (
+                                            <TableCell key={idx} className="border-r border-amber-200 text-right text-amber-700 dark:border-amber-900/50 dark:text-amber-400">
+                                                {p.totalQty > 0 ? p.totalQty.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '-'}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+
+                                    {resourceAllocationData?.taskAllocations.map((task: any, index: number) => (
+                                        <TableRow key={`${task.id}_${index}`} className="hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/50">
+                                            <TableCell className="text-center font-bold text-slate-500">{task.stt}</TableCell>
+                                            <TableCell className="truncate font-medium" title={task.item_name}>{task.item_name}</TableCell>
+                                            <TableCell className="border-r text-right font-bold text-slate-700 dark:border-slate-800 dark:text-slate-300">
+                                                {task.estQuantity.toLocaleString('en-US', { maximumFractionDigits: 3 })}
+                                            </TableCell>
+                                            {task.allocatedPerPeriod.map((qty: number, idx: number) => (
+                                                <TableCell key={idx} className={`text-right border-r dark:border-slate-800 ${qty > 0 ? 'bg-amber-50/30 dark:bg-amber-500/5 font-bold text-amber-700 dark:text-amber-400' : 'text-slate-300 dark:text-slate-700'}`}>
+                                                    {qty > 0 ? qty.toLocaleString('en-US', { maximumFractionDigits: 3 }) : '-'}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    ))}
                                 </TableBody>
                             </table>
                         </div>

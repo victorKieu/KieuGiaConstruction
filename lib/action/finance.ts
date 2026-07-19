@@ -404,27 +404,38 @@ export async function getPaymentRequests() {
 export async function createPaymentRequestAction(payload: any) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
 
     try {
-        const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', user?.id).single();
-        const prefix = payload.type === 'payment' ? 'DNC' : payload.type === 'receipt' ? 'DNT' : 'TU';
+        const { data: { user } } = await supabase.auth.getUser();
+        let requesterId = null;
+        if (user) {
+            const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', user.id).limit(1).maybeSingle();
+            requesterId = emp?.id || null;
+        }
+
+        const prefix = payload.type === 'receipt' ? 'PT' : 'PC';
         const requestCode = `${prefix}-${Date.now().toString().slice(-6)}`;
 
-        const { error } = await supabase.from('payment_requests').insert({
+        const { data, error } = await supabase.from('payment_requests').insert({
             request_code: requestCode,
             request_type: payload.type,
+            category_type: payload.category_type,
             amount: payload.amount,
             description: payload.description,
-            partner_name: payload.partner_name,
-            project_id: payload.project_id || null,
-            invoice_id: payload.invoice_id || null, // BỔ SUNG: Lưu ID hóa đơn để sau này đối chiếu
+            partner_name: payload.partner_name, // LƯU CHUỖI TRỰC TIẾP
+            department_name: payload.department_name,
+            debit_account_id: payload.debit_account_id,   // Định khoản dự kiến
+            credit_account_id: payload.credit_account_id, // Định khoản dự kiến
+            project_id: payload.project_id,
+            invoice_id: payload.invoice_id,
+            has_original_vouchers: payload.has_original_vouchers,
+            voucher_count: payload.voucher_count,
             status: 'pending_approval',
-            requester_id: emp?.id
-        });
+            requester_id: requesterId
+        }).select().single();
 
-        if (error) throw new Error(error.message);
-        return { success: true, message: "Đã gửi Đề nghị thành công, chờ Phê duyệt!" };
+        if (error) throw error;
+        return { success: true, message: `Đã lập đề nghị số ${requestCode} thành công!` };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
@@ -457,76 +468,62 @@ export async function processPaymentRequestAction(requestId: string, status: 'ap
 // =====================================================================
 // [CASHBOOK] 4. BƯỚC 3: GIẢI NGÂN & SINH BÚT TOÁN (THỦ QUỸ)
 // =====================================================================
-export async function executePaymentRequestAction(requestId: string, debitAccId: string, creditAccId: string, actualAmount?: number) {
+export async function executePaymentRequestAction(requestId: string, actualAmount?: number) {
     const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
 
     try {
-        const { data: { user } } = await supabase.auth.getUser();
-        let employeeId = null;
-        if (user) {
-            const { data: emp } = await supabase.from('employees').select('id').eq('auth_id', user.id).limit(1).maybeSingle();
-            employeeId = emp?.id || null;
-        }
-
-        // 1. Kéo thông tin phiếu đề nghị lên
         const { data: req } = await supabase.from('payment_requests').select('*').eq('id', requestId).single();
-        if (!req) throw new Error("Không tìm thấy phiếu đề nghị!");
-        if (req.status === 'executed' || req.status === 'paid') throw new Error("Phiếu này đã được giải ngân trước đó!");
+        if (!req) throw new Error("Không tìm thấy thông tin phiếu!");
+        if (req.status === 'executed' || req.status === 'paid') throw new Error("Phiếu này đã được giải ngân!");
 
-        // Chốt số tiền thực tế (Nếu Frontend không gửi thì lấy số gốc)
         const finalAmount = (actualAmount !== undefined && actualAmount > 0) ? actualAmount : Number(req.amount);
 
-        // 2. Chuyển trạng thái phiếu thành "Đã giải ngân" & Cập nhật lại số tiền đúng với thực tế
+        // 1. Cập nhật phiếu
         await supabase.from('payment_requests').update({
             status: 'executed',
             executed_at: new Date().toISOString(),
-            amount: finalAmount // <--- Ghi đè lại số tiền thực tế thủ quỹ đã chi
+            amount: finalAmount
         }).eq('id', requestId);
 
-        // 3. GHI SỔ CÁI (DÙNG SỐ TIỀN THỰC TẾ finalAmount)
+        // 2. GHI SỔ CÁI (Lấy trực tiếp TK từ phiếu, không nhận từ Frontend nữa)
         const { data: je } = await supabase.from('journal_entries').insert({
-            entry_number: `PT-${Date.now().toString().slice(-6)}`,
+            entry_number: `${req.request_type === 'receipt' ? 'PT' : 'PC'}-${Date.now().toString().slice(-6)}`,
             entry_date: new Date().toISOString().split('T')[0],
-            description: `Giải ngân phiếu: ${req.request_code} - ${req.description}`,
+            description: `Thực thi phiếu: ${req.request_code} - ${req.description}`,
             status: 'posted',
             reference_type: 'payment_request',
             reference_id: req.id,
-            project_id: req.project_id,
-            created_by: employeeId
+            project_id: req.project_id
         }).select().single();
 
         if (je) {
+            // NỢ
             await supabase.from('journal_entry_lines').insert({
-                journal_entry_id: je.id, account_id: debitAccId, debit: finalAmount, credit: 0,
-                description: req.description, project_id: req.project_id
+                journal_entry_id: je.id, account_id: req.debit_account_id,
+                debit: finalAmount, credit: 0, description: req.description, project_id: req.project_id
             });
+            // CÓ
             await supabase.from('journal_entry_lines').insert({
-                journal_entry_id: je.id, account_id: creditAccId, debit: 0, credit: finalAmount,
-                description: req.description, project_id: req.project_id
+                journal_entry_id: je.id, account_id: req.credit_account_id,
+                debit: 0, credit: finalAmount, description: req.description, project_id: req.project_id
             });
+
+            // Link ngược Sổ cái về Phiếu đề nghị
+            await supabase.from('payment_requests').update({ journal_entry_id: je.id }).eq('id', req.id);
         }
 
-        // 4. CẤN TRỪ CÔNG NỢ HÓA ĐƠN (DÙNG SỐ TIỀN THỰC TẾ finalAmount)
+        // 3. Cấn trừ hóa đơn (nếu có)
         if (req.invoice_id) {
             const { data: inv } = await supabase.from('procurement_invoices').select('paid_amount, total_amount').eq('id', req.invoice_id).single();
-
             if (inv) {
-                const newPaidAmount = Number(inv.paid_amount || 0) + Number(finalAmount);
-                let newStatus = 'partial';
-
-                if (newPaidAmount >= Number(inv.total_amount)) {
-                    newStatus = 'paid';
-                }
-
-                await supabase.from('procurement_invoices').update({
-                    paid_amount: newPaidAmount,
-                    payment_status: newStatus
-                }).eq('id', req.invoice_id);
+                const newPaidAmount = Number(inv.paid_amount || 0) + finalAmount;
+                const newStatus = newPaidAmount >= Number(inv.total_amount) ? 'paid' : 'partial';
+                await supabase.from('procurement_invoices').update({ paid_amount: newPaidAmount, payment_status: newStatus }).eq('id', req.invoice_id);
             }
         }
 
-        return { success: true, message: `Giải ngân thành công ${new Intl.NumberFormat('vi-VN').format(finalAmount)}đ và đã ghi sổ cái!` };
+        return { success: true, message: `Thực thi thành công số tiền ${finalAmount.toLocaleString('vi-VN')}đ.` };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
@@ -1334,34 +1331,49 @@ export async function updateExecutedAccountingAction(requestId: string, newDebit
     const supabase = await createClient();
 
     try {
+        // 1. Tìm Bút toán Sổ cái tương ứng của phiếu này
         const { data: je } = await supabase
             .from('journal_entries')
             .select('id')
             .eq('reference_id', requestId)
             .eq('reference_type', 'payment_request')
+            .limit(1)
             .maybeSingle();
 
         if (!je) throw new Error("Không tìm thấy bút toán Sổ cái tương ứng!");
 
-        // Cập nhật dòng Nợ (Dòng có tiền debit > 0)
+        // 2. CẬP NHẬT DƯỚI SỔ CÁI (Ledger)
+        // Cập nhật dòng Ghi Nợ
         const { error: debitErr } = await supabase
             .from('journal_entry_lines')
             .update({ account_id: newDebitAccId })
             .eq('journal_entry_id', je.id)
-            .gt('debit', 0);
+            .gt('debit', 0); // Tìm đúng dòng đang ghi tiền Nợ
 
-        if (debitErr) throw new Error("Lỗi sửa tài khoản Nợ: " + debitErr.message);
+        if (debitErr) throw new Error("Lỗi sửa Sổ cái (Nợ): " + debitErr.message);
 
-        // Cập nhật dòng Có (Dòng có tiền credit > 0)
+        // Cập nhật dòng Ghi Có
         const { error: creditErr } = await supabase
             .from('journal_entry_lines')
             .update({ account_id: newCreditAccId })
             .eq('journal_entry_id', je.id)
-            .gt('credit', 0);
+            .gt('credit', 0); // Tìm đúng dòng đang ghi tiền Có
 
-        if (creditErr) throw new Error("Lỗi sửa tài khoản Có: " + creditErr.message);
+        if (creditErr) throw new Error("Lỗi sửa Sổ cái (Có): " + creditErr.message);
 
-        return { success: true, message: "Điều chỉnh định khoản thành công! Dữ liệu P&L đã được cập nhật lại tự động." };
+        // 3. QUAN TRỌNG: ĐỒNG BỘ NGƯỢC LÊN GIAO DIỆN PHIẾU YÊU CẦU
+        // Bước này giúp giao diện CashbookManager hiển thị ngay lập tức tên TK mới
+        const { error: reqErr } = await supabase
+            .from('payment_requests')
+            .update({
+                debit_account_id: newDebitAccId,
+                credit_account_id: newCreditAccId
+            })
+            .eq('id', requestId);
+
+        if (reqErr) throw new Error("Lỗi đồng bộ giao diện hiển thị: " + reqErr.message);
+
+        return { success: true, message: "Đã nắn lại dòng tiền! Sổ cái và Giao diện đều đã đồng bộ." };
     } catch (error: any) {
         return { success: false, error: error.message };
     }

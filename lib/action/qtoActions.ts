@@ -351,6 +351,7 @@ export async function addManualQTOItem(
 
 // ✅ HÀM MỚI: Sửa trực tiếp thông tin QTO Item (Tên, Đơn vị tính...)
 export async function updateQTOItem(itemId: string, field: string, value: any) {
+    const { createClient } = await import("@/lib/supabase/server"); // Đảm bảo import đúng SSR client
     const supabase = await createClient();
 
     // Các field liên quan đến thay đổi nội dung, khối lượng mới bị khóa
@@ -376,7 +377,10 @@ export async function updateQTOItem(itemId: string, field: string, value: any) {
         console.error("Lỗi updateQTOItem:", error);
         return { success: false, error: error.message };
     }
-    revalidatePath("/projects/[id]");
+
+    // ✅ ĐÃ SỬA LỖI VÀNG NEXT.JS: Thêm "page" để định tuyến đúng Dynamic Route
+    revalidatePath("/projects/[id]", "page");
+
     return { success: true };
 }
 
