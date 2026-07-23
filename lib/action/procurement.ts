@@ -548,40 +548,67 @@ export async function getProjectStandardizedMaterials(projectId: string) {
 // PHẦN: NHÀ CUNG CẤP (SUPPLIER)
 // ==============================================================================
 
-export async function createSupplierAction(data: any) {
+export async function createSupplierAction(data: SupplierFormValues) {
     const supabase = await createClient();
-    try {
-        const payload = {
-            name: data.name, type: data.type, contact_person: data.contact_person, phone: data.phone,
-            email: data.email, address: data.address, tax_code: data.tax_code, created_at: new Date().toISOString()
-        };
-        const { error } = await supabase.from('suppliers').insert(payload).select().single();
-        if (error) throw new Error(error.message);
 
-        revalidatePath('/procurement/suppliers');
-        return { success: true, message: "Thêm nhà cung cấp thành công!" };
-    } catch (e: any) {
-        return { success: false, error: "Lỗi Server: " + e.message };
+    // Map chính xác 12 trường từ Form xuống Database
+    const payload = {
+        code: data.code || null,
+        name: data.name,
+        type: data.type || 'material',
+        rating: data.rating || 'C',
+        status: data.status || 'active',
+        tax_code: data.tax_code || null,
+        bank_name: data.bank_name || null,
+        bank_account: data.bank_account || null,
+        bank_account_name: data.bank_account_name || null,
+        contact_person: data.contact_person || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        address: data.address || null,
+    };
+
+    const { error } = await supabase.from('suppliers').insert(payload);
+
+    if (error) {
+        console.error("Lỗi khi thêm nhà cung cấp:", error);
+        return { success: false, error: error.message };
     }
+
+    revalidatePath("/procurement/suppliers");
+    return { success: true, message: "Thêm hồ sơ nhà cung cấp thành công!" };
 }
 
-export async function updateSupplierAction(id: string, data: any) {
+export async function updateSupplierAction(id: string, data: SupplierFormValues) {
     const supabase = await createClient();
-    try {
-        const { error } = await supabase.from('suppliers').update({
-            name: data.name, type: data.type, contact_person: data.contact_person, phone: data.phone,
-            email: data.email, address: data.address, tax_code: data.tax_code,
-        }).eq('id', id);
 
-        if (error) throw new Error(error.message);
+    // Map chính xác 12 trường từ Form xuống Database
+    const payload = {
+        code: data.code || null,
+        name: data.name,
+        type: data.type || 'material',
+        rating: data.rating || 'C',
+        status: data.status || 'active',
+        tax_code: data.tax_code || null,
+        bank_name: data.bank_name || null,
+        bank_account: data.bank_account || null,
+        bank_account_name: data.bank_account_name || null,
+        contact_person: data.contact_person || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        address: data.address || null,
+    };
 
-        revalidatePath('/procurement/suppliers');
-        return { success: true, message: "Cập nhật thành công!" };
-    } catch (e: any) {
-        return { success: false, error: e.message };
+    const { error } = await supabase.from('suppliers').update(payload).eq('id', id);
+
+    if (error) {
+        console.error("Lỗi khi cập nhật nhà cung cấp:", error);
+        return { success: false, error: error.message };
     }
-}
 
+    revalidatePath("/procurement/suppliers");
+    return { success: true, message: "Cập nhật hồ sơ thành công!" };
+}
 export async function deleteSupplierAction(id: string) {
     const supabase = await createClient();
     try {
@@ -703,7 +730,9 @@ export async function submitBidAction(payload: {
     bids: { rfq_item_id: string; unit_price: number; delivery_time_days?: number }[];
     profileData?: {
         tax_code?: string; phone?: string; email?: string; address?: string;
-        bank_account?: string; bank_name?: string; latitude?: string; longitude?: string;
+        bank_account?: string; bank_name?: string;
+        bank_account_name?: string; // ✅ Bổ sung khai báo Type tại đây
+        latitude?: string; longitude?: string;
     } | null;
 }) {
     const supabase = await createClient();
@@ -712,9 +741,13 @@ export async function submitBidAction(payload: {
         await supabase
             .from('suppliers')
             .update({
-                tax_code: payload.profileData.tax_code, phone: payload.profileData.phone,
-                email: payload.profileData.email, address: payload.profileData.address,
-                bank_account: payload.profileData.bank_account, bank_name: payload.profileData.bank_name,
+                tax_code: payload.profileData.tax_code,
+                phone: payload.profileData.phone,
+                email: payload.profileData.email,
+                address: payload.profileData.address,
+                bank_account: payload.profileData.bank_account,
+                bank_name: payload.profileData.bank_name,
+                bank_account_name: payload.profileData.bank_account_name, // ✅ Bổ sung map dữ liệu xuống DB
                 latitude: payload.profileData.latitude ? parseFloat(payload.profileData.latitude) : null,
                 longitude: payload.profileData.longitude ? parseFloat(payload.profileData.longitude) : null,
                 status: 'active'

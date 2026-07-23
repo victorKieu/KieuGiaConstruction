@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,12 @@ import {
     DialogTrigger,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { toast } from "sonner"; // ✅ Dùng chung Sonner cho đồng bộ toàn hệ thống
+// ✅ Thêm import Select để dùng cho chọn màu
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 import { upsertDictionary, DictionaryFormData } from "@/lib/action/dictionaryActions";
 import { Loader2, Plus, Save } from "lucide-react";
 import { formatCategoryCode } from "@/lib/constants/dictionary";
-import { ColorPicker } from "@/components/ui/color-picker";
 import { CategoryCombobox } from "@/components/admin/CategoryCombobox";
 
 interface Props {
@@ -42,7 +43,8 @@ export function DictionaryDialog({
         category: initialData?.category || defaultCategory || "",
         code: initialData?.code || "",
         name: initialData?.name || "",
-        color: initialData?.color || "#94a3b8",
+        // ✅ ĐÃ FIX: Chuyển mặc định từ #94a3b8 thành "slate"
+        color: initialData?.color || "slate",
         sort_order: initialData?.sort_order || 0,
         meta_data: initialData?.meta_data ? JSON.stringify(initialData.meta_data, null, 2) : "{}",
     });
@@ -54,7 +56,8 @@ export function DictionaryDialog({
                 category: initialData?.category || defaultCategory || "",
                 code: initialData?.code || "",
                 name: initialData?.name || "",
-                color: initialData?.color || "#94a3b8",
+                // ✅ ĐÃ FIX: Chuyển mặc định từ #94a3b8 thành "slate"
+                color: initialData?.color || "slate",
                 sort_order: initialData?.sort_order || 0,
                 meta_data: initialData?.meta_data ? JSON.stringify(initialData.meta_data, null, 2) : "{}",
             });
@@ -66,7 +69,6 @@ export function DictionaryDialog({
         setLoading(true);
 
         if (!formData.category) {
-            // ✅ ĐÃ FIX: Dùng toast.error thay cho alert thô sơ
             toast.error("Vui lòng chọn Phân hệ (Category)!");
             setLoading(false);
             return;
@@ -77,10 +79,8 @@ export function DictionaryDialog({
         setLoading(false);
         if (res.success) {
             setOpen(false);
-            // ✅ ĐÃ FIX: Dùng toast.success
             toast.success("Lưu dữ liệu từ điển thành công!");
         } else {
-            // ✅ ĐÃ FIX: Dùng toast.error
             toast.error(res.error || "Có lỗi xảy ra khi lưu dữ liệu.");
         }
     };
@@ -89,12 +89,12 @@ export function DictionaryDialog({
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 {trigger || (
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                    <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-700">
                         <Plus className="mr-2 h-4 w-4" /> Thêm dữ liệu
                     </Button>
                 )}
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="bg-background border-border sm:max-w-[600px]">
                 <DialogHeader>
                     <DialogTitle>{initialData ? "Chỉnh sửa dữ liệu" : "Thêm dữ liệu mới"}</DialogTitle>
                     <DialogDescription>
@@ -117,7 +117,7 @@ export function DictionaryDialog({
                                             formData.category
                                         }
                                         disabled
-                                        className="bg-slate-100 font-semibold text-slate-700 mt-1"
+                                        className="bg-slate-100 font-semibold text-slate-700 mt-1 dark:bg-slate-900 dark:text-slate-300"
                                     />
                                     <input type="hidden" value={formData.category} />
                                 </div>
@@ -132,7 +132,7 @@ export function DictionaryDialog({
                             )}
 
                             {!defaultCategory && !initialData && (
-                                <p className="text-[10px] text-gray-500 mt-1">
+                                <p className="mt-1 text-[10px] text-gray-500">
                                     * Tìm kiếm theo tên phân hệ (VD: Nhóm định mức).
                                 </p>
                             )}
@@ -163,12 +163,22 @@ export function DictionaryDialog({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Màu sắc (Badge)</Label>
-                            <div className="mt-1.5">
-                                <ColorPicker
-                                    value={formData.color}
-                                    onChange={(val) => setFormData({ ...formData, color: val })}
-                                    className="w-full"
-                                />
+                            <div className="mt-1">
+                                {/* ✅ ĐÃ FIX: Dùng Select để khóa bảng màu chuẩn */}
+                                <Select value={formData.color} onValueChange={(val) => setFormData({ ...formData, color: val })}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Chọn màu hiển thị" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="slate"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-slate-500"></div> Xám (Slate)</div></SelectItem>
+                                        <SelectItem value="blue"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-blue-500"></div> Xanh dương (Blue)</div></SelectItem>
+                                        <SelectItem value="emerald"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-emerald-500"></div> Xanh lá (Emerald)</div></SelectItem>
+                                        <SelectItem value="amber"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-amber-500"></div> Vàng (Amber)</div></SelectItem>
+                                        <SelectItem value="purple"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-purple-500"></div> Tím (Purple)</div></SelectItem>
+                                        <SelectItem value="indigo"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-indigo-500"></div> Chàm (Indigo)</div></SelectItem>
+                                        <SelectItem value="rose"><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full bg-rose-500"></div> Đỏ/Hồng (Rose)</div></SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
                         <div>
@@ -177,7 +187,7 @@ export function DictionaryDialog({
                                 type="number"
                                 value={formData.sort_order}
                                 onChange={e => setFormData({ ...formData, sort_order: Number(e.target.value) })}
-                                className="mt-1.5"
+                                className="mt-1"
                             />
                         </div>
                     </div>
@@ -195,7 +205,7 @@ export function DictionaryDialog({
 
                     <div className="flex justify-end gap-2 pt-2">
                         <Button type="button" variant="outline" onClick={() => setOpen(false)}>Hủy</Button>
-                        <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+                        <Button type="submit" disabled={loading} className="bg-blue-600 text-white hover:bg-blue-700">
                             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                             Lưu dữ liệu
                         </Button>

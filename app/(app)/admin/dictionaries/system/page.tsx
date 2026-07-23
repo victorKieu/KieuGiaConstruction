@@ -10,6 +10,20 @@ import { deleteDictionary } from "@/lib/action/dictionaryActions";
 import { redirect } from "next/navigation";
 import { checkIsAdmin } from "@/lib/supabase/getUserProfile";
 
+// --- Hàm chuyển đổi tên màu Tailwind sang Class nền ---
+const getColorClass = (colorName: string | null) => {
+    const colorMap: Record<string, string> = {
+        slate: "bg-slate-500",
+        blue: "bg-blue-500",
+        emerald: "bg-emerald-500",
+        amber: "bg-amber-500",
+        purple: "bg-purple-500",
+        indigo: "bg-indigo-500",
+        rose: "bg-rose-500",
+    };
+    return colorMap[colorName || "slate"] || "bg-slate-500";
+};
+
 // --- Delete Button ---
 function DeleteButton({ id }: { id: string }) {
     return (
@@ -17,7 +31,7 @@ function DeleteButton({ id }: { id: string }) {
             "use server";
             await deleteDictionary(id);
         }}>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30">
                 <Trash2 className="h-4 w-4" />
             </Button>
         </form>
@@ -59,15 +73,15 @@ export default async function DictionarySystemPage({
     const currentCatInfo = categories?.find(c => c.code === selectedCategory);
 
     return (
-        <div className="flex h-[calc(100vh-80px)] w-full gap-6 p-4 md:p-6 bg-slate-50 dark:bg-slate-950 transition-colors duration-500">
+        <div className="flex h-[calc(100vh-80px)] w-full gap-6 bg-slate-50 p-4 transition-colors duration-500 md:p-6 dark:bg-slate-950">
 
             {/* --- SIDEBAR --- */}
-            <div className="w-72 flex-shrink-0 border-r dark:border-slate-800 pr-6 bg-white dark:bg-slate-900 rounded-l-xl py-6 flex flex-col transition-colors shadow-sm">
+            <div className="flex w-72 flex-shrink-0 flex-col rounded-l-xl border-r bg-white py-6 pr-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
                 <div className="mb-6 px-4">
-                    <h2 className="text-lg font-bold text-red-700 dark:text-red-500 flex items-center gap-2">
-                        <Database className="w-5 h-5" /> Admin Area
+                    <h2 className="flex items-center gap-2 text-lg font-bold text-red-700 dark:text-red-500">
+                        <Database className="h-5 w-5" /> Admin Area
                     </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 uppercase tracking-widest font-bold">Từ điển & Tham số</p>
+                    <p className="mt-1 text-xs font-bold tracking-widest text-slate-500 uppercase dark:text-slate-400">Từ điển & Tham số</p>
                 </div>
 
                 <ScrollArea className="flex-1 px-2">
@@ -81,7 +95,7 @@ export default async function DictionarySystemPage({
                                     : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
                             )}
                         >
-                            <FolderCog className="w-4 h-4" />
+                            <FolderCog className="h-4 w-4" />
                             Tất cả phân hệ
                         </Link>
 
@@ -100,7 +114,7 @@ export default async function DictionarySystemPage({
                             >
                                 <div className="flex items-center justify-between">
                                     <span className="truncate">{cat.name}</span>
-                                    {selectedCategory === cat.code && <BookOpen className="w-3.5 h-3.5" />}
+                                    {selectedCategory === cat.code && <BookOpen className="h-3.5 w-3.5" />}
                                 </div>
                                 <span className={cn(
                                     "text-[10px] font-mono block truncate mt-1 opacity-70",
@@ -115,18 +129,18 @@ export default async function DictionarySystemPage({
             </div>
 
             {/* --- MAIN CONTENT --- */}
-            <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900 rounded-r-xl shadow-sm border dark:border-slate-800 transition-colors">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 border-b dark:border-slate-800 bg-white dark:bg-slate-900 z-20 gap-4">
+            <div className="flex flex-1 flex-col overflow-hidden rounded-r-xl border bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                <div className="z-20 flex flex-col justify-between gap-4 border-b bg-white p-6 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-900">
                     <div>
-                        <h1 className="text-2xl font-black tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-3 transition-colors">
+                        <h1 className="flex items-center gap-3 text-2xl font-black tracking-tight text-slate-800 transition-colors dark:text-slate-100">
                             {currentCatInfo ? currentCatInfo.name : "Dữ liệu nguồn hệ thống"}
                             {currentCatInfo && (
-                                <Badge variant="outline" className="font-mono font-bold bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800">
+                                <Badge variant="outline" className="border-slate-200 bg-slate-50 font-mono font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                                     {currentCatInfo.code}
                                 </Badge>
                             )}
                         </h1>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 font-medium">
+                        <p className="mt-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
                             {selectedCategory
                                 ? "Quản lý các hằng số và giá trị cấu hình cho phân hệ này."
                                 : "Tổng hợp toàn bộ danh mục dữ liệu dùng chung trên toàn ứng dụng."
@@ -141,54 +155,54 @@ export default async function DictionarySystemPage({
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
-                    <table className="w-full text-sm text-left border-collapse">
-                        <thead className="bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-b dark:border-slate-800 sticky top-0 z-10 shadow-sm transition-colors">
+                    <table className="w-full border-collapse text-left text-sm">
+                        <thead className="sticky top-0 z-10 border-b bg-slate-50 text-slate-600 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
                             <tr>
-                                <th className="px-6 py-4 w-[160px] font-bold uppercase tracking-wider text-[11px]">Mã định danh (Code)</th>
-                                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[11px]">Tên hiển thị</th>
-                                <th className="px-6 py-4 w-[140px] font-bold uppercase tracking-wider text-[11px]">Màu sắc</th>
-                                {!selectedCategory && <th className="px-6 py-4 font-bold uppercase tracking-wider text-[11px]">Thuộc Phân hệ</th>}
-                                <th className="px-6 py-4 font-bold uppercase tracking-wider text-[11px]">Cấu hình Meta</th>
-                                <th className="px-6 py-4 w-[100px] text-right font-bold uppercase tracking-wider text-[11px]">Thao tác</th>
+                                <th className="w-[160px] px-6 py-4 font-bold tracking-wider text-[11px] uppercase">Mã định danh (Code)</th>
+                                <th className="px-6 py-4 font-bold tracking-wider text-[11px] uppercase">Tên hiển thị</th>
+                                <th className="w-[140px] px-6 py-4 font-bold tracking-wider text-[11px] uppercase">Màu sắc</th>
+                                {!selectedCategory && <th className="px-6 py-4 font-bold tracking-wider text-[11px] uppercase">Thuộc Phân hệ</th>}
+                                <th className="px-6 py-4 font-bold tracking-wider text-[11px] uppercase">Cấu hình Meta</th>
+                                <th className="w-[100px] px-6 py-4 text-right font-bold tracking-wider text-[11px] uppercase">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y dark:divide-slate-800">
                             {dictionaries?.map((item) => (
-                                <tr key={item.id} className="hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-colors group border-none">
+                                <tr key={item.id} className="group border-none transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-900/10">
                                     <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500 dark:text-slate-400">{item.code}</td>
-                                    <td className="px-6 py-4 font-bold text-slate-800 dark:text-slate-200 transition-colors">{item.name}</td>
+                                    <td className="px-6 py-4 font-bold text-slate-800 transition-colors dark:text-slate-200">{item.name}</td>
 
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
+                                            {/* ✅ ĐÃ FIX: Chuyển style={{ backgroundColor }} thành className bg-... */}
                                             <div
-                                                className="w-3 h-3 rounded-full shadow-sm ring-1 ring-black/5"
-                                                style={{ backgroundColor: item.color || "#94a3b8" }}
+                                                className={cn("w-3 h-3 rounded-full shadow-sm ring-1 ring-black/5", getColorClass(item.color))}
                                             />
-                                            <span className="text-xs font-mono text-slate-400 uppercase">{item.color || "n/a"}</span>
+                                            <span className="font-mono text-xs text-slate-400 uppercase">{item.color || "slate"}</span>
                                         </div>
                                     </td>
 
                                     {!selectedCategory && (
                                         <td className="px-6 py-4">
-                                            <Badge variant="secondary" className="font-bold text-[10px] uppercase dark:bg-slate-800 dark:text-slate-300 border-none">
+                                            <Badge variant="secondary" className="border-none font-bold text-[10px] uppercase dark:bg-slate-800 dark:text-slate-300">
                                                 {categories?.find(c => c.code === item.category)?.name || item.category}
                                             </Badge>
                                         </td>
                                     )}
 
-                                    <td className="px-6 py-4 max-w-[200px] truncate text-[11px] text-slate-400 dark:text-slate-500 font-mono transition-colors">
+                                    <td className="max-w-[200px] truncate px-6 py-4 font-mono text-[11px] text-slate-400 transition-colors dark:text-slate-500">
                                         {item.meta_data && Object.keys(item.meta_data).length > 0
                                             ? JSON.stringify(item.meta_data)
                                             : "---"}
                                     </td>
 
                                     <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                                             <DictionaryDialog
                                                 initialData={item}
                                                 existingCategories={categories || []}
                                                 trigger={
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30">
                                                         <Edit className="h-4 w-4" />
                                                     </Button>
                                                 }
@@ -200,7 +214,7 @@ export default async function DictionarySystemPage({
                             ))}
                             {dictionaries?.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="text-center py-24 text-slate-400 dark:text-slate-600 italic">
+                                    <td colSpan={6} className="py-24 text-center text-slate-400 italic dark:text-slate-600">
                                         Không tìm thấy dữ liệu từ điển nào.
                                     </td>
                                 </tr>

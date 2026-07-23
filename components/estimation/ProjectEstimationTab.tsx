@@ -2,24 +2,23 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { Loader2, Trash2, Calculator, Layers, HardHat, Tractor, PieChart, ChevronDown, ChevronRight, FoldVertical, Download, RefreshCw, CheckCircle2, Radar, Link2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
-import { exportToExcel } from "@/lib/utils/exportExcel";
+
+// Import thư viện xử lý Excel có Format
+import * as ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+
 import { pushEstimationToProcurementAction } from "@/lib/action/estimationActions";
-import {
-    updateEstimationPrice, deleteEstimationItem, createManualEstimationItem,
-    updateEstimationQuantity, updateEstimationPriceByGroup, updateEstimationMaterialByGroup
-} from "@/lib/action/estimationActions";
+import { deleteEstimationItem, createManualEstimationItem, updateEstimationQuantity, updateEstimationPriceByGroup, updateEstimationMaterialByGroup } from "@/lib/action/estimationActions";
 import { MaterialSelector } from "@/components/common/MaterialSelector";
 
 interface Props { projectId: string; onUpdate?: () => void; }
@@ -168,12 +167,10 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         }
     };
 
-    // FIX 1: HÀM CẬP NHẬT TỈ LỆ KINH PHÍ (Hỗ trợ tạo mới nếu dự án chưa có)
     const handleRateChange = async (id: string, category: string, newRate: string) => {
         const rate = parseFloat(newRate) || 0;
         let res: ActionResponse;
 
-        // Nếu ID là temp (chưa có trong DB), tiến hành tạo mới
         if (id.startsWith('temp-')) {
             const data = {
                 material_name: category === 'GT' ? 'Chi phí chung' : category === 'LN' ? 'Lợi nhuận' : 'VAT',
@@ -184,7 +181,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             };
             res = (await createManualEstimationItem(projectId, data)) as ActionResponse;
         } else {
-            // Nếu đã tồn tại, tiến hành cập nhật
             res = (await updateEstimationQuantity(id, projectId, rate, category)) as ActionResponse;
         }
 
@@ -199,7 +195,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     };
 
     function toRoman(num: number): string {
-        const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+        const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV", "XXV", "XXVI", "XXVII", "XXVIII", "XXIX", "XXX", "XXXI", "XXXII", "XXXIII", "XXXIV", "XXXV", "XXXVI", "XXXVII", "XXXVIII", "XXXIX", "XL"];
         return roman[num] || num.toString();
     }
 
@@ -223,12 +219,10 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
             const key = item.material_name;
             if (!map.has(key)) {
                 const dim = item.dimensions || {};
-
                 const mMat = masterMaterials.find(m =>
                     (item.material_code && m.code === item.material_code) ||
                     (m.name.trim().toLowerCase() === item.material_name.trim().toLowerCase())
                 );
-
                 const rate = Number(dim.conversion_rate) || Number(mMat?.conversion_rate) || 1;
                 const pUnit = dim.purchase_unit || mMat?.purchase_unit || item.unit;
 
@@ -395,68 +389,140 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
     const totalM = getSummaryByCategory('M').reduce((sum, item) => sum + item.total_cost_sum, 0);
     const totalKhac = TotalProject - totalVL - totalNC - totalM;
 
-    const handleExportDetailExcel = () => {
-        const allData: any[] = [];
-        let stt = 1;
-        const tasks = qtoTasks.filter(i => i.item_type === 'task');
+    // ==========================================
+    // TÍNH NĂNG XUẤT EXCEL CHUYÊN NGHIỆP CÓ ĐỊNH DẠNG (BORDERS)
+    // ==========================================
+    const handleExportDetailExcel = async () => {
+        try {
+            toast.loading("Đang tạo file Excel...", { id: "export-excel" });
 
-        tasks.forEach((task) => {
-            const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
-            if (taskHaoPhi.length === 0) return;
-
-            const taskVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || Number(task.quantity) || 0;
-            const taskTotalCost = taskHaoPhi.reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
-            const taskUnitPrice = taskVol > 0 ? taskTotalCost / taskVol : 0;
-
-            allData.push({
-                "STT": stt++,
-                "Mã / Thành phần công tác": `[${task.norm_code}] ${task.item_name}`,
-                "ĐVT": task.unit,
-                "Khối lượng": Number(taskVol.toFixed(3)),
-                "Định mức": "",
-                "Đơn giá": Number(taskUnitPrice.toFixed(0)),
-                "Thành tiền": Number(taskTotalCost.toFixed(0))
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('PhanTichDonGia', {
+                views: [{ state: 'frozen', xSplit: 0, ySplit: 1 }]
             });
 
-            ['VL', 'NC', 'M'].forEach(cat => {
-                const items = taskHaoPhi.filter(e => e.category === cat);
-                if (items.length === 0) return;
+            // 1. Cấu hình Cột (BỎ CỘT TÊN HẠNG MỤC - Còn 8 cột)
+            sheet.columns = [
+                { header: 'STT', key: 'stt', width: 8, style: { alignment: { horizontal: 'center', vertical: 'middle' } } },
+                { header: 'Mã Định Mức', key: 'code', width: 15, style: { alignment: { horizontal: 'center', vertical: 'middle' } } },
+                { header: 'Tên Công Tác / Hao Phí', key: 'name', width: 45, style: { alignment: { wrapText: true, vertical: 'middle' } } },
+                { header: 'ĐVT', key: 'unit', width: 10, style: { alignment: { horizontal: 'center', vertical: 'middle' } } },
+                { header: 'Khối Lượng', key: 'volume', width: 15, style: { numFmt: '#,##0.000', alignment: { horizontal: 'right', vertical: 'middle' } } },
+                { header: 'Định Mức', key: 'norm', width: 12, style: { numFmt: '#,##0.0000', alignment: { horizontal: 'center', vertical: 'middle' } } },
+                { header: 'Đơn Giá', key: 'price', width: 15, style: { numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'middle' } } },
+                { header: 'Thành Tiền', key: 'total', width: 18, style: { numFmt: '#,##0', alignment: { horizontal: 'right', vertical: 'middle' } } }
+            ];
 
-                const catName = cat === 'VL' ? 'Vật liệu' : cat === 'NC' ? 'Nhân công' : 'Máy thi công';
-                allData.push({
-                    "STT": "", "Mã / Thành phần công tác": catName, "ĐVT": "",
-                    "Khối lượng": "", "Định mức": "", "Đơn giá": "", "Thành tiền": ""
+            // 2. Format Tiêu Đề Dòng 1 (In đậm, Canh giữa, Kẻ khung)
+            const headerRow = sheet.getRow(1);
+            headerRow.font = { bold: true, name: 'Times New Roman', size: 12, color: { argb: 'FFFFFFFF' } };
+            headerRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            headerRow.eachCell((cell) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+            headerRow.height = 30;
+
+            // 3. Đổ dữ liệu Data Rows
+            let stt = 1;
+
+            sections.forEach((section, secIdx) => {
+                const tasks = qtoTasks.filter(i => i.parent_id === section.id && i.item_type === 'task');
+                if (tasks.length === 0) return;
+
+                // ---> DÒNG TÊN HẠNG MỤC
+                const secRow = sheet.addRow({
+                    stt: toRoman(secIdx + 1),
+                    code: section.item_name, // Ghi tên hạng mục vào cột B (Mã Định Mức) để lát nữa gộp ô từ B -> H
+                    name: '', unit: '', volume: '', norm: '', price: '', total: ''
                 });
+                secRow.font = { bold: true, name: 'Times New Roman', size: 11 };
+                secRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } };
 
-                items.forEach(hp => {
-                    const rawQty = Number(hp.quantity);
-                    const normVal = taskVol > 0 ? rawQty / taskVol : 0;
-                    const effectivePrice = Number(hp.unit_price) || 0;
-                    const realCost = rawQty * effectivePrice;
+                // Lệnh Merge Cell từ Cột 2 (B) đến Cột 8 (H) của dòng Hạng mục này
+                sheet.mergeCells(secRow.number, 2, secRow.number, 8);
+                // Canh giữa text cho dải ô đã Merge
+                secRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
 
-                    allData.push({
-                        "STT": "",
-                        "Mã / Thành phần công tác": `- ${hp.material_name}`,
-                        "ĐVT": hp.unit,
-                        "Khối lượng": Number(rawQty.toFixed(4)),
-                        "Định mức": Number(normVal.toFixed(4)),
-                        "Đơn giá": Number(effectivePrice.toFixed(0)),
-                        "Thành tiền": Number(realCost.toFixed(0))
+                tasks.forEach((task) => {
+                    const taskHaoPhi = estItems.filter(e => e.qto_item_id === task.id);
+                    if (taskHaoPhi.length === 0) return;
+
+                    const taskVol = task.details?.reduce((sum: number, d: any) => sum + calculateDisplayVol(d.length, d.width, d.height, d.quantity_factor), 0) || Number(task.quantity) || 0;
+                    const taskTotalCost = taskHaoPhi.reduce((sum, e) => sum + (Number(e.quantity) * Number(e.unit_price) || 0), 0);
+                    const taskUnitPrice = taskVol > 0 ? taskTotalCost / taskVol : 0;
+
+                    // ---> DÒNG CÔNG TÁC CHÍNH
+                    const tRow = sheet.addRow({
+                        stt: stt++,
+                        code: task.norm_code || '',
+                        name: task.item_name, // Chữ sẽ wrap theo cấu hình cột mặc định
+                        unit: task.unit,
+                        volume: taskVol,
+                        norm: '',
+                        price: taskUnitPrice,
+                        total: taskTotalCost
+                    });
+                    tRow.font = { bold: true, name: 'Times New Roman', size: 11 };
+                    tRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; // Vàng nhạt
+
+                    // ---> DÒNG HAO PHÍ (VL, NC, M)
+                    ['VL', 'NC', 'M'].forEach(cat => {
+                        const items = taskHaoPhi.filter(e => e.category === cat);
+                        if (items.length === 0) return;
+
+                        const catName = cat === 'VL' ? 'Vật liệu' : cat === 'NC' ? 'Nhân công' : 'Máy thi công';
+
+                        // Dòng Tiêu đề nhóm hao phí (Ghi vào cột Name - Cột 3)
+                        const catRow = sheet.addRow({ name: catName });
+                        catRow.font = { italic: true, bold: true, color: { argb: 'FFC00000' }, name: 'Times New Roman' };
+
+                        // Dòng Chi tiết hao phí con
+                        items.forEach(hp => {
+                            const rawQty = Number(hp.quantity);
+                            const normVal = taskVol > 0 ? rawQty / taskVol : 0;
+                            const effectivePrice = Number(hp.unit_price) || 0;
+                            const realCost = rawQty * effectivePrice;
+
+                            const hpRow = sheet.addRow({
+                                code: hp.material_code || '',
+                                name: `- ${hp.material_name}`,
+                                unit: hp.unit,
+                                volume: rawQty,
+                                norm: normVal,
+                                price: effectivePrice,
+                                total: realCost
+                            });
+                            hpRow.font = { name: 'Times New Roman', size: 11 };
+                        });
                     });
                 });
             });
 
-            allData.push({
-                "STT": "", "Mã / Thành phần công tác": "", "ĐVT": "",
-                "Khối lượng": "", "Định mức": "", "Đơn giá": "", "Thành tiền": ""
-            });
-        });
+            // 4. RULE KẺ BẢNG TỪ A1 -> H(n): Kẻ tất cả các ô kể cả ô trống (8 Cột)
+            const maxRow = sheet.rowCount;
+            for (let r = 1; r <= maxRow; r++) {
+                const row = sheet.getRow(r);
+                for (let c = 1; c <= 8; c++) {
+                    const cell = row.getCell(c);
+                    cell.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    };
+                }
+            }
 
-        if (allData.length > 0) {
-            exportToExcel(allData, `BangPhanTichDonGia_${projectId}`, 'PhanTichDonGia');
-            toast.success("Đã xuất file Phân Tích Đơn Giá thành công!");
-        } else {
-            toast.error("Không có dữ liệu để xuất!");
+            // 5. Build File Blob và Tải xuống
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, `PhanTichDonGia_${projectId}.xlsx`);
+
+            toast.success("Xuất file Excel thành công!", { id: "export-excel" });
+        } catch (error) {
+            console.error(error);
+            toast.error("Có lỗi xảy ra khi xuất file Excel.", { id: "export-excel" });
         }
     };
 
@@ -466,7 +532,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
         const toastId = "push-procurement";
         toast.loading("Đang đối chiếu và đẩy dữ liệu sang Thu Mua...", { id: toastId });
 
-        // DÙNG MAP ĐỂ GỘP CÁC VẬT TƯ BỊ TRÙNG MÃ CHUẨN
         const groupedByCode = new Map<string, any>();
 
         aggregatedSummaries
@@ -560,7 +625,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 </DialogContent>
             </Dialog>
 
-            {/* HEADER TOOLBAR ĐÃ ĐƯỢC LÀM SẠCH */}
+            {/* HEADER TOOLBAR */}
             <div className="flex flex-col items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-colors xl:flex-row xl:items-center dark:border-slate-800 dark:bg-slate-900">
                 <div>
                     <h3 className="flex items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-100">
@@ -630,7 +695,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                             <TableCell className="text-center font-medium text-slate-500">GT = T x %</TableCell>
                             <TableCell className="p-1">
                                 <Input
-                                    key={`gt_${gtParam.id}_${gtParam.quantity}`} // THÊM DÒNG NÀY
+                                    key={`gt_${gtParam.id}_${gtParam.quantity}`}
                                     type="number"
                                     className="h-8 border-blue-200 bg-white text-center font-bold text-blue-700 dark:border-blue-900 dark:bg-slate-950 dark:text-blue-400"
                                     defaultValue={gtParam.quantity}
@@ -645,7 +710,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                             <TableCell className="text-center font-medium text-slate-500">TL = (T+GT) x %</TableCell>
                             <TableCell className="p-1">
                                 <Input
-                                    key={`ln_${lnParam.id}_${lnParam.quantity}`} // THÊM DÒNG NÀY
+                                    key={`ln_${lnParam.id}_${lnParam.quantity}`}
                                     type="number"
                                     className="h-8 border-blue-200 bg-white text-center font-bold text-blue-700 dark:border-blue-900 dark:bg-slate-950 dark:text-blue-400"
                                     defaultValue={lnParam.quantity}
@@ -667,7 +732,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                             <TableCell className="text-center font-medium text-slate-500">VAT = G x %</TableCell>
                             <TableCell className="p-1">
                                 <Input
-                                    key={`vat_${vatParam.id}_${vatParam.quantity}`} // THÊM DÒNG NÀY
+                                    key={`vat_${vatParam.id}_${vatParam.quantity}`}
                                     type="number"
                                     className="h-8 border-blue-200 bg-white text-center font-bold text-blue-700 dark:border-blue-900 dark:bg-slate-950 dark:text-blue-400"
                                     defaultValue={vatParam.quantity}
@@ -694,7 +759,7 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                 <Button variant="ghost" onClick={() => setActiveModal('M')} className="font-bold text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-purple-600 transition-all"><Tractor className="mr-2 h-4 w-4 text-purple-500" /> Tổng hợp Máy TC</Button>
             </div>
 
-            {/* BẢNG DỰ TOÁN CHI TIẾT (TAB 5) */}
+            {/* BẢNG DỰ TOÁN CHI TIẾT */}
             <Card className="overflow-hidden border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-950">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-2 transition-colors dark:border-slate-800 dark:bg-slate-900">
                     <h4 className="ml-2 text-sm font-bold tracking-wide text-slate-700 uppercase dark:text-slate-300">Bảng Phân Tích Vật Tư & Chi Phí Trực Tiếp</h4>
@@ -767,16 +832,12 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                                             <TableCell className="border-r border-slate-200 text-center font-bold text-slate-700 dark:border-slate-800 dark:text-slate-300">{task.unit}</TableCell>
                                                             <TableCell className="border-r border-slate-200 bg-slate-100/50 dark:border-slate-800 dark:bg-slate-900/50"></TableCell>
                                                             <TableCell className="border-r border-slate-200 bg-slate-100/50 dark:border-slate-800 dark:bg-slate-900/50"></TableCell>
-
-                                                            {/* ĐÃ FIX HIỂN THỊ KHỐI LƯỢNG LÊN TỚI 5 SỐ THẬP PHÂN NẾU NHỎ */}
                                                             <TableCell className="border-r border-slate-200 bg-blue-50/50 text-right text-base font-bold text-blue-700 dark:border-slate-800 dark:bg-blue-500/10 dark:text-blue-400">
                                                                 {taskVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 })}
                                                             </TableCell>
-
                                                             <TableCell className="border-r border-slate-200 bg-indigo-50/30 text-right font-bold text-indigo-700 dark:border-slate-800 dark:bg-indigo-900/20 dark:text-indigo-400">
                                                                 {formatCurrency(taskUnitPrice)}
                                                             </TableCell>
-
                                                             <TableCell className="bg-emerald-50/30 text-right text-base font-bold text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
                                                                 {formatCurrency(taskTotal)}
                                                             </TableCell>
@@ -813,7 +874,6 @@ export default function ProjectEstimationTab({ projectId, onUpdate }: Props) {
                                                                     <TableCell className="border-r border-slate-200 text-center text-xs text-slate-600 dark:border-slate-800 dark:text-slate-400">{child.unit}</TableCell>
                                                                     <TableCell className="border-r border-slate-200 bg-slate-50/50 text-center font-mono text-xs text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">{factor !== 1 ? `/${factor}` : "-"}</TableCell>
 
-                                                                    {/* ĐÃ FIX HIỂN THỊ ĐỊNH MỨC VÀ KHỐI LƯỢNG LÊN TỚI 6 SỐ THẬP PHÂN */}
                                                                     <TableCell className="border-r border-slate-200 bg-slate-50/50 text-right font-mono text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
                                                                         {savedNorm > 0 ? Number(savedNorm).toLocaleString('en-US', { maximumFractionDigits: 6 }) : "-"}
                                                                     </TableCell>

@@ -416,6 +416,9 @@ export async function createPaymentRequestAction(payload: any) {
         const prefix = payload.type === 'receipt' ? 'PT' : 'PC';
         const requestCode = `${prefix}-${Date.now().toString().slice(-6)}`;
 
+        // ==========================================
+        // 1. LƯU PHIẾU ĐỀ NGHỊ THU / CHI VÀO SỔ
+        // ==========================================
         const { data, error } = await supabase.from('payment_requests').insert({
             request_code: requestCode,
             request_type: payload.type,
@@ -435,6 +438,39 @@ export async function createPaymentRequestAction(payload: any) {
         }).select().single();
 
         if (error) throw error;
+
+        // ==========================================
+        // 2. CẬP NHẬT CÔNG NỢ BÊN BẢNG MILESTONES (NẾU CÓ)
+        // ==========================================
+        if (payload.milestone_id) {
+            // Lấy thông tin đợt thanh toán hiện tại (để biết đang thu bao nhiêu rồi)
+            const { data: milestone, error: fetchErr } = await supabase
+                .from('contract_milestones')
+                .select('amount, paid_amount')
+                .eq('id', payload.milestone_id)
+                .single();
+
+            if (milestone && !fetchErr) {
+                const totalAmount = Number(milestone.amount || 0);
+                const currentPaid = Number(milestone.paid_amount || 0);
+
+                // Cộng dồn số tiền vừa tạo phiếu thu
+                const newPaidAmount = currentPaid + Number(payload.amount);
+
+                // Xác định trạng thái mới: Trả đủ thì completed, trả thiếu thì partial
+                const newStatus = newPaidAmount >= totalAmount ? 'completed' : 'partial';
+
+                // Cập nhật lại vào Database
+                await supabase
+                    .from('contract_milestones')
+                    .update({
+                        paid_amount: newPaidAmount,
+                        status: newStatus
+                    })
+                    .eq('id', payload.milestone_id);
+            }
+        }
+
         return { success: true, message: `Đã lập đề nghị số ${requestCode} thành công!` };
     } catch (e: any) {
         return { success: false, error: e.message };

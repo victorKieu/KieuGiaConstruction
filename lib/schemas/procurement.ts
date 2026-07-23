@@ -2,17 +2,25 @@ import { z } from "zod";
 
 // 1. Schema Nhà cung cấp
 export const supplierSchema = z.object({
-    name: z.string().min(1, "Tên nhà cung cấp là bắt buộc"),
-    type: z.string().min(1, "Vui lòng phân loại NCC"),
-
+    code: z.string().optional(),
+    name: z.string().min(2, "Tên nhà cung cấp không hợp lệ"),
+    type: z.string().optional(), // Chuyển từ .default() sang .optional()
     tax_code: z.string().optional(),
     phone: z.string().optional(),
+
+    // Dùng kỹ thuật catch chuỗi rỗng để không bị lỗi Regex Email
     email: z.string().email("Email không hợp lệ").optional().or(z.literal("")),
+
     address: z.string().optional(),
     contact_person: z.string().optional(),
     bank_account: z.string().optional(),
     bank_name: z.string().optional(),
+    bank_account_name: z.string().optional(),
+    rating: z.string().optional(), // Chuyển từ .default() sang .optional()
+    status: z.string().optional(), // Chuyển từ .default() sang .optional()
 });
+
+export type SupplierFormValues = z.infer<typeof supplierSchema>;
 
 // 2. Schema Item (SỬA LẠI CHỖ NÀY)
 export const poItemSchema = z.object({
@@ -39,5 +47,4 @@ export const purchaseOrderSchema = z.object({
     items: z.array(poItemSchema).min(1, "Phải có ít nhất 1 vật tư"),
 });
 
-export type SupplierFormValues = z.infer<typeof supplierSchema>;
 export type PurchaseOrderFormValues = z.infer<typeof purchaseOrderSchema>;

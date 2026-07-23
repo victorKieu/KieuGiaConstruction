@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -56,6 +56,7 @@ const navItems = [
         children: [
             { title: "Tổng quan", href: "/finance/dashboard", roles: ["ADMIN", "DIRECTOR", "CHIEF_ACCOUNTANT"] },
             { title: "Sổ Quỹ Thu / Chi", href: "/finance/cashbook", roles: ["ADMIN", "DIRECTOR", "CHIEF_ACCOUNTANT", "CASHIER", "PAYMENT_ACCOUNTANT"] },
+            { title: "Sổ Cái", href: "/finance/ledgers", roles: ["ADMIN", "DIRECTOR", "CHIEF_ACCOUNTANT", "CASHIER", "PAYMENT_ACCOUNTANT"] },
             { title: "Phải trả NCC (AP)", href: "/finance/payables", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "AP_ACCOUNTANT"] },
             { title: "Phải thu KH (AR)", href: "/finance/receivables", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "AR_ACCOUNTANT"] },
             { title: "Sổ Nhật ký chung", href: "/finance/journals", roles: ["ADMIN", "CHIEF_ACCOUNTANT", "GENERAL_ACCOUNTANT"] },
@@ -136,7 +137,7 @@ const navItems = [
 ];
 
 const LogoFallback = () => (
-    <div className="w-12 h-12 bg-gradient-to-tr from-yellow-400 to-orange-500 flex items-center justify-center rounded-md text-white font-bold text-xl shadow-lg">KG</div>
+    <div className="bg-gradient-to-tr flex h-12 w-12 items-center justify-center rounded-md from-yellow-400 to-orange-500 text-xl font-bold text-white shadow-lg">KG</div>
 );
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -235,8 +236,8 @@ export default function Sidebar({ user, className }: SidebarProps) {
             onMouseEnter={() => !isMobile && !className && setExpanded(true)}
             onMouseLeave={() => !isMobile && !className && setExpanded(false)}
         >
-            <div className="flex items-center gap-3 h-20 px-4 border-b border-border relative bg-muted/30">
-                <div className="relative w-10 h-10 flex-shrink-0 drop-shadow-md">
+            <div className="border-border bg-muted/30 relative flex h-20 items-center gap-3 border-b px-4">
+                <div className="relative h-10 w-10 flex-shrink-0 drop-shadow-md">
                     {logoError ? (
                         <LogoFallback />
                     ) : (
@@ -253,24 +254,24 @@ export default function Sidebar({ user, className }: SidebarProps) {
                 </div>
                 {!collapsed && (
                     <div>
-                        <div className="font-bold text-xl text-primary tracking-wide">Kieu Gia</div>
-                        <div className="text-xs text-muted-foreground font-medium">Construction</div>
+                        <div className="text-primary text-xl font-bold tracking-wide">Kieu Gia</div>
+                        <div className="text-muted-foreground text-xs font-medium">Construction</div>
                     </div>
                 )}
 
                 {/* Nút đóng Sidebar trên Mobile */}
                 {!className && isMobile && !mobileOpen && (
                     <button
-                        className="fixed top-3 left-3 z-[110] bg-background/90 shadow-xl p-2 rounded-full md:hidden border border-border backdrop-blur-md transition-all hover:bg-accent"
+                        className="bg-background/90 border-border fixed top-3 left-3 z-[110] rounded-full border p-2 shadow-xl backdrop-blur-md transition-all hover:bg-accent md:hidden"
                         onClick={() => setMobileOpen(true)}
                         aria-label="Mở menu"
                     >
-                        <MenuIcon className="w-6 h-6 text-foreground" />
+                        <MenuIcon className="text-foreground h-6 w-6" />
                     </button>
                 )}
             </div>
 
-            <nav className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto custom-scrollbar">
+            <nav className="custom-scrollbar flex flex-1 flex-col gap-1 overflow-y-auto py-4">
                 {navItems
                     // BƯỚC 1: LỌC MENU THEO ROLE CỦA USER
                     .filter((item) => {
@@ -292,7 +293,7 @@ export default function Sidebar({ user, className }: SidebarProps) {
                                                     : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
                                                 }`}
                                         >
-                                            <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
+                                            <item.icon className="h-5 w-5 min-w-5 group-hover:animate-bounce" />
                                         </button>
                                     </Tooltip>
                                 ) : (
@@ -303,12 +304,12 @@ export default function Sidebar({ user, className }: SidebarProps) {
                                                 : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
                                             }`}
                                     >
-                                        <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
+                                        <item.icon className="mr-2 h-5 w-5 min-w-5 group-hover:animate-bounce" />
                                         <span className="flex-grow truncate text-left">{item.title}</span>
                                         {expandedItems[item.href] ? (
-                                            <ChevronDown className="ml-auto w-4 h-4 flex-shrink-0 transition-transform duration-300 rotate-180" />
+                                            <ChevronDown className="ml-auto h-4 w-4 flex-shrink-0 rotate-180 transition-transform duration-300" />
                                         ) : (
-                                            <ChevronRight className="ml-auto w-4 h-4 flex-shrink-0 transition-transform duration-300" />
+                                            <ChevronRight className="ml-auto h-4 w-4 flex-shrink-0 transition-transform duration-300" />
                                         )}
                                     </button>
                                 )}
@@ -317,7 +318,7 @@ export default function Sidebar({ user, className }: SidebarProps) {
                                         }`}
                                     style={{ pointerEvents: expandedItems[item.href] && !collapsed ? "auto" : "none" }}
                                 >
-                                    <div className="ml-6 pl-2 border-l border-border">
+                                    <div className="border-border ml-6 border-l pl-2">
                                         {item.children.map((child) => (
                                             <Link
                                                 key={child.href}
@@ -344,11 +345,11 @@ export default function Sidebar({ user, className }: SidebarProps) {
                             >
                                 {collapsed ? (
                                     <Tooltip text={item.title}>
-                                        <item.icon className="w-5 h-5 min-w-5 group-hover:animate-bounce" />
+                                        <item.icon className="h-5 w-5 min-w-5 group-hover:animate-bounce" />
                                     </Tooltip>
                                 ) : (
                                     <>
-                                        <item.icon className="w-5 h-5 min-w-5 mr-2 group-hover:animate-bounce" />
+                                        <item.icon className="mr-2 h-5 w-5 min-w-5 group-hover:animate-bounce" />
                                         <span className="flex-grow truncate text-left">{item.title}</span>
                                     </>
                                 )}
@@ -363,11 +364,11 @@ export default function Sidebar({ user, className }: SidebarProps) {
         <>
             {!className && isMobile && !mobileOpen && (
                 <button
-                    className="fixed top-3 left-3 z-[110] bg-background/90 shadow-xl p-2 rounded-full md:hidden border border-border backdrop-blur-md transition-all hover:bg-accent"
+                    className="bg-background/90 border-border fixed top-3 left-3 z-[110] rounded-full border p-2 shadow-xl backdrop-blur-md transition-all hover:bg-accent md:hidden"
                     onClick={() => setMobileOpen(true)}
                     aria-label="Mở menu"
                 >
-                    <MenuIcon className="w-6 h-6 text-foreground" />
+                    <MenuIcon className="text-foreground h-6 w-6" />
                 </button>
             )}
 
@@ -375,7 +376,7 @@ export default function Sidebar({ user, className }: SidebarProps) {
 
             {!className && isMobile && mobileOpen && (
                 <div
-                    className="fixed inset-0 bg-black/60 z-[90] backdrop-blur-[2px] transition-opacity"
+                    className="backdrop-blur-[2px] fixed inset-0 z-[90] bg-black/60 transition-opacity"
                     onClick={() => setMobileOpen(false)}
                 />
             )}
