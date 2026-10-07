@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import SurveyEditModal from "../survey/SurveyEditModal";
 import { Compass, Ruler, Camera } from "lucide-react";
 
-// ✅ ĐÃ SỬA: Bỏ dấu '?' để ép kiểu dữ liệu bắt buộc là string
+// Đã bỏ dấu '?' để ép kiểu dữ liệu bắt buộc là string
 interface LocalSysDictionary {
     code: string;
     name: string;
@@ -24,7 +24,7 @@ interface ProjectSurveyTabProps {
     members: MemberData[];
     surveyTypes: LocalSysDictionary[];
     surveyTaskTemplates?: any[];
-    tasks?: any[];
+    tasks?: any[]; // Danh sách WBS Tasks
 }
 
 export default function ProjectSurveyTab({
@@ -36,15 +36,15 @@ export default function ProjectSurveyTab({
     surveyTaskTemplates = [],
     tasks = []
 }: ProjectSurveyTabProps) {
-    // ✅ 1. Dùng State nội bộ để giao diện đổi màu lập tức
+    // 1. Dùng State nội bộ để giao diện đổi màu lập tức
     const [surveys, setSurveys] = useState(initialSurveys);
 
-    // ✅ 2. Đồng bộ nếu Server trả data mới về
+    // 2. Đồng bộ nếu Server trả data mới về
     useEffect(() => {
         setSurveys(initialSurveys);
     }, [initialSurveys]);
 
-    // ✅ 3. Hàm "Bắt sóng" từ Modal bên trong bắn ra
+    // 3. Hàm "Bắt sóng" từ Modal bên trong bắn ra
     const handleSurveyProgress = useCallback((surveyId: string, progress: number) => {
         setSurveys(prev => prev.map(s => {
             if (s.id === surveyId) {
@@ -56,54 +56,57 @@ export default function ProjectSurveyTab({
     }, []);
 
     return (
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 transition-colors">
-            <CardHeader className="flex flex-row items-center justify-between bg-slate-50 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 pb-4 transition-colors">
+        <Card className="border-slate-200 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 bg-slate-50 pb-4 transition-colors dark:border-slate-800 dark:bg-slate-950/50">
                 <div>
-                    <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-400 flex items-center gap-2">
-                        <Ruler className="w-5 h-5 text-orange-500" /> Quản lý Đợt Khảo sát
+                    <CardTitle className="flex items-center gap-2 text-lg font-bold text-blue-900 dark:text-blue-400">
+                        <Ruler className="h-5 w-5 text-orange-500" /> Quản lý Đợt Khảo sát
                     </CardTitle>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Lập Workspace khảo sát theo từng giai đoạn từ Từ điển hệ thống</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Lập Workspace khảo sát theo từng giai đoạn từ Từ điển hệ thống</p>
                 </div>
-                <SurveyCreateModal projectId={projectId} surveyTypes={surveyTypes} />
+                <SurveyCreateModal
+                    projectId={projectId}
+                    surveyTypes={surveyTypes}
+                    tasks={tasks}
+                />
             </CardHeader>
 
             <CardContent className="pt-6">
                 {surveys.length === 0 ? (
-                    <div className="text-center py-10 bg-slate-50 dark:bg-slate-950/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 transition-colors">
-                        <Compass className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center text-slate-400 transition-colors dark:border-slate-800 dark:bg-slate-950/30">
+                        <Compass className="mx-auto mb-3 h-10 w-10 opacity-20" />
                         <p className="text-sm font-medium">Chưa có đợt khảo sát nào được khởi tạo.</p>
                     </div>
                 ) : (
                     <ul className="space-y-4">
                         {surveys.map((survey) => (
-                            <li key={survey.id} className="flex flex-col p-4 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-900 transition-all hover:shadow-md">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex-1 min-w-0 flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 transition-colors">
-                                            <Camera className="w-5 h-5" />
+                            <li key={survey.id} className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-900">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors dark:bg-blue-500/10 dark:text-blue-400">
+                                            <Camera className="h-5 w-5" />
                                         </div>
                                         <SurveyWorkspaceModal
-                                            tasks={tasks}
                                             survey={survey}
                                             project={project}
                                             members={members}
                                             projectId={projectId}
                                             surveyTaskTemplates={surveyTaskTemplates}
                                             surveyTypes={surveyTypes}
-                                            onProgressChange={handleSurveyProgress} // ✅ 4. TRUYỀN HÀM NÀY VÀO MODAL
+                                            onProgressChange={handleSurveyProgress}
                                         />
                                     </div>
 
-                                    <div className="flex flex-shrink-0 items-center space-x-1 ml-4">
+                                    <div className="ml-4 flex flex-shrink-0 items-center space-x-1">
                                         <Badge className={`text-xs mr-3 border-none shadow-none transition-colors ${survey.status === 'completed'
-                                                ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
-                                                : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
+                                            ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
+                                            : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
                                             }`}>
                                             {survey.status === 'completed' ? 'Hoàn thành' : 'Đang xử lý'}
                                         </Badge>
 
                                         <div className="flex items-center gap-1">
-                                            <SurveyEditModal survey={survey} projectId={projectId} />
+                                            <SurveyEditModal survey={survey} projectId={projectId} tasks={tasks} surveyTypes={surveyTypes} />
                                             <SurveyDeleteButton surveyId={survey.id} projectId={projectId} />
                                         </div>
                                     </div>

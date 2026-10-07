@@ -18,7 +18,11 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/utils/utils";
-import { exportToExcel } from "@/lib/utils/exportExcel";
+
+// Import thư viện xử lý Excel có Format
+import * as ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+
 import { formatDate } from "@/lib/utils/utils";
 import { updateQTONormCode, updateQTOItem, addManualQTOItem, addQTODetail, createQTOItem } from "@/lib/action/qtoActions";
 import { analyzeSingleQTOItem, createManualEstimationItem, syncTaskVolumeAndEstimations, recalculateProjectEffectivePrices } from "@/lib/action/estimationActions";
@@ -1268,47 +1272,129 @@ export default function ProjectBOQTab({ projectId }: Props) {
                         // ==========================================
                         // 1. CÁC HÀM XUẤT FILE (EXCEL & PDF CHUẨN FORM CHÀO GIÁ)
                         // ==========================================
-                        const handleExportQuotationExcel = () => {
-                            const aoaData: any[][] = [];
-                            aoaData.push(["CÔNG TY TNHH XD KIỀU GIA", "", "", "", "", "Ngày ..... tháng ..... năm 202..."]);
-                            aoaData.push([""]);
-                            aoaData.push(["", "", "THƯ YÊU CẦU CHÀO GIÁ", "", "", ""]);
+                        const handleExportQuotationExcel = async () => {
+                            try {
+                                toast.loading("Đang tạo file Thư Chào Giá...", { id: "export-quote" });
 
-                            const subTitle = pdfExportType === 'ALL' ? "Toàn bộ" : pdfExportType === 'VL' ? "Vật liệu" : pdfExportType === 'NC' ? "Nhân công" : "Máy thi công";
-                            aoaData.push(["", "", `(Hạng mục: ${subTitle})`, "", "", ""]);
-                            aoaData.push([""]);
-
-                            aoaData.push(["STT", "Tên vật tư / Nguồn lực", "ĐVT", "Khối lượng yêu cầu", "Đơn giá báo", "Thành tiền", "Ghi chú"]);
-
-                            ['VL', 'NC', 'M'].filter(cat => pdfExportType === 'ALL' || pdfExportType === cat).forEach(cat => {
-                                const list = getSummaryByCategory(cat);
-                                if (list.length === 0) return;
-
-                                const catName = cat === 'VL' ? 'I. VẬT LIỆU' : cat === 'NC' ? 'II. NHÂN CÔNG' : 'III. MÁY THI CÔNG';
-                                aoaData.push([catName, "", "", "", "", "", ""]);
-
-                                list.forEach((item: any, idx: number) => {
-                                    aoaData.push([
-                                        idx + 1,
-                                        item.material_name,
-                                        item.display_unit,
-                                        Number(item.display_quantity || 0),
-                                        "", "", ""
-                                    ]);
+                                const workbook = new ExcelJS.Workbook();
+                                const sheet = workbook.addWorksheet('Thu_Chao_Gia', {
+                                    views: [{ showGridLines: false }] // Tắt lưới Excel mặc định cho giống văn bản Word
                                 });
-                            });
 
-                            aoaData.push([""]);
-                            aoaData.push(["", "ĐẠI DIỆN BÊN YÊU CẦU", "", "", "ĐẠI DIỆN NHÀ CUNG CẤP", ""]);
-                            aoaData.push(["", "(Ký, ghi rõ họ tên)", "", "", "(Ký, đóng dấu)", ""]);
+                                // 1. Cấu hình Cột (7 Cột)
+                                sheet.columns = [
+                                    { key: 'stt', width: 8, style: { alignment: { horizontal: 'center', vertical: 'middle' } } },
+                                    { key: 'name', width: 45, style: { alignment: { wrapText: true, vertical: 'middle' } } },
+                                    { key: 'unit', width: 10, style: { alignment: { horizontal: 'center', vertical: 'middle' } } },
+                                    { key: 'qty', width: 20, style: { numFmt: '#,##', alignment: { horizontal: 'right', vertical: 'middle' } } },
+                                    { key: 'price', width: 18, style: { alignment: { horizontal: 'right', vertical: 'middle' } } },
+                                    { key: 'total', width: 20, style: { alignment: { horizontal: 'right', vertical: 'middle' } } },
+                                    { key: 'note', width: 20, style: { alignment: { horizontal: 'left', vertical: 'middle' } } }
+                                ];
 
-                            const ws = XLSX.utils.aoa_to_sheet(aoaData);
-                            ws['!cols'] = [{ wch: 6 }, { wch: 45 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 15 }];
+                                // 2. Header Thông tin công ty & Ngày tháng
+                                const r1 = sheet.addRow(['CÔNG TY TNHH TM DV XÂY DỰNG KIỀU GIA', '', '', '', 'Ngày ..... tháng ..... năm 202...', '', '']);
+                                r1.font = { name: 'Times New Roman', size: 11, bold: true };
+                                sheet.mergeCells(r1.number, 1, r1.number, 4); // Merge từ A1 -> D1
+                                sheet.mergeCells(r1.number, 5, r1.number, 7); // Merge từ E1 -> G1
+                                r1.getCell(5).font = { name: 'Times New Roman', size: 11, italic: true, bold: false };
+                                r1.getCell(5).alignment = { horizontal: 'center' };
 
-                            const wb = XLSX.utils.book_new();
-                            XLSX.utils.book_append_sheet(wb, ws, "Thu_Chao_Gia");
-                            XLSX.writeFile(wb, `Thu_Chao_Gia_${projectId}.xlsx`);
-                            toast.success("Đã xuất file Excel mẫu Chào giá!");
+                                sheet.addRow([]); // Dòng trống
+
+                                // 3. Tiêu đề chính
+                                const r3 = sheet.addRow(['THƯ YÊU CẦU CHÀO GIÁ', '', '', '', '', '', '']);
+                                sheet.mergeCells(r3.number, 1, r3.number, 7);
+                                r3.font = { name: 'Times New Roman', size: 16, bold: true };
+                                r3.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                                const subTitle = pdfExportType === 'ALL' ? "Toàn bộ" : pdfExportType === 'VL' ? "Vật liệu" : pdfExportType === 'NC' ? "Nhân công" : "Máy thi công";
+                                const r4 = sheet.addRow([`(Hạng mục: ${subTitle})`, '', '', '', '', '', '']);
+                                sheet.mergeCells(r4.number, 1, r4.number, 7);
+                                r4.font = { name: 'Times New Roman', size: 12, italic: true };
+                                r4.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                                sheet.addRow([]); // Dòng trống
+
+                                // 4. Header Bảng Data
+                                const headerRow = sheet.addRow(['STT', 'Tên vật tư / Nguồn lực', 'ĐVT', 'Khối lượng yêu cầu', 'Đơn giá báo', 'Thành tiền', 'Ghi chú']);
+                                headerRow.font = { name: 'Times New Roman', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+                                headerRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                                headerRow.height = 30;
+                                headerRow.eachCell((cell) => {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } }; // Xanh đậm
+                                    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                                });
+
+                                // 5. Đổ Dữ Liệu
+                                let startTableDataRow = sheet.rowCount + 1;
+
+                                ['VL', 'NC', 'M'].filter(cat => pdfExportType === 'ALL' || pdfExportType === cat).forEach(cat => {
+                                    const list = getSummaryByCategory(cat);
+                                    if (list.length === 0) return;
+
+                                    const catName = cat === 'VL' ? 'I. VẬT LIỆU' : cat === 'NC' ? 'II. NHÂN CÔNG' : 'III. MÁY THI CÔNG';
+
+                                    // Dòng Tiêu đề Danh mục (Vật liệu / Nhân công...)
+                                    const cRow = sheet.addRow([catName, '', '', '', '', '', '']);
+                                    sheet.mergeCells(cRow.number, 1, cRow.number, 7); // Merge A -> G
+                                    cRow.font = { name: 'Times New Roman', size: 11, bold: true, italic: true, color: { argb: 'FFC00000' } }; // Chữ đỏ mận
+                                    cRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } }; // Nền xám
+
+                                    // Các dòng chi tiết
+                                    list.forEach((item: any, idx: number) => {
+                                        const dRow = sheet.addRow([
+                                            idx + 1,
+                                            item.material_name,
+                                            item.display_unit,
+                                            Number(item.display_quantity || 0),
+                                            '', '', '' // Để trống cho NCC điền
+                                        ]);
+                                        dRow.font = { name: 'Times New Roman', size: 11 };
+                                    });
+                                });
+
+                                const endTableDataRow = sheet.rowCount;
+
+                                // Kẻ khung (Borders) cho toàn bộ phần Data vừa render
+                                for (let r = startTableDataRow; r <= endTableDataRow; r++) {
+                                    const row = sheet.getRow(r);
+                                    for (let c = 1; c <= 7; c++) {
+                                        row.getCell(c).border = {
+                                            top: { style: 'thin' },
+                                            left: { style: 'thin' },
+                                            bottom: { style: 'thin' },
+                                            right: { style: 'thin' }
+                                        };
+                                    }
+                                }
+
+                                // 6. Footer - Khu vực chữ ký
+                                sheet.addRow([]); // Dòng trống cách bảng
+                                const sigRow1 = sheet.addRow(['', 'ĐẠI DIỆN BÊN YÊU CẦU', '', '', 'ĐẠI DIỆN NHÀ CUNG CẤP', '', '']);
+                                sigRow1.font = { name: 'Times New Roman', size: 11, bold: true };
+                                sheet.mergeCells(sigRow1.number, 2, sigRow1.number, 3); // Merge B-C
+                                sheet.mergeCells(sigRow1.number, 5, sigRow1.number, 6); // Merge E-F
+                                sigRow1.getCell(2).alignment = { horizontal: 'center' };
+                                sigRow1.getCell(5).alignment = { horizontal: 'center' };
+
+                                const sigRow2 = sheet.addRow(['', '(Ký, ghi rõ họ tên)', '', '', '(Ký, đóng dấu)', '', '']);
+                                sigRow2.font = { name: 'Times New Roman', size: 11, italic: true };
+                                sheet.mergeCells(sigRow2.number, 2, sigRow2.number, 3);
+                                sheet.mergeCells(sigRow2.number, 5, sigRow2.number, 6);
+                                sigRow2.getCell(2).alignment = { horizontal: 'center' };
+                                sigRow2.getCell(5).alignment = { horizontal: 'center' };
+
+                                // 7. Xuất file
+                                const buffer = await workbook.xlsx.writeBuffer();
+                                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                saveAs(blob, `Thu_Chao_Gia_${projectId}.xlsx`);
+
+                                toast.success("Đã xuất file Excel mẫu Chào giá thành công!", { id: "export-quote" });
+                            } catch (error) {
+                                console.error("Export Quote Error:", error);
+                                toast.error("Có lỗi xảy ra khi xuất file.", { id: "export-quote" });
+                            }
                         };
 
                         const handleExportPDF = async () => {

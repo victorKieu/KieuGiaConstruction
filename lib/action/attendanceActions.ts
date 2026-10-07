@@ -454,9 +454,11 @@ export async function submitAttendanceRequest(params: any) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return { success: false, error: "Lỗi xác thực." };
 
-        const { data: employee } = await supabase.from('employees').select('id').eq('auth_id', user.id).single();
+        // Lấy thông tin nhân viên và ID của Quản lý trực tiếp (manager_id)
+        const { data: employee } = await supabase.from('employees').select('id, name, manager_id').eq('auth_id', user.id).single();
         if (!employee) return { success: false, error: "Hồ sơ không tồn tại." };
 
+        // Tối giản payload để khớp 100% với Database cũ
         const insertData: any = {
             employee_id: employee.id,
             request_type: params.request_type,
@@ -470,16 +472,75 @@ export async function submitAttendanceRequest(params: any) {
         } else {
             insertData.actual_in_time = params.actual_in_time;
             insertData.actual_out_time = params.actual_out_time;
-            insertData.request_scope = params.request_scope || 'SHIFT'; // Lấy phạm vi
-            insertData.project_id = params.project_id; // Lấy ID dự án nếu là Checkpoint
+            // Xóa request_scope và project_id khỏi payload insert để tránh lỗi Schema Mismatch
+            // insertData.request_scope = params.request_scope || 'SHIFT'; 
+            // insertData.project_id = params.project_id; 
         }
 
+        // Lưu đơn vào Database
         const { error } = await supabase.from('attendance_requests').insert(insertData);
         if (error) throw error;
 
+        const reqTypeName = params.request_type === 'leave' ? 'Nghỉ phép' : 'Giải trình';
+
+        // ==========================================
+        // 1. GỬI THÔNG BÁO CHO CHÍNH NHÂN VIÊN
+        // ==========================================
+        try {
+            const empTitle = `Đã gửi đơn ${reqTypeName}`;
+            const empMsg = `Đơn từ ngày ${formatDate(params.start_date)} đang chờ xét duyệt.`;
+
+            // ✅ SỬA LẠI ĐƯỜNG DẪN: Bỏ chữ /app đi
+            const empLink = '/my-attendance?tab=requests';
+
+            // Lưu vào quả chuông in-app
+            await supabase.from('notifications').insert({
+                user_id: user.id,
+                title: empTitle,
+                message: empMsg,
+                link: empLink
+            });
+            // Bắn Push xuống điện thoại
+            await sendPushToUser(user.id, empTitle, empMsg, empLink);
+        } catch (notifErr) {
+            console.error("Lỗi thông báo nội bộ:", notifErr);
+        }
+
+        // ==========================================
+        // 2. GỬI THÔNG BÁO CHO QUẢN LÝ ĐỂ DUYỆT ĐƠN
+        // ==========================================
+        if (employee.manager_id) {
+            const { data: manager } = await supabase.from('employees').select('auth_id').eq('id', employee.manager_id).single();
+            if (manager && manager.auth_id) {
+                try {
+                    const mgrTitle = `📝 Đơn ${reqTypeName} mới`;
+                    const mgrMsg = `Nhân viên ${employee.name} vừa nộp đơn. Vui lòng duyệt!`;
+
+                    // ✅ SỬA LẠI ĐƯỜNG DẪN: Bỏ chữ /app đi
+                    const mgrLink = '/hrm/approvals';
+
+                    await supabase.from('notifications').insert({
+                        user_id: manager.auth_id,
+                        title: mgrTitle,
+                        message: mgrMsg,
+                        link: mgrLink
+                    });
+
+                    await sendPushToUser(manager.auth_id, mgrTitle, mgrMsg, mgrLink);
+                } catch (mgrNotifErr) {
+                    console.error("Lỗi báo cho quản lý:", mgrNotifErr);
+                }
+            }
+        }
+
+        // ✅ SỬA LẠI ĐƯỜNG DẪN REVALIDATE CHUẨN NEXT.JS
+        // Hàm revalidatePath cần đường dẫn URL thực tế trên trình duyệt
         revalidatePath('/my-attendance');
         return { success: true, message: "Gửi đơn thành công!" };
-    } catch (e: any) { return { success: false, error: "Hệ thống đang bận." }; }
+
+    } catch (e: any) {
+        return { success: false, error: "Hệ thống đang bận. " + e.message };
+    }
 }
 
 export async function getPendingRequests() {

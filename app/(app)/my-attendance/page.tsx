@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -46,7 +46,7 @@ export default function AttendancePage() {
 
     // -- FORM STATE --
     const [explForm, setExplForm] = useState({
-        scope: "SHIFT", // SHIFT | CHECKPOINT
+        scope: "SHIFT",
         projectId: "office",
         date: new Date().toLocaleDateString('en-CA'),
         type: "forgot_in",
@@ -62,14 +62,12 @@ export default function AttendancePage() {
         reason: ""
     });
 
-    // 1. Tải dữ liệu ban đầu
     useEffect(() => {
         const fetchInitialData = async () => {
             setLoadingRecords(true);
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
-                    // Lấy Role và dịch UUID sang Code
                     const { data: profile } = await supabase.from('user_profiles').select('role_id').eq('auth_id', user.id).single();
                     if (profile?.role_id) {
                         const { data: roleDict } = await supabase.from('sys_dictionaries').select('code').eq('id', profile.role_id).maybeSingle();
@@ -77,11 +75,9 @@ export default function AttendancePage() {
                     }
                 }
 
-                // Lấy danh sách dự án cho form giải trình
                 const { data: projData } = await supabase.from('projects').select('id, name').order('name');
                 if (projData) setProjects(projData);
 
-                // Lấy lịch sử chấm công
                 const data = await getMyAttendanceRecords();
                 setRealRecords(data);
             } catch (error) {
@@ -99,10 +95,11 @@ export default function AttendancePage() {
         setLoadingRecords(false);
     };
 
-    // 2. Xử lý gửi Đơn Giải trình (Nâng cấp Scope)
     const handleSubmitExplanation = async () => {
         if (!explForm.date || !explForm.reason) {
-            return toast.error("Vui lòng điền đủ Ngày và Lý do!");
+            // ✅ SỬ DỤNG setTimeout ĐỂ TRÁNH LỖI STATE UPDATE TRONG LÚC RENDER
+            setTimeout(() => toast.error("Vui lòng điền đủ Ngày và Lý do!"), 0);
+            return;
         }
 
         setIsSubmitting(true);
@@ -119,18 +116,19 @@ export default function AttendancePage() {
         setIsSubmitting(false);
 
         if (res.success) {
-            toast.success(res.message);
+            setTimeout(() => toast.success(res.message), 0);
             setExplOpen(false);
             setExplForm({ ...explForm, inTime: "", outTime: "", reason: "" });
+            loadRecords();
         } else {
-            toast.error(res.error);
+            setTimeout(() => toast.error(res.error), 0);
         }
     };
 
-    // 3. Xử lý gửi Đơn Nghỉ phép
     const handleSubmitLeave = async () => {
         if (!leaveForm.reason || new Date(leaveForm.startDate) > new Date(leaveForm.endDate)) {
-            return toast.error("Vui lòng kiểm tra lại thông tin đơn nghỉ!");
+            setTimeout(() => toast.error("Vui lòng kiểm tra lại thông tin đơn nghỉ!"), 0);
+            return;
         }
 
         setIsSubmitting(true);
@@ -144,53 +142,57 @@ export default function AttendancePage() {
         setIsSubmitting(false);
 
         if (res.success) {
-            toast.success(res.message);
+            setTimeout(() => toast.success(res.message), 0);
             setLeaveOpen(false);
             setLeaveForm({ ...leaveForm, reason: "" });
+            loadRecords();
         } else {
-            toast.error(res.error);
+            setTimeout(() => toast.error(res.error), 0);
         }
     };
 
+    const inputClasses = "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 h-10 transition-colors";
+    const labelClasses = "text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors";
+
     return (
-        <div className="space-y-4 animate-in fade-in duration-500 max-w-6xl mx-auto transition-colors">
-            <div className="flex justify-between items-center px-1">
+        <div className="animate-in fade-in mx-auto max-w-6xl space-y-4 transition-colors duration-500">
+            <div className="flex items-center justify-between px-1">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Cá nhân Chấm công</h1>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Ghi nhận thời gian và lộ trình làm việc</p>
+                    <h1 className="text-2xl font-bold text-slate-800 transition-colors dark:text-slate-100">Cá nhân Chấm công</h1>
+                    <p className="text-sm text-slate-500 transition-colors dark:text-slate-400">Ghi nhận thời gian và lộ trình làm việc</p>
                 </div>
             </div>
 
             <Tabs defaultValue="checkin" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:w-[400px] bg-slate-100 dark:bg-slate-800">
-                    <TabsTrigger value="checkin">Bảng Chấm Công</TabsTrigger>
-                    <TabsTrigger value="requests">Đơn từ & Phép</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 bg-slate-100 transition-colors md:w-[400px] dark:bg-slate-800">
+                    <TabsTrigger value="checkin" className="dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100">Bảng Chấm Công</TabsTrigger>
+                    <TabsTrigger value="requests" className="dark:text-slate-400 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100">Đơn từ & Phép</TabsTrigger>
                 </TabsList>
 
                 {/* TAB 1: CHẤM CÔNG & CAMERA */}
-                <TabsContent value="checkin" className="space-y-4 mt-4">
-
-                    {/* KHU VỰC NÚT MỞ CAMERA */}
-                    <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-900/5 shadow-sm">
+                <TabsContent value="checkin" className="mt-4 space-y-4">
+                    <Card className="border-emerald-200 bg-emerald-50/50 shadow-sm transition-colors dark:border-emerald-900/30 dark:bg-emerald-900/10">
                         <CardContent className="flex flex-col items-center justify-center p-8 text-center">
-                            <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-800/50 rounded-full flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400">
-                                <Camera className="w-8 h-8" />
+                            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 transition-colors dark:bg-emerald-900/50 dark:text-emerald-400">
+                                <Camera className="h-8 w-8" />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">Chấm công Face ID</h3>
-                            <p className="text-sm text-slate-500 mb-6 max-w-sm">Nhấn để quét khuôn mặt và ghi nhận vị trí làm việc hiện tại của bạn.</p>
+                            <h3 className="mb-1 text-lg font-bold text-slate-800 transition-colors dark:text-slate-200">Chấm công Face ID</h3>
+                            <p className="mb-6 max-w-sm text-sm text-slate-500 transition-colors dark:text-slate-400">Nhấn để quét khuôn mặt và ghi nhận vị trí làm việc hiện tại của bạn.</p>
                             <Button
                                 onClick={() => setCameraOpen(true)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-10 h-12 rounded-full text-base font-bold shadow-lg shadow-emerald-500/20"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-10 h-12 rounded-full text-base font-bold shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
                             >
-                                <Camera className="w-5 h-5 mr-2" /> Bắt đầu Quét mặt
+                                <Camera className="mr-2 h-5 w-5" /> Bắt đầu Quét mặt
                             </Button>
                         </CardContent>
                     </Card>
 
-                    {/* DIALOG CHỨA CAMERA AI */}
                     <Dialog open={cameraOpen} onOpenChange={setCameraOpen}>
-                        <DialogContent className="sm:max-w-[420px] p-0 border-0 bg-transparent shadow-none [&>button]:hidden">
-                            <div className="h-[600px] w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700">
+                        {/* ✅ FIX LỖI 1: Bổ sung aria-describedby={undefined} */}
+                        <DialogContent aria-describedby={undefined} className="border-0 bg-transparent p-0 shadow-none sm:max-w-[420px] [&>button]:hidden">
+                            {/* Để tránh lỗi description missing */}
+                            <div className="sr-only">Camera check in</div>
+                            <div className="h-[600px] w-full overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
                                 {cameraOpen && (
                                     <FaceIDCheckIn
                                         userRole={userRole}
@@ -205,36 +207,36 @@ export default function AttendancePage() {
                         </DialogContent>
                     </Dialog>
 
-                    {/* BẢNG LỊCH SỬ CHẤM CÔNG */}
-                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3">
-                            <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center">
-                                <History className="w-4 h-4 mr-2 text-blue-600" /> Lịch sử làm việc
+                    <Card className="border-slate-200 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 bg-slate-50 py-3 transition-colors dark:border-slate-800 dark:bg-slate-900/50">
+                            <CardTitle className="flex items-center text-base font-bold text-slate-700 transition-colors dark:text-slate-200">
+                                <History className="mr-2 h-4 w-4 text-blue-600 dark:text-blue-500" /> Lịch sử làm việc
                             </CardTitle>
                             <div className="flex gap-2">
                                 <Dialog open={explOpen} onOpenChange={setExplOpen}>
                                     <DialogTrigger asChild>
-                                        <Button variant="outline" className="h-8 text-xs border-orange-200 text-orange-700 dark:border-orange-500/30 dark:text-orange-400">
-                                            <AlertCircle className="w-3.5 h-3.5 mr-1.5" /> Giải trình / Báo quên
+                                        <Button variant="outline" className="h-8 border-orange-200 bg-white text-xs text-orange-700 transition-colors hover:bg-orange-50 dark:border-orange-500/30 dark:bg-slate-950 dark:text-orange-400 dark:hover:bg-orange-500/10">
+                                            <AlertCircle className="mr-1.5 h-3.5 w-3.5" /> Giải trình / Báo quên
                                         </Button>
                                     </DialogTrigger>
-                                    <DialogContent className="sm:max-w-[480px] dark:bg-slate-900">
+                                    {/* ✅ FIX LỖI 1: Bổ sung aria-describedby */}
+                                    <DialogContent aria-describedby={undefined} className="border-none bg-white shadow-xl transition-colors sm:max-w-[480px] dark:bg-slate-900">
                                         <DialogHeader>
-                                            <DialogTitle className="text-orange-600 flex items-center">
-                                                <FileEdit className="w-5 h-5 mr-2" /> Tạo Đơn Giải Trình
+                                            <DialogTitle className="flex items-center text-orange-600 transition-colors dark:text-orange-500">
+                                                <FileEdit className="mr-2 h-5 w-5" /> Tạo Đơn Giải Trình
                                             </DialogTitle>
                                         </DialogHeader>
                                         <div className="space-y-4 py-2">
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <Label>Ngày giải trình <span className="text-red-500">*</span></Label>
-                                                    <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} />
+                                                    <Label className={labelClasses}>Ngày giải trình <span className="text-red-500">*</span></Label>
+                                                    <Input type="date" value={explForm.date} onChange={e => setExplForm({ ...explForm, date: e.target.value })} className={inputClasses} />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label>Lý do chính</Label>
+                                                    <Label className={labelClasses}>Lý do chính</Label>
                                                     <Select value={explForm.type} onValueChange={v => setExplForm({ ...explForm, type: v })}>
-                                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                                        <SelectContent>
+                                                        <SelectTrigger className={inputClasses}><SelectValue /></SelectTrigger>
+                                                        <SelectContent className="border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                                                             <SelectItem value="forgot_in">Quên chấm VÀO</SelectItem>
                                                             <SelectItem value="forgot_out">Quên chấm RA</SelectItem>
                                                             <SelectItem value="wrong_time">Sai giờ/Lỗi máy</SelectItem>
@@ -244,63 +246,39 @@ export default function AttendancePage() {
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-2">
-                                                <Label>Phạm vi ảnh hưởng <span className="text-red-500">*</span></Label>
-                                                <Select value={explForm.scope} onValueChange={v => setExplForm({ ...explForm, scope: v })}>
-                                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="SHIFT">Toàn bộ Ca (Giờ đầu/cuối ngày)</SelectItem>
-                                                        <SelectItem value="CHECKPOINT">Từng điểm di chuyển (Sửa 1 chặng)</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-
-                                            {explForm.scope === 'CHECKPOINT' && (
-                                                <div className="space-y-2 animate-in slide-in-from-top-1">
-                                                    <Label>Địa điểm cần điều chỉnh</Label>
-                                                    <Select value={explForm.projectId} onValueChange={v => setExplForm({ ...explForm, projectId: v })}>
-                                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="office" className="font-bold text-blue-600">🏢 Văn phòng Công ty</SelectItem>
-                                                            {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            )}
-
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <Label>Giờ VÀO mới</Label>
-                                                    <Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} />
+                                                    <Label className={labelClasses}>Giờ VÀO mới</Label>
+                                                    <Input type="time" value={explForm.inTime} onChange={e => setExplForm({ ...explForm, inTime: e.target.value })} className={inputClasses} />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label>Giờ RA mới</Label>
-                                                    <Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} />
+                                                    <Label className={labelClasses}>Giờ RA mới</Label>
+                                                    <Input type="time" value={explForm.outTime} onChange={e => setExplForm({ ...explForm, outTime: e.target.value })} className={inputClasses} />
                                                 </div>
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label>Trình bày chi tiết <span className="text-red-500">*</span></Label>
-                                                <Textarea placeholder="Nêu rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} />
+                                                <Label className={labelClasses}>Trình bày chi tiết <span className="text-red-500">*</span></Label>
+                                                <Textarea placeholder="Nêu rõ lý do..." value={explForm.reason} onChange={e => setExplForm({ ...explForm, reason: e.target.value })} className={`${inputClasses} min-h-[80px] pt-2`} />
                                             </div>
                                         </div>
                                         <DialogFooter>
-                                            <Button variant="outline" onClick={() => setExplOpen(false)}>Hủy</Button>
-                                            <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 hover:bg-orange-700">
-                                                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi duyệt
+                                            <Button variant="ghost" onClick={() => setExplOpen(false)} className="dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
+                                            <Button disabled={isSubmitting} onClick={handleSubmitExplanation} className="bg-orange-600 text-white shadow-md hover:bg-orange-700">
+                                                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Gửi duyệt
                                             </Button>
                                         </DialogFooter>
                                     </DialogContent>
                                 </Dialog>
 
-                                <Button variant="outline" className="h-8 text-xs" onClick={loadRecords} disabled={loadingRecords}>
-                                    {loadingRecords ? <Loader2 className="w-3 h-3 animate-spin" /> : "Làm mới"}
+                                <Button variant="outline" className="h-8 bg-white text-xs transition-colors dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" onClick={loadRecords} disabled={loadingRecords}>
+                                    {loadingRecords ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : "Làm mới"}
                                 </Button>
                             </div>
                         </CardHeader>
-                        <CardContent className="p-0 overflow-x-auto">
+                        <CardContent className="overflow-x-auto p-0">
                             {loadingRecords ? (
-                                <div className="p-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+                                <div className="flex justify-center p-20"><Loader2 className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-500" /></div>
                             ) : (
                                 <AttendanceTable records={realRecords} hideEmployeeInfo={true} />
                             )}
@@ -310,29 +288,30 @@ export default function AttendancePage() {
 
                 {/* TAB 2: ĐƠN TỪ & NGHỈ PHÉP */}
                 <TabsContent value="requests" className="mt-4">
-                    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-                        <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-800 flex flex-row items-center justify-between py-3">
-                            <CardTitle className="text-base font-bold text-slate-700 dark:text-slate-200 flex items-center">
-                                <CalendarDays className="w-4 h-4 mr-2 text-emerald-600" /> Danh sách Đơn xin nghỉ
+                    <Card className="border-slate-200 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-200 bg-slate-50 py-3 transition-colors dark:border-slate-800 dark:bg-slate-900/50">
+                            <CardTitle className="flex items-center text-base font-bold text-slate-700 transition-colors dark:text-slate-200">
+                                <CalendarDays className="mr-2 h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Danh sách Đơn xin nghỉ
                             </CardTitle>
                             <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
                                 <DialogTrigger asChild>
-                                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs">
-                                        <Plus className="w-3.5 h-3.5 mr-1.5" /> Tạo Đơn Nghỉ
+                                    <Button className="h-8 bg-emerald-600 text-xs text-white shadow-sm transition-all hover:bg-emerald-700">
+                                        <Plus className="mr-1.5 h-3.5 w-3.5" /> Tạo Đơn Nghỉ
                                     </Button>
                                 </DialogTrigger>
-                                <DialogContent className="sm:max-w-[450px] dark:bg-slate-900">
+                                {/* ✅ FIX LỖI 1: Bổ sung aria-describedby */}
+                                <DialogContent aria-describedby={undefined} className="border-none bg-white shadow-xl transition-colors sm:max-w-[450px] dark:bg-slate-900">
                                     <DialogHeader>
-                                        <DialogTitle className="text-emerald-700 flex items-center">
-                                            <CalendarDays className="w-5 h-5 mr-2" /> Tạo Đơn Xin Nghỉ
+                                        <DialogTitle className="flex items-center text-emerald-700 transition-colors dark:text-emerald-500">
+                                            <CalendarDays className="mr-2 h-5 w-5" /> Tạo Đơn Xin Nghỉ
                                         </DialogTitle>
                                     </DialogHeader>
                                     <div className="space-y-4 py-2">
                                         <div className="space-y-2">
-                                            <Label>Loại nghỉ phép</Label>
+                                            <Label className={labelClasses}>Loại nghỉ phép</Label>
                                             <Select value={leaveForm.type} onValueChange={v => setLeaveForm({ ...leaveForm, type: v })}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
+                                                <SelectTrigger className={inputClasses}><SelectValue /></SelectTrigger>
+                                                <SelectContent className="border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                                                     <SelectItem value="annual">Phép năm (Có lương)</SelectItem>
                                                     <SelectItem value="unpaid">Nghỉ không lương</SelectItem>
                                                     <SelectItem value="sick">Nghỉ ốm/Chế độ</SelectItem>
@@ -342,23 +321,23 @@ export default function AttendancePage() {
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label>Từ ngày</Label>
-                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} />
+                                                <Label className={labelClasses}>Từ ngày</Label>
+                                                <Input type="date" value={leaveForm.startDate} onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })} className={inputClasses} />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label>Đến ngày</Label>
-                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} />
+                                                <Label className={labelClasses}>Đến ngày</Label>
+                                                <Input type="date" value={leaveForm.endDate} onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })} className={inputClasses} />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Lý do nghỉ</Label>
-                                            <Textarea placeholder="Ghi chú chi tiết..." value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} />
+                                            <Label className={labelClasses}>Lý do nghỉ <span className="text-red-500">*</span></Label>
+                                            <Textarea placeholder="Ghi chú chi tiết..." value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} className={`${inputClasses} min-h-[80px] pt-2`} />
                                         </div>
                                     </div>
                                     <DialogFooter>
-                                        <Button variant="outline" onClick={() => setLeaveOpen(false)}>Hủy</Button>
-                                        <Button disabled={isSubmitting} onClick={handleSubmitLeave} className="bg-emerald-600">
-                                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />} Gửi Đơn
+                                        <Button variant="ghost" onClick={() => setLeaveOpen(false)} className="dark:text-slate-300 dark:hover:bg-slate-800">Hủy</Button>
+                                        <Button disabled={isSubmitting} onClick={handleSubmitLeave} className="bg-emerald-600 text-white shadow-md hover:bg-emerald-700">
+                                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Gửi Đơn
                                         </Button>
                                     </DialogFooter>
                                 </DialogContent>
@@ -374,7 +353,7 @@ export default function AttendancePage() {
     );
 }
 
-// COMPONENT HIỂN THỊ DANH SÁCH ĐƠN (Cần Fetch dữ liệu thật)
+// COMPONENT HIỂN THỊ DANH SÁCH ĐƠN TỪ
 function PersonalRequestsList() {
     const [requests, setRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -388,36 +367,36 @@ function PersonalRequestsList() {
         fetchReqs();
     }, []);
 
-    if (loading) return <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
-    if (requests.length === 0) return <div className="p-12 text-center text-slate-400">Bạn chưa có đơn từ nào.</div>;
+    if (loading) return <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>;
+    if (requests.length === 0) return <div className="p-12 text-center text-slate-400 dark:text-slate-500">Bạn chưa có đơn từ nào.</div>;
 
     const getStatusStyle = (s: string) => {
-        if (s === 'approved') return "bg-emerald-100 text-emerald-700 border-emerald-200";
-        if (s === 'rejected') return "bg-red-100 text-red-700 border-red-200";
-        return "bg-amber-100 text-amber-700 border-amber-200 animate-pulse";
+        if (s === 'approved') return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20";
+        if (s === 'rejected') return "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20";
+        return "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20 animate-pulse";
     };
 
     return (
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="divide-y divide-slate-100 transition-colors dark:divide-slate-800">
             {requests.map(req => (
-                <div key={req.id} className="p-4 hover:bg-slate-50 transition-colors">
-                    <div className="flex justify-between items-start mb-2">
+                <div key={req.id} className="p-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <div className="mb-2 flex items-start justify-between">
                         <div className="flex flex-col">
-                            <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                            <span className="text-sm font-bold text-slate-800 transition-colors dark:text-slate-200">
                                 {req.request_type === 'leave' ? 'Đơn Nghỉ Phép' : 'Đơn Giải Trình'}
                             </span>
-                            <span className="text-[11px] text-slate-500">{formatDate(req.created_at)}</span>
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">{formatDate(req.created_at)}</span>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${getStatusStyle(req.status)}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase transition-colors ${getStatusStyle(req.status)}`}>
                             {req.status === 'approved' ? 'Đã duyệt' : req.status === 'rejected' ? 'Từ chối' : 'Chờ duyệt'}
                         </span>
                     </div>
-                    <div className="text-xs text-slate-600 bg-white dark:bg-slate-950 p-2 rounded border border-slate-100">
-                        <div className="flex justify-between mb-1">
-                            <span>Ngày áp dụng: <strong>{formatDate(req.start_date)}</strong></span>
-                            {req.actual_in_time && <span>Giờ mới: <strong>{req.actual_in_time} - {req.actual_out_time}</strong></span>}
+                    <div className="rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-600 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                        <div className="mb-2 flex justify-between border-b border-slate-100 pb-2 dark:border-slate-800/50">
+                            <span>Ngày áp dụng: <strong className="text-slate-800 dark:text-slate-100">{formatDate(req.start_date)}</strong></span>
+                            {req.actual_in_time && <span>Giờ mới: <strong className="text-blue-600 dark:text-blue-400">{req.actual_in_time.substring(0, 5)} - {req.actual_out_time.substring(0, 5)}</strong></span>}
                         </div>
-                        <p className="italic text-slate-500 line-clamp-1">"{req.reason}"</p>
+                        <p className="line-clamp-2 text-slate-500 italic dark:text-slate-400">"{req.reason}"</p>
                     </div>
                 </div>
             ))}

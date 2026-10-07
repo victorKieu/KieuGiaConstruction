@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isValidUUID } from "@/lib/utils/uuid";
 import type { ActionResponse } from "@/lib/action/projectActions";
-import { getUserProfile } from "@/lib/supabase/getUserProfile"; // ✅ Import hàm xịn của sếp
+import { getUserProfile } from "@/lib/supabase/getUserProfile";
 import { rollupTaskProgressAndCost, updateProjectOverallProgress } from "@/lib/action/taskActions";
 
 // --- 1. ACTIONS (READ) ---
@@ -64,7 +64,6 @@ export async function getSurveyTasks(surveyId: string) {
 
 // --- 2. ACTIONS (WRITE) ---
 
-// ✅ Helper lấy chuẩn Profile và Entity ID
 async function checkAuth() {
     const userProfile = await getUserProfile();
     if (!userProfile || !userProfile.isAuthenticated) {
@@ -76,50 +75,66 @@ async function checkAuth() {
     return userProfile;
 }
 
-export async function createSurvey(
-    prevState: any,
-    formData: FormData
-): Promise<ActionResponse> {
+// ✅ FIX TS ERROR: Thêm : Promise<ActionResponse>
+export async function createSurvey(prevState: any, formData: FormData): Promise<ActionResponse> {
+    const supabase = await createSupabaseServerClient();
+
+    const projectId = formData.get("projectId") as string;
+    const templateName = formData.get("template_name") as string;
+    const nameDetail = formData.get("name_detail") as string;
+    const surveyDate = formData.get("survey_date") as string;
+    const wbsTaskId = formData.get("wbs_task_id") as string;
+
+    if (!projectId || !templateName) {
+        return { success: false, error: "Vui lòng chọn Mục đích khảo sát." };
+    }
+
+    const finalName = nameDetail ? `${templateName} - ${nameDetail}` : templateName;
+    const finalWbsTaskId = (!wbsTaskId || wbsTaskId === "none" || wbsTaskId.trim() === "") ? null : wbsTaskId;
+
     try {
-        const supabase = await createSupabaseServerClient();
-        // ✅ Gọi checkAuth để lấy đúng Entity ID
-        const userProfile = await checkAuth();
+        const { data: existingSurvey, error: checkError } = await supabase
+            .from("project_surveys")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("name", finalName)
+            .maybeSingle();
 
-        const projectId = formData.get("projectId") as string | null;
-        const template_name = formData.get("template_name") as string | null;
-        const name_detail = (formData.get("name_detail") as string)?.trim();
-        const survey_date = formData.get("survey_date") as string | null;
+        if (checkError) {
+            console.error("Lỗi kiểm tra trùng lặp:", checkError);
+            return { success: false, error: "Lỗi kiểm tra dữ liệu: " + checkError.message };
+        }
 
-        // ✅ BỔ SUNG 1: Lấy wbs_task_id từ form giao diện gửi lên
-        const wbsTaskId = formData.get("wbs_task_id") as string | null;
+        if (existingSurvey) {
+            return {
+                success: false,
+                error: `Đợt khảo sát "${finalName}" đã tồn tại. Vui lòng đổi Giai đoạn/Chi tiết!`
+            };
+        }
 
-        if (!projectId) return { success: false, error: "ID Dự án không hợp lệ." };
-        if (!template_name) return { success: false, error: "Vui lòng chọn Loại khảo sát." };
-        if (!survey_date) return { success: false, error: "Vui lòng chọn ngày khảo sát." };
-
-        const finalName = name_detail ? `${template_name} - ${name_detail}` : template_name;
+        const payload = {
+            project_id: projectId,
+            name: finalName,
+            survey_date: surveyDate,
+            wbs_task_id: finalWbsTaskId,
+            status: 'pending',
+            created_at: new Date().toISOString()
+        };
 
         const { error: insertError } = await supabase
             .from("project_surveys")
-            .insert({
-                project_id: projectId,
-                name: finalName,
-                survey_date: survey_date,
-                created_by: userProfile.entityId, // ✅ CHÌA KHÓA: Dùng entityId thay vì auth_id
-                status: 'pending',
-                // ✅ BỔ SUNG 2: Lưu wbs_task_id vào DB. 
-                // Nếu người dùng chọn "Không liên kết" (gửi giá trị "none"), ta chuyển thành null.
-                wbs_task_id: (wbsTaskId === "none" || !wbsTaskId) ? null : wbsTaskId,
-            });
+            .insert([payload]);
 
-        if (insertError) throw insertError;
+        if (insertError) {
+            throw insertError;
+        }
 
-        revalidatePath(`/projects/${projectId}`);
-        return { success: true, message: "Đã tạo đợt khảo sát mới." };
+        revalidatePath(`/app/projects/${projectId}`);
+        return { success: true, message: "Tạo đợt khảo sát thành công!" };
 
     } catch (error: any) {
-        console.error("Create Survey Error:", error.message);
-        return { success: false, error: error.message || "Lỗi tạo đợt khảo sát." };
+        console.error("Lỗi khi tạo khảo sát:", error);
+        return { success: false, error: error.message || "Lỗi hệ thống không xác định." };
     }
 }
 
@@ -129,23 +144,27 @@ export async function updateSurvey(
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth(); // Chỉ check quyền, không cần update created_by
+        await checkAuth();
 
         const surveyId = formData.get("surveyId") as string | null;
         const projectId = formData.get("projectId") as string | null;
         const name = (formData.get("name") as string)?.trim();
         const survey_date = formData.get("survey_date") as string | null;
+        const wbs_task_id = formData.get("wbs_task_id") as string | null;
 
         if (!surveyId || !isValidUUID(surveyId)) return { success: false, error: "ID Đợt khảo sát không hợp lệ." };
         if (!projectId) return { success: false, error: "ID Dự án bị thiếu." };
         if (!name) return { success: false, error: "Vui lòng nhập tên đợt khảo sát." };
         if (!survey_date) return { success: false, error: "Vui lòng chọn ngày khảo sát." };
 
+        const finalWbsTaskId = (!wbs_task_id || wbs_task_id === "none" || wbs_task_id.trim() === "") ? null : wbs_task_id;
+
         const { error: updateError } = await supabase
             .from("project_surveys")
             .update({
                 name: name,
-                survey_date: survey_date
+                survey_date: survey_date,
+                wbs_task_id: finalWbsTaskId
             })
             .eq("id", surveyId);
 
@@ -162,7 +181,7 @@ export async function updateSurvey(
 export async function deleteSurvey(prevState: any, formData: FormData): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth(); // Thêm check quyền cho an toàn
+        await checkAuth();
         const surveyId = formData.get("surveyId") as string | null;
         const projectId = formData.get("projectId") as string | null;
 
@@ -192,30 +211,34 @@ export async function createSurveyTask(
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth(); // Check quyền
+        await checkAuth();
 
         const surveyId = formData.get("surveyId") as string | null;
         const projectId = formData.get("projectId") as string | null;
         const title = (formData.get("title") as string)?.trim();
-        const assignedTo = (formData.get("assigned_to") as string) || null;
+        const assignedTo = formData.get("assigned_to") as string;
         const dueDate = (formData.get("due_date") as string) || null;
+        const notes = (formData.get("notes") as string) || null;
 
         if (!surveyId) return { success: false, error: "ID Đợt khảo sát thiếu." };
         if (!projectId) return { success: false, error: "ID Dự án thiếu." };
         if (!title) return { success: false, error: "Thiếu tiêu đề công việc." };
 
+        const finalAssignedTo = (!assignedTo || assignedTo === "unassigned" || assignedTo.trim() === "") ? null : assignedTo;
+
         const { data: templateData } = await supabase
             .from("survey_task_templates")
             .select("estimated_cost")
             .eq("title", title)
-            .single();
+            .maybeSingle();
 
         const { error: insertError } = await supabase
             .from("survey_tasks")
             .insert({
                 survey_id: surveyId,
                 title: title,
-                assigned_to: assignedTo === "unassigned" ? null : assignedTo,
+                notes: notes,
+                assigned_to: finalAssignedTo,
                 due_date: dueDate || null,
                 status: 'pending',
                 cost: templateData?.estimated_cost || 0
@@ -237,23 +260,27 @@ export async function updateSurveyTask(
 ): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth(); // Check quyền
+        await checkAuth();
 
         const taskId = formData.get("taskId") as string | null;
         const projectId = formData.get("projectId") as string | null;
         const title = (formData.get("title") as string)?.trim();
-        const assignedTo = (formData.get("assigned_to") as string) || null;
+        const assignedTo = formData.get("assigned_to") as string;
         const dueDate = (formData.get("due_date") as string) || null;
+        const notes = (formData.get("notes") as string) || null;
 
         if (!taskId || !isValidUUID(taskId)) return { success: false, error: "ID Task không hợp lệ." };
         if (!projectId) return { success: false, error: "ID Dự án thiếu." };
         if (!title) return { success: false, error: "Thiếu tiêu đề." };
 
+        const finalAssignedTo = (!assignedTo || assignedTo === "unassigned" || assignedTo.trim() === "") ? null : assignedTo;
+
         const { error: updateError } = await supabase
             .from("survey_tasks")
             .update({
                 title: title,
-                assigned_to: assignedTo === "unassigned" ? null : assignedTo,
+                notes: notes,
+                assigned_to: finalAssignedTo,
                 due_date: dueDate || null
             })
             .eq("id", taskId);
@@ -268,14 +295,15 @@ export async function updateSurveyTask(
     }
 }
 
-export async function updateSurveyTaskResult(prevState: any, formData: FormData) {
+// ✅ FIX TS ERROR: Thêm : Promise<ActionResponse>
+export async function updateSurveyTaskResult(prevState: any, formData: FormData): Promise<ActionResponse> {
     const taskId = formData.get("taskId") as string;
     const projectId = formData.get("projectId") as string;
     const status = formData.get("status") as string || "completed";
 
-    if (!taskId || taskId === "null" || taskId === "undefined") {
+    if (!taskId || taskId === "null" || taskId === "undefined" || taskId.trim() === "") {
         console.error("Lỗi updateSurveyTaskResult: taskId không hợp lệ", taskId);
-        return { success: false, message: "Lỗi Server: ID nhiệm vụ không hợp lệ." };
+        return { success: false, error: "Lỗi Server: ID nhiệm vụ không hợp lệ." };
     }
 
     const textFromForm = formData.get("result_data_text") as string;
@@ -305,9 +333,8 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth(); // Thêm check quyền
+        await checkAuth();
 
-        // TÌM VÀ XÓA ẢNH RÁC TRONG BUCKET
         const { data: currentTask } = await supabase
             .from("survey_tasks")
             .select("attachments")
@@ -333,7 +360,6 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
         const uploadedUrls: string[] = [];
 
-        // UPLOAD ẢNH MỚI LÊN SUPABASE STORAGE
         if (files && files.length > 0) {
             for (const file of files) {
                 if (file.size === 0) continue;
@@ -358,7 +384,6 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
         const finalAttachments = [...existingAttachments, ...uploadedUrls];
 
-        // CẬP NHẬT TASK VÀO DATABASE
         const updateData: any = {
             status: status,
             notes: textFromForm,
@@ -380,7 +405,6 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
         if (error) throw error;
 
-        // TÍNH % VÀ ĐỔI TRẠNG THÁI SURVEY BÊN NGOÀI
         if (updatedTask && updatedTask.survey_id) {
             const surveyId = updatedTask.survey_id;
 
@@ -396,10 +420,9 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
 
                 const surveyStatus = progressPercent === 100 ? 'completed' : 'pending';
 
-                // Lấy wbs_task_id đồng thời lúc update trạng thái
                 const { data: surveyData, error: surveyError } = await supabase
                     .from("project_surveys")
-                    .update({ status: surveyStatus })
+                    .update({ status: surveyStatus, progress: progressPercent })
                     .eq("id", surveyId)
                     .select("wbs_task_id")
                     .single();
@@ -408,21 +431,17 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
                     console.error("Lỗi update bảng project_surveys:", surveyError.message);
                 }
 
-                // 🔥 KÍCH HOẠT HIỆU ỨNG DOMINO LÊN WBS VÀ KANBAN 🔥
                 if (surveyData && surveyData.wbs_task_id) {
-                    const taskId = surveyData.wbs_task_id;
+                    const linkedTaskId = surveyData.wbs_task_id;
 
-                    // 1. Ghi phần trăm khảo sát vào thẻ Kanban
                     await supabase
                         .from("project_tasks")
                         .update({ progress: progressPercent })
-                        .eq("id", taskId);
+                        .eq("id", linkedTaskId);
 
-                    // 2. Kích hoạt cuộn tiến độ EVM lên Cha và lên Tổng dự án
-                    // Nếu anh không truyền projectId vào hàm này được thì mình lấy từ task ra
-                    const { data: taskData } = await supabase.from("project_tasks").select("project_id").eq("id", taskId).single();
+                    const { data: taskData } = await supabase.from("project_tasks").select("project_id").eq("id", linkedTaskId).single();
                     if (taskData && taskData.project_id) {
-                        await rollupTaskProgressAndCost(taskId, taskData.project_id);
+                        await rollupTaskProgressAndCost(linkedTaskId, taskData.project_id);
                         await updateProjectOverallProgress(taskData.project_id);
                     }
                 }
@@ -436,14 +455,14 @@ export async function updateSurveyTaskResult(prevState: any, formData: FormData)
         return { success: true, message: "Cập nhật thành công!" };
     } catch (e: any) {
         console.error("Lỗi tại updateSurveyTaskResult:", e.message);
-        return { success: false, message: "Lỗi Server: " + e.message };
+        return { success: false, error: "Lỗi Server: " + e.message }; // Sửa chữ message thành error
     }
 }
 
 export async function deleteSurveyTask(prevState: any, formData: FormData): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
-        await checkAuth(); // Check quyền
+        await checkAuth();
 
         const taskId = formData.get("taskId") as string | null;
         const projectId = formData.get("projectId") as string | null;
@@ -467,8 +486,8 @@ export async function deleteSurveyTask(prevState: any, formData: FormData): Prom
     }
 }
 
-// Bổ sung hàm cho tính năng 6 Bước Wizard AI Bóc Tách
-export async function submitFullSurveyWizard(projectId: string, surveyData: any) {
+// ✅ FIX TS ERROR: Thêm : Promise<ActionResponse>
+export async function submitFullSurveyWizard(projectId: string, surveyData: any): Promise<ActionResponse> {
     try {
         const supabase = await createSupabaseServerClient();
         const userProfile = await checkAuth();
@@ -479,7 +498,7 @@ export async function submitFullSurveyWizard(projectId: string, surveyData: any)
             survey_date: new Date().toISOString(),
             status: 'completed',
             survey_details: surveyData,
-            created_by: userProfile.entityId, // ✅ CHUẨN KHÓA NGOẠI LÀ ĐÂY
+            created_by: userProfile.entityId,
         });
 
         if (error) throw error;
@@ -492,12 +511,13 @@ export async function submitFullSurveyWizard(projectId: string, surveyData: any)
 
 export async function getSurveyTypesFromDictionary() {
     const supabase = await createSupabaseServerClient();
+
     const { data, error } = await supabase
-        .from("sys_dictionary")
-        .select(`code, value`)
-        .eq('type', 'survey_type')
+        .from("sys_dictionaries")
+        .select(`code, name, value`)
+        .eq('category', 'SURVEY_TYPE')
         .eq('is_active', true)
-        .order("value", { ascending: true });
+        .order("sort_order", { ascending: true });
 
     return { data, error };
 }

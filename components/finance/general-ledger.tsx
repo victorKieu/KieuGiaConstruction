@@ -5,46 +5,39 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
-import { BookOpen, Calculator, Filter, FileText } from "lucide-react";
+import { BookOpen, Filter, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const formatVND = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+    return new Intl.NumberFormat('vi-VN').format(value);
 };
 
 export function GeneralLedger({ journalLines, projects, accounts }: { journalLines: any[], projects: any[], accounts: any[] }) {
-    // Sổ cái BẮT BUỘC phải chọn 1 Tài khoản. Mặc định chọn TK đầu tiên hoặc Tiền mặt (111) nếu có.
-    const defaultAccountId = accounts.find(a => a.code.startsWith("111"))?.id || accounts[0]?.id || "";
-
-    const [selectedAccount, setSelectedAccount] = useState<string>(defaultAccountId);
+    // Với dạng Sổ Nhật Ký Chung, mặc định ta sẽ xem "Tất cả" tài khoản
+    const [selectedAccount, setSelectedAccount] = useState<string>("all");
     const [selectedProject, setSelectedProject] = useState<string>("all");
 
-    // Lấy thông tin Tài khoản đang xem
-    const currentAccount = accounts.find(a => a.id === selectedAccount);
-
-    // Tính toán dữ liệu Sổ cái
+    // Engine Lọc và Xử lý dữ liệu chuẩn form Nhật Ký Chung
     const ledgerData = useMemo(() => {
-        if (!currentAccount) return { lines: [], totalDebit: 0, totalCredit: 0, endBalance: 0, isDebitAccount: true };
-
-        // 1. Tính chất tài khoản (Dư Nợ hay Dư Có theo chuẩn VAS)
-        // Loại 1, 2, 6, 8: Dư Nợ (Tài sản, Chi phí) -> Số dư = Nợ - Có
-        // Loại 3, 4, 5, 7: Dư Có (Nguồn vốn, Doanh thu) -> Số dư = Có - Nợ
-        const firstDigit = currentAccount.code.charAt(0);
-        const isDebitAccount = ['1', '2', '6', '8'].includes(firstDigit);
-
-        // 2. Lọc các bút toán LIÊN QUAN ĐẾN TÀI KHOẢN NÀY (và Dự án nếu có lọc)
-        // Lưu ý: Trong thực tế sẽ có lọc Date Range để tính Dư đầu kỳ. Ở đây ta mặc định tính từ đầu (Dư ĐK = 0).
         let filteredLines = journalLines.filter(line =>
-            line.account_id === currentAccount.id &&
+            (selectedAccount === "all" || line.account_id === selectedAccount) &&
             (selectedProject === "all" || line.project_id === selectedProject)
         );
 
-        // Sắp xếp theo ngày tăng dần để tính lũy kế (Sổ cái xem từ cũ đến mới)
-        filteredLines.sort((a, b) => new Date(a.journal_entries?.entry_date).getTime() - new Date(b.journal_entries?.entry_date).getTime());
+        // Sắp xếp theo ngày tăng dần, sau đó gom các dòng cùng 1 bút toán lại với nhau
+        filteredLines.sort((a, b) => {
+            const dateA = new Date(a.journal_entries?.entry_date).getTime();
+            const dateB = new Date(b.journal_entries?.entry_date).getTime();
+            if (dateA !== dateB) return dateA - dateB;
+
+            // Nếu trùng ngày, xếp theo số chứng từ
+            const entryNumA = a.journal_entries?.entry_number || "";
+            const entryNumB = b.journal_entries?.entry_number || "";
+            return entryNumA.localeCompare(entryNumB);
+        });
 
         let totalDebit = 0;
         let totalCredit = 0;
-        let runningBalance = 0; // Dư đầu kỳ mặc định = 0
 
         const processedLines = filteredLines.map(line => {
             const debit = Number(line.debit || 0);
@@ -53,25 +46,36 @@ export function GeneralLedger({ journalLines, projects, accounts }: { journalLin
             totalDebit += debit;
             totalCredit += credit;
 
-            // Tính số dư lũy kế từng dòng
-            if (isDebitAccount) {
-                runningBalance += (debit - credit);
-            } else {
-                runningBalance += (credit - debit);
-            }
+            // Lấy mã TK hiện tại
+            const currentAccountCode = line.accounting_accounts?.code || "";
 
-            // TÌM TÀI KHOẢN ĐỐI ỨNG (Đối chiếu trong cùng 1 Bút toán tổng - journal_entry_id)
-            // Lấy các dòng khác cùng chung Chứng từ gốc, nhưng KHÁC ID dòng hiện tại
-            const oppositeLines = journalLines.filter(l => l.journal_entry_id === line.journal_entry_id && l.id !== line.id);
-            // Lấy mã TK của các dòng đối ứng
+            // Lấy số chứng từ hiện tại làm điểm neo (Ví dụ: PC-2606-0030)
+            const currentEntryNumber = line.journal_entries?.entry_number;
+
+            // TÌM TÀI KHOẢN ĐỐI ỨNG (Logic đã được Siết Chặt)
+            const isDebit = debit > 0;
+            const oppositeLines = journalLines.filter(l => {
+                // Ràng buộc 1: BẮT BUỘC phải cùng Số hiệu chứng từ
+                const isSameVoucher = l.journal_entries?.entry_number === currentEntryNumber && currentEntryNumber !== undefined;
+
+                // Ràng buộc 2: Bỏ qua chính dòng hiện tại
+                const isNotSelf = l.id !== line.id;
+
+                // Ràng buộc 3: Ngược vế (Dòng này Nợ thì tìm các dòng Có, và ngược lại)
+                const isOpposite = isDebit ? Number(l.credit) > 0 : Number(l.debit) > 0;
+
+                return isSameVoucher && isNotSelf && isOpposite;
+            });
+
+            // Trích xuất mã TK và loại bỏ trùng lặp (Ví dụ mua 2 món hàng bằng 111 thì TK đối ứng chỉ hiện 1 lần 111)
             const correspAccountCodes = oppositeLines.map(l => l.accounting_accounts?.code).filter(Boolean);
-            const correspondingAccount = Array.from(new Set(correspAccountCodes)).join(", ");
+            const correspondingAccount = Array.from(new Set(correspAccountCodes)).join(";");
 
             return {
                 ...line,
                 debit,
                 credit,
-                runningBalance,
+                currentAccountCode,
                 correspondingAccount: correspondingAccount || "---"
             };
         });
@@ -79,130 +83,155 @@ export function GeneralLedger({ journalLines, projects, accounts }: { journalLin
         return {
             lines: processedLines,
             totalDebit,
-            totalCredit,
-            endBalance: runningBalance,
-            isDebitAccount
+            totalCredit
         };
-    }, [journalLines, selectedAccount, selectedProject, currentAccount]);
+    }, [journalLines, selectedAccount, selectedProject]);
 
     return (
-        <div className="space-y-4">
-            {/* THANH CÔNG CỤ (LỌC TÀI KHOẢN - DỰ ÁN) */}
-            <Card className="border-slate-200 shadow-sm">
-                <CardContent className="flex flex-col items-center gap-4 rounded-xl bg-slate-50/50 p-4 md:flex-row">
-                    <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 font-bold whitespace-nowrap text-blue-700">
-                        <FileText className="h-5 w-5" /> CHỌN TÀI KHOẢN:
+        <div className="space-y-4 transition-colors duration-300">
+            {/* THANH CÔNG CỤ LỌC */}
+            <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                <CardContent className="flex flex-col items-center gap-4 rounded-xl bg-slate-50/50 p-4 md:flex-row dark:bg-slate-900/50">
+                    <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 font-bold whitespace-nowrap text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                        <FileText className="h-5 w-5" /> BỘ LỌC TÌM KIẾM:
                     </div>
 
                     <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                        <SelectTrigger className="h-10 w-full border-slate-300 bg-white font-semibold md:w-[350px]">
-                            <SelectValue placeholder="Chọn tài khoản cần xem Sổ cái" />
+                        <SelectTrigger className="h-10 w-full border-slate-300 bg-white font-semibold md:w-[350px] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                            <SelectValue placeholder="Tất cả tài khoản" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="dark:border-slate-800 dark:bg-slate-900">
+                            <SelectItem value="all" className="font-bold text-blue-600 dark:focus:bg-slate-800">-- Xem Tất Cả Tài Khoản --</SelectItem>
                             {accounts.map(acc => (
-                                <SelectItem key={acc.id} value={acc.id} className="font-mono">
-                                    <span className="mr-2 font-bold text-blue-600">{acc.code}</span> - {acc.name}
+                                <SelectItem key={acc.id} value={acc.id} className="font-mono dark:focus:bg-slate-800">
+                                    <span className="mr-2 font-bold text-blue-600 dark:text-blue-400">{acc.code}</span> - {acc.name}
                                 </SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
 
                     <Select value={selectedProject} onValueChange={setSelectedProject}>
-                        <SelectTrigger className="h-10 w-full border-slate-300 bg-white md:w-[250px]">
-                            <Filter className="mr-2 h-4 w-4 text-slate-500" />
-                            <SelectValue placeholder="Lọc theo Dự án (Tùy chọn)" />
+                        <SelectTrigger className="h-10 w-full border-slate-300 bg-white md:w-[250px] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                            <Filter className="mr-2 h-4 w-4 text-slate-500 dark:text-slate-400" />
+                            <SelectValue placeholder="Lọc theo Dự án" />
                         </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Tất cả dự án & Chi phí chung</SelectItem>
+                        <SelectContent className="dark:border-slate-800 dark:bg-slate-900">
+                            <SelectItem value="all" className="dark:focus:bg-slate-800">Tất cả dự án & Chi phí chung</SelectItem>
                             {projects.map(p => (
-                                <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                                <SelectItem key={p.id} value={p.id} className="dark:focus:bg-slate-800">{p.code} - {p.name}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
                 </CardContent>
             </Card>
 
-            {/* BÁO CÁO SỔ CÁI */}
-            <Card className="border-slate-200 shadow-sm">
-                <CardHeader className="border-b border-slate-200 bg-white px-6 py-6 text-center">
-                    <CardTitle className="text-2xl font-black tracking-tight text-slate-800 uppercase">Sổ Cái Tài Khoản</CardTitle>
-                    {currentAccount && (
-                        <p className="mt-2 font-medium text-slate-600">
-                            Tài khoản: <span className="font-mono text-lg font-bold text-blue-700">{currentAccount.code}</span> - {currentAccount.name}
-                        </p>
-                    )}
+            {/* BÁO CÁO NHẬT KÝ CHUNG */}
+            <Card className="border-slate-200 shadow-sm dark:border-slate-800">
+                <CardHeader className="rounded-t-xl border-b border-slate-200 bg-white px-6 py-6 text-center dark:border-slate-800 dark:bg-slate-950">
+                    <CardTitle className="text-2xl font-black tracking-tight text-slate-800 uppercase dark:text-slate-100">
+                        {selectedAccount === 'all' ? 'Sổ Nhật Ký Chung' : 'Sổ Chi Tiết Tài Khoản'}
+                    </CardTitle>
                 </CardHeader>
-                <CardContent className="bg-white p-0">
+                <CardContent className="rounded-b-xl bg-white p-0 dark:bg-slate-950">
                     <div className="overflow-x-auto">
-                        <Table className="border-collapse">
+                        <Table className="w-full border-collapse">
                             <TableHeader>
-                                <TableRow className="border-y border-slate-300 bg-slate-100 hover:bg-slate-100">
-                                    <TableHead className="w-[100px] border-r border-slate-200 text-center font-bold text-slate-700">Ngày CT</TableHead>
-                                    <TableHead className="w-[120px] border-r border-slate-200 text-center font-bold text-slate-700">Số CT</TableHead>
-                                    <TableHead className="border-r border-slate-200 font-bold text-slate-700">Diễn giải</TableHead>
-                                    <TableHead className="w-[100px] border-r border-slate-200 text-center font-bold text-slate-700" title="Tài khoản đối ứng">TK Đ.Ứng</TableHead>
-                                    <TableHead className="w-[150px] border-r border-slate-200 text-right font-bold text-slate-700">Ghi NỢ</TableHead>
-                                    <TableHead className="w-[150px] border-r border-slate-200 text-right font-bold text-slate-700">Ghi CÓ</TableHead>
-                                    <TableHead className="w-[150px] text-right font-bold text-blue-700">Số Dư</TableHead>
+                                {/* HEADER TẦNG 1 */}
+                                <TableRow className="bg-[#0f4a8a] hover:bg-[#0f4a8a] dark:bg-slate-800 dark:hover:bg-slate-800">
+                                    <TableHead rowSpan={2} className="min-w-[100px] border border-slate-300/20 p-2 text-center align-middle font-bold text-white">Ngày tháng<br />ghi sổ</TableHead>
+                                    <TableHead colSpan={2} className="border border-slate-300/20 p-2 text-center font-bold text-white">Chứng từ</TableHead>
+                                    <TableHead rowSpan={2} className="min-w-[250px] border border-slate-300/20 p-2 text-center align-middle font-bold text-white">Diễn Giải</TableHead>
+                                    <TableHead rowSpan={2} className="min-w-[80px] border border-slate-300/20 p-2 text-center align-middle font-bold text-white">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <span>TK Nợ</span>
+                                            <hr className="my-1 w-full border-white/30" />
+                                            <span>TK Có</span>
+                                        </div>
+                                    </TableHead>
+                                    <TableHead rowSpan={2} className="min-w-[90px] border border-slate-300/20 p-2 text-center align-middle font-bold text-white">TK Đối ứng</TableHead>
+                                    <TableHead colSpan={2} className="border border-slate-300/20 p-2 text-center font-bold text-white">Số phát sinh</TableHead>
+                                </TableRow>
+                                {/* HEADER TẦNG 2 */}
+                                <TableRow className="bg-[#0f4a8a] hover:bg-[#0f4a8a] dark:bg-slate-800 dark:hover:bg-slate-800">
+                                    <TableHead className="top-[auto] h-auto min-w-[90px] border border-slate-300/20 p-2 text-center font-bold text-white">Số hiệu</TableHead>
+                                    <TableHead className="top-[auto] h-auto min-w-[100px] border border-slate-300/20 p-2 text-center font-bold text-white">Ngày tháng</TableHead>
+                                    <TableHead className="top-[auto] h-auto min-w-[130px] border border-slate-300/20 p-2 text-center font-bold text-white">Nợ<br /><span className="font-normal text-[10px]">(1)</span></TableHead>
+                                    <TableHead className="top-[auto] h-auto min-w-[130px] border border-slate-300/20 p-2 text-center font-bold text-white">Có<br /><span className="font-normal text-[10px]">(2)</span></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {/* DÒNG 1: SỐ DƯ ĐẦU KỲ */}
-                                <TableRow className="border-b border-slate-300 bg-amber-50 font-bold hover:bg-amber-50">
-                                    <TableCell colSpan={4} className="border-r border-slate-200 text-right text-amber-800">SỐ DƯ ĐẦU KỲ</TableCell>
-                                    <TableCell className="border-r border-slate-200"></TableCell>
-                                    <TableCell className="border-r border-slate-200"></TableCell>
-                                    <TableCell className="text-right text-amber-800">0 ₫</TableCell>
-                                    {/* (Thực tế sau này làm tính năng Filter theo Date, số này sẽ được tính dựa trên các giao dịch trước Date filter) */}
+                                {/* DÒNG GROUP ĐẦU TIÊN GIỐNG EXCEL */}
+                                <TableRow className="bg-[#b3d7ff] font-bold hover:bg-[#b3d7ff] dark:bg-blue-900/30 dark:hover:bg-blue-900/30">
+                                    <TableCell colSpan={8} className="border border-slate-300 py-1.5 text-center text-blue-900 dark:border-slate-700 dark:text-blue-400">
+                                        Phát sinh trong kỳ
+                                    </TableCell>
                                 </TableRow>
 
                                 {/* DANH SÁCH PHÁT SINH */}
                                 {ledgerData.lines.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="py-12 text-center text-slate-500 italic">
+                                        <TableCell colSpan={8} className="border border-slate-300 py-12 text-center text-slate-500 italic dark:border-slate-700 dark:text-slate-400">
                                             Không có phát sinh nào trong kỳ.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    ledgerData.lines.map((line) => (
-                                        <TableRow key={line.id} className="border-b border-slate-200 transition-colors hover:bg-slate-50">
-                                            <TableCell className="border-r border-slate-200 text-center text-slate-600">
-                                                {line.journal_entries?.entry_date ? format(new Date(line.journal_entries.entry_date), 'dd/MM/yyyy') : ''}
-                                            </TableCell>
-                                            <TableCell className="border-r border-slate-200 text-center">
-                                                <Badge variant="outline" className="bg-white font-mono text-[10px] text-slate-500">
-                                                    {line.journal_entries?.entry_number}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="border-r border-slate-200 text-slate-700">
-                                                {line.description}
-                                            </TableCell>
-                                            <TableCell className="border-r border-slate-200 text-center font-mono font-bold text-slate-600">
-                                                {line.correspondingAccount}
-                                            </TableCell>
-                                            <TableCell className="border-r border-slate-200 text-right font-semibold text-slate-800">
-                                                {line.debit > 0 ? formatVND(line.debit) : ''}
-                                            </TableCell>
-                                            <TableCell className="border-r border-slate-200 text-right font-semibold text-slate-800">
-                                                {line.credit > 0 ? formatVND(line.credit) : ''}
-                                            </TableCell>
-                                            <TableCell className="bg-blue-50/20 text-right font-bold text-blue-700">
-                                                {formatVND(line.runningBalance)}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                    ledgerData.lines.map((line, idx) => {
+                                        // Kiểm tra nếu chuyển sang bút toán khác thì tạo viền đậm hơn ở dưới
+                                        const nextLine = ledgerData.lines[idx + 1];
+                                        const isLastLineOfEntry = !nextLine || nextLine.journal_entry_id !== line.journal_entry_id;
+
+                                        return (
+                                            <TableRow key={line.id} className={`transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 ${isLastLineOfEntry ? 'border-b-2 border-b-slate-400 dark:border-b-slate-600' : 'border-b border-b-slate-200 dark:border-b-slate-800'}`}>
+                                                {/* Cột A: Ngày ghi sổ */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-center font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                                                    {line.journal_entries?.entry_date ? format(new Date(line.journal_entries.entry_date), 'dd/MM/yyyy') : ''}
+                                                </TableCell>
+                                                {/* Cột B: Số hiệu */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-center dark:border-slate-700">
+                                                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                                                        {line.journal_entries?.entry_number}
+                                                    </span>
+                                                </TableCell>
+                                                {/* Cột C: Ngày tháng chứng từ */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-center font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                                                    {line.journal_entries?.entry_date ? format(new Date(line.journal_entries.entry_date), 'dd/MM/yyyy') : ''}
+                                                </TableCell>
+                                                {/* Cột D: Diễn giải */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-slate-800 dark:border-slate-700 dark:text-slate-200">
+                                                    {line.description}
+                                                </TableCell>
+                                                {/* Cột E: TK Nợ / Có */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-center font-bold text-slate-800 dark:border-slate-700 dark:text-slate-200">
+                                                    {line.currentAccountCode}
+                                                </TableCell>
+                                                {/* Cột F: TK Đối ứng */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-center font-bold text-slate-800 dark:border-slate-700 dark:text-slate-200">
+                                                    {line.correspondingAccount}
+                                                </TableCell>
+                                                {/* Cột G: Số phát sinh NỢ */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-right font-bold text-slate-800 dark:border-slate-700 dark:text-slate-200">
+                                                    {line.debit > 0 ? formatVND(line.debit) : ''}
+                                                </TableCell>
+                                                {/* Cột H: Số phát sinh CÓ */}
+                                                <TableCell className="border-x border-slate-300 py-1.5 text-right font-bold text-slate-800 dark:border-slate-700 dark:text-slate-200">
+                                                    {line.credit > 0 ? formatVND(line.credit) : ''}
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })
                                 )}
 
-                                {/* TỔNG CỘNG PHÁT SINH & DƯ CUỐI KỲ */}
-                                <TableRow className="border-t-2 border-slate-300 bg-slate-100 font-bold hover:bg-slate-100">
-                                    <TableCell colSpan={4} className="border-r border-slate-200 text-right text-slate-800 uppercase">CỘNG PHÁT SINH TRONG KỲ</TableCell>
-                                    <TableCell className="border-r border-slate-200 text-right text-slate-800">{formatVND(ledgerData.totalDebit)}</TableCell>
-                                    <TableCell className="border-r border-slate-200 text-right text-slate-800">{formatVND(ledgerData.totalCredit)}</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                                <TableRow className="border-b border-slate-300 bg-blue-50 text-lg font-black hover:bg-blue-50">
-                                    <TableCell colSpan={6} className="border-r border-slate-200 text-right text-blue-800 uppercase">SỐ DƯ CUỐI KỲ</TableCell>
-                                    <TableCell className="text-right text-blue-700">{formatVND(ledgerData.endBalance)}</TableCell>
+                                {/* TỔNG CỘNG PHÁT SINH */}
+                                <TableRow className="bg-[#b3d7ff] font-bold hover:bg-[#b3d7ff] dark:bg-blue-900/50 dark:hover:bg-blue-900/50">
+                                    <TableCell colSpan={6} className="border border-slate-300 py-2 text-center text-slate-800 uppercase dark:border-slate-700 dark:text-slate-100">
+                                        Tổng cộng phát sinh
+                                    </TableCell>
+                                    <TableCell className="border border-slate-300 py-2 text-right text-slate-900 dark:border-slate-700 dark:text-white">
+                                        {formatVND(ledgerData.totalDebit)}
+                                    </TableCell>
+                                    <TableCell className="border border-slate-300 py-2 text-right text-slate-900 dark:border-slate-700 dark:text-white">
+                                        {formatVND(ledgerData.totalCredit)}
+                                    </TableCell>
                                 </TableRow>
                             </TableBody>
                         </Table>

@@ -197,3 +197,41 @@ export async function getLabelFromDictionary(category: string, code: string) {
     const item = await getDictionaryByCode(category, code);
     return item?.name || code;
 }
+
+/**
+* Lấy danh sách nhiều danh mục từ điển cùng lúc (Tối ưu hiệu suất cho Frontend)
+* @param categories Mảng chứa các mã nhóm (VD: ['SURVEY_ROAD_ACCESS', 'SURVEY_SOIL_TYPE'])
+* @param activeOnly Chỉ lấy các mục đang kích hoạt (Mặc định: true)
+*/
+export async function getDictionariesByCategories(categories: string[], activeOnly = true) {
+    const supabase = await createSupabaseServerClient();
+
+    let query = supabase
+        .from('sys_dictionaries')
+        .select('*')
+        .in('category', categories)
+        .order('sort_order', { ascending: true });
+
+    if (activeOnly) {
+        query = query.eq('is_active', true);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error(`❌ [Dictionary] Lỗi lấy danh sách nhiều categories:`, error.message);
+        return { success: false, data: {} as Record<string, DictionaryItem[]>, error: error.message };
+    }
+
+    // Gom nhóm dữ liệu trả về thành dạng Dictionary Object (Key-Value)
+    // VD: { "SURVEY_ROAD": [{ code: "A", name: "Đường lớn" }], "SURVEY_SOIL": [...] }
+    const groupedData = (data as DictionaryItem[]).reduce((acc, curr) => {
+        if (!acc[curr.category]) {
+            acc[curr.category] = [];
+        }
+        acc[curr.category].push(curr);
+        return acc;
+    }, {} as Record<string, DictionaryItem[]>);
+
+    return { success: true, data: groupedData };
+}
